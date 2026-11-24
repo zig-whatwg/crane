@@ -65,6 +65,9 @@ pub fn InstanceRegistry(comptime tag: BrowserScope.Table, comptime T: type) type
         /// One Browser's table of `T`.
         pub const Table = struct {
             map: address_map.AddressHashMap(usize, Slot),
+            /// The scope whose table this is (set at its first use): its end
+            /// gives the blocks still registered back to the scope's heap.
+            scope: ?*BrowserScope = null,
             /// Every node a page makes is registered here and removed when
             /// the page ends, so the map sees a page's worth of removals per
             /// page and its tombstones would take every free slot: the guard
@@ -75,17 +78,36 @@ pub fn InstanceRegistry(comptime tag: BrowserScope.Table, comptime T: type) type
                 return .{ .map = address_map.AddressHashMap(usize, Slot).init(allocator) };
             }
 
-            /// With its Browser: the entries go. Their blocks are in the
-            /// Browser's arena, which ends next; what an entry owns beyond its
-            /// block its type's teardown sweep released (dom.teardown_sweeps).
+            /// With its Browser: the entries go, and the blocks the registry
+            /// owns go back to the Browser's heap - explicitly, since lane
+            /// hard1: the heap's leak report at the Browser's end counts what
+            /// is left, where the old arena freed it wholesale. What an entry
+            /// owns beyond its block its type's teardown sweep released
+            /// (dom.teardown_sweeps).
             pub fn deinit(self: *Table) void {
+                releaseOwned(self);
                 self.map.deinit();
             }
         };
 
         /// `instance`'s Browser's table, made on first use.
         fn tableFor(instance: *const Instance) !*Table {
-            return BrowserScope.ofInstance(instance).table(tag, Table);
+            const scope = BrowserScope.ofInstance(instance);
+            const table = try scope.table(tag, Table);
+            // Atomic: registrations come from every thread of the Browser
+            // (the same value each time).
+            @atomicStore(?*BrowserScope, &table.scope, scope, .monotonic);
+            return table;
+        }
+
+        /// Every block the registry owns, back to its scope's heap (the
+        /// entries stay; the caller forgets them).
+        fn releaseOwned(table: *Table) void {
+            const scope = @atomicLoad(?*BrowserScope, &table.scope, .monotonic) orelse return;
+            var iter = table.map.valueIterator();
+            while (iter.next()) |slot| {
+                if (slot.owned) scope.arena.destroy(T, slot.ptr);
+            }
         }
 
         /// `instance`'s Browser's table, if one was made.
@@ -189,23 +211,26 @@ pub fn InstanceRegistry(comptime tag: BrowserScope.Table, comptime T: type) type
             return table.map.count();
         }
 
-        /// Forget every one of `scope`'s entries, without their deinit.
+        /// Forget every one of `scope`'s entries, without their deinit; the
+        /// blocks the registry owns go back to the heap.
         pub fn clear(scope: *BrowserScope) void {
             const table = scope.existingTable(tag, Table) orelse return;
+            releaseOwned(table);
             table.map.clearRetainingCapacity();
             table.guard.reset();
         }
 
         /// A teardown sweep's (dom.teardown_sweeps): deinit every one of
-        /// `scope`'s remaining states and forget them. The blocks themselves
-        /// are not returned: this runs at the Browser's end, where its arena
-        /// is about to end wholesale.
+        /// `scope`'s remaining states and forget them, the blocks the
+        /// registry owns given back to the heap (lane hard1: explicitly, as
+        /// the heap's leak report at the Browser's end counts what is left).
         pub fn deinitAllAndClear(scope: *BrowserScope) void {
             const table = scope.existingTable(tag, Table) orelse return;
             var iter = table.map.valueIterator();
             while (iter.next()) |slot| {
                 if (@hasDecl(T, "deinit")) slot.ptr.deinit();
             }
+            releaseOwned(table);
             table.map.clearRetainingCapacity();
             table.guard.reset();
         }

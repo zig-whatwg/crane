@@ -3,10 +3,10 @@ const runtime = @import("runtime");
 
 test "descendant abort task captures its global task document and generation" {
     const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    // A real allocator-issued slot, without replacing the process's slab.
-    var slab = runtime.SlabAllocator.init(arena.allocator());
+    // A real allocator-issued slot, from a scope of the test's own.
+    var slab_scope = runtime.BrowserScope.init(allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
     const VTable = struct {
         const delegates = .{};
         const value: runtime.VTable = .{ .name = "Document", .deinit = null, .methods_ptr = &delegates };

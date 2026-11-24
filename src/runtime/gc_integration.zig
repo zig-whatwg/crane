@@ -125,16 +125,11 @@ pub fn releaseStorage(inst: *Instance) void {
     // it a collected node returns its Instance handle to the slab but keeps its
     // state forever, which is what `zig build gc-bench` measures: live instances
     // fall to 9 under a forced GC while RSS keeps climbing.
-    if (inst.vtable.state_size != 0) {
-        scope.arena.destroyRaw(
-            @ptrCast(inst.state),
-            inst.vtable.state_size,
-            inst.vtable.state_align,
-        );
-    }
-
-    // Step 3: Return Instance handle to slab allocator
-    scope.slab.free(inst);
+    //
+    // Step 3: Return Instance handle to slab allocator - with the state, in
+    // one heap call (SlabAllocator.freeWithState: one lock, not two; a
+    // zero-sized state has no block).
+    scope.slab.freeWithState(inst, inst.vtable.state_size, inst.vtable.state_align);
 }
 
 /// An owner tears down `child`, a platform object it made and keeps for

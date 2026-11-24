@@ -130,8 +130,11 @@ fn isStrong(made: Made) bool {
     return entry.bits.strong;
 }
 
+/// Whether the cache keeps a record for `made`'s address - asked of its map,
+/// never through the instance, which may be freed by now (the heap zeroes a
+/// freed slot's Instance words; `get` reads its vtable).
 fn isCached(made: Made) bool {
-    return test_cache.?.get(made.instance) != null;
+    return test_cache.?.cache.get(made.instance) != null;
 }
 
 test "a wrapper nothing holds is weak, and a full GC frees its instance" {
