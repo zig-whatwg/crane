@@ -1371,10 +1371,12 @@ fn rootProperties(tree: *Tree, document: *Instance) ![]const Property {
 /// apply to them (FillGlobalStates: an editable text's editable state).
 fn nodelessProperties(tree: *Tree, index: Index) ![]const Property {
     var properties: std.ArrayListUnmanaged(Property) = .empty;
+    // The nearest element ancestor's editability (a text's and an inline
+    // box's: Chrome 157 marks both richtext inside a contenteditable).
     var at: ?Index = tree.node(index).parent;
     while (at) |p| : (at = tree.node(p).parent) {
         const n = tree.domNode(p) orelse continue;
-        if (bridge.getNodeBase(n).?.node_type != NodeBase.ELEMENT_NODE) break;
+        if (bridge.getNodeBase(n).?.node_type != NodeBase.ELEMENT_NODE) continue;
         if (editableKind(n)) |kind| {
             if (eq(kind, "richtext")) try properties.append(tree.arena, .{ .name = "editable", .value = .{ .token = kind } });
         }
