@@ -1464,43 +1464,43 @@ fn nodelessProperties(tree: *Tree, index: Index) ![]const Property {
 // Computed Role and Get Computed Label off the Accessibility domain's
 // getPartialAXTree {backendNodeId, fetchRelatives: false} node for the
 // element: its role.value, and its name.value ("" when it has none). Crane
-// answers both from that one decision - the tree's - in Chrome's
-// vocabulary, except where golden rule 2 says the browser majority answers
-// otherwise (`webdriverOverride`, each with its evidence).
+// answers the role from that decision - the tree's - in Chrome's
+// vocabulary; the label is the browser majority's (golden rule 2, below),
+// which needs no tree.
 
-/// WebDriver's answers for one element.
-pub const WebDriverAnswer = struct { role: []const u8, label: []const u8 };
-
-/// The getPartialAXTree node's role for `element` in its node document's
-/// tree (BuildProtocolAXNodeForDOMNodeWithNoAXNode, and an ignored object:
-/// role none), and its accessible name, with the rule-2 overrides. Strings
-/// live in `arena` or are static.
-pub fn webdriverAnswer(arena: Allocator, element: *Instance, options: Options) !WebDriverAnswer {
-    // The label: chromedriver sends the CDP node's name, none for an ignored
-    // object or an element with no object, where Firefox and Safari compute
-    // AccName all the same (a <b>'s or a <wbr>'s title, a <video>'s
-    // aria-label: html-aam/accname-computation-by-element/
-    // phrasing-elements.html and section-and-grouping-elements.html, wpt.fyi
-    // Chrome 157 4786307730243584 fails, Firefox 160 4877168468033536 and
-    // Safari 27.2 6479119966273536 pass) - the majority's answer, for every
-    // element: AccName, roles by its own decision, in the tree the element's
-    // root roots (a detached subtree too).
-    const label = try a11y.computedName(arena, element, options.names());
+/// WebDriver's Get Computed Role: the getPartialAXTree node's role for
+/// `element` in its node document's tree
+/// (BuildProtocolAXNodeForDOMNodeWithNoAXNode, and an ignored object: role
+/// none). The string lives in `arena` or is static.
+pub fn webdriverRole(arena: Allocator, element: *Instance, options: Options) ![]const u8 {
     // Detached: no document's tree holds it, and chromedriver would refuse
     // it as stale. Crane answers the element's own role (the harness choice
     // crane/ar3-pending-command-gc.html pins: WPT's selector transport sends
     // :scope for an id-less detached element, and Chrome, Firefox and Safari
     // pass aria-element-reflection-labelledby.html through that artifact).
-    if (!(interfaces.Node.get_isConnected(element) catch false)) {
-        return .{ .role = try a11y.role(arena, element, options.names()), .label = label };
-    }
-    const document = if (element.implements(interfaces.Document.State)) element else (interfaces.Node.get_ownerDocument(element) catch null) orelse return .{ .role = "none", .label = label };
+    if (!(interfaces.Node.get_isConnected(element) catch false)) return a11y.role(arena, element, options.names());
+    const document = if (element.implements(interfaces.Document.State)) element else (interfaces.Node.get_ownerDocument(element) catch null) orelse return "none";
     const tree = try arena.create(Tree);
     tree.* = try Tree.build(arena, document, options);
-    const index = tree.indexOf(element) orelse return .{ .role = "none", .label = label };
+    const index = tree.indexOf(element) orelse return "none";
     const object = tree.node(index);
-    if (object.ignored) return .{ .role = "none", .label = label };
-    return .{ .role = object.role.cdpName().name, .label = label };
+    if (object.ignored) return "none";
+    return object.role.cdpName().name;
+}
+
+/// WebDriver's Get Computed Label: `element`'s accessible name (AccName).
+/// chromedriver sends the CDP node's name, none for an ignored object or an
+/// element with no object, where Firefox and Safari compute AccName all the
+/// same (a <b>'s or a <wbr>'s title, a <video>'s aria-label:
+/// html-aam/accname-computation-by-element/phrasing-elements.html and
+/// section-and-grouping-elements.html, wpt.fyi Chrome 157 4786307730243584
+/// fails, Firefox 160 4877168468033536 and Safari 27.2 6479119966273536
+/// pass) - the majority's answer, for every element: AccName, roles by its
+/// own decision, in the tree the element's root roots (a detached subtree
+/// too). No accessibility tree is built for it: a page of label tests asks
+/// once per element. The string lives in `arena`.
+pub fn webdriverLabel(arena: Allocator, element: *Instance, options: Options) ![]const u8 {
+    return a11y.computedName(arena, element, options.names());
 }
 
 /// The accessible name CDP sends.

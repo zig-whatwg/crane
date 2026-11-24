@@ -121,7 +121,7 @@ pub fn authorNamed(allocator: Allocator, node: *Instance) !bool {
 
 /// AccName's role decision, by HTML-AAM's and ARIA's tables (the roles a
 /// name from contents and an embedded control read). WebDriver's computed
-/// role is the accessibility tree's (accessibility_tree.webdriverAnswer);
+/// role is the accessibility tree's (accessibility_tree.webdriverRole);
 /// this answers it only for an element no document's tree holds (a detached
 /// one).
 pub fn role(allocator: Allocator, node: *Instance, options: Options) anyerror![]const u8 {
@@ -879,7 +879,7 @@ fn flatten(allocator: Allocator, value: []const u8) ![]u8 {
 
 /// `node`'s accessible name in the tree its root roots (a detached subtree
 /// too), roles by AccName's own role decision: the label of an element the
-/// accessibility tree has no object for (accessibility_tree.webdriverAnswer).
+/// accessibility tree has no object for (accessibility_tree.webdriverRole).
 /// Caller owns the flattened UTF-8 name. All traversal state is temporary.
 pub fn computedName(allocator: Allocator, node: *Instance, options: Options) ![]u8 {
     var arena = std.heap.ArenaAllocator.init(allocator);
