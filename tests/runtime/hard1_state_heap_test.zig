@@ -404,6 +404,23 @@ test "the production quarantine holds 512 KiB, and a node interface draws one of
     try testing.expectEqual(@as(usize, 2), heap.random_buckets);
 }
 
+test "a test build's heap with no seeded Browser draws from the test's seed, so a failure sweep replays its bucket placement" {
+    // checkAllAllocationFailures makes a scope per attempt, and each opens a
+    // span per random bucket its node types land in - a probe of the scope's
+    // allocator each (Engine.grow_hook). From the OS's entropy two attempts
+    // place them differently, the count of allocations moves, and the sweep
+    // fails as nondeterministic (xm1_svg_interfaces_test, server1 gate
+    // 2026-11-24 on 790b9113b: FLAKY, alone pass pass). Two heaps from the
+    // OS's entropy share a bucket seed once in 2^64.
+    var a = BrowserScope.init(testing.allocator);
+    defer a.deinit();
+    var b = BrowserScope.init(testing.allocator);
+    defer b.deinit();
+    const engine_a = try engineOf(&a);
+    const engine_b = try engineOf(&b);
+    try testing.expectEqual(engine_a.bucket_seed, engine_b.bucket_seed);
+}
+
 test "the configuration is a function of the build and the Browser's request: production zeroes, Debug and bug-finding poison" {
     try testing.expectEqual(heap.Fill.zero, heap.Config.of(false, false).fill);
     try testing.expect(!heap.Config.of(false, false).retire_freed_spans);
