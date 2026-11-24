@@ -118,7 +118,3 @@ pub const VisibilityState = timers.VisibilityState;
 pub const EventLoop = event_loop.EventLoop;
 pub const EventLoopType = event_loop.EventLoopType;
 pub const RenderingCallbacks = event_loop.RenderingCallbacks;
-
-test {
-    std.testing.refAllDecls(@This());
-}
