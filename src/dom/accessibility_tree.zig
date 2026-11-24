@@ -425,6 +425,7 @@ pub const Tree = struct {
         const p = a11y.parent(text) orelse return false;
         if (bridge.getNodeBase(p).?.node_type != NodeBase.ELEMENT_NODE) return false;
         if (!rendersChildren(p)) return false;
+        if (isSvg(p) and !svgTakesText(p)) return false;
         if (!try rendered(p)) return false;
         var value = try interfaces.CharacterData.get_data(text);
         defer value.deinit(text.ctx.allocator);
@@ -2656,6 +2657,13 @@ fn inputImageUrl(tree: *Tree, dom: *Instance) !?[]const u8 {
 }
 
 fn linkUrl(tree: *Tree, dom: *Instance) !?[]const u8 {
+    // An SVG link: SVGAElement::HrefURL, href else xlink:href, stripped of
+    // HTML white space and completed against the document.
+    if (isSvg(dom)) {
+        const raw = attribute(dom, "href") orelse xlinkHref(dom) orelse return null;
+        const url = (try @import("encoding_parse.zig").encodingParseAndSerializeWithAllocator(tree.arena, dom, std.mem.trim(u8, raw, spaces))) orelse return null;
+        return if (absoluteUrl(url)) url else null;
+    }
     if (dom.stateAs(interfaces.HTMLAnchorElement.State) == null) return null;
     const href = try interfaces.HTMLAnchorElement.get_href(dom);
     defer dom.ctx.allocator.free(href);
@@ -2685,7 +2693,39 @@ fn absoluteUrl(text: []const u8) bool {
 
 /// Whether `element` has a box: rendered, and not display: contents.
 fn hasBox(element: *Instance) !bool {
+    if (isSvg(element) and !svgRenders(element)) return false;
     return style.isBeingRendered(element) catch false;
+}
+
+/// SVG's rendering model, which CSS display does not express: a never-rendered
+/// element (a <title>, <desc>, <metadata>, a paint server, a filter, a
+/// <clipPath>, <mask> or <marker>, an animation element) or anything inside
+/// one (a <defs>, a <symbol>) makes no layout object (Blink creates no
+/// LayoutObject for them: SVGElement::LayoutObjectIsNeeded per element).
+fn svgRenders(element: *Instance) bool {
+    var at: ?*Instance = element;
+    while (at) |n| : (at = a11y.parent(n)) {
+        if (!isSvg(n)) break;
+        const tag = localName(n);
+        if (oneOf(tag, .{ "title", "desc", "metadata", "defs", "symbol", "clipPath", "mask", "pattern", "marker", "linearGradient", "radialGradient", "filter", "style", "script", "set", "mpath" })) return false;
+        if (std.mem.startsWith(u8, tag, "fe") or std.mem.startsWith(u8, tag, "animate")) return false;
+    }
+    return true;
+}
+
+/// Whether an SVG element takes text children into layout: <text>, <tspan>,
+/// <textPath>, and an <a> inside a <text> (LayoutSVGText / LayoutSVGInline;
+/// any other SVG container's IsChildAllowed refuses a text).
+fn svgTakesText(element: *Instance) bool {
+    const tag = localName(element);
+    if (oneOf(tag, .{ "text", "tspan", "textPath" })) return true;
+    if (!eq(tag, "a")) return false;
+    var at = a11y.parent(element);
+    while (at) |n| : (at = a11y.parent(n)) {
+        if (!isSvg(n)) return false;
+        if (eq(localName(n), "text")) return true;
+    }
+    return false;
 }
 
 /// Whether `element` is rendered or delegates its rendering to children.
