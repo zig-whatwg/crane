@@ -1943,6 +1943,7 @@ pub fn build(b: *std.Build) void {
         "xhr",
         "xml",
         "wpt_runner",
+        "hr_time",
     };
     if (spec_filter) |spec| {
         var is_valid = engine_spec != null and std.mem.eql(u8, spec, engine_spec.?);
@@ -2649,6 +2650,15 @@ pub fn build(b: *std.Build) void {
         addTestFilesFromDir(b, test_step, "tests/console", target, &console_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add console test files: {}\n", .{err});
         };
+    }
+
+    // src/hr_time's own tests (lane core1, 2026-11-24): no step rooted the
+    // module, so its test blocks never ran - a dependency's tests are never
+    // collected (docs/lessons/testing-a-test-block-in-a-module-no-step-roots-
+    // never-runs.md). A leaf over clock, process and host: a small compile.
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "hr_time")) {
+        const hr_time_tests = b.addTest(.{ .root_module = testing_graph.hr_time });
+        test_step.dependOn(&addSuiteRun(b, launch, hr_time_tests, "src-hr_time", null).step);
     }
 
     if (test_streams) {

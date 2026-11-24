@@ -57,3 +57,9 @@ pub const coarsenedSharedCurrentTime = time_origin.coarsenedSharedCurrentTime;
 // Constants
 pub const DEFAULT_RESOLUTION_NS = coarsen.DEFAULT_RESOLUTION_NS;
 pub const CROSS_ORIGIN_ISOLATED_RESOLUTION_NS = coarsen.CROSS_ORIGIN_ISOLATED_RESOLUTION_NS;
+
+// The files' own tests, for src-hr_time: Zig collects a file's test blocks
+// only when something analyzes its import.
+test {
+    _ = coarsen;
+}
