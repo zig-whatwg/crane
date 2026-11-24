@@ -204,7 +204,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
         // and an empty dictionary" - validate and extract, then create an
         // element: an HTML-namespace root is an HTML element even here, in an
         // XML document.
-        element = try interfaces.Document.call_createElementNS(document, namespace, qualifiedName, webidl.Opt(runtime.JSValue).notPassed());
+        element = try interfaces.Document.call_createElementNS(document, namespace, qualifiedName, .notPassed());
     }
 
     // Step 4: If doctype is non-null, append doctype to document
@@ -367,6 +367,6 @@ fn createHTMLElement(doc: *runtime.Instance, local_name: []const u8) !*runtime.I
         doc,
         runtime.DOMString.initInterned(HTML_NAMESPACE),
         runtime.DOMString.initInterned(local_name),
-        webidl.Opt(runtime.JSValue).notPassed(),
+        .notPassed(),
     );
 }

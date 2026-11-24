@@ -19,6 +19,17 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     observer: reporting.Observer,
+
+    /// VTable.trace_held_nodes (runtime.lifetime.heldNodesOf): the
+    /// observer's holder anchor, reached in a collection's atomic pause,
+    /// keeps its callback - a traced hold (refcount step 8). Read-only.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        // A checked read: null for an object of another type (lint-impls'
+        // unchecked-state ratchet).
+        const state = instance.stateAs(State) orelse return;
+        const internal = state.own._internal orelse return;
+        if (internal.observer.callback) |callback| engine.traceHeld(tracer, callback.hold);
+    }
 };
 
 /// Initialize instance (creates the instance)
@@ -65,7 +76,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.ReportingObserverCallback, options: webidl.Opt(dictionaries.ReportingObserverOptions)) !*runtime.Instance {
     // Reporting §4.1 constructor steps 1-3. The binding transfers callback.
-    const owned_callback = callback.keep();
+    // A traced hold (refcount step 8): the observer's holder anchor keeps it
+    // (`InternalState.traceHeldNodes`), as Blink traces it; nothing roots it.
+    const owned_callback = callback.keepTraced();
     const instance = init(ctx.allocator, State, &ReportingObserver.vtable, ctx) catch |err| {
         owned_callback.release();
         return err;

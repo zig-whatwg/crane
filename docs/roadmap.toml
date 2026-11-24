@@ -129,8 +129,8 @@ progress = [
   status = "done"
 
   [[infra.items]]
-  name = "Event listeners and handlers are traced from their target, not held as strong roots - today a target whose listener closure captures the target can never be collected (Blink traces listeners from the target)"
-  status = "doing"
+  name = "Event listeners and handlers are traced from their target, not held as strong roots - a target whose listener closure captures the target is collected (Blink traces listeners from the target); refcount step 8 (rc8, 51e07c4f2): listeners, on* handlers and observer callbacks held by engine.TracedHold cells swept in the GC pause"
+  status = "done"
 
 [[infra]]
 id = "navigation"

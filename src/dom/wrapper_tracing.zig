@@ -124,14 +124,62 @@ pub fn connectedDocument(node: *NodeBase) ?*NodeBase {
     return node.documentBase();
 }
 
-/// `node` holds nodes for script itself (`NodeBase.traces_held`): its
-/// type's `trace_held_nodes` names them.
+/// `node` holds for script itself (`NodeBase.traces_held`): its event
+/// listener list's traced values, the MutationObservers its registered
+/// observer list names, and the nodes its type's `trace_held_nodes` names.
 fn traceHolderNode(node: *NodeBase, tracer: *engine.Tracer) void {
     const instance = node.registeredInstance() orelse return;
     // A node whose teardown began holds nothing any more.
     if (runtime.instance_lifecycle.isCleanupStarted(instance)) return;
+    traceNodeValues(node, tracer);
     const trace = instance.vtable.trace_held_nodes orelse return;
     trace(instance, tracer);
+}
+
+/// `node` keeps values for script from here (refcount step 8): its event
+/// listener list was made, or an observer registered on it. The walk visits
+/// it for them from here (`traces_held.values`, never cleared), and its
+/// wrapper stays through young-generation collections from here
+/// (engine.keepNodeWrapperInYoungCollections): the walk enters held subtrees
+/// only, a wrapped node is held by its wrapper, and V8 drops an unmodified
+/// wrapper nothing reaches in a scavenge - the node would then not be
+/// visited, and what it keeps would go with the next full collection while
+/// script could still reach the node through its tree.
+///
+/// A node with no wrapper costs nothing here: the engine's wrap asks the
+/// same question when it makes the wrapper (runtime.lifetime's
+/// `keeps_values` hook, dom.refcount.wrapperKeepsValues) - a node removed
+/// under a subtree MutationObserver gets a transient registered observer
+/// without script ever seeing it. (The first build marked the wrapper with a
+/// private property, and an unwrapped node's mark waited in a strong handle:
+/// 32 bytes of the engine's handles, a map entry and a key per removed node.)
+pub fn noteNodeHoldsValues(node: *runtime.Instance, base: *NodeBase) void {
+    if (base.traces_held.values) return;
+    base.traces_held.values = true;
+    engine.keepNodeWrapperInYoungCollections(node);
+}
+
+/// Refcount step 8 (decision D7; the trace-time design of 2026-11-23): what
+/// a node keeps for script that can reach back to it - its listeners'
+/// callbacks and event handlers' functions (engine.TracedHold, `bits.traced`)
+/// and the observers that observe it (DOM 4.3: the registered observer list
+/// holds its observers) - is traced from the node where the walk visits it,
+/// never rooted. Blink: Node::Trace -> EventTargetData's listener map and
+/// the MutationObserverRegistration list (`Member<MutationObserver>`). A
+/// node's lists are its NodeBase's: read-only here, in the atomic pause.
+fn traceNodeValues(node: *NodeBase, tracer: *engine.Tracer) void {
+    const list = node.eventListeners();
+    for (list.view()) |listener| {
+        if (listener.bits.traced) engine.traceHeld(tracer, .{ .handle = listener.object });
+    }
+    var observers = node.registeredObservers();
+    while (observers.next()) |registered| {
+        const observer: *runtime.Instance = @ptrCast(@alignCast(@import("handles.zig").mutationObserverToAnyopaque(registered.observer) orelse continue));
+        // An observer a teardown sweep freed first is not traced (its slot
+        // may be another's now).
+        if (runtime.SlabAllocator.generationOf(observer) != registered.observer_generation) continue;
+        engine.traceWrapperOf(tracer, observer);
+    }
 }
 
 /// The roots of the trees `node` keeps: its host-including tree's, and its
@@ -160,7 +208,7 @@ fn walkTree(maybe_root: ?*NodeBase, target: ?*NodeBase, path_to: ?*NodeBase, tra
         if (tree_root != target) engine.traceNodeWrapper(tracer, &tree_root.wrapper);
         // A lone node holder (a Document whose only held node is itself): asked
         // once per collection.
-        if (tree_root.traces_held and engine.traceVisitOnce(tracer, tree_root)) traceHolderNode(tree_root, tracer);
+        if (tree_root.traces_held.any() and engine.traceVisitOnce(tracer, tree_root)) traceHolderNode(tree_root, tracer);
         return;
     }
     if (!engine.traceVisitOnce(tracer, tree_root)) return;
@@ -360,7 +408,7 @@ const Pruned = struct {
         // (engine.traceNodeWrapper; a world's wrapper holds its node without
         // the main world's slot), and does nothing more for an empty slot.
         engine.traceNodeWrapper(self.tracer, &node.wrapper);
-        if (node.traces_held) traceHolderNode(node, self.tracer);
+        if (node.traces_held.any()) traceHolderNode(node, self.tracer);
     }
 };
 

@@ -363,6 +363,21 @@ pub fn observableArraysOf(isolate: *ffi.Isolate) ?*observable_array.Registry {
 
 // process-wide: the lock over `agents`, the process's one index of live agents, which every Browser's and worker's thread reaches
 var agents_lock: std.Io.Mutex = .init;
+/// Tests only (tests/v8/cb8_stack_roots_test.zig): hold the agents' lock
+/// from a thread of the test's, to pin that a collection's atomic pause
+/// takes no lock (refcount step 8's stack roots, walked there). A build that
+/// is not a test refuses to compile a call.
+pub fn lockAgentsForTest() void {
+    if (!@import("builtin").is_test) @compileError("lockAgentsForTest is for tests only");
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+}
+
+/// Tests only: end `lockAgentsForTest`'s hold.
+pub fn unlockAgentsForTest() void {
+    if (!@import("builtin").is_test) @compileError("unlockAgentsForTest is for tests only");
+    std.Io.Threaded.mutexUnlock(&agents_lock);
+}
+
 /// Every agent made by createAgent and not yet destroyed, by isolate.
 // process-wide: V8's isolates are the process's, and a hook dispatch finds its agent's record by isolate from any thread; each Browser and worker adds and removes only its own agents' records, always under agents_lock (the records themselves are their Browser's or WorkerHost's)
 var agents: std.AutoHashMapUnmanaged(*ffi.Isolate, *AgentRecord) = .empty;
@@ -854,6 +869,13 @@ pub fn endAgent(agent: *Agent) void {
     // And the agent's inspector, the same step: its host sessions
     // disconnected, every context it knows forgotten while it exists.
     if (inspector) |i| i.end();
+    // Its traced holds (engine.TracedHold: listeners' callbacks, handlers'
+    // functions, observers' callbacks) end LAST, with the isolate itself:
+    // v8_Isolate_Dispose resets every hold's reference while the isolate
+    // lives and cuts the agent's hold slab from it (v8_wrapper.cpp
+    // endHoldSlab), so an owner torn down after this - a realm's end below,
+    // a node the host still counts - releases a hold that reads empty and
+    // makes no V8 call. Nothing here releases holds: their owners do.
     // Its node wrappers end, every one's reference let go (engine.
     // releaseNodeWrappers, idempotent: a host that called it before its last
     // drain left nothing here) - before the agent is forgotten, while the

@@ -2426,11 +2426,30 @@ pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerr
 /// Creates an element with the correct interface based on tag name.
 /// HTML tag names dispatch to their corresponding interfaces (e.g., "iframe" → HTMLIFrameElement).
 /// Unknown tag names create HTMLUnknownElement.
-pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: webidl.Opt(typedefs.DOMStringOrElementCreationOptions)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // The binding converted the arguments before these steps, and that can
+    // run script (a getter on `options`, a toString). A realm whose engine
+    // went meanwhile - the collector took a detached frame's realm - takes
+    // no further step: `engineGone()` is true from that moment
+    // (engine.Context). The guard this replaces compared `hasEngine()`
+    // around the impl's own conversion of `options`.
+    //
+    // UNREACHABLE TODAY, and not covered by a test: the receiver's wrapper
+    // keeps its creation context alive for the whole call, and a realm ends
+    // only in a queued task, so script run by the conversion cannot make
+    // this realm's engine go. Measured (lane bind1 batch B, B5, 2026-11-24,
+    // server1): tests/wpt/crane/bind1-conversion-removes-frame.html on two
+    // bug-finding runners, one with these guards removed - 6 of 6 cases
+    // passed on both and the six calls did the same on both (createElement,
+    // createElementNS and importNode returned their node after the getter
+    // removed the frame and collected). Kept as a defence against a future
+    // synchronous realm end: do not remove it as dead code, and do not count
+    // it as tested. The same guard, for the same reason: createElementNS and
+    // importNode below, ElementInternals.setFormValue.
+    if (instance.ctx.engineGone()) return error.InvalidStateError;
     const realm = instance.ctx;
     const allocator = realm.allocator;
-    const was_live = realm.hasEngine();
 
     // DOM 4.5 createElement step 1: "If localName is not a valid element local
     // name, then throw an "InvalidCharacterError" DOMException."
@@ -2443,9 +2462,10 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
     const local_name_slice: []const u8 = lowered orelse localName.asSlice();
 
     // Step 3: flatten element creation options; the legacy string is ignored.
-    const flattened = try @import("html").custom_element_creation.flatten(instance, options);
+    // The binding converted `options` before these steps (WebIDL: every
+    // argument converts before the operation's steps run).
+    const flattened = try @import("html").custom_element_creation.flatten(instance, elementCreationOptions(options));
     defer flattened.deinit(allocator);
-    if (was_live and !realm.hasEngine()) return error.InvalidStateError;
 
     // Step 4: "Let namespace be the HTML namespace, if this is an HTML document
     // or this's content type is "application/xhtml+xml"; otherwise null."
@@ -3337,6 +3357,21 @@ pub fn call_hasStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSVal
     return error.NotImplemented;
 }
 
+/// createElement's and createElementNS's `optional (DOMString or
+/// ElementCreationOptions) options = {}` as "flatten element creation
+/// options" reads it: the dictionary's members, borrowed; the legacy string
+/// member, and an absent argument, name nothing.
+fn elementCreationOptions(options: webidl.Opt(typedefs.DOMStringOrElementCreationOptions)) @import("html").custom_element_creation.CreationOptions {
+    if (!options.was_passed) return .{};
+    return switch (options.value) {
+        .domstring => .{},
+        .element_creation_options => |dictionary| .{
+            .registry = dictionary.customElementRegistry,
+            .is_value = if (dictionary.is) |is_value| is_value.asSlice() else null,
+        },
+    };
+}
+
 /// Operation: importNode
 /// DOM §4.6 - Returns a copy of node imported into this document.
 /// Spec: https://dom.spec.whatwg.org/#dom-document-importnode
@@ -3344,38 +3379,28 @@ pub fn call_hasStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSVal
 /// Steps:
 /// 1. If node is a document or shadow root, throw "NotSupportedError"
 /// 2. Return clone a node with document=this, subtree=deep
-pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    const realm = instance.ctx;
-    const was_live = realm.hasEngine();
+pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(typedefs.BooleanOrImportNodeOptions)) anyerror!*runtime.Instance {
+    // A realm whose engine went during the binding's argument conversion
+    // takes no further step. Unreachable today and untested: see
+    // call_createElement's guard.
+    if (instance.ctx.engineGone()) return error.InvalidStateError;
     // Step 1: neither documents nor shadow roots can be imported.
     if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_NODE() or
         node.stateAs(interfaces.ShadowRoot.State) != null) return error.NotSupportedError;
 
-    // Steps 2–5.1: WebIDL selects the dictionary for objects/null and the
-    // boolean branch for other values. Omitted options default to false.
+    // Steps 2–5.1: `optional (boolean or ImportNodeOptions) options = false`,
+    // converted by the binding (WebIDL 3.2.25: null and any Object are the
+    // dictionary - customElementRegistry, then selfOnly, each read once, a
+    // registry that is no CustomElementRegistry a TypeError; anything else
+    // ToBoolean). Omitted options default to false.
     var fallback_registry: ?*runtime.Instance = null;
-    var registry_root: ?engine.Owned = null;
-    defer if (registry_root) |root| root.release();
-    const subtree = if (!options.was_passed) false else switch (engine.typeOf(realm, options.value)) {
-        .undefined => false,
-        .null => true,
-        .object => blk: {
-            // WebIDL dictionary conversion reads customElementRegistry first;
-            // unlike ElementCreationOptions its type is non-nullable.
-            const registry_value = try engine.getProperty(realm, options.value, "customElementRegistry");
-            registry_root = registry_value;
-            if (engine.typeOf(realm, registry_value.value) != .undefined) {
-                const registry = engine.convertToPlatformObject(realm, registry_value.value) orelse return error.TypeError;
-                if (registry.stateAs(interfaces.CustomElementRegistry.State) == null) return error.TypeError;
-                fallback_registry = registry;
-            }
-            const self_only = try engine.getProperty(realm, options.value, "selfOnly");
-            defer self_only.release();
-            break :blk !engine.toBoolean(realm, self_only.value);
+    const subtree = if (!options.was_passed) false else switch (options.value) {
+        .boolean => |deep| deep,
+        .import_node_options => |dictionary| blk: {
+            fallback_registry = dictionary.customElementRegistry;
+            break :blk !(dictionary.selfOnly orelse false);
         },
-        else => engine.toBoolean(realm, options.value),
     };
-    if (was_live and !realm.hasEngine()) return error.InvalidStateError;
     if (fallback_registry) |registry| {
         if (!@import("dom").custom_elements.isScoped(registry) and registry != try get_customElementRegistry(instance)) return error.NotSupportedError;
     }
@@ -3660,46 +3685,37 @@ pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, 
 /// `(ViewTransitionUpdateCallback or StartViewTransitionOptions)`, default
 /// `{}`): the steps are dom.view_transitions.start's; step 1, the new
 /// ViewTransition "in this's relevant Realm", is made here.
-pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(typedefs.ViewTransitionUpdateCallbackOrStartViewTransitionOptions)) anyerror!*runtime.Instance {
     const view_transitions = @import("dom").view_transitions;
     const realm = instance.ctx;
     var options: view_transitions.Start = .{};
-    var update: ?engine.Owned = null;
-    defer if (update) |held| held.release();
     errdefer for (options.types) |name| realm.allocator.free(name);
     errdefer if (options.types.len != 0) realm.allocator.free(options.types);
-    if (callbackOptions.was_passed) {
-        const value = callbackOptions.value;
-        // WebIDL 3.2.24 (the union's conversion): a callable value is the
-        // callback; any other object, null or undefined is the dictionary.
-        if (engine.isCallable(realm, value)) {
-            options.update = value;
-        } else switch (engine.typeOf(realm, value)) {
-            .undefined, .null => {},
-            .object => {
-                // StartViewTransitionOptions, in member order: types, update.
-                const types_value = try engine.getProperty(realm, value, "types");
-                defer types_value.release();
-                switch (engine.typeOf(realm, types_value.borrow())) {
-                    .undefined, .null => {},
-                    else => options.types = (try engine.convertToSequenceOfDOMStrings(realm, types_value.borrow(), realm.allocator)) orelse return error.TypeError,
+    // `optional (ViewTransitionUpdateCallback or StartViewTransitionOptions)
+    // callbackOptions = {}`, converted by the binding (WebIDL 3.2.25: a
+    // callable is the callback; undefined, null and any other Object the
+    // dictionary - types, then update; anything else a TypeError). The
+    // callback is BORROWED for the call (`start` takes its own hold); the
+    // types are copied.
+    if (callbackOptions.was_passed) switch (callbackOptions.value) {
+        .view_transition_update_callback => |callback| options.update = callback.function,
+        .start_view_transition_options => |dictionary| {
+            if (dictionary.types) |names_given| {
+                const copies = try realm.allocator.alloc([]u8, names_given.len);
+                var made: usize = 0;
+                errdefer {
+                    for (copies[0..made]) |copy| realm.allocator.free(copy);
+                    realm.allocator.free(copies);
                 }
-                const update_value = try engine.getProperty(realm, value, "update");
-                switch (engine.typeOf(realm, update_value.borrow())) {
-                    .undefined, .null => update_value.release(),
-                    else => {
-                        if (!engine.isCallable(realm, update_value.borrow())) {
-                            update_value.release();
-                            return error.TypeError;
-                        }
-                        update = update_value;
-                        options.update = update_value.borrow();
-                    },
+                for (names_given) |name| {
+                    copies[made] = try realm.allocator.dupe(u8, name.asSlice());
+                    made += 1;
                 }
-            },
-            else => return error.TypeError,
-        }
-    }
+                options.types = copies;
+            }
+            if (dictionary.update) |callback| options.update = callback.function;
+        },
+    };
     // 1. "Let transition be a new ViewTransition object in this's relevant
     // Realm."
     const transition = try interfaces.ViewTransition.init(realm.allocator, realm);
@@ -5668,10 +5684,13 @@ pub fn call_requestStorageAccess(instance: *runtime.Instance) anyerror!runtime.J
 /// 1. Validate and extract namespace and qualifiedName
 /// 2. Parse qualifiedName for prefix:localName
 /// 3. Create element with namespace, prefix, localName
-pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, options: webidl.Opt(typedefs.DOMStringOrElementCreationOptions)) anyerror!*runtime.Instance {
+    // A realm whose engine went during the binding's argument conversion
+    // takes no further step. Unreachable today and untested: see
+    // call_createElement's guard.
+    if (instance.ctx.engineGone()) return error.InvalidStateError;
     const realm = instance.ctx;
     const allocator = realm.allocator;
-    const was_live = realm.hasEngine();
 
     // DOM 4.5 "internal createElementNS steps" step 1: "Let (namespace,
     // prefix, localName) be the result of validating and extracting namespace
@@ -5682,10 +5701,10 @@ pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOM
         .element,
     );
 
-    // Internal createElementNS step 2: flatten element creation options.
-    const flattened = try @import("html").custom_element_creation.flatten(instance, options);
+    // Internal createElementNS step 2: flatten element creation options
+    // (converted by the binding before these steps).
+    const flattened = try @import("html").custom_element_creation.flatten(instance, elementCreationOptions(options));
     defer flattened.deinit(allocator);
-    if (was_live and !realm.hasEngine()) return error.InvalidStateError;
 
     // Step 3: "Return the result of creating an element given document,
     // localName, namespace, prefix, is, and true."

@@ -305,6 +305,13 @@ pub const CountedRef = struct {
 /// cancelled or dropped. It is not a raw pointer plus a generation: the hold
 /// KEEPS its member; the generation only answers for a free the collector
 /// does not make (the member's realm's end), as `Hold.get` does.
+/// Whether `member`'s Browser made an isolated world (its realms' objects
+/// may then have a wrapper per world).
+fn worldsActive(member: *runtime.Instance) bool {
+    const scope = member.ctx.browserScope() orelse return false;
+    return scope.isolated_worlds_active.load(.monotonic);
+}
+
 pub const TaskHold = struct {
     hold: Hold = .{},
     /// The member when it is not a node, with its generation.
@@ -327,8 +334,14 @@ pub const TaskHold = struct {
         if (!member.ctx.hasEngine()) return;
         // The shadow-mode net: a node held by a keep must have a wrapper
         // for the keep to keep anything. Made in its relevant realm, then
-        // kept, then the temporary hold let go.
-        const made: ?engine.Owned = if (self.other == null and !engine.hasWrapper(member))
+        // kept, then the temporary hold let go. The keep keeps that realm's
+        // wrapper (whose walk keeps the node's isolated-world wrappers,
+        // protocol_worlds.traceWorldWrappers): once its Browser made a world,
+        // a wrapper only a world made - which engine.hasWrapper counts, as
+        // it counts every world's - is not one, so the realm's own is asked
+        // for (retainValue answers it when it exists).
+        const own_wrapper_known = self.other != null or (engine.hasWrapper(member) and !worldsActive(member));
+        const made: ?engine.Owned = if (!own_wrapper_known)
             engine.retainValue(member.ctx, .{ .instance = member }) catch null
         else
             null;
@@ -342,7 +355,7 @@ pub const TaskHold = struct {
         // Its counted hold still keeps it. A member that is not a node keeps
         // the side-table keep a wrapper made later takes (a CloseWatcher is
         // held from its constructor, before the binding wraps it).
-        if (self.other == null and !engine.hasWrapper(member)) return;
+        if (!own_wrapper_known and made == null) return;
         engine.keepPlatformObjectAlive(member);
         self.kept = true;
     }

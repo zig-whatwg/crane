@@ -389,7 +389,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     const html_element = interfaces.Document.call_createElement(
         document_instance,
         runtime.DOMString.initInterned("html"),
-        webidl.Opt(runtime.JSValue).notPassed(),
+        .notPassed(),
     ) catch {
         return document_instance; // Continue with empty document if element creation fails
     };
@@ -398,7 +398,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     const head_element = interfaces.Document.call_createElement(
         document_instance,
         runtime.DOMString.initInterned("head"),
-        webidl.Opt(runtime.JSValue).notPassed(),
+        .notPassed(),
     ) catch {
         return document_instance;
     };
@@ -407,7 +407,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     const body_element = interfaces.Document.call_createElement(
         document_instance,
         runtime.DOMString.initInterned("body"),
-        webidl.Opt(runtime.JSValue).notPassed(),
+        .notPassed(),
     ) catch {
         return document_instance;
     };

@@ -5249,12 +5249,15 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8.v8_Global_Dispose(null_value);
                 return;
             };
-            const v8_value = conv.toV8Value(runtime.JSValue, isolate, v8_context, value) catch {
+            // The union codegen names for the result (lane bind1 batch B, B5:
+            // it was a runtime.JSValue the impl made), owned as its active
+            // member is (`specialResultHandleIsOwned`).
+            const v8_value = conv.toV8Value(@TypeOf(value), isolate, v8_context, value) catch {
                 conv.throwError(isolate, "Failed to convert result");
                 return;
             };
             info.setReturnValue(@ptrCast(v8_value));
-            if (value != .instance) v8.v8_Global_Dispose(@ptrCast(v8_value));
+            if (specialResultHandleIsOwned(@TypeOf(value), value)) v8.v8_Global_Dispose(@ptrCast(v8_value));
         }
 
         /// Placeholder method callback

@@ -14,7 +14,6 @@ const HTMLElement = @import("interfaces").HTMLElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
-const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const ViewTransitionUpdateCallbackOrStartViewTransitionOptions = @import("typedefs").ViewTransitionUpdateCallbackOrStartViewTransitionOptions;
 const HTMLOptionElement = @import("interfaces").HTMLOptionElement;
 const GeometryNode = @import("typedefs").GeometryNode;
@@ -41,7 +40,9 @@ const Range = @import("interfaces").Range;
 const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
 const FocusOptions = @import("dictionaries").FocusOptions;
+const TogglePopoverOptionsOrBoolean = @import("typedefs").TogglePopoverOptionsOrBoolean;
 const TrustedTypeOrDOMString = @import("typedefs").TrustedTypeOrDOMString;
+const HTMLElementOrLong = @import("typedefs").HTMLElementOrLong;
 const ValidityState = @import("interfaces").ValidityState;
 const DOMString = @import("typedefs").DOMString;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
@@ -684,7 +685,7 @@ pub const HTMLSelectElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_add(instance: *runtime.Instance, element: HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
+    pub fn call_add(instance: *runtime.Instance, element: HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?HTMLElementOrLong)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);

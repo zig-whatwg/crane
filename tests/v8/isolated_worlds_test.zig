@@ -245,6 +245,85 @@ test "a world's wrappers are collected when nothing keeps them, and a node's wor
     engine.requestGarbageCollection(page.agent);
 }
 
+/// `n` young-generation collections of `page`'s agent, finished.
+fn scavenge(page: *Page, n: u32) !void {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(page.agent));
+    const entered = ffi.v8_Isolate_GetCurrent() != isolate;
+    if (entered) ffi.v8_Isolate_Enter(isolate);
+    defer if (entered) ffi.v8_Isolate_Exit(isolate);
+    const before = ffi.v8_Debug_MinorGCCount(isolate);
+    ffi.v8_test_Isolate_MinorGC(isolate, n);
+    try testing.expect(ffi.v8_Debug_MinorGCCount(isolate) >= before + n);
+    while (ffi.v8_Platform_PumpMessageLoop(isolate)) {}
+}
+
+fn droppedWrappers(page: *Page) u64 {
+    return ffi.v8_test_NodeWrappers_Dropped(@ptrCast(@alignCast(page.agent)));
+}
+
+// Refcount step 8 traces a node's listeners from the node, and the walk
+// visits a node only while it is held. A node wrapped ONLY in an isolated
+// world is held by that world's wrapper - a droppable traced reference in the
+// world's wrapper cache, which a young-generation collection drops while the
+// wrapper is unmodified and no script holds it. The node then has no hold,
+// the walk passes it by, and the next full collection takes its listeners,
+// though the world can still reach the node through its tree. So a node that
+// keeps values keeps its wrapper through young collections in EVERY world
+// (engine.keepNodeWrapperInYoungCollections; main's ruling of 2026-11-23
+// 9:05 PM ET). The first trace-time build's private-property mark was drawn
+// on the main world's wrapper only: it never covered this either.
+
+test "a node only a world wrapped keeps its listener through a young collection while its tree lives" {
+    var page = try Page.make();
+    defer page.end();
+    const world = try page.world(1);
+    // The control: 200 elements the world made and let go of - a young
+    // collection drops their wrappers.
+    try expect(world, "(() => { for (let i = 0; i < 200; i++) document.body.appendChild(document.createElement('i')); })(); 'ok'", "ok");
+    const control_before = droppedWrappers(&page);
+    try scavenge(&page, 4);
+    const control = droppedWrappers(&page) - control_before;
+    // 200 elements the world made, each with a listener of the world's; the
+    // world holds none of them, the page never saw them.
+    try expect(world,
+        \\globalThis.fired = 0;
+        \\(() => { for (let i = 0; i < 200; i++) document.body.appendChild(document.createElement('b')).addEventListener('x', () => { fired++; }); })();
+        \\'ok'
+    , "ok");
+    const before = droppedWrappers(&page);
+    try scavenge(&page, 4);
+    const dropped = droppedWrappers(&page) - before;
+    std.debug.print("world wrappers young collections dropped: {d} of 200 plain elements, {d} of 200 with a listener\n", .{ control, dropped });
+    try testing.expect(control >= 150);
+    try testing.expect(dropped <= 8);
+    // The document is the page's and lives: every listener still runs.
+    engine.requestGarbageCollection(page.agent);
+    engine.requestGarbageCollection(page.agent);
+    try expect(world, "for (const b of document.body.querySelectorAll('b')) b.dispatchEvent(new Event('x')); String(fired)", "200");
+}
+
+test "a node that keeps values gets a world wrapper young collections keep, when a world wraps it later" {
+    var page = try Page.make();
+    defer page.end();
+    const world = try page.world(1);
+    // The page's listeners; then the world sees each node once and lets go.
+    try expect(page.realm,
+        \\globalThis.fired = 0;
+        \\(() => { for (let i = 0; i < 200; i++) document.body.appendChild(document.createElement('b')).addEventListener('x', () => { fired++; }); })();
+        \\'ok'
+    , "ok");
+    try scavenge(&page, 2);
+    try expect(world, "(() => { let n = 0; for (const b of document.body.querySelectorAll('b')) n += b.nodeName.length; return String(n); })()", "200");
+    const before = droppedWrappers(&page);
+    try scavenge(&page, 4);
+    const dropped = droppedWrappers(&page) - before;
+    std.debug.print("world wrappers of 200 listener nodes, made after the listeners, that young collections dropped: {d}\n", .{dropped});
+    try testing.expect(dropped <= 8);
+    engine.requestGarbageCollection(page.agent);
+    engine.requestGarbageCollection(page.agent);
+    try expect(page.realm, "for (const b of document.body.querySelectorAll('b')) b.dispatchEvent(new Event('x')); String(fired)", "200");
+}
+
 test "a world wrapper script holds keeps its tree's main-world wrappers, and their expandos" {
     // Blink: an isolated world's wrapper reaches the C++ Node, whose Trace
     // reaches its tree and its main-world wrapper - so a detached subtree only
@@ -471,6 +550,19 @@ test "a callback of one world is handed another world's held value as its own" {
     try expect(world, "argSeen", "true:5");
 }
 
+// The world ends the way a browser ends one: with its main realm, here by
+// the realm's detach (a navigation or its navigable's removal,
+// engine.detachWindowRealm). Blink disposes every world's context of a frame
+// together (WindowProxyManager::ClearForNavigation, ClearForClose) and has no
+// operation that ends one world while its page lives on, so this test
+// asserts nothing on such a path - it used engine.destroyWorldRealms on a
+// live page, a host-only path ("No invented paths"; main's ruling of
+// 2026-11-23 12:37 PM ET, lane rc8). The world's listener is a once
+// listener: under refcount step 8 a listener on a page node is traced from
+// the node, as Blink traces it from its EventTarget, and would keep its
+// world's context while the page's node lives - which the page's promise,
+// held here, keeps. What this test is for is the mirror: the world's promise
+// for the page's promise, and its reaction on it, keep nothing of the world.
 test "a world's promise for a page promise keeps nothing of the world after it ends: the page's promise lives on, the world's context is collected" {
     var page = try Page.make();
     defer page.end();
@@ -483,31 +575,26 @@ test "a world's promise for a page promise keeps nothing of the world after it e
     // The page keeps a pending promise; the world reads it twice - one
     // promise of the world's for it, kept on it, and a reaction waiting on it.
     try expect(page.realm, "globalThis.pending = new Promise((resolve) => { globalThis.settle = resolve; }); 'ok'", "ok");
-    try expect(world, "globalThis.mirrors = []; document.body.addEventListener('p', (e) => { mirrors.push(e.detail, e.detail); }); 'ok'", "ok");
+    try expect(world, "globalThis.mirrors = []; document.body.addEventListener('p', (e) => { mirrors.push(e.detail, e.detail); }, { once: true }); 'ok'", "ok");
     try expect(page.realm, "document.body.dispatchEvent(new CustomEvent('p', { detail: pending })); 'ok'", "ok");
     try expect(world, "String(mirrors.length === 2 && mirrors[0] === mirrors[1] && mirrors[0] instanceof Promise)", "true");
 
-    // The world ends while the page's promise is pending: its kept promise
-    // is taken off the page's, and its reaction holds nothing of it.
-    engine.destroyWorldRealms(page.realm);
+    // The page's promise is held - as anything a browser keeps of a page
+    // after it goes might hold it - while the page's realm is detached: its
+    // world realms end with it, the world's kept promise is taken off the
+    // page's, and its reaction holds nothing of the world.
+    var reports: Reports = .{};
+    const pending = try engine.evaluateClassicScript(page.realm, .{ .utf8 = "pending" }, "", null, .{ .report = Reports.report, .host = &reports });
+    defer pending.release();
+    try testing.expectEqual(@as(usize, 0), reports.count);
+    engine.detachWindowRealm(page.realm);
+    var worlds: [2]runtime.Context = undefined;
+    try testing.expectEqual(@as(usize, 0), engine.worldRealmsOf(page.realm, &worlds));
     for (0..4) |_| engine.requestGarbageCollection(page.agent);
+    // The page's context lives on with its promise; the world's is collected.
     var contexts_after: usize = 0;
     ffi.v8_Isolate_GetContextCounts(isolate, &contexts_after, null);
     try testing.expectEqual(contexts_before, contexts_after);
-
-    // The page's promise lives on and settles, with no world left to tell.
-    try expect(page.realm, "settle(document.body); pending.then(() => { globalThis.settled = true; }); 'ok'", "ok");
-    try engine.performMicrotaskCheckpoint(page.agent);
-    try engine.performMicrotaskCheckpoint(page.agent);
-    try expect(page.realm, "String(globalThis.settled === true)", "true");
-
-    // A new world realm reads it afresh: a promise of its own, settled.
-    const again = try page.world(1);
-    try expect(again, "globalThis.got = ''; document.body.addEventListener('q', (e) => { e.detail.then((v) => { got = String(v === document.body); }); }); 'ok'", "ok");
-    try expect(page.realm, "document.body.dispatchEvent(new CustomEvent('q', { detail: pending })); 'ok'", "ok");
-    try engine.performMicrotaskCheckpoint(page.agent);
-    try engine.performMicrotaskCheckpoint(page.agent);
-    try expect(again, "got", "true");
 }
 
 // ---------------------------------------------------------------------------

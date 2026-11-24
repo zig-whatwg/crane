@@ -1054,30 +1054,23 @@ const MapInput = union(enum) { string: []u8, object: *runtime.Instance };
 const MapInputs = struct {
     ctx: runtime.Context,
     values: std.ArrayList(MapInput) = .empty,
-    held: std.ArrayList(engine.Owned) = .empty,
 
     fn deinit(self: *MapInputs) void {
         for (self.values.items) |value| if (value == .string) self.ctx.allocator.free(value.string);
-        for (self.held.items) |hold| hold.release();
         self.values.deinit(self.ctx.allocator);
-        self.held.deinit(self.ctx.allocator);
     }
 
-    fn convert(self: *MapInputs, input: []const runtime.JSValue) !void {
-        for (input) |raw| {
-            try self.values.ensureUnusedCapacity(self.ctx.allocator, 1);
-            if (engine.convertToPlatformObject(self.ctx, raw)) |object| {
-                if (object.stateAs(interfaces.CSSStyleValue.State) != null) {
-                    try self.held.ensureUnusedCapacity(self.ctx.allocator, 1);
-                    const hold = try engine.retainValue(object.ctx, .{ .instance = object });
-                    self.held.appendAssumeCapacity(hold);
-                    self.values.appendAssumeCapacity(.{ .object = object });
-                    continue;
-                }
-            }
-            const text = try engine.convertToUSVString(self.ctx, raw, self.ctx.allocator);
-            self.values.appendAssumeCapacity(.{ .string = text });
-        }
+    /// set()'s and append()'s `(CSSStyleValue or USVString)... values`, as
+    /// the binding converted them before the method's steps (WebIDL 3.2.25:
+    /// a platform object implementing CSSStyleValue is that member, anything
+    /// else ToString). The strings are copied: the converted arguments are
+    /// the binding's.
+    fn convert(self: *MapInputs, input: []const typedefs.CSSStyleValueOrUSVString) !void {
+        try self.values.ensureUnusedCapacity(self.ctx.allocator, input.len);
+        for (input) |value| switch (value) {
+            .cssstyle_value => |object| self.values.appendAssumeCapacity(.{ .object = object }),
+            .usvstring => |text| self.values.appendAssumeCapacity(.{ .string = try self.ctx.allocator.dupe(u8, text) }),
+        };
     }
 };
 
@@ -1280,9 +1273,8 @@ fn pendingOrWide(assigned: properties.Assigned) bool {
 // checks and converts before one setProperty/setShorthandProperty/
 // setCustomProperty call and never removes first (Source/WebCore/css/typedom/
 // StylePropertyMap.cpp). Firefox ships no Typed OM. Row 128 review S2.
-pub fn mapSet(instance: *runtime.Instance, name: []const u8, raw: []const runtime.JSValue, append: bool) !void {
-    // WebIDL conversion precedes the algorithm and can run script. Keep
-    // earlier object arguments alive across later ToString callbacks.
+pub fn mapSet(instance: *runtime.Instance, name: []const u8, raw: []const typedefs.CSSStyleValueOrUSVString, append: bool) !void {
+    // The binding's conversion preceded the algorithm (it can run script).
     var input: MapInputs = .{ .ctx = instance.ctx };
     defer input.deinit();
     try input.convert(raw);

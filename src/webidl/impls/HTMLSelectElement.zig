@@ -520,11 +520,17 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
 
 /// Operation: add
 /// Spec: https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#dom-htmloptionscollection-add
-pub fn call_add(instance: *runtime.Instance, element: typedefs.HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
+pub fn call_add(instance: *runtime.Instance, element: typedefs.HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?typedefs.HTMLElementOrLong)) anyerror!void {
     const option = switch (element) {
         inline else => |object| object,
     };
-    try forms.options.add(instance, option, before);
+    // `before`: absent, undefined and null are null; the binding converted
+    // the union (an HTMLElement, else a long).
+    const reference: ?forms.options.Before = if (before.was_passed) if (before.value) |value| switch (value) {
+        .htmlelement => |html_element| .{ .element = html_element },
+        .long => |index| .{ .index = index },
+    } else null else null;
+    try forms.options.add(instance, option, reference);
 }
 
 /// Operation: remove
