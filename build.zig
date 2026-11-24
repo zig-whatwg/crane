@@ -7386,45 +7386,21 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     fetch_mod.addImport("mimesniff", mimesniff_mod);
     // HTTP-network-or-cache fetch sends and stores cookies in the jar.
     fetch_mod.addImport("cookiestore", cookiestore_mod);
-    // The network layer asks the vendored TLS library what ALPN chose, and
-    // tests that HTTP/2 is live when the build asked for it. Its own options
-    // module: one options file imported as a module by two others in the same
-    // compilation is an error ("file exists in modules"), and build_options
-    // already is, by the engine adapter's module.
-    const curl_options = b.addOptions();
-    curl_options.addOption(bool, "http2", enable_http2 and !use_system_curl);
-    curl_options.addOption(bool, "mbedtls", kit_build.curl.tls_backend == .mbedtls and !use_system_curl);
-    fetch_mod.addOptions("curl_options", curl_options);
+    // TRANSITIONAL: what fetch and WebCrypto link of the kit's libraries
+    // directly, until their code moves behind the platform protocol
+    // (kit_build.TransitionalLinks names the step that retires each).
+    const transitional: kit_build.TransitionalLinks = .{
+        .fetch = fetch_mod,
+        .webcrypto = webcrypto_mod,
+        .system_library = use_system_curl,
+        .http2 = enable_http2,
+        .static_libcurl = config.static_libcurl,
+    };
+    kit_build.addFetchOptions(b, transitional);
     // A base64 data: URL body is Infra's forgiving-base64 decode.
     fetch_mod.addImport("infra", infra_mod);
 
-    // Configure libcurl for network requests
-    if (use_system_curl) {
-        // Development: Use system libcurl for faster builds
-        fetch_mod.linkSystemLibrary("curl", .{});
-        fetch_mod.addImport("curl_c", kit_build.cImport(b, "curl_c", target, platform_build.prepareC(target), .{ .includes = &.{"curl/curl.h"}, .system_libs = &.{"curl"} }));
-    } else if (config.static_libcurl) |static| {
-        // Production: the statically compiled libcurl with mbedTLS
-        kit_build.curl.linkStaticLibcurl(fetch_mod, target, static.libcurl, platform_build.prepareC(target));
-        fetch_mod.addImport("curl_c", kit_build.cImport(b, "curl_c", target, platform_build.prepareC(target), .{ .includes = &.{"curl/curl.h"}, .libs = &.{static.libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
-    }
-    const linked_mbedtls: ?*std.Build.Step.Compile = if (config.static_libcurl) |static| static.mbedtls else null;
-
-    // WebCrypto shares curl's exact mbedTLS artifact - build.zig.zon's
-    // `.mbedtls`, which buildStaticLibcurl links into libcurl - including its
-    // installed headers, translated with the library's threading macros.
-    if (linked_mbedtls) |library| {
-        webcrypto_mod.linkLibrary(library);
-        webcrypto_mod.addImport("mbedtls_c", kit_build.cImport(b, "mbedtls_c", target, platform_build.prepareC(target), .{
-            .includes = &.{ "psa/crypto.h", "mbedtls/nist_kw.h", "mbedtls/rsa.h", "mbedtls/pk.h" },
-            .libs = &.{library},
-            .macros = &kit_build.mbedtls_threading_macros,
-        }));
-    }
-    const webcrypto_options = b.addOptions();
-    webcrypto_options.addOption(bool, "mbedtls", kit_build.curl.tls_backend == .mbedtls and !use_system_curl);
-    webcrypto_mod.addOptions("options", webcrypto_options);
-    if (platform_build.prepareC(target)) |prepare| prepare.module(webcrypto_mod);
+    kit_build.linkTransitional(b, target, platform_build.prepareC(target), transitional);
 
     // fetch_mod dependencies will be added as implementation progresses:
     // fetch_mod.addImport("url", url_mod);

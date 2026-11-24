@@ -318,6 +318,75 @@ pub fn modules(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?Prepar
     return .{ .kit_curl_share = kit_curl_share, .kit_sfnt = kit_modules[10], .kit_inflate = kit_modules[9], .kit_media_decoding = kit_media_decoding, .c_time = c_time };
 }
 
+/// TRANSITIONAL (design question 7): what two Crane modules outside the
+/// platform still link of the kit's libraries directly, because their code
+/// has not moved behind the platform protocol yet. Each entry names the step
+/// of docs/platform-protocol-recipes.md that retires it:
+///   * fetch's libcurl (system or static) and its `curl_c` header module,
+///     and its `curl_options` - recipes step 2a, "Move libcurl behind the
+///     protocol";
+///   * WebCrypto's mbedTLS and its `mbedtls_c` header module, and its
+///     `options` - recipes step 5, the crypto primitives (decision 11).
+pub const TransitionalLinks = struct {
+    fetch: *std.Build.Module,
+    webcrypto: *std.Build.Module,
+    /// -Dsystem-curl (Options.system_library).
+    system_library: bool,
+    /// -Dhttp2 (Options.http2).
+    http2: bool,
+    /// The kit's libcurl and the mbedTLS it links, for this graph; null with
+    /// the system libcurl or when the lazy dependencies are not fetched yet.
+    static_libcurl: ?curl.StaticLibcurl,
+};
+
+/// fetch's own options module for its network layer (TRANSITIONAL, see
+/// TransitionalLinks): the network layer asks the vendored TLS library what
+/// ALPN chose, and tests that HTTP/2 is live when the build asked for it.
+/// Its own options module: one options file imported as a module by two
+/// others in the same compilation is an error ("file exists in modules"),
+/// and build_options already is, by the engine adapter's module. Made where
+/// the root build adds fetch's imports, in their order.
+pub fn addFetchOptions(b: *std.Build, links: TransitionalLinks) void {
+    const curl_options = b.addOptions();
+    curl_options.addOption(bool, "http2", links.http2 and !links.system_library);
+    curl_options.addOption(bool, "mbedtls", curl.tls_backend == .mbedtls and !links.system_library);
+    links.fetch.addOptions("curl_options", curl_options);
+}
+
+/// fetch's and WebCrypto's links to the kit's libraries (TRANSITIONAL, see
+/// TransitionalLinks), prepared for the target's C (`prepare`).
+pub fn linkTransitional(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?PrepareC, links: TransitionalLinks) void {
+    const fetch_mod = links.fetch;
+    const webcrypto_mod = links.webcrypto;
+    // Configure libcurl for network requests
+    if (links.system_library) {
+        // Development: Use system libcurl for faster builds
+        fetch_mod.linkSystemLibrary("curl", .{});
+        fetch_mod.addImport("curl_c", cImport(b, "curl_c", target, prepare, .{ .includes = &.{"curl/curl.h"}, .system_libs = &.{"curl"} }));
+    } else if (links.static_libcurl) |static| {
+        // Production: the statically compiled libcurl with mbedTLS
+        curl.linkStaticLibcurl(fetch_mod, target, static.libcurl, prepare);
+        fetch_mod.addImport("curl_c", cImport(b, "curl_c", target, prepare, .{ .includes = &.{"curl/curl.h"}, .libs = &.{static.libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
+    }
+    const linked_mbedtls: ?*std.Build.Step.Compile = if (links.static_libcurl) |static| static.mbedtls else null;
+
+    // WebCrypto shares curl's exact mbedTLS artifact - build.zig.zon's
+    // `.mbedtls`, which buildStaticLibcurl links into libcurl - including its
+    // installed headers, translated with the library's threading macros.
+    if (linked_mbedtls) |library| {
+        webcrypto_mod.linkLibrary(library);
+        webcrypto_mod.addImport("mbedtls_c", cImport(b, "mbedtls_c", target, prepare, .{
+            .includes = &.{ "psa/crypto.h", "mbedtls/nist_kw.h", "mbedtls/rsa.h", "mbedtls/pk.h" },
+            .libs = &.{library},
+            .macros = &mbedtls_threading_macros,
+        }));
+    }
+    const webcrypto_options = b.addOptions();
+    webcrypto_options.addOption(bool, "mbedtls", curl.tls_backend == .mbedtls and !links.system_library);
+    webcrypto_mod.addOptions("options", webcrypto_options);
+    if (prepare) |p| p.module(webcrypto_mod);
+}
+
 /// The kit parts with no build file of their own: the words that name their
 /// libraries. kit/sqlite's link is each platform adapter's declaration
 /// (platform_build_protocol.zig KitPart).
