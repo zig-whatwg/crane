@@ -332,7 +332,7 @@ test "the ladder's first rung is the full window, aligned to itself, its parts l
     for (Fake.state.labels[0..Fake.state.label_count]) |c| {
         if (c.label == 0 and c.offset == 0 and c.size == l.cage.bytes) cage = true;
         if (c.label == 3 and c.offset == l.metadata.offset and c.size == l.metadata.bytes) metadata = true;
-        if (c.label == 2 and c.offset == l.window_bytes / 2) bytes = true;
+        if (c.label == 2 and c.offset == l.bytes.offset - Heap.super_page_bytes) bytes = true;
     }
     try testing.expect(cage and metadata and bytes);
 }

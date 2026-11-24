@@ -205,7 +205,11 @@ pub const Target = union(enum) {
     objects,
 };
 
-pub const PartitionId = enum(u1) { node = 0, objects = 1 };
+/// The partitions of a Browser's heap. `bytes` (allocator-hardening batch B):
+/// the page's bytes, made through the general allocator (heap.general) -
+/// its own range, its own buckets, validated frees, no quarantine and no
+/// zeroing (design 1.2, 3.1).
+pub const PartitionId = enum(u2) { node = 0, objects = 1, bytes = 2 };
 
 // ============================================================================
 // Out-of-line metadata: span entries, slot maps, chunks
@@ -372,10 +376,12 @@ comptime {
 }
 
 /// Buckets: node = 3 kinds x K x classes, then the large runs; objects =
-/// classes, the Instance slots, then the large runs.
+/// classes, the Instance slots, then the large runs; bytes = classes, then
+/// the large runs.
 const node_groups = node_kinds * random_buckets;
 const node_bucket_count = node_groups * Classes.count + max_run_spans;
 const objects_bucket_count = Classes.count + 1 + max_run_spans;
+const bytes_bucket_count = Classes.count + max_run_spans;
 const instance_bucket: u16 = Classes.count;
 
 fn nodeBucket(kind: NodeKind, k: usize, class: usize) u16 {
@@ -386,6 +392,7 @@ fn largeBucket(pid: PartitionId, run: usize) u16 {
     const base: usize = switch (pid) {
         .node => node_groups * Classes.count,
         .objects => Classes.count + 1,
+        .bytes => Classes.count,
     };
     return @intCast(base + run - 1);
 }
@@ -429,6 +436,10 @@ pub const PartitionStats = struct {
     committed_span_bytes: usize = 0,
     /// Whether the partition passed 90% of its address space (design 5.4).
     pressure_raised: bool = false,
+    /// Huge blocks alive (batch B: past a large run) and their committed
+    /// bytes. Counted in the live figures by `Engine.stats`.
+    huge_blocks: usize = 0,
+    huge_bytes: usize = 0,
 };
 
 const Partition = struct {
@@ -451,10 +462,30 @@ const Partition = struct {
     pool_hi: usize,
     /// The node partition's thread: the first that made a block in it.
     owner: ?std.Thread.Id = null,
-    /// The objects partition's lock (every agent's thread allocates there).
+    /// The objects and bytes partitions' lock (every agent's thread
+    /// allocates there).
     mutex: std.Io.Mutex = .init,
+    /// Huge blocks' regions (batch B): a table in the metadata pool, and how
+    /// many it holds.
+    huge_table: u32 = no_chunk,
+    huge_count: u32 = 0,
     stats: PartitionStats = .{},
 };
+
+/// A huge block's region of a partition (`Engine.allocHuge`).
+const HugeRegion = extern struct {
+    /// Its first data span.
+    first: u32,
+    data_spans: u32,
+    /// The spans committed now: its block's, or 0 when it is free.
+    committed: u32,
+    used: bool,
+    _pad: [3]u8 = .{ 0, 0, 0 },
+};
+/// The huge regions a partition keeps at most.
+const huge_regions_max: usize = 4096;
+/// A huge block's span entry's bucket.
+const huge_bucket: u16 = std.math.maxInt(u16) - 1;
 
 // ============================================================================
 // The quarantine
@@ -489,6 +520,7 @@ pub const Error = error{OutOfMemory};
 pub const Stats = struct {
     node: PartitionStats,
     objects: PartitionStats,
+    bytes: PartitionStats,
     quarantine_blocks: usize,
     quarantine_bytes: usize,
     quarantine_total_held: usize,
@@ -529,8 +561,12 @@ pub const Engine = struct {
     page: usize,
     node: Partition,
     objects: Partition,
+    /// The page's bytes (batch B): empty (lo == hi) in a rung without
+    /// general pools, where general memory stays on the host's allocator.
+    bytes: Partition,
     node_buckets: [node_bucket_count]Bucket,
     objects_buckets: [objects_bucket_count]Bucket,
+    bytes_buckets: [bytes_bucket_count]Bucket,
     quarantine: Quarantine = .{},
     prng: std.Random.DefaultPrng,
     /// The Browser's seed for `randomBucket`.
@@ -608,6 +644,9 @@ pub const Engine = struct {
         }
         const pools: usize = @intCast(layout.meta_pools.offset);
         const pool_bytes: usize = @intCast(layout.meta_pool_bytes);
+        // The bytes range, in the full rung only (batch B).
+        const bytes_lo: usize = if (heap.general_pools) @intCast(layout.bytes.offset) else 0;
+        const bytes_hi: usize = if (heap.general_pools) @intCast(layout.bytes.end()) else 0;
 
         engine.* = .{
             .heap = heap,
@@ -615,13 +654,16 @@ pub const Engine = struct {
             .page = page,
             .node = partitionAt(.node, node_lo, node_hi, pools, pool_bytes, page),
             .objects = partitionAt(.objects, objects_lo, objects_hi, pools + pool_bytes, pool_bytes, page),
+            .bytes = partitionAt(.bytes, bytes_lo, bytes_hi, pools + 2 * pool_bytes, pool_bytes, page),
             .node_buckets = undefined,
             .objects_buckets = undefined,
+            .bytes_buckets = undefined,
             .prng = .init(seed),
         };
         engine.bucket_seed = engine.prng.random().int(u64);
         for (&engine.node_buckets, 0..) |*b, i| b.* = bucketShape(.node, i);
         for (&engine.objects_buckets, 0..) |*b, i| b.* = bucketShape(.objects, i);
+        for (&engine.bytes_buckets, 0..) |*b, i| b.* = bucketShape(.bytes, i);
         return engine;
     }
 
@@ -647,7 +689,7 @@ pub const Engine = struct {
     fn bucketShape(pid: PartitionId, index: usize) Bucket {
         const class_end: usize = switch (pid) {
             .node => node_groups * Classes.count,
-            .objects => Classes.count,
+            .objects, .bytes => Classes.count,
         };
         if (index < class_end) {
             const bytes = Classes.bytes(index % Classes.count);
@@ -667,6 +709,7 @@ pub const Engine = struct {
         return switch (pid) {
             .node => &self.node,
             .objects => &self.objects,
+            .bytes => &self.bytes,
         };
     }
 
@@ -674,6 +717,7 @@ pub const Engine = struct {
         return switch (pid) {
             .node => &self.node_buckets,
             .objects => &self.objects_buckets,
+            .bytes => &self.bytes_buckets,
         };
     }
 
@@ -696,6 +740,7 @@ pub const Engine = struct {
     fn partitionOfOffset(self: *Engine, offset: usize) ?PartitionId {
         if (offset >= self.node.lo and offset < self.node.hi) return .node;
         if (offset >= self.objects.lo and offset < self.objects.hi) return .objects;
+        if (offset >= self.bytes.lo and offset < self.bytes.hi) return .bytes;
         return null;
     }
 
@@ -1056,7 +1101,7 @@ pub const Engine = struct {
         const address = self.spanAddress(index) + slot * b.block_bytes;
         const block: [*]u8 = @ptrFromInt(address);
         const checked = if (b.kind == .instance) instance_fill_bytes else size;
-        self.verifyFreed(block[0..checked], fresh);
+        if (self.fills(p)) self.verifyFreed(block[0..checked], fresh);
         if (e.sites != 0) {
             const sites: [*]usize = @ptrFromInt(self.heap.window_base + p.pool_base + (@as(usize, e.sites) - 1) * @sizeOf(Chunk));
             sites[slot] = if (site) |s| @intFromPtr(s) else return_address | site_return_tag;
@@ -1066,6 +1111,12 @@ pub const Engine = struct {
 
     /// A block about to be issued: still what its free left (zero, or the
     /// poison; zero for a slot never issued), then zeroed.
+    /// Whether `p`'s freed blocks are filled (and checked on issue): every
+    /// partition's but the bytes', which only a poisoning heap fills.
+    inline fn fills(self: *const Engine, p: *const Partition) bool {
+        return p.id != .bytes or self.config.fill == .poison;
+    }
+
     fn verifyFreed(self: *Engine, block: []u8, fresh: bool) void {
         const expected: u8 = if (fresh) 0 else self.config.fillByte();
         if (!allBytes(block, expected)) {
@@ -1096,6 +1147,170 @@ pub const Engine = struct {
     }
 
     // ------------------------------------------------------------------
+    // General memory (allocator-hardening batch B)
+    // ------------------------------------------------------------------
+
+    /// A general block of `size`/`alignment` from `pid` (objects or bytes):
+    /// the shared path, under the partition's lock - what heap.general's
+    /// allocator takes on a thread that is not its agent's, and what an
+    /// agent's cache refills from. An objects block is issued zero, as every
+    /// objects block is; a bytes block is not (std's allocator fills it on
+    /// issue). Past a large run, a huge block (`allocHuge`).
+    pub fn allocGeneral(self: *Engine, pid: PartitionId, size: usize, alignment: usize, return_address: usize) Error![*]u8 {
+        std.debug.assert(pid != .node);
+        if (alignment > span_bytes) @panic("heap: an alignment past a span");
+        const p = self.partition(pid);
+        if (p.lo == p.hi) return error.OutOfMemory;
+        const bytes = classes.requestBytes(size, alignment);
+        std.Io.Threaded.mutexLockUncancelable(&p.mutex);
+        defer std.Io.Threaded.mutexUnlock(&p.mutex);
+        if (bytes > max_block_bytes) return self.allocHuge(p, bytes);
+        const bi: u16 = if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(pid, runOf(bytes));
+        return self.allocIn(p, bi, size, null, return_address);
+    }
+
+    /// Free a general block: validated as a State block's free is (its
+    /// partition's, a block's start, its class, allocated), then - an
+    /// objects block - zeroed and held while the window agent runs a task on
+    /// this thread; a bytes block goes back at once.
+    pub fn freeGeneral(self: *Engine, ptr: [*]u8, size: usize, alignment: usize) void {
+        const address = @intFromPtr(ptr);
+        const offset = self.offsetOf(address) orelse return self.violation(.other_heap, address);
+        const pid = self.partitionOfOffset(offset) orelse return self.violation(.invalid_free, address);
+        if (pid == .node) return self.violation(.invalid_free, address);
+        const p = self.partition(pid);
+        const bytes = classes.requestBytes(size, alignment);
+        std.Io.Threaded.mutexLockUncancelable(&p.mutex);
+        defer std.Io.Threaded.mutexUnlock(&p.mutex);
+        if (offset >= p.frontier) return self.violation(.invalid_free, address);
+        const e = self.entry(offset / span_bytes);
+        if (e.bucket == huge_bucket and e.state != .run_tail and e.state != .unopened) return self.freeHuge(p, offset, bytes);
+        if (bytes > max_block_bytes) return self.violation(if (e.state == .active) .wrong_size else .invalid_free, address);
+        const want: u16 = if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(pid, runOf(bytes));
+        self.freeIn(p, offset, want, false, size, null);
+    }
+
+    /// Whether a general block of `old_size` may become `new_size` in place:
+    /// the same class (or, huge, the same spans committed). No change is made
+    /// to the block's bytes; its request is the caller's.
+    pub fn resizesInPlace(self: *Engine, ptr: [*]u8, old_size: usize, new_size: usize, alignment: usize) bool {
+        _ = self;
+        _ = ptr;
+        const old_bytes = classes.requestBytes(old_size, alignment);
+        const new_bytes = classes.requestBytes(new_size, alignment);
+        if (old_bytes > max_block_bytes or new_bytes > max_block_bytes)
+            return old_bytes > max_block_bytes and new_bytes > max_block_bytes and runOf(old_bytes) == runOf(new_bytes);
+        const old_class = classes.classOf(old_size, alignment);
+        const new_class = classes.classOf(new_size, alignment);
+        if (old_class) |o| return if (new_class) |n| o == n else false;
+        return new_class == null and runOf(old_bytes) == runOf(new_bytes);
+    }
+
+    /// A huge block: past a large run, whole super pages of `p`'s range. Its
+    /// first span is its super page's guard, its data the spans after it,
+    /// and the next super page's first span its trailing guard (oss R19,
+    /// design 3.1's "its own mapping ... a guard page on each side"). Its
+    /// entry names `huge_bucket`; `slots` the spans its block needs (what its
+    /// free's size is checked against), `run` the region's. A freed region is
+    /// decommitted and kept: the next huge block that fits it takes it (first
+    /// fit, lowest address), so churning large bodies cannot use up the
+    /// range. The partition's lock held.
+    fn allocHuge(self: *Engine, p: *Partition, bytes: usize) Error![*]u8 {
+        const need = runOf(bytes);
+        if (need > std.math.maxInt(u16)) return error.OutOfMemory;
+        const regions = try self.hugeRegions(p);
+        // A kept region it fits, lowest first.
+        var best: ?usize = null;
+        for (regions[0..p.huge_count], 0..) |r, i| {
+            if (r.used or r.data_spans < need) continue;
+            if (best == null or r.first < regions[best.?].first) best = i;
+        }
+        const index: usize = if (best) |i| index: {
+            const r = &regions[i];
+            // Its freed region was retired (inaccessible): bring the block's
+            // spans back, a super page at a time.
+            try self.hugeRange(@as(usize, r.first) * span_bytes, need * span_bytes, .recommit);
+            if (self.config.fill == .poison) @memset(@as([*]u8, @ptrFromInt(self.spanAddress(r.first)))[0 .. need * span_bytes], 0);
+            r.used = true;
+            r.committed = @intCast(need);
+            break :index r.first;
+        } else index: {
+            if (p.huge_count == huge_regions_max) return error.OutOfMemory;
+            const at = std.mem.alignForward(usize, p.frontier, super_page);
+            const supers = (span_bytes + need * span_bytes + super_page - 1) / super_page;
+            const end = at + supers * super_page;
+            if (end > p.limit) return error.OutOfMemory;
+            if (self.grow_hook) |hook| if (!hook.call(hook.context)) return error.OutOfMemory;
+            const first = at / span_bytes + 1;
+            const data_spans = supers * (super_page / span_bytes) - 1;
+            try self.commitMeta(&p.table_hi, @as(usize, @intCast(layout.span_table.offset)) + (first + data_spans) * @sizeOf(SpanEntry));
+            try self.hugeRange(first * span_bytes, need * span_bytes, .commit);
+            // Class spans open past it: nothing commits over its guards.
+            p.frontier = end;
+            p.data_hi = @max(p.data_hi, end);
+            p.stats.va_assigned = p.frontier - p.lo;
+            for (1..data_spans) |k| self.entry(first + k).* = .{ .bucket = huge_bucket, .state = .run_tail, .slots = 0, .used = 0, .quarantined = 0, .hint = 0, .issued_hi = 0, .run = 0, .chunk = @intCast(first), .ordinal = 0, .empty_since = 0, .sites = 0 };
+            regions[p.huge_count] = .{ .first = @intCast(first), .data_spans = @intCast(data_spans), .committed = @intCast(need), .used = true };
+            p.huge_count += 1;
+            if (!p.stats.pressure_raised and (p.frontier - p.lo) * 10 >= (p.limit - p.lo) * 9) self.raisePressure(p);
+            break :index first;
+        };
+        self.entry(index).* = .{ .bucket = huge_bucket, .state = .active, .slots = @intCast(need), .used = 1, .quarantined = 0, .hint = 0, .issued_hi = 1, .run = @intCast(need), .chunk = no_chunk, .ordinal = 0, .empty_since = 0, .sites = 0 };
+        p.stats.huge_blocks += 1;
+        p.stats.huge_bytes += need * span_bytes;
+        p.stats.committed_span_bytes += need * span_bytes;
+        return @ptrFromInt(self.spanAddress(index));
+    }
+
+    /// Free a huge block at `offset` (its entry names `huge_bucket`), of
+    /// `bytes`: its committed spans are decommitted and its region kept.
+    fn freeHuge(self: *Engine, p: *Partition, offset: usize, bytes: usize) void {
+        const address = self.heap.window_base + offset;
+        const index = offset / span_bytes;
+        const e = self.entry(index);
+        if (offset % span_bytes != 0) return self.violation(.invalid_free, address);
+        if (e.state != .active) return self.violation(.double_free, address);
+        if (bytes <= max_block_bytes or runOf(bytes) != e.slots) return self.violation(.wrong_size, address);
+        const regions = self.hugeRegions(p) catch unreachable;
+        const r = for (regions[0..p.huge_count]) |*r| {
+            if (r.first == index) break r;
+        } else return self.violation(.invalid_free, address);
+        const committed: usize = r.committed;
+        // Released and made inaccessible: a read through a pointer kept past
+        // the free faults, where a decommitted page would read zero.
+        self.hugeRange(index * span_bytes, committed * span_bytes, .retire) catch {};
+        e.state = .decommitted;
+        r.used = false;
+        r.committed = 0;
+        p.stats.huge_blocks -= 1;
+        p.stats.huge_bytes -= committed * span_bytes;
+        p.stats.committed_span_bytes -= committed * span_bytes;
+    }
+
+    /// Commit, retire or recommit `[offset, offset + length)` of a huge region, a
+    /// super page at a time (BrowserHeap: never across a super page).
+    fn hugeRange(self: *Engine, offset: usize, length: usize, comptime op: enum { commit, retire, recommit }) Error!void {
+        var at = offset;
+        const end = offset + length;
+        while (at < end) {
+            const piece = @min(end, std.mem.alignForward(usize, at + 1, super_page)) - at;
+            switch (op) {
+                .commit => self.heap.commit(at, piece) catch return error.OutOfMemory,
+                .retire => self.heap.retire(at, piece) catch return error.OutOfMemory,
+                .recommit => self.heap.recommit(at, piece, true) catch return error.OutOfMemory,
+            }
+            at += piece;
+        }
+    }
+
+    /// `p`'s huge regions: a table in its metadata pool, made at its first
+    /// huge block.
+    fn hugeRegions(self: *Engine, p: *Partition) Error![*]HugeRegion {
+        if (p.huge_table == no_chunk) p.huge_table = try self.poolAlloc(p, huge_regions_max * @sizeOf(HugeRegion));
+        return @ptrFromInt(self.heap.window_base + p.pool_base + @as(usize, p.huge_table) * @sizeOf(Chunk));
+    }
+
+    // ------------------------------------------------------------------
     // Free
     // ------------------------------------------------------------------
 
@@ -1110,6 +1325,8 @@ pub const Engine = struct {
             // The free is untyped: any kind of the class is the right one.
             .node => if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(.node, runOf(bytes)),
             .objects => if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(.objects, runOf(bytes)),
+            // A State block is never the page's bytes.
+            .bytes => return self.violation(.invalid_free, address),
         };
         switch (pid) {
             .node => {
@@ -1122,6 +1339,7 @@ pub const Engine = struct {
                 defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
                 self.freeIn(&self.objects, offset, want, false, size, null);
             },
+            .bytes => unreachable,
         }
     }
 
@@ -1182,6 +1400,8 @@ pub const Engine = struct {
         const e = self.entry(index);
         if (offset >= p.frontier or e.state == .unopened or e.state == .run_tail) return self.violation(.invalid_free, address);
         if (e.state != .active) return self.violation(.double_free, address);
+        // A huge block's span, freed as a class or a large run.
+        if (e.bucket == huge_bucket) return self.violation(.wrong_size, address);
         const b = &self.buckets(p.id)[e.bucket];
         // Not the start of one of the span's blocks: an interior pointer.
         const within = offset - index * span_bytes;
@@ -1197,11 +1417,15 @@ pub const Engine = struct {
         if (slotGet(map, slot) != .allocated) return self.violation(.double_free, address);
 
         const block: [*]u8 = @ptrFromInt(address);
-        @memset(block[0..b.fill_bytes], self.config.fillByte());
+        // The page's bytes are neither zeroed nor held (design 1.2: the
+        // bytes partition's traffic is the census's tiny, short-lived
+        // strings, and its blocks hold no pointer to stale); a poisoning heap
+        // poisons them, to find a read after free.
+        if (self.fills(p)) @memset(block[0..b.fill_bytes], self.config.fillByte());
         b.live -= 1;
         b.requested -|= size;
 
-        if (self.holds(thread)) {
+        if (p.id != .bytes and self.holds(thread)) {
             slotSet(map, slot, .quarantined);
             e.quarantined += 1;
             self.hold(address, b.block_bytes, p.id == .objects);
@@ -1286,7 +1510,7 @@ pub const Engine = struct {
         b.requested_total += size;
         const block: [*]u8 = @ptrFromInt(self.heap.window_base + offset);
         const checked = if (b.kind == .instance) instance_fill_bytes else size;
-        self.verifyFreed(block[0..checked], false);
+        if (self.fills(p)) self.verifyFreed(block[0..checked], false);
         const e = self.entry(index);
         if (e.sites != 0) {
             const sites: [*]usize = @ptrFromInt(self.heap.window_base + p.pool_base + (@as(usize, e.sites) - 1) * @sizeOf(Chunk));
@@ -1557,10 +1781,18 @@ pub const Engine = struct {
             self.drainMagazines(&self.node);
             self.decommitIn(&self.node, now_ms, min_age_ms, budget, &result);
         }
-        std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
-        self.drainMagazines(&self.objects);
-        self.decommitIn(&self.objects, now_ms, min_age_ms, budget, &result);
+        {
+            std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+            self.drainMagazines(&self.objects);
+            self.decommitIn(&self.objects, now_ms, min_age_ms, budget, &result);
+        }
+        if (self.bytes.lo != self.bytes.hi) {
+            std.Io.Threaded.mutexLockUncancelable(&self.bytes.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.bytes.mutex);
+            self.drainMagazines(&self.bytes);
+            self.decommitIn(&self.bytes, now_ms, min_age_ms, budget, &result);
+        }
         return result;
     }
 
@@ -1623,11 +1855,16 @@ pub const Engine = struct {
     /// buckets and the quarantined ones counted from the quarantine, here:
     /// an allocation and a free touch only their bucket's line.
     pub fn stats(self: *Engine) Stats {
+        // The objects lock, then the bytes lock: the one order both are
+        // ever taken together in.
         std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.bytes.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.bytes.mutex);
         var s: Stats = .{
             .node = self.node.stats,
             .objects = self.objects.stats,
+            .bytes = self.bytes.stats,
             .quarantine_blocks = self.quarantine.count,
             .quarantine_bytes = self.quarantine.held_bytes,
             .quarantine_total_held = self.quarantine.total_held,
@@ -1635,6 +1872,11 @@ pub const Engine = struct {
         };
         sumBuckets(&s.node, &self.node_buckets);
         sumBuckets(&s.objects, &self.objects_buckets);
+        sumBuckets(&s.bytes, &self.bytes_buckets);
+        inline for (.{ &s.objects, &s.bytes }) |ps| {
+            ps.live_blocks += ps.huge_blocks;
+            ps.live_bytes += ps.huge_bytes;
+        }
         const entries = self.quarantineEntries();
         for (entries[0..self.quarantine.count]) |address| {
             const offset = address - self.heap.window_base;
@@ -1642,6 +1884,7 @@ pub const Engine = struct {
             const ps = switch (pid) {
                 .node => &s.node,
                 .objects => &s.objects,
+                .bytes => &s.bytes,
             };
             ps.quarantined_blocks += 1;
             ps.quarantined_bytes += self.buckets(pid)[self.entry(offset / span_bytes).bucket].block_bytes;
@@ -1733,12 +1976,17 @@ pub const Engine = struct {
     /// where the heap records sites. `report(context, line)` for each.
     pub fn leakReport(self: *Engine, context: anytype, comptime report: fn (@TypeOf(context), LeakLine) void) usize {
         var total: usize = 0;
-        inline for (.{ PartitionId.node, PartitionId.objects }) |pid| {
+        inline for (.{ PartitionId.node, PartitionId.objects, PartitionId.bytes }) |pid| {
             const p = self.partition(pid);
             for (self.buckets(pid)) |*b| {
                 if (b.live == 0 or b.kind == .instance) continue;
                 total += b.live;
                 self.reportBucket(p, b, context, report);
+            }
+            // Huge blocks (batch B): one line per partition, by count.
+            if (p.stats.huge_blocks != 0) {
+                total += p.stats.huge_blocks;
+                report(context, .{ .partition = pid, .block_bytes = p.stats.huge_bytes / p.stats.huge_blocks, .count = p.stats.huge_blocks, .type_name = null, .return_address = 0 });
             }
         }
         return total;
