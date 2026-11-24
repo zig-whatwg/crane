@@ -175,6 +175,12 @@ pub const BorrowedCallbackFunction = struct {
     pub fn keep(self: BorrowedCallbackFunction) @import("engine").CallbackFunction {
         return @import("engine").keepCallbackFunction(self);
     }
+
+    /// A TracedCallback of the caller's own, traced from its owner
+    /// (engine.keepCallbackFunctionTraced; refcount step 8). During the call.
+    pub fn keepTraced(self: BorrowedCallbackFunction) @import("engine").TracedCallback {
+        return @import("engine").keepCallbackFunctionTraced(self);
+    }
 };
 
 /// WebIDL: a callback interface type's value (3.2.16) - an object, a function
@@ -192,6 +198,12 @@ pub const BorrowedCallbackInterface = struct {
     /// BorrowedCallbackFunction.keep.
     pub fn keep(self: BorrowedCallbackInterface) @import("engine").CallbackInterface {
         return @import("engine").keepCallbackInterface(self);
+    }
+
+    /// A TracedCallback of the caller's own, traced from its owner
+    /// (engine.keepCallbackInterfaceTraced; refcount step 8). During the call.
+    pub fn keepTraced(self: BorrowedCallbackInterface) @import("engine").TracedCallback {
+        return @import("engine").keepCallbackInterfaceTraced(self);
     }
 };
 

@@ -601,6 +601,9 @@ pub fn install(owned: Hooks) void {
         // The wrapper redesign's P5: the walk the engine's collector runs
         // from a reachable or kept node (dom.wrapper_tracing).
         .trace_tree = wrapper_tracing.traceTree,
+        // Refcount step 8: a node that keeps values for script gets a
+        // wrapper young-generation collections keep (wrapperKeepsValues).
+        .keeps_values = wrapperKeepsValues,
         // Lane dm2, batch B: which trees die with the wrappers a full
         // collection found dead, asked at the end of its marking
         // (dom.dying_trees).
@@ -677,6 +680,16 @@ pub fn wrapperRelease(target: *anyopaque) void {
 pub fn wrapperSlotOf(target: *anyopaque) *engine.NodeWrapperSlot {
     const node: *NodeBase = @ptrCast(@alignCast(target));
     return &node.wrapper;
+}
+
+/// runtime.lifetime's keeps_values hook: whether the node keeps values for
+/// script that the walk traces from it - its event listener list was made,
+/// or an observer is registered on it (dom.wrapper_tracing.
+/// noteNodeHoldsValues; `traces_held.values`, never cleared). The engine asks
+/// where it wraps the node.
+pub fn wrapperKeepsValues(target: *anyopaque) bool {
+    const node: *NodeBase = @ptrCast(@alignCast(target));
+    return node.traces_held.values;
 }
 
 /// runtime.lifetime's targetOfSlot hook: the node whose wrapper slot `slot`

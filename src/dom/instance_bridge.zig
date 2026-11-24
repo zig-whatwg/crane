@@ -166,7 +166,7 @@ pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
     const fresh = node_base.registeredInstance() != node;
     node_base.setOwnerInstance(node);
     // A node holder's walk asks it for what it holds (dom.wrapper_tracing).
-    node_base.traces_held = node.vtable.trace_held_nodes != null;
+    node_base.traces_held.by_type = node.vtable.trace_held_nodes != null;
     if (!fresh) return;
     _ = bridge.live.fetchAdd(1, .monotonic);
     // CDP's DOM agents (dom.inspector_probes; one load while none is

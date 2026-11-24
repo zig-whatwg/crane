@@ -224,6 +224,23 @@ pub fn releaseSevered(instance: *Instance, generation: u64) void {
 /// One per agent, on the agent's thread (the host's AgentHost owns it; the
 /// engine adapter queues into it - engine.AgentOptions.deferred_teardown).
 /// Not thread-safe.
+/// A native frame's root (refcount step 8, decision D7): nodes a frame is
+/// working through - an event dispatch's path, whose listeners it has still to
+/// call - that the engine's collector must keep wrapped while the frame runs,
+/// because the values the frame will use are traced from those wrappers (a
+/// listener's callback, from its target's). The frame counts the nodes; this
+/// keeps their wrappers, as Blink's collector traces an EventPath held on the
+/// stack (core/dom/events/event_path.h: NodeEventContexts are Members, Node::
+/// Trace reaching the listeners) and Gecko's chain items hold their targets
+/// and its listeners are strong. Embedded in the frame's own struct, which
+/// `trace` recovers with @fieldParentPtr. `trace` runs INSIDE a collection's
+/// atomic pause: read-only, no allocation, no lock, no engine operation but
+/// the tracing ones (dom.wrapper_tracing's rules).
+pub const StackRoot = struct {
+    next: ?*StackRoot = null,
+    trace: *const fn (root: *StackRoot, tracer: *@import("engine").Tracer) void,
+};
+
 pub const DeferredTeardown = struct {
     allocator: std.mem.Allocator,
     head: ?*Item = null,
@@ -249,6 +266,11 @@ pub const DeferredTeardown = struct {
     /// loop's next slice. A callback's return into its native caller never
     /// runs it.
     algorithm_depth: u32 = 0,
+    /// Native frames on the agent's stack whose nodes the engine's collector
+    /// must keep WRAPPED while they run (`StackRoot`; refcount step 8): the
+    /// path of an event dispatch in flight. Pushed and removed by their
+    /// frames; walked in a full collection's atomic pause (`traceStackRoots`).
+    stack_roots: ?*StackRoot = null,
     /// What the queue owes the next safe point (see `algorithm_depth`). One
     /// byte, which the agent's adapter also writes (`owedWord`).
     owed: Owed = .{},
@@ -704,6 +726,34 @@ pub const DeferredTeardown = struct {
         if (self.isFresh(item)) self.fresh_scan_spent = false;
         if (!self.owed.drain and self.overBound()) self.owed.relief = true;
         return true;
+    }
+
+    /// `root`, a frame's, is on the agent's stack until `removeStackRoot`:
+    /// pushed in front (frames nest), no allocation.
+    pub fn pushStackRoot(self: *DeferredTeardown, root: *StackRoot) void {
+        root.next = self.stack_roots;
+        self.stack_roots = root;
+    }
+
+    /// `root` leaves the agent's stack, wherever it is in the list (frames
+    /// end innermost first, but a dispatch's end is not the only way out).
+    /// A root not in the list changes nothing.
+    pub fn removeStackRoot(self: *DeferredTeardown, root: *StackRoot) void {
+        var link: *?*StackRoot = &self.stack_roots;
+        while (link.*) |current| : (link = &current.next) {
+            if (current != root) continue;
+            link.* = current.next;
+            current.next = null;
+            return;
+        }
+    }
+
+    /// Every stack root's trace, with `tracer`: the engine's collector, in a
+    /// full collection's atomic pause (V8: the anchors' registry's keep
+    /// walk). Read-only: no allocation, no lock.
+    pub fn traceStackRoots(self: *const DeferredTeardown, tracer: *@import("engine").Tracer) void {
+        var at = self.stack_roots;
+        while (at) |root| : (at = root.next) root.trace(root, tracer);
     }
 
     /// A DOM algorithm begins on the agent's stack (the adapter's binding

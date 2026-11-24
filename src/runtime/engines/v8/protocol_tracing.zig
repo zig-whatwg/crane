@@ -35,9 +35,11 @@ const engine = @import("engine");
 const ffi = @import("ffi.zig");
 const support = @import("protocol_support.zig");
 const protocol_realms = @import("protocol_realms.zig");
+const protocol_worlds = @import("protocol_worlds.zig");
 const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 
 const Instance = engine.Instance;
+const Tracer = @import("node_wrappers.zig").Tracer;
 const TracedSlot = engine.TracedSlot;
 
 /// The private key of `slot`: one namespace, apart from the binding's
@@ -164,6 +166,58 @@ pub fn tracedValue(owner: *Instance, slot: TracedSlot) ?engine.Owned {
         },
         .none => return null,
     }
+}
+
+/// engine.TracedHold's value on V8: the hold's cell read through the
+/// Global<Value> readers (v8_wrapper.cpp, "engine.TracedHold": one location
+/// word each) - BORROWED; undefined once the collector took it (the cell was
+/// written empty in that collection's pause) or the agent ended.
+pub fn tracedHoldValue(hold: engine.TracedHold) engine.JSValue {
+    const handle = hold.handle orelse return engine.JSValue.jsUndefined;
+    if (ffi.v8_TracedHold_IsEmpty(handle)) return engine.JSValue.jsUndefined;
+    return engine.JSValue.fromHandle(handle);
+}
+
+/// engine.TracedHold.isEmpty on V8.
+pub fn tracedHoldIsEmpty(hold: engine.TracedHold) bool {
+    return ffi.v8_TracedHold_IsEmpty(hold.handle);
+}
+
+/// engine.TracedHold.release on V8: the cell's TracedReference reset and the
+/// cell given back to its agent's slab. A hold the collector took has no V8
+/// handle left to reset, and one released after its agent's end makes no V8
+/// call (v8_wrapper.cpp, "the agent's hold slab": the teardown order).
+pub fn releaseTracedHold(hold: engine.TracedHold) void {
+    ffi.v8_TracedHold_Dispose(hold.handle);
+}
+
+/// engine.traceHeld on V8: the visitor of the collection's atomic pause
+/// traces the hold's TracedReference and its cell is stamped with the
+/// collection's number - the pause's sweep empties every hold left unstamped
+/// (V8 reports a traced reference's death in a full collection to nobody).
+pub fn traceHeld(tracer: *Tracer, hold: engine.TracedHold) void {
+    ffi.v8_Tracer_TraceHeld(tracer.visitor, hold.handle);
+}
+
+/// engine.traceWrapperOf on V8: a node's wrapper through its slot (and its
+/// world wrappers, `traceNodeWrapper`); any other instance's wrapper through
+/// the record its realm's cache keeps it by, and each isolated world's
+/// (protocol_worlds.traceWorldWrappers' rule) - read-only lookups, in the
+/// atomic pause. A record held by a weak Global (its wrapper was born
+/// modified) is not traceable: its wrapper lives by script.
+pub fn traceWrapperOf(tracer: *Tracer, instance: *Instance) void {
+    if (instance.vtable.counted != null) {
+        const slot = @import("node_wrappers.zig").slotOfInstance(instance) orelse return;
+        @import("node_wrappers.zig").traceNodeWrapper(tracer, slot);
+        return;
+    }
+    // The record's traced reference (WrapperCache.traceWorldEntry reads any
+    // cache's record so - not only a world's).
+    if (instance.ctx.getV8WrapperCacheStorage()) |storage| {
+        const cache: *const WrapperCache = @ptrCast(@alignCast(storage));
+        cache.traceWorldEntry(instance, tracer.visitor);
+    }
+    if (tracer.registry.worlds) |worlds| protocol_worlds.traceWorldWrappers(worlds, instance, tracer.visitor);
 }
 
 /// engine.forgetTracedChild: the edge waiting for `owner`'s wrapper, if any,

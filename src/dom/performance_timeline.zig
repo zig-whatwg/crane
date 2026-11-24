@@ -521,7 +521,8 @@ pub const Observer = struct {
     /// The PerformanceObserver.
     instance: *Instance,
     /// The observer callback, OWNED: released in `deinit`.
-    callback: ?engine.CallbackFunction = null,
+    /// A TRACED hold (refcount step 8): the observer's holder anchor keeps it.
+    callback: ?engine.TracedCallback = null,
     /// The observer buffer; each entry kept by an edge from `instance`.
     buffer: std.ArrayListUnmanaged(*Instance) = .empty,
     observer_type: ObserverType = .undefined,
@@ -812,7 +813,10 @@ fn notifyObserver(timeline: *Timeline, realm: runtime.Context, po: *Observer) !v
         &.{.{ .name = "droppedEntriesCount", .value = .{ .number = @floatFromInt(count) } }}
     else
         &.{};
-    const callback = po.callback orelse return;
+    const traced = po.callback orelse return;
+    // A collected callback (no trace reached its observer) is not called.
+    if (traced.hold.isEmpty()) return;
+    const callback = traced.asFunction();
     // Made in the callback's realm and world, where WebIDL invoke steps 5 and
     // 10 convert the callback's arguments (dom.callback_sequences).
     const callback_options = try engine.createDictionaryObject(callback_sequences.argumentRealm(realm, &callback), members);

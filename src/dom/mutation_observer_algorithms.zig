@@ -42,7 +42,18 @@ pub const MutationObserverAgent = struct {
     microtask_queued: bool = false,
 
     /// Set of mutation observers with pending records
-    /// Stores *runtime.Instance pointers to MutationObserver instances
+    /// Stores *runtime.Instance pointers to MutationObserver instances.
+    /// Each membership holds ONE keep of its observer
+    /// (engine.keepPlatformObjectAlive) until "notify mutation observers" has
+    /// delivered to it, or its teardown takes it off (`forgetObserver`):
+    /// records waiting for delivery are pending activity, as Blink's
+    /// MutationObserver::HasPendingActivity answers `!records_.empty()`
+    /// (core/dom/mutation_observer.h). A bounded root (refcount design 3,
+    /// rule R-a): it ends with the next microtask checkpoint. Since refcount
+    /// step 8 it is the only keep an observer takes of itself - the nodes it
+    /// observes keep it otherwise, by edges (MutationObserver's
+    /// `traceListed`) - so an observer whose nodes and callback script let go
+    /// after a mutation still delivers that mutation's records.
     pending_observers: infra.List(*runtime.Instance),
 
     /// DOM 4.3: the agent's "mutation observer counter (a number), which is
@@ -140,6 +151,8 @@ pub fn forgetObserver(observer: *runtime.Instance) void {
     while (i < agent.pending_observers.len) {
         if (agent.pending_observers.get(i) == observer) {
             _ = agent.pending_observers.remove(i) catch break;
+            // The membership's keep goes with it.
+            engine.releasePlatformObject(observer);
             continue;
         }
         i += 1;
@@ -227,6 +240,11 @@ pub fn resetPage(realm: runtime.Context) void {
         const observer = agent.pending_observers.get(i) orelse break;
         if (page.holds(observer)) {
             _ = agent.pending_observers.remove(i) catch break;
+            // The membership's keep goes with it (refcount step 8: every
+            // observer listed is alive - a teardown takes its observer off,
+            // `forgetObserver` - and holds one keep per membership). Out of
+            // the list first, so a teardown the release runs finds nothing.
+            engine.releasePlatformObject(observer);
             continue;
         }
         i += 1;
@@ -612,6 +630,8 @@ fn queueMutationRecordInternal(
         }
         if (!already_pending) {
             try agent.pending_observers.append(observer);
+            // Its records are pending activity until it is notified.
+            engine.keepPlatformObjectAlive(observer);
             std.log.debug("[MutationObserver] Added observer to pending_observers, total: {}", .{agent.pending_observers.len});
         } else {
             std.log.debug("[MutationObserver] Observer already pending", .{});
@@ -642,7 +662,12 @@ pub fn transientObserverAdded(observer: *runtime.Instance, realm: runtime.Contex
             break;
         }
     }
-    if (!already_pending) try agent.pending_observers.append(observer);
+    if (!already_pending) {
+        try agent.pending_observers.append(observer);
+        // A membership holds one keep of its observer (`pending_observers`),
+        // which "notify mutation observers" releases once it is notified.
+        engine.keepPlatformObjectAlive(observer);
+    }
     try queueMutationObserverMicrotask(agent, realm);
 }
 
@@ -763,7 +788,12 @@ pub fn notifyMutationObservers(agent: *MutationObserverAgent) !void {
 
     // Step 6: For each mo of notifySet
     for (notify_set.items(), 0..) |mo_instance, mo_index| {
+        // An observer a callback's script let go and its teardown freed took
+        // its keep with it (`forgetObserver`); every other one's keep - its
+        // pending membership's, which step 3 ended - goes once it has been
+        // notified, its callback returned.
         if (runtime.SlabAllocator.generationOf(mo_instance) != generations[mo_index]) continue;
+        defer if (runtime.SlabAllocator.generationOf(mo_instance) == generations[mo_index]) engine.releasePlatformObject(mo_instance);
 
         // Step 6.1: "Let records be a clone of mo's record queue." Step 6.2:
         // "Empty mo's record queue." Together a move: the queue's list is

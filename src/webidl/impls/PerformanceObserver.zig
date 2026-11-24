@@ -27,6 +27,17 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     observer: performance_timeline.Observer,
+
+    /// VTable.trace_held_nodes (runtime.lifetime.heldNodesOf): the
+    /// observer's holder anchor, reached in a collection's atomic pause,
+    /// keeps its callback - a traced hold (refcount step 8). Read-only.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        // A checked read: null for an object of another type (lint-impls'
+        // unchecked-state ratchet).
+        const state = instance.stateAs(State) orelse return;
+        const internal = state.own._internal orelse return;
+        if (internal.observer.callback) |callback| engine.traceHeld(tracer, callback.hold);
+    }
 };
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -84,7 +95,9 @@ fn observerOf(instance: *runtime.Instance) !*performance_timeline.Observer {
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.PerformanceObserverCallback) !*runtime.Instance {
     const instance = try init(ctx.allocator, State, &PerformanceObserver.vtable, ctx);
     const observer = observerOf(instance) catch unreachable;
-    observer.callback = callback.keep();
+    // A traced hold (refcount step 8): the observer's holder anchor keeps it
+    // (`InternalState.traceHeldNodes`), as Blink traces it; nothing roots it.
+    observer.callback = callback.keepTraced();
     return instance;
 }
 
