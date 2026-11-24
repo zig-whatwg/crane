@@ -473,29 +473,37 @@ fn backgroundHintCache() !void {
     defer result.release();
     const realm = browser.getRealm() orelse return error.NoRealm;
     const table = engine.convertToPlatformObject(realm, result.borrow()) orelse return error.NoElement;
-    const first = (try dom.style.computedStyle(table, null)) orelse return error.NoStyle;
-    const urls = first.get(.background_image).resourceUrls();
-    try std.testing.expectEqual(@as(usize, 1), urls.len);
-    try std.testing.expectEqualStrings("http://127.0.0.1:65533/first/hint.png", urls[0].url);
-    try std.testing.expect(urls[0].source.?.referrer == null);
-    try std.testing.expectEqualStrings("http://127.0.0.1:65533/first/", urls[0].source.?.base_url);
+    {
+        // Held while read; released before script runs again (a hold never
+        // crosses into script: runtime.native_holds).
+        const first = (try dom.style.computedStyle(table, null)) orelse return error.NoStyle;
+        defer first.release();
+        const urls = first.style.get(.background_image).resourceUrls();
+        try std.testing.expectEqual(@as(usize, 1), urls.len);
+        try std.testing.expectEqualStrings("http://127.0.0.1:65533/first/hint.png", urls[0].url);
+        try std.testing.expect(urls[0].source.?.referrer == null);
+        try std.testing.expectEqualStrings("http://127.0.0.1:65533/first/", urls[0].source.?.base_url);
+    }
     const state = dom.style.element_style.existingOf(table) orelse return error.NoState;
     const cached = state.backgroundHint() orelse return error.NoHint;
     const unrelated = try browser.evaluateScript("cr1Table.setAttribute('data-cr1', 'changed'); true");
     unrelated.release();
-    _ = try dom.style.computedStyle(table, null);
+    try dom.style.engine.resolveStyle(table, null);
     try std.testing.expect(state.backgroundHint().? == cached);
     const changed = try browser.evaluateScript("document.querySelector('base').href = 'http://127.0.0.1:65533/second/'; true");
     changed.release();
-    const second = (try dom.style.computedStyle(table, null)) orelse return error.NoStyle;
-    try std.testing.expectEqualStrings("http://127.0.0.1:65533/second/hint.png", second.get(.background_image).resourceUrls()[0].url);
+    {
+        const second = (try dom.style.computedStyle(table, null)) orelse return error.NoStyle;
+        defer second.release();
+        try std.testing.expectEqualStrings("http://127.0.0.1:65533/second/hint.png", second.style.get(.background_image).resourceUrls()[0].url);
+    }
     const removed = try browser.evaluateScript("cr1Table.removeAttribute('background'); true");
     removed.release();
     try std.testing.expect(state.backgroundHint() == null);
     const plain = try browser.evaluateScript("globalThis.cr1Plain = document.createElement('div'); cr1Plain.setAttribute('background','ignored.png'); document.body.append(cr1Plain); cr1Plain");
     defer plain.release();
     const div = engine.convertToPlatformObject(realm, plain.borrow()) orelse return error.NoElement;
-    _ = try dom.style.computedStyle(div, null);
+    try dom.style.engine.resolveStyle(div, null);
     try std.testing.expect(dom.style.element_style.existingOf(div).?.backgroundHint() == null);
 }
 

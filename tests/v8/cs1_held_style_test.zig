@@ -12,9 +12,13 @@
 //! volatile ancestor again. Lane a11y1's bug-finding crash
 //! (hiddenViaStyle, f6ff67afb) was a style read across rendered().
 //!
-//! Each test reads a style, makes the read that replaces it, and then reads
-//! the first style - on a realm allocated from std.testing.allocator, whose
-//! free poisons (0x55), so a freed style faults on its first field.
+//! dom.style.computedStyle HOLDS what it answers (dom.style.HeldStyle, a
+//! reference on the style: ComputedStyle.refs): each test reads a style,
+//! makes the read that replaces its cache entry, and then reads the first
+//! style - on a realm allocated from std.testing.allocator, whose free
+//! poisons (0x55), so a freed style would fault on its first field (red
+//! before the hold: e0c063b12). A hold is released before script runs
+//! (runtime.native_holds), so every mutation here is native.
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -151,11 +155,13 @@ fn volatileControl() !void {
     defer page.close();
     const input = try page.byId("i");
     const first = (try dom.style.computedStyle(input, null)) orelse return error.NoStyle;
+    defer first.release();
     try testing.expect(isVolatile(input));
     // The second read resolves the control again and replaces its cache.
     const second = (try dom.style.computedStyle(input, null)) orelse return error.NoStyle;
-    try testing.expect(second != first);
-    try expectColor(first, "rgb(1, 2, 3)");
+    defer second.release();
+    try testing.expect(second.style != first.style);
+    try expectColor(first.style, "rgb(1, 2, 3)");
 }
 
 test "a volatile control's style read first is still readable after a second read of the control" {
@@ -168,11 +174,12 @@ fn volatileAncestor() !void {
     const select = try page.byId("s");
     const option = try page.byId("o");
     const first = (try dom.style.computedStyle(select, null)) orelse return error.NoStyle;
+    defer first.release();
     try testing.expect(isVolatile(select));
     // A read of a descendant resolves every volatile ancestor again.
-    _ = (try dom.style.computedStyle(option, null)) orelse return error.NoStyle;
-    try testing.expect(dom.style.element_style.existingOf(select).?.cached.?.style != first);
-    try expectColor(first, "rgb(4, 5, 6)");
+    try dom.style.engine.resolveStyle(option, null);
+    try testing.expect(dom.style.element_style.existingOf(select).?.cached.?.style != first.style);
+    try expectColor(first.style, "rgb(4, 5, 6)");
 }
 
 test "a volatile select's style read first is still readable after a read of its option (lineage)" {
@@ -185,13 +192,15 @@ fn mutationThenRead() !void {
     const x = try page.byId("x");
     const y = try page.byId("y");
     const first = (try dom.style.computedStyle(x, null)) orelse return error.NoStyle;
+    defer first.release();
     try testing.expect(!isVolatile(x));
     // A native mutation moves the tree version every cached style is keyed
     // on; the next read of x resolves it again.
     try interfaces.Element.call_setAttribute(y, runtime.DOMString.initInterned("data-x"), .{ .domstring = runtime.DOMString.initInterned("1") });
     const second = (try dom.style.computedStyle(x, null)) orelse return error.NoStyle;
-    try testing.expect(second != first);
-    try expectColor(first, "rgb(7, 8, 9)");
+    defer second.release();
+    try testing.expect(second.style != first.style);
+    try expectColor(first.style, "rgb(7, 8, 9)");
 }
 
 test "a plain element's style read first is still readable after a mutation and a second read" {
@@ -205,10 +214,12 @@ fn placeholderRead() !void {
     defer page.close();
     const input = try page.byId("p");
     const first = (try dom.style.computedStyle(input, null)) orelse return error.NoStyle;
+    defer first.release();
     try testing.expect(isVolatile(input));
-    _ = (try dom.style.computedStyle(input, "placeholder")) orelse return error.NoStyle;
-    try testing.expect(dom.style.element_style.existingOf(input).?.cached.?.style != first);
-    try expectColor(first, "rgb(10, 11, 12)");
+    const hint = (try dom.style.computedStyle(input, "placeholder")) orelse return error.NoStyle;
+    defer hint.release();
+    try testing.expect(dom.style.element_style.existingOf(input).?.cached.?.style != first.style);
+    try expectColor(first.style, "rgb(10, 11, 12)");
 }
 
 test "a control's style read first is still readable after a read of its ::placeholder" {
@@ -226,15 +237,92 @@ fn formWithoutAuthorRules() !void {
     const q = try page.byId("q");
     const out = try page.byId("out");
     const first = (try dom.style.computedStyle(q, null)) orelse return error.NoStyle;
+    defer first.release();
     try testing.expect(isVolatile(form));
     try testing.expect(isVolatile(q));
-    _ = (try dom.style.computedStyle(out, null)) orelse return error.NoStyle;
+    try dom.style.engine.resolveStyle(out, null);
     try testing.expect(!isVolatile(out));
     const second = (try dom.style.computedStyle(q, null)) orelse return error.NoStyle;
-    try testing.expect(second != first);
-    try expectColor(first, "rgb(13, 14, 15)");
+    defer second.release();
+    try testing.expect(second.style != first.style);
+    try expectColor(first.style, "rgb(13, 14, 15)");
 }
 
 test "with the UA sheet alone, a style inside a form is volatile, and one read first is still readable after a second read" {
     try runIsolated(formWithoutAuthorRules);
+}
+
+fn holdsCounted() !void {
+    const page = try Page.open("<div id=x></div>");
+    defer page.close();
+    const x = try page.byId("x");
+    try testing.expectEqual(@import("builtin").mode == .Debug, runtime.native_holds.enabled);
+    try testing.expectEqual(@as(u32, 0), runtime.native_holds.count(page.agent));
+    const held = (try dom.style.computedStyle(x, null)) orelse return error.NoStyle;
+    // Debug counts the hold on the agent: a script entry or an event-loop
+    // turn now would panic (runtime.native_holds.assertNone).
+    try testing.expectEqual(@as(u32, if (runtime.native_holds.enabled) 1 else 0), runtime.native_holds.count(page.agent));
+    held.release();
+    try testing.expectEqual(@as(u32, 0), runtime.native_holds.count(page.agent));
+}
+
+test "a hold is counted on its agent while it lives (Debug), and no longer once released" {
+    try runIsolated(holdsCounted);
+}
+
+fn fullCount() !void {
+    const page = try Page.open("<div id=x style='color: rgb(1, 2, 3)'></div>");
+    defer page.close();
+    const x = try page.byId("x");
+    var holds: [300]dom.style.HeldStyle = undefined;
+    var taken: usize = 0;
+    defer for (holds[0..taken]) |held| held.release();
+    while (taken < holds.len) : (taken += 1) holds[taken] = (try dom.style.computedStyle(x, null)) orelse return error.NoStyle;
+    // The cache's reference and 254 holds fill the one-byte count; every
+    // later hold is on a clone of the style, a holder of its own, with the
+    // same values.
+    const cached = dom.style.element_style.existingOf(x).?.cached.?.style;
+    try testing.expect(holds[253].style == cached);
+    for (holds[254..]) |held| try testing.expect(held.style != cached);
+    for (holds) |held| try expectColor(held.style, "rgb(1, 2, 3)");
+}
+
+test "past the one-byte count, a hold takes a clone: every hold reads the same values, and each is freed" {
+    try runIsolated(fullCount);
+}
+
+/// Whether `T` - a return type, through its error union and optional - is a
+/// bare computed style pointer.
+fn isRawStyle(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .pointer => |p| p.child == ComputedStyle,
+        .optional => |o| isRawStyle(o.child),
+        .error_union => |e| isRawStyle(e.payload),
+        else => false,
+    };
+}
+
+/// The public functions of `namespace` that return a bare style pointer.
+fn rawStyleReturners(comptime namespace: type) []const []const u8 {
+    comptime {
+        var names: []const []const u8 = &.{};
+        for (@typeInfo(namespace).@"struct".decls) |decl| {
+            const T = @TypeOf(@field(namespace, decl.name));
+            const info = @typeInfo(T);
+            if (info != .@"fn") continue;
+            const returned = info.@"fn".return_type orelse continue;
+            if (isRawStyle(returned)) names = names ++ .{decl.name};
+        }
+        return names;
+    }
+}
+
+test "no public function of the style engine answers a bare computed style: it is held (dom.style.HeldStyle) or kept private" {
+    inline for (.{ dom.style, dom.style.engine }) |namespace| {
+        const found = comptime rawStyleReturners(namespace);
+        if (found.len != 0) {
+            for (found) |name| std.debug.print("returns a bare *ComputedStyle: {s}\n", .{name});
+            return error.TestUnexpectedResult;
+        }
+    }
 }

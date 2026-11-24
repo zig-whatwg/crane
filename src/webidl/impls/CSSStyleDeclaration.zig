@@ -218,9 +218,10 @@ fn changed(internal: *InternalState) !void {
     try dom.style.inline_style.updateStyleAttribute(owner);
 }
 
-/// A computed declaration's style, resolved now; null when its declarations
-/// are empty (CSSOM 7.2 step 5's conditions fail).
-fn computedStyleOf(internal: *InternalState) !?*const css.computed_style.ComputedStyle {
+/// A computed declaration's style, resolved now and HELD - release it
+/// (dom.style.HeldStyle); null when its declarations are empty (CSSOM 7.2
+/// step 5's conditions fail).
+fn computedStyleOf(internal: *InternalState) !?dom.style.HeldStyle {
     const extra = internal.extra orelse return null;
     if (extra.no_object) return null;
     const element = extra.computed_element.get() orelse return null;
@@ -282,7 +283,9 @@ pub fn set_cssText(instance: *runtime.Instance, value: typedefs.CSSOMString) any
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
     if (internal.kind == .computed) {
-        const style = (try computedStyleOf(internal)) orelse return 0;
+        const style_hold = (try computedStyleOf(internal)) orelse return 0;
+        defer style_hold.release();
+        const style = style_hold.style;
         const names = try style.customNames(internal.allocator);
         defer internal.allocator.free(names);
         return @intCast(properties.Longhand.count + names.len);
@@ -309,7 +312,9 @@ pub fn get_parentRule(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!typedefs.CSSOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
     if (internal.kind == .computed) {
-        const style = (try computedStyleOf(internal)) orelse return runtime.DOMString.initEmpty();
+        const style_hold = (try computedStyleOf(internal)) orelse return runtime.DOMString.initEmpty();
+        defer style_hold.release();
+        const style = style_hold.style;
         if (index < properties.Longhand.count) return runtime.DOMString.initInterned(properties.lexicographic[index].name());
         // The custom properties follow, in code-point order.
         const names = try style.customNames(internal.allocator);
@@ -346,7 +351,9 @@ pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSS
 /// longhand of a supported shorthand is supported, so it always serializes
 /// unless the shorthand cannot represent them).
 fn computedValue(internal: *InternalState, name: []const u8, out: *std.ArrayList(u8)) !void {
-    const style = (try computedStyleOf(internal)) orelse return;
+    const style_hold = (try computedStyleOf(internal)) orelse return;
+    defer style_hold.release();
+    const style = style_hold.style;
     // CSS Variables 1 §2: a custom property's computed value, case-
     // sensitively; "" for the guaranteed-invalid value; §4.1 writes an empty
     // value as one space.
