@@ -159,6 +159,18 @@ pub fn isCoarsened(timestamp_ns: clock.Nanoseconds, cross_origin_isolated: bool)
     return @mod(timestamp_ns, resolution) == 0;
 }
 
+/// requestIdleCallback's timeRemaining() steps 3-5: `deadline_ns - now_ns` in
+/// milliseconds, each coarsened as performance.now() is (HR-TIME "coarsen
+/// time"; the privacy section asks it of these estimates), and 0 when the
+/// deadline has passed. Moved from the IdleDeadline impl with its test (lane
+/// core1): shared helpers live outside src/webidl/impls/.
+pub fn coarsenedRemainingMillis(deadline_ns: clock.Nanoseconds, now_ns: clock.Nanoseconds) f64 {
+    const deadline = coarsenTime(deadline_ns, false);
+    const now = coarsenTime(now_ns, false);
+    if (deadline <= now) return 0;
+    return @as(f64, @floatFromInt(deadline - now)) / std.time.ns_per_ms;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -193,4 +205,11 @@ test "coarsenTime - negative value" {
     // Floor division rounds toward negative infinity
     try testing.expectEqual(@as(clock.Nanoseconds, -123_500_000), result);
     try testing.expect(isCoarsened(result, false));
+}
+
+test "remaining time is the coarsened deadline less the coarsened now, in milliseconds" {
+    const ms = std.time.ns_per_ms;
+    try testing.expectEqual(@as(f64, 10), coarsenedRemainingMillis(1_000 * ms + 10 * ms, 1_000 * ms));
+    // The 125 us grid: 10.05 ms from a boundary reads 10.
+    try testing.expectEqual(@as(f64, 10), coarsenedRemainingMillis(1_000 * ms + 10 * ms + 50_000, 1_000 * ms));
 }
