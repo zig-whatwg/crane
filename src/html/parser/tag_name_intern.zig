@@ -360,42 +360,6 @@ pub fn internExact(tag_name: []const u8) ?[]const u8 {
     return html_tag_names[interned_tags.get(tag_name) orelse return null];
 }
 
-/// Check if a tag name is a known HTML element.
-///
-/// This is useful for determining whether an element needs special
-/// handling during parsing (e.g., void elements, raw text elements).
-pub fn isKnownHtmlTag(tag_name: []const u8) bool {
-    return intern(tag_name) != null;
-}
-
-/// Get all known HTML tag names.
-///
-/// Returns the static array of all pre-interned tag names.
-/// Useful for documentation, testing, or enumeration purposes.
-pub fn getAllTagNames() []const []const u8 {
-    return &html_tag_names;
-}
-
-/// Compare two tag names for equality using interning.
-///
-/// If both tag names are interned, comparison is O(1) via pointer equality.
-/// Otherwise, falls back to byte-by-byte comparison.
-///
-/// This enables fast tag matching during tree construction.
-pub fn eqlInterned(a: []const u8, b: []const u8) bool {
-    // Try to use pointer equality if both are interned
-    const a_interned = intern(a);
-    const b_interned = intern(b);
-
-    if (a_interned != null and b_interned != null) {
-        // Both are interned - pointer comparison
-        return a_interned.?.ptr == b_interned.?.ptr;
-    }
-
-    // Fall back to string comparison
-    return std.mem.eql(u8, a, b);
-}
-
 // ============================================================================
 // Unit Tests
 // ============================================================================

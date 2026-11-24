@@ -267,9 +267,6 @@ pub const Allowlist = struct {
     pub fn allowSelf(allocator: Allocator) Allowlist {
         return .{ .allocator = allocator, .allow_self = true };
     }
-    pub fn allowNone(allocator: Allocator) Allowlist {
-        return init(allocator);
-    }
     pub fn setSelfOrigin(self: *Allowlist, origin: *origins.OriginRecord) void {
         const retained = origin.retain();
         if (self.self_origin) |old| old.release();
@@ -630,15 +627,6 @@ pub const PermissionsPolicy = struct {
     }
     pub fn isFeatureAllowedForSelf(self: *const Self, feature: Feature) bool {
         return self.isFeatureAllowedForOrigin(feature, self.origin());
-    }
-    /// Compatibility for native callers: snapshot inheritance with no container
-    /// declaration. A later change/destruction of parent cannot affect this.
-    pub fn setInheritedPolicy(self: *Self, parent: *const Self) void {
-        self.disabled_inherited = .empty;
-        inline for (@typeInfo(Feature).@"enum".field_values) |field_value| {
-            const feature: Feature = @fromBackingInt(@intCast(field_value));
-            if (!inheritedValue(feature, parent, null, self.origin())) self.disabled_inherited.insert(feature);
-        }
     }
     /// Only feature values are needed by a child's inherited-policy
     /// snapshot. Reporting endpoints stay with their original Document.
