@@ -177,10 +177,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     .{ "StylePropertyMap", "append", "values" },
     .{ "StylePropertyMap", "set", "values" },
     // dom (element creation options, importNode, view transitions)
-    .{ "Document", "createElement", "options" },
-    .{ "Document", "createElementNS", "options" },
-    .{ "Document", "importNode", "options" },
-    .{ "Document", "startViewTransition", "callbackOptions" },
     // events and observers (EventTarget's options; lane rc8 is in these files)
     .{ "EventTarget", "addEventListener", "options" },
     .{ "EventTarget", "removeEventListener", "options" },

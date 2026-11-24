@@ -347,7 +347,7 @@ pub const Edit = struct {
 
     /// createElement(name) on the document.
     pub fn createElement(self: *Edit, name: []const u8) !*Instance {
-        return try interfaces.Document.call_createElement(self.document, DOMString.initInterned(name), webidl.Opt(runtime.JSValue).notPassed());
+        return try interfaces.Document.call_createElement(self.document, DOMString.initInterned(name), .notPassed());
     }
 
     /// Move `node` to (new_parent, new_index), preserving ranges ("Assorted
