@@ -56,6 +56,8 @@ fn structuredDeserializeInternal(
 
     // Create the value
     const value = try allocator.create(JSValue);
+    // The one destroy of `value` on every throwing path below: a path that
+    // destroyed it itself as well freed it twice (lane core1).
     errdefer allocator.destroy(value);
 
     // Steps 5-24: Handle each serialized type
@@ -172,7 +174,7 @@ fn structuredDeserializeInternal(
                     value.* = .{ .typed_array = ta.* };
                 }
             } else {
-                allocator.destroy(value);
+                // The errdefer at the allocation destroys `value`.
                 return CloneError.DeserializeError;
             }
         },
@@ -344,10 +346,7 @@ fn structuredDeserializeInternal(
 
         // The engine's own serialization - the engine deserializes it
         // (structuredDeserializeWithTransfer), not this walker
-        .engine_serialized => {
-            allocator.destroy(value);
-            return CloneError.DeserializeError;
-        },
+        .engine_serialized => return CloneError.DeserializeError,
 
         // Transferable-only types - should not appear in regular deserialization
         .message_port,
@@ -357,10 +356,7 @@ fn structuredDeserializeInternal(
         .offscreen_canvas,
         .audio_data,
         .video_frame,
-        => {
-            allocator.destroy(value);
-            return CloneError.DeserializeError;
-        },
+        => return CloneError.DeserializeError,
 
         // Types requiring special handling
         .file_list,
@@ -369,11 +365,8 @@ fn structuredDeserializeInternal(
         .dom_matrix_readonly,
         .dom_quad,
         .crypto_key,
-        => {
-            // These would need more complex deserialization
-            allocator.destroy(value);
-            return CloneError.DeserializeError;
-        },
+        // These would need more complex deserialization
+        => return CloneError.DeserializeError,
     }
 
     // Step 23: Store in memory
@@ -497,4 +490,32 @@ test "structuredDeserialize - ArrayBuffer roundtrip" {
 
     try testing.expectEqualSlices(u8, &data, deserialized.array_buffer.data);
     try testing.expectEqual(false, deserialized.array_buffer.detached);
+}
+
+test "a record the walker cannot deserialize is a DeserializeError, its value freed once" {
+    // Each of these paths destroyed the value it had made and then returned
+    // into the errdefer that destroys it again: a double free (lane core1,
+    // the pattern fc5b7d6cc fixed in serialize.zig).
+    const testing = std.testing;
+    const allocator = testing.allocator;
+    const records = [_]SerializedValue{
+        // A view with no buffer.
+        .{ .type = .array_buffer_view, .allocator = allocator, .data = .{ .array_buffer_view = .{
+            .constructor = .Uint8Array,
+            .buffer_serialized = null,
+            .byte_length = 0,
+            .byte_offset = 0,
+            .array_length = 0,
+        } } },
+        // The engine's own serialization (structuredDeserializeWithTransfer's).
+        .{ .type = .engine_serialized, .allocator = allocator, .data = .{ .engine_serialized = .{
+            .serialized_bytes = &.{},
+            .transferred_arraybuffers = &.{},
+        } } },
+        // A transferable-only type.
+        .{ .type = .message_port, .allocator = allocator, .data = .{ .message_port = {} } },
+        // A type the walker does not deserialize yet.
+        .{ .type = .crypto_key, .allocator = allocator, .data = .{ .crypto_key = {} } },
+    };
+    for (&records) |*record| try testing.expectError(CloneError.DeserializeError, structuredDeserialize(allocator, record));
 }
