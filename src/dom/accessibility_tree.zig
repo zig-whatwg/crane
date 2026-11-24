@@ -1973,9 +1973,14 @@ fn controlValue(tree: *Tree, dom: *Instance, object: *const Node) !?[]const u8 {
         defer kind.deinit(dom.ctx.allocator);
         if (eq(kind.asSlice(), "file")) {
             // The file chooser's text (HTML-AAM: a button; Chrome 157 sends
-            // "No file chosen" as its value, a11y1-chrome157-trace.txt).
+            // "No file chosen" as its value, a11y1-chrome157-trace.txt):
+            // Blink FileInputType::FileStatusText - no file, the one file's
+            // name, else IDS_FORM_FILE_MULTIPLE_UPLOAD with the count ("2
+            // files" for two, lane mcp1's differential run against CfT 157).
             const files = try interfaces.HTMLInputElement.get_files(dom);
-            if (files == null or try interfaces.FileList.get_length(files.?) == 0) return @import("control_labels.zig").no_file;
+            const count = if (files) |list| try interfaces.FileList.get_length(list) else 0;
+            if (count == 0) return @import("control_labels.zig").no_file;
+            if (count > 1) return try std.fmt.allocPrint(tree.arena, "{d}{s}", .{ count, @import("control_labels.zig").multiple_files_suffix });
             const file = (try interfaces.FileList.call_item(files.?, 0)) orelse return null;
             var name = try interfaces.File.get_name(file);
             defer name.deinit(file.ctx.allocator);

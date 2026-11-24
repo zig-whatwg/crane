@@ -75,10 +75,7 @@ test "take_snapshot: the page's interesting nodes, numbered in pre-order, the sa
     r = try h.tool("take_snapshot", "{\"pageId\":1,\"verbose\":true}");
     try testing.expect(!r.is_error);
     try testing.expect(std.mem.indexOf(u8, r.text, "\"Go\"\n") != null);
-
-    r = try h.tool("take_snapshot", "{\"pageId\":1,\"filePath\":\"/tmp/x.txt\"}");
-    try testing.expect(r.is_error);
-    try testing.expectEqualStrings("Error: filePath is not supported by Crane's MCP server yet.", r.text);
+    // filePath: tests/devtools/mcp1_paths_test.zig (batch 3).
 }
 
 test "uids: evaluate_script gets the elements; a text node stands for its element; gone after a navigation" {

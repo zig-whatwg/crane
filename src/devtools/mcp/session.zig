@@ -16,6 +16,7 @@ const console = @import("console.zig");
 const network = @import("network.zig");
 const keyboard_mod = @import("keyboard.zig");
 const snapshot_mod = @import("snapshot.zig");
+const paths_mod = @import("paths.zig");
 
 const log = std.log.scoped(.mcp);
 
@@ -225,12 +226,15 @@ pub const Session = struct {
     /// TextSnapshot.nextSnapshotId: one count for the server, every page's
     /// snapshots numbered from it.
     next_snapshot_id: u32 = 1,
+    /// Where tools may read and write files (paths.zig: the configured
+    /// roots, the client's, the OS temp directory).
+    paths: paths_mod.Policy,
 
     /// Attach to the browser behind `link` as Puppeteer's connect does.
     pub fn create(allocator: Allocator, link: *LocalLink) !*Session {
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
-        self.* = .{ .allocator = allocator, .client = .{ .allocator = allocator, .link = link } };
+        self.* = .{ .allocator = allocator, .client = .{ .allocator = allocator, .link = link }, .paths = .{ .allocator = allocator } };
         self.client.sink = .{ .context = self, .on_event = onEvent };
         var discover = try self.client.call("Target.setDiscoverTargets", "{\"discover\":true}", "", command_timeout_ms);
         discover.deinit();
@@ -255,6 +259,7 @@ pub const Session = struct {
         }
         self.isolated_contexts.deinit(self.allocator);
         if (self.schemas) |*parsed| parsed.deinit();
+        self.paths.deinit();
         self.allocator.destroy(self);
     }
 

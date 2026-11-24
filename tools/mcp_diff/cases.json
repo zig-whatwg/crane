@@ -733,8 +733,8 @@
       ]
     },
     {
-      "name": "deferred: tools and parameters not in Crane yet",
-      "about": "What a call gets before batch 3: the same shape where Google's server has one (a disabled category), else a clear error.",
+      "name": "refusals: a disabled tool, relative paths outside the roots",
+      "about": "A disabled category's tool, then three file parameters given relative paths: under the working directory, outside the default root (the OS temp directory), refused by validateToolFiles before anything runs.",
       "calls": [
         {
           "tool": "mock_network",
@@ -776,24 +776,283 @@
           }
         }
       ]
+    },
+    {
+      "name": "files: snapshot and script output",
+      "about": "take_snapshot and evaluate_script filePath under --filesystemRoot: the extension replaced, the file owner-only; outside the roots, a URL, a path escaping the root refused.",
+      "files": true,
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "{files}/snap.md"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => document.title",
+            "filePath": "{files}/out"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => undefined",
+            "filePath": "{files}/none.txt"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "/etc/crane-mcp-diff/x.txt"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "https://example.com/x.txt"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "{files}/../escape.txt"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "files: script sources",
+      "about": "evaluate_script sourcePath: a path, a file: URL, a missing file, a directory, a path through a file, both sources, and an https: URL - which v1.13.0 reads as a path under the working directory (resolveScriptSource), never fetching it.",
+      "files": true,
+      "calls": [
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "sourcePath": "{files}/source.js"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "sourcePath": "file://{files}/source.js"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "sourcePath": "{files}/missing.js"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "sourcePath": "{files}"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "sourcePath": "{files}/source.js/x"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "sourcePath": "{files}/source.js",
+            "function": "() => 1"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "sourcePath": "https://example.com/x.js"
+          }
+        }
+      ]
+    },
+    {
+      "name": "files: upload",
+      "about": "upload_file: one file, several without multiple, several with it, blank paths (the input emptied), an element that is no file input, a path outside the roots.",
+      "files": true,
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/upload.html"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "upload_file",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1",
+            "filePaths": [
+              "{files}/upload.txt"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { const f = document.querySelector('input').files; return [f.length, f[0].name, f[0].size, f[0].type, seen.join()]; }"
+          }
+        },
+        {
+          "tool": "upload_file",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1",
+            "filePaths": [
+              "{files}/upload.txt",
+              "{files}/source.js"
+            ]
+          }
+        },
+        {
+          "tool": "upload_file",
+          "args": {
+            "pageId": 1,
+            "uid": "1_2",
+            "filePaths": [
+              "{files}/upload.txt",
+              "{files}/source.js"
+            ],
+            "includeSnapshot": true
+          }
+        },
+        {
+          "tool": "upload_file",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1",
+            "filePaths": [
+              " "
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [document.querySelector('input').files.length, seen.join()]"
+          }
+        },
+        {
+          "tool": "upload_file",
+          "args": {
+            "pageId": 1,
+            "uid": "1_3",
+            "filePaths": [
+              "{files}/upload.txt"
+            ]
+          }
+        },
+        {
+          "tool": "upload_file",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1",
+            "filePaths": [
+              "/etc/crane-mcp-diff/x.txt"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "files: network bodies",
+      "about": "get_network_request requestFilePath and responseFilePath: a POST's body and its 405 answer saved, each section saying where.",
+      "files": true,
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/network-post.html"
+          }
+        },
+        {
+          "sleep_ms": 500
+        },
+        {
+          "tool": "get_network_request",
+          "args": {
+            "pageId": 1,
+            "reqid": 2,
+            "requestFilePath": "{files}/req.txt",
+            "responseFilePath": "{files}/resp"
+          }
+        }
+      ]
+    },
+    {
+      "name": "files: the client's roots",
+      "about": "No --filesystemRoot: the client advertises roots and answers roots/list with the directory; the first tool call waits for that answer.",
+      "client_roots": true,
+      "calls": [
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => 6 * 7",
+            "filePath": "{files}/out"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "sourcePath": "{files}/source.js"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "/etc/crane-mcp-diff/x.txt"
+          }
+        }
+      ]
     }
   ],
   "expected": [
-    {
-      "case": "deferred: tools and parameters not in Crane yet",
-      "call": 3,
-      "reason": "upload_file hands a local file to a page: it lands in batch 3 with the path policy (realpath; roots from --filesystemRoot, the client's MCP roots and the OS temp dir; Google's \"Access denied\" text) - main, 10:44 PM ET 2026-11-23; until then Crane answers \"Tool upload_file not found\"."
-    },
-    {
-      "case": "deferred: tools and parameters not in Crane yet",
-      "call": 4,
-      "reason": "sourcePath needs the server's file access and its path checks: batch 3 (main, 2:24 PM ET); Crane answers \"sourcePath is not supported by Crane's MCP server yet.\""
-    },
-    {
-      "case": "deferred: tools and parameters not in Crane yet",
-      "call": 5,
-      "reason": "responseFilePath needs the server's file access and its path checks: batch 3; Crane answers \"... not supported by Crane's MCP server yet.\""
-    },
     {
       "case": "pages: navigate, reload, back, forward",
       "call": 3,
@@ -833,6 +1092,16 @@
       "case": "wait_for: later text, names, timeouts",
       "call": 6,
       "reason": "visible: true asks whether the matched text is visible - a computed style and a non-empty bounding box (Puppeteer's checkVisibility) - and Crane has no layout (needs-renderer); Crane answers \"visible is not supported by Crane's MCP server: Crane has no layout to tell whether text is visible.\""
+    },
+    {
+      "case": "files: network bodies",
+      "call": 2,
+      "reason": "The request headers differ as in \"network: list, filter, details\" call 5 (Chrome's UA client hints and user-agent; Blink's header order), Crane's POST carries no content-length request header (a Network domain finding, queued by main 2026-11-24), and the response's date header is the second it was served. The bodies' sections and the saved files are compared: the files listing must be equal."
+    },
+    {
+      "case": "files: upload",
+      "call": 9,
+      "reason": "Not a file input: chrome-devtools-mcp clicks the element and waits 3 s for a file chooser (Page.setInterceptFileChooserDialog); element clicks are batch 5, so Crane says no click happened (main's ruling 3, 2026-11-24). Batch 5 switches to Google's text and the file-chooser path."
     }
   ]
 }
