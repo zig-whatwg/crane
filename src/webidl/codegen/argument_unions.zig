@@ -224,7 +224,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     // websocket and xhr
     .{ "WebSocket", "constructor", "protocols" },
     .{ "WebSocket", "send", "data" },
-    .{ "XMLHttpRequest", "send", "body" },
 };
 
 /// Whether position (`member`, `position`) of `owner` - or of a mixin

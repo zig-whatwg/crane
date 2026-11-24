@@ -73,6 +73,7 @@ pub const DOMStringOrTrustedScriptURL = @import("DOMStringOrTrustedScriptURL.zig
 pub const DOMStringOrUndefined = @import("DOMStringOrUndefined.zig").DOMStringOrUndefined;
 pub const DOMStringOrUnsignedLong = @import("DOMStringOrUnsignedLong.zig").DOMStringOrUnsignedLong;
 pub const DigitalCredentialProtocol = @import("DigitalCredentialProtocol.zig").DigitalCredentialProtocol;
+pub const DocumentOrXMLHttpRequestBodyInit = @import("DocumentOrXMLHttpRequestBodyInit.zig").DocumentOrXMLHttpRequestBodyInit;
 pub const ElementOrCSSPseudoElement = @import("ElementOrCSSPseudoElement.zig").ElementOrCSSPseudoElement;
 pub const ElementOrProcessingInstruction = @import("ElementOrProcessingInstruction.zig").ElementOrProcessingInstruction;
 pub const ElementOrText = @import("ElementOrText.zig").ElementOrText;

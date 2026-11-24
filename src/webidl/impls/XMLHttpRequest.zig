@@ -1032,13 +1032,13 @@ pub fn call_abort(instance: *runtime.Instance) anyerror!void {
 ///
 /// With no event loop - a bare realm, a unit test's - it waits inline, which
 /// is better than dropping the request.
-pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)) anyerror!void {
+pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?typedefs.DocumentOrXMLHttpRequestBodyInit)) anyerror!void {
     const xhr_state = getXHRState(instance);
     const internal = getInternal(instance);
 
-    // The argument, converted to (Document or XMLHttpRequestBodyInit)? as
-    // the binding would before the method's steps run - its ToString can run
-    // script - and, but for a Document, extracted. Owned for the life of the
+    // The argument - (Document or XMLHttpRequestBodyInit)?, converted by the
+    // binding before the method's steps run (its ToString can run script) -
+    // and, but for a Document, extracted. Owned for the life of the
     // request: an asynchronous request's fetch - a redirect re-sends it -
     // runs long after, and a handler that runs during this send() can send
     // again, with a body of its own.
@@ -1839,53 +1839,31 @@ const SendBody = struct {
         return b;
     }
 
-    /// Convert the union before running send() steps; extraction is separate for Documents.
-    fn convert(instance: *runtime.Instance, argument: webidl.Opt(?runtime.JSValue), allocator: std.mem.Allocator) !?SendBody {
+    /// The body `argument` names, extracted - but for a Document, which
+    /// send() serializes after its own first steps. The binding converted the
+    /// union (WebIDL 3.2.25: null and undefined are null; a platform object of
+    /// a member interface is that member; a buffer source is a reference to
+    /// its object, a SharedArrayBuffer a TypeError; anything else the
+    /// USVString it converts to) and frees it when send() returns, so every
+    /// byte kept is copied here.
+    fn convert(instance: *runtime.Instance, argument: webidl.Opt(?typedefs.DocumentOrXMLHttpRequestBodyInit), allocator: std.mem.Allocator) !?SendBody {
         if (!argument.wasPassed()) return null;
         const value = argument.value orelse return null;
-        const realm = instance.ctx;
         switch (value) {
-            .undefined, .null => return null,
-            // A string primitive, as the binding converted it: WTF-8, a lone
-            // surrogate in its three-byte form. USVString makes each one
-            // U+FFFD.
-            .string => |text| {
-                const bytes = try allocator.dupe(u8, text.data);
-                infra.string.replaceLoneSurrogatesWtf8(bytes);
-                return try usvString(allocator, bytes);
+            .document => |document| return .{ .allocator = allocator, .kind = .document, .bytes = null, .document = document },
+            .xmlhttp_request_body_init => |body| switch (body) {
+                .blob, .form_data, .urlsearch_params => return try extracted(allocator, body),
+                // BufferSource: a copy of the bytes held by it; no type.
+                .buffer_source => |source| {
+                    const object = source.jsValue(runtime.JSValue) orelse return error.TypeError;
+                    const bytes = (try engine.getCopyOfBufferSourceBytes(instance.ctx, object, allocator)) orelse return error.TypeError;
+                    return .{ .allocator = allocator, .kind = .other, .bytes = bytes };
+                },
+                // USVString: its UTF-8 (the conversion made each lone
+                // surrogate U+FFFD).
+                .usvstring => |text| return try usvString(allocator, try allocator.dupe(u8, text)),
             },
-            .boolean, .number => return try usvString(allocator, try engine.convertToUSVString(realm, value, allocator)),
-            .handle, .instance => {},
         }
-        switch (engine.typeOf(realm, value)) {
-            .undefined, .null => return null,
-            else => {},
-        }
-        // A platform object of one of the union's interfaces is that member.
-        // Any other falls through to the string it converts to.
-        if (engine.convertToPlatformObject(realm, value)) |object| {
-            if (object.stateAs(interfaces.Document.State) != null)
-                return .{ .allocator = allocator, .kind = .document, .bytes = null, .document = object };
-            if (object.stateAs(interfaces.Blob.State) != null) return try extracted(allocator, .{ .blob = object });
-            if (object.stateAs(interfaces.FormData.State) != null) return try extracted(allocator, .{ .form_data = object });
-            if (object.stateAs(interfaces.URLSearchParams.State) != null) return try extracted(allocator, .{ .urlsearch_params = object });
-        }
-        // BufferSource: a copy of the bytes held by it; no type.
-        if (try engine.getCopyOfBufferSourceBytes(realm, value, allocator)) |bytes| {
-            return .{ .allocator = allocator, .kind = .other, .bytes = bytes };
-        }
-        // WebIDL 3.2.25 step 6: a SharedArrayBuffer goes to BufferSource's
-        // ArrayBuffer, whose conversion throws a TypeError for a shared one
-        // (3.2.26 step 2; no [AllowShared] here) - never the string step 15
-        // would make of it. BufferSource has no copy of it (a view over one
-        // is that conversion's TypeError already); AllowSharedBufferSource's
-        // does, and nothing else is one of those.
-        if (try engine.getCopyOfAllowSharedBufferSourceBytes(realm, value, allocator)) |shared| {
-            allocator.free(shared);
-            return error.TypeError;
-        }
-        // USVString: ToString, then each lone surrogate U+FFFD.
-        return try usvString(allocator, try engine.convertToUSVString(realm, value, allocator));
     }
 
     /// XHR send() 4.2: serialize with require-well-formed false, scalarize,
