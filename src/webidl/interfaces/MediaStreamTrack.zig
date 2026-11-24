@@ -11,20 +11,19 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
+const MediaStreamTrackAudioStatsOrMediaStreamTrackVideoStats = @import("typedefs").MediaStreamTrackAudioStatsOrMediaStreamTrackVideoStats;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CaptureHandle = @import("dictionaries").CaptureHandle;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const MediaTrackSettings = @import("dictionaries").MediaTrackSettings;
 const MediaTrackConstraints = @import("dictionaries").MediaTrackConstraints;
 const MediaStreamTrackState = @import("enums").MediaStreamTrackState;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
 const CaptureAction = @import("enums").CaptureAction;
-const MediaStreamTrackVideoStats = @import("interfaces").MediaStreamTrackVideoStats;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const MediaTrackCapabilities = @import("dictionaries").MediaTrackCapabilities;
 const EventListener = @import("interfaces").EventListener;
-const MediaStreamTrackAudioStats = @import("interfaces").MediaStreamTrackAudioStats;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -62,6 +61,12 @@ pub const MediaStreamTrack = struct {
             .{ "contentHint", "get_contentHint", "set_contentHint" },
             .{ "isolated", "get_isolated", null },
             .{ "onisolationchange", "get_onisolationchange", "set_onisolationchange" },
+        };
+
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "stats",
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -127,7 +132,7 @@ pub const MediaStreamTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cached_stats: ?runtime.JSValue = null,
+            cached_stats: ?MediaStreamTrackAudioStatsOrMediaStreamTrackVideoStats = null,
             _internal: ?*MediaStreamTrackImpl.InternalState = null,
         },
     );
@@ -330,8 +335,15 @@ pub const MediaStreamTrack = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_stats(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        return try MediaStreamTrackImpl.get_stats(instance);
+    pub fn get_stats(instance: *runtime.Instance) anyerror!?MediaStreamTrackAudioStatsOrMediaStreamTrackVideoStats {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_stats) |cached| {
+            return cached;
+        }
+        const value = try MediaStreamTrackImpl.get_stats(instance);
+        state.own.cached_stats = value;
+        return value;
     }
 
     pub fn get_onconfigurationchange(instance: *runtime.Instance) anyerror!EventHandler {

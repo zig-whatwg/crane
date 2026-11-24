@@ -37,7 +37,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: namedItem
-pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.JSValue {
+pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?typedefs.RadioNodeListOrElement {
     // HTML 2.6.4.2 steps 1–5: duplicates are a live filtered RadioNodeList.
     if (name.asSlice().len == 0) return null;
     const length = try interfaces.HTMLCollection.get_length(instance);
@@ -53,9 +53,9 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
         const list = try interfaces.RadioNodeList.init(instance.ctx.allocator, instance.ctx);
         errdefer runtime.Instance.deinit(list);
         try @import("dom").node_lists.namedControls(list, instance, name.asSlice());
-        return .{ .instance = list };
+        return .{ .radio_node_list = list };
     }
-    return if (first) |element| .{ .instance = element } else null;
+    return if (first) |element| .{ .element = element } else null;
 }
 
 /// Get supported property names for named property enumeration

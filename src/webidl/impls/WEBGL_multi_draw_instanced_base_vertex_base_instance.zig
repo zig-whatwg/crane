@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: multiDrawArraysInstancedBaseInstanceWEBGL
-pub fn call_multiDrawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, firstsList: runtime.JSValue, firstsOffset: u64, countsList: runtime.JSValue, countsOffset: u64, instanceCountsList: runtime.JSValue, instanceCountsOffset: u64, baseInstancesList: runtime.JSValue, baseInstancesOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
+pub fn call_multiDrawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, firstsList: typedefs.Int32ArrayOrSequenceOfGLint, firstsOffset: u64, countsList: typedefs.Int32ArrayOrSequenceOfGLsizei, countsOffset: u64, instanceCountsList: typedefs.Int32ArrayOrSequenceOfGLsizei, instanceCountsOffset: u64, baseInstancesList: typedefs.Uint32ArrayOrSequenceOfGLuint, baseInstancesOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = mode;
     _ = firstsList;
@@ -56,7 +56,7 @@ pub fn call_multiDrawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instanc
 }
 
 /// Operation: multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL
-pub fn call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, countsList: runtime.JSValue, countsOffset: u64, @"type": typedefs.GLenum, offsetsList: runtime.JSValue, offsetsOffset: u64, instanceCountsList: runtime.JSValue, instanceCountsOffset: u64, baseVerticesList: runtime.JSValue, baseVerticesOffset: u64, baseInstancesList: runtime.JSValue, baseInstancesOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
+pub fn call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, countsList: typedefs.Int32ArrayOrSequenceOfGLsizei, countsOffset: u64, @"type": typedefs.GLenum, offsetsList: typedefs.Int32ArrayOrSequenceOfGLsizei, offsetsOffset: u64, instanceCountsList: typedefs.Int32ArrayOrSequenceOfGLsizei, instanceCountsOffset: u64, baseVerticesList: typedefs.Int32ArrayOrSequenceOfGLint, baseVerticesOffset: u64, baseInstancesList: typedefs.Uint32ArrayOrSequenceOfGLuint, baseInstancesOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = mode;
     _ = countsList;

@@ -15,7 +15,7 @@ pub const ConstrainDOMString = union(enum) {
     /// (WebIDL 3.2.25; webidl.union_arms).
     pub const arms = [_]webidl.UnionArm{
         .{ .field = "domstring", .kind = .string },
-        .{ .field = "domstring_sequence", .kind = .sequence },
+        .{ .field = "domstring_sequence", .kind = .{ .sequence = null } },
         .{ .field = "constrain_domstring_parameters", .kind = .dictionary },
     };
 };

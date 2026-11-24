@@ -12,17 +12,16 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const LockManager = @import("interfaces").LockManager;
 const FileSystemDirectoryHandle = @import("interfaces").FileSystemDirectoryHandle;
-const Blob = @import("interfaces").Blob;
 const CacheStorage = @import("interfaces").CacheStorage;
 const SharedWorker = @import("interfaces").SharedWorker;
 const IDBFactory = @import("interfaces").IDBFactory;
+const DOMStringOrSharedWorkerOptions = @import("typedefs").DOMStringOrSharedWorkerOptions;
+const BlobOrMediaSource = @import("typedefs").BlobOrMediaSource;
 const StorageEstimate = @import("dictionaries").StorageEstimate;
 const USVString = @import("typedefs").USVString;
 const Storage = @import("interfaces").Storage;
 const BroadcastChannel = @import("interfaces").BroadcastChannel;
-const SharedWorkerOptions = @import("dictionaries").SharedWorkerOptions;
 const DOMString = @import("typedefs").DOMString;
-const MediaSource = @import("interfaces").MediaSource;
 
 pub const StorageAccessHandle = struct {
     pub const Meta = struct {
@@ -224,11 +223,11 @@ pub const StorageAccessHandle = struct {
         return try StorageAccessHandleImpl.call_BroadcastChannel(instance, name);
     }
 
-    pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(DOMStringOrSharedWorkerOptions)) anyerror!*runtime.Instance {
         return try StorageAccessHandleImpl.call_SharedWorker(instance, scriptURL, options);
     }
 
-    pub fn call_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
+    pub fn call_createObjectURL(instance: *runtime.Instance, obj: BlobOrMediaSource) anyerror!runtime.DOMString {
         return try StorageAccessHandleImpl.call_createObjectURL(instance, obj);
     }
 

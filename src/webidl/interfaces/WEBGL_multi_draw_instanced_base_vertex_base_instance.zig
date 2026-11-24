@@ -11,9 +11,10 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GLenum = @import("typedefs").GLenum;
+const Uint32ArrayOrSequenceOfGLuint = @import("typedefs").Uint32ArrayOrSequenceOfGLuint;
+const Int32ArrayOrSequenceOfGLint = @import("typedefs").Int32ArrayOrSequenceOfGLint;
 const GLsizei = @import("typedefs").GLsizei;
-const GLint = @import("typedefs").GLint;
-const GLuint = @import("typedefs").GLuint;
+const Int32ArrayOrSequenceOfGLsizei = @import("typedefs").Int32ArrayOrSequenceOfGLsizei;
 
 pub const WEBGL_multi_draw_instanced_base_vertex_base_instance = struct {
     pub const Meta = struct {
@@ -161,11 +162,11 @@ pub const WEBGL_multi_draw_instanced_base_vertex_base_instance = struct {
         }
     }
 
-    pub fn call_multiDrawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, firstsList: runtime.JSValue, firstsOffset: u64, countsList: runtime.JSValue, countsOffset: u64, instanceCountsList: runtime.JSValue, instanceCountsOffset: u64, baseInstancesList: runtime.JSValue, baseInstancesOffset: u64, drawcount: GLsizei) anyerror!void {
+    pub fn call_multiDrawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, firstsList: Int32ArrayOrSequenceOfGLint, firstsOffset: u64, countsList: Int32ArrayOrSequenceOfGLsizei, countsOffset: u64, instanceCountsList: Int32ArrayOrSequenceOfGLsizei, instanceCountsOffset: u64, baseInstancesList: Uint32ArrayOrSequenceOfGLuint, baseInstancesOffset: u64, drawcount: GLsizei) anyerror!void {
         return try WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.call_multiDrawArraysInstancedBaseInstanceWEBGL(instance, mode, firstsList, firstsOffset, countsList, countsOffset, instanceCountsList, instanceCountsOffset, baseInstancesList, baseInstancesOffset, drawcount);
     }
 
-    pub fn call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: runtime.JSValue, countsOffset: u64, @"type": GLenum, offsetsList: runtime.JSValue, offsetsOffset: u64, instanceCountsList: runtime.JSValue, instanceCountsOffset: u64, baseVerticesList: runtime.JSValue, baseVerticesOffset: u64, baseInstancesList: runtime.JSValue, baseInstancesOffset: u64, drawcount: GLsizei) anyerror!void {
+    pub fn call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: Int32ArrayOrSequenceOfGLsizei, countsOffset: u64, @"type": GLenum, offsetsList: Int32ArrayOrSequenceOfGLsizei, offsetsOffset: u64, instanceCountsList: Int32ArrayOrSequenceOfGLsizei, instanceCountsOffset: u64, baseVerticesList: Int32ArrayOrSequenceOfGLint, baseVerticesOffset: u64, baseInstancesList: Uint32ArrayOrSequenceOfGLuint, baseInstancesOffset: u64, drawcount: GLsizei) anyerror!void {
         return try WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance, mode, countsList, countsOffset, @"type", offsetsList, offsetsOffset, instanceCountsList, instanceCountsOffset, baseVerticesList, baseVerticesOffset, baseInstancesList, baseInstancesOffset, drawcount);
     }
 };

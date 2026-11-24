@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 const interfaces = @import("interfaces");
+const typedefs = @import("typedefs");
 const URL = interfaces.URL;
 const URLSearchParams = interfaces.URLSearchParams;
 
@@ -908,7 +909,7 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.USVString {
 ///
 /// Creates a blob URL for the given Blob object.
 /// The URL can be used to reference the Blob in contexts like img.src, a.href, etc.
-pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
+pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: typedefs.BlobOrMediaSource) anyerror!runtime.DOMString {
     // The current settings object (FileAPI "generate a new blob URL" step 1,
     // "add an entry to the blob URL store" step 4): its realm.
     const realm = engine.currentRealm() orelse instance.ctx;
@@ -918,20 +919,17 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
     // Browser made resolves in no other. A realm no Browser made has none.
     const store = blobURLStoreOf(realm) orelse return error.InvalidStateError;
 
-    // `obj` is (Blob or MediaSource) - a union argument, which reaches the
-    // impl unconverted. WebIDL 3.2.24: a platform object implementing Blob
-    // (a File included) is the Blob; one implementing MediaSource is the
-    // MediaSource; anything else is a TypeError.
-    const object = engine.convertToPlatformObject(engine.currentRealm() orelse instance.ctx, obj) orelse
-        return error.TypeError;
-    if (object.stateAs(interfaces.Blob.State) == null) {
+    // `obj` is (Blob or MediaSource), converted by the binding (WebIDL
+    // 3.2.25: a platform object implementing Blob - a File included - is the
+    // Blob; one implementing MediaSource the MediaSource; anything else a
+    // TypeError).
+    const blob_instance = switch (obj) {
+        .blob => |blob| blob,
         // TODO(media-source): a MediaSource's blob URL entry (Media Source
         // Extensions createObjectURL) - Crane's blob URL store holds Blob
         // data only.
-        if (object.stateAs(interfaces.MediaSource.State) != null) return error.NotSupportedError;
-        return error.TypeError;
-    }
-    const blob_instance = object;
+        .media_source => return error.NotSupportedError,
+    };
 
     // The Blob's data, which the entry shares (Blob's step, dom.blob_bytes)
     const blob_data = @import("dom").blob_bytes.dataOf(blob_instance) orelse {

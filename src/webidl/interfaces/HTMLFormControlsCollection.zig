@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const Element = @import("interfaces").Element;
-const RadioNodeList = @import("interfaces").RadioNodeList;
+const RadioNodeListOrElement = @import("typedefs").RadioNodeListOrElement;
 const DOMString = @import("typedefs").DOMString;
 
 pub const HTMLFormControlsCollection = struct {
@@ -169,7 +169,7 @@ pub const HTMLFormControlsCollection = struct {
         }
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.JSValue {
+    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?RadioNodeListOrElement {
         return try HTMLFormControlsCollectionImpl.call_namedItem(instance, name);
     }
 

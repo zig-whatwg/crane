@@ -19,6 +19,7 @@ const AnimationTimeline = @import("interfaces").AnimationTimeline;
 const Event = @import("interfaces").Event;
 const Observable = @import("interfaces").Observable;
 const AnimationEffect = @import("interfaces").AnimationEffect;
+const AnimationEffectOrSequenceOfAnimationEffect = @import("typedefs").AnimationEffectOrSequenceOfAnimationEffect;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const AnimationReplaceState = @import("enums").AnimationReplaceState;
 const EventListener = @import("interfaces").EventListener;
@@ -186,7 +187,7 @@ pub const WorkletAnimation = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, animatorName: runtime.DOMString, effects: webidl.Opt(?runtime.JSValue), timeline: webidl.Opt(?*runtime.Instance), options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, animatorName: runtime.DOMString, effects: webidl.Opt(?AnimationEffectOrSequenceOfAnimationEffect), timeline: webidl.Opt(?*runtime.Instance), options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try WorkletAnimationImpl.call_constructor(ctx, animatorName, effects, timeline, options);
     }

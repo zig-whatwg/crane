@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const GroupEffect = @import("interfaces").GroupEffect;
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const AnimationNodeList = @import("interfaces").AnimationNodeList;
-const EffectTiming = @import("dictionaries").EffectTiming;
+const UnrestrictedDoubleOrEffectTiming = @import("typedefs").UnrestrictedDoubleOrEffectTiming;
 
 pub const SequenceEffect = struct {
     pub const Meta = struct {
@@ -165,7 +165,7 @@ pub const SequenceEffect = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, children: ?runtime.JSValue, timing: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, children: ?runtime.JSValue, timing: webidl.Opt(UnrestrictedDoubleOrEffectTiming)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SequenceEffectImpl.call_constructor(ctx, children, timing);
     }

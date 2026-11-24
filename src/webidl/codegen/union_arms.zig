@@ -31,6 +31,8 @@ const Kind = union(enum) {
     interface: []const u8,
     /// A typed array type, by its [[TypedArrayName]].
     typed_array: []const u8,
+    /// A sequence or frozen array type (`tag`), and its element interface.
+    sequence: struct { tag: []const u8, element_interface: ?[]const u8 },
 };
 
 const string_types = [_][]const u8{ "DOMString", "USVString", "ByteString" };
@@ -65,14 +67,15 @@ fn isOneOf(name: []const u8, comptime list: []const []const u8) bool {
 /// The kind of union member type `idl_type` in `model`.
 fn kindOf(idl_type: types.IDLType, model: *const ir_mod.IR, depth: u8) Error!Kind {
     if (idl_type.unionTypes != null) return error.InlineNestedUnion;
-    if (idl_type.sequence != null) return .{ .tag = "sequence" };
+    if (idl_type.sequence) |element| return .{ .sequence = .{ .tag = "sequence", .element_interface = elementInterface(element.*, model) } };
     if (idl_type.record != null) return .{ .tag = "record" };
     var name = idl_type.type;
     if (std.mem.indexOf(u8, name, "::")) |colon| name = name[colon + 2 ..];
     if (idl_type.generic != null) {
-        if (std.mem.eql(u8, name, "sequence")) return .{ .tag = "sequence" };
+        const element: types.IDLType = .{ .type = std.mem.trim(u8, idl_type.generic.?, " \t") };
+        if (std.mem.eql(u8, name, "sequence")) return .{ .sequence = .{ .tag = "sequence", .element_interface = elementInterface(element, model) } };
         if (std.mem.eql(u8, name, "record")) return .{ .tag = "record" };
-        if (std.mem.eql(u8, name, "FrozenArray") or std.mem.eql(u8, name, "ObservableArray")) return .{ .tag = "frozen_array" };
+        if (std.mem.eql(u8, name, "FrozenArray") or std.mem.eql(u8, name, "ObservableArray")) return .{ .sequence = .{ .tag = "frozen_array", .element_interface = elementInterface(element, model) } };
         if (std.mem.eql(u8, name, "async_sequence")) return .{ .tag = "async_sequence" };
         if (std.mem.eql(u8, name, "Promise")) return error.NotAUnionMemberType;
         return error.UnknownUnionMemberType;
@@ -111,6 +114,17 @@ fn kindOf(idl_type: types.IDLType, model: *const ir_mod.IR, depth: u8) Error!Kin
     };
 }
 
+/// The interface a sequence's element type is, by name - a typedef of one
+/// resolved - or null for any other element type (one codegen cannot
+/// classify included: an extended attribute in the parser's text).
+fn elementInterface(element: types.IDLType, model: *const ir_mod.IR) ?[]const u8 {
+    const kind = kindOf(element, model, 0) catch return null;
+    return switch (kind) {
+        .interface => |name| name,
+        else => null,
+    };
+}
+
 /// Write union `union_types`' arms table, its fields named `field_names`
 /// (the union's fields, in member order).
 pub fn writeArms(
@@ -134,6 +148,10 @@ pub fn writeArms(
             .tag => |tag| try w.print(".{s}", .{tag}),
             .interface => |interface| try w.print(".{{ .interface = \"{s}\" }}", .{interface}),
             .typed_array => |typed_array| try w.print(".{{ .typed_array = \"{s}\" }}", .{typed_array}),
+            .sequence => |sequence| if (sequence.element_interface) |interface|
+                try w.print(".{{ .{s} = \"{s}\" }}", .{ sequence.tag, interface })
+            else
+                try w.print(".{{ .{s} = null }}", .{sequence.tag}),
         }
         try w.writeAll(" },\n");
     }

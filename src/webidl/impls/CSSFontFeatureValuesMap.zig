@@ -51,26 +51,22 @@ fn changed(internal: *InternalState) void {
 /// WebIDL union conversion: an object's defined @@iterator selects the
 /// sequence arm. Otherwise convert the input to one unsigned long. The
 /// engine does ToNumber (including user script); WebIDL does integer wrap.
-pub fn call_set(instance: *runtime.Instance, featureValueName: typedefs.CSSOMString, input: runtime.JSValue) anyerror!void {
+pub fn call_set(instance: *runtime.Instance, featureValueName: typedefs.CSSOMString, input: typedefs.UnsignedLongOrSequenceOfUnsignedLong) anyerror!void {
     const internal = try stateOf(instance);
-    const Collect = struct {
-        ctx: runtime.Context,
-        values: std.ArrayList(u32) = .empty,
-        fn item(context: ?*anyopaque, value: runtime.JSValue) engine.Error!void {
-            const self: *@This() = @ptrCast(@alignCast(context.?));
-            const number = try engine.convertToUnrestrictedDouble(self.ctx, value);
-            const converted = webidl.primitives.toUnsignedLong(.{ .number = number }) catch return error.TypeError;
-            try self.values.append(self.ctx.allocator, converted);
-        }
+    // `values` is (unsigned long or sequence<unsigned long>), converted by
+    // the binding (WebIDL 3.2.25): an iterable object is the sequence, any
+    // other value the unsigned long.
+    var single: [1]u32 = undefined;
+    const values: []const u32 = switch (input) {
+        .ulong => |value| blk: {
+            single[0] = value;
+            break :blk &single;
+        },
+        .ulong_sequence => |sequence| sequence,
     };
-    var collect: Collect = .{ .ctx = instance.ctx };
-    defer collect.values.deinit(instance.ctx.allocator);
-    var sequence = false;
-    if (engine.typeOf(instance.ctx, input) == .object) sequence = try engine.iterate(instance.ctx, input, Collect.item, &collect);
-    if (!sequence) try Collect.item(&collect, input);
     // Q33: the sole map shipper accepts every sequence length, including
     // zero. The parsed descriptor's arity never limits this CSSOM operation.
-    try mapOf(internal).set(internal.rule.allocator, featureValueName.asSlice(), collect.values.items);
+    try mapOf(internal).set(internal.rule.allocator, featureValueName.asSlice(), values);
     changed(internal);
 }
 

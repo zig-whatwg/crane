@@ -2558,8 +2558,16 @@ fn sanitizeTypeName(allocator: std.mem.Allocator, type_name: []const u8) ![]cons
 
     var len: usize = 0;
     var prev_was_lower = false;
+    // Inside an extended attribute list (`[EnforceRange]` in a generic's text):
+    // no part of the name.
+    var in_brackets = false;
 
     for (type_name) |c| {
+        if (c == '[') in_brackets = true;
+        if (in_brackets) {
+            if (c == ']') in_brackets = false;
+            continue;
+        }
         // Skip invalid characters for Zig identifiers
         if (c == ' ' or c == '-' or c == '<' or c == '>' or c == ',' or c == '?' or c == '(' or c == ')') {
             if (len > 0 and buf[len - 1] != '_') {

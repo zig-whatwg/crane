@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const AnimationNodeList = @import("interfaces").AnimationNodeList;
 const AnimationEffect = @import("interfaces").AnimationEffect;
-const EffectTiming = @import("dictionaries").EffectTiming;
+const UnrestrictedDoubleOrEffectTiming = @import("typedefs").UnrestrictedDoubleOrEffectTiming;
 
 pub const GroupEffect = struct {
     pub const Meta = struct {
@@ -176,7 +176,7 @@ pub const GroupEffect = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, children: ?runtime.JSValue, timing: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, children: ?runtime.JSValue, timing: webidl.Opt(UnrestrictedDoubleOrEffectTiming)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try GroupEffectImpl.call_constructor(ctx, children, timing);
     }
