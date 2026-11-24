@@ -268,6 +268,9 @@ pub const BrowserSide = struct {
         if (bc.getActiveDocument() != ref.document) return;
         var title = @import("interfaces").Document.get_title(document) catch return;
         defer title.deinit(document.ctx.allocator);
+        // The browser's record of the tab's current history step too (CDP
+        // Page.getNavigationHistory's title: Chrome's entry title).
+        b.recordNavigationEntryTitle(navigable, title.asSlice());
         self.postTitle(navigable, title.asSlice());
     }
 
@@ -285,6 +288,7 @@ pub const BrowserSide = struct {
             if (bc.getActiveDocument() != @as(*anyopaque, @ptrCast(document))) continue;
             var title = @import("interfaces").Document.get_title(document) catch return;
             defer title.deinit(document.ctx.allocator);
+            b.recordNavigationEntryTitle(bc.id, title.asSlice());
             self.postTitle(bc.id, title.asSlice());
             return;
         }

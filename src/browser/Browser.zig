@@ -1164,6 +1164,45 @@ pub const Browser = struct {
         return true;
     }
 
+    /// One entry of `navigationHistory` (joint_history.NavigationEntry), its
+    /// strings in the caller's allocator.
+    pub const NavigationHistoryEntry = html_mod.navigation.joint_history.NavigationEntry;
+
+    /// Traversable `id`'s history as the browser lists it - what Chrome's
+    /// NavigationController gives CDP's Page.getNavigationHistory: each step
+    /// of its joint session history in order (the id of the entry that
+    /// introduced it, the traversable's URL there, the browser's record of
+    /// the step: joint_history.NavigationEntryRecord), and the current
+    /// step's index. Everything is copied into `arena`, which is meant to be
+    /// one (nothing is freed on an error).
+    pub fn navigationHistory(self: *Browser, id: u64, arena: std.mem.Allocator) !struct { entries: []NavigationHistoryEntry, current: usize } {
+        const bc = self.openTraversable(id) orelse return error.NoSuchTraversable;
+        const history = try bc.ensureHistoryEntries(&historyDocumentInfo);
+        var list: std.ArrayList(NavigationHistoryEntry) = .empty;
+        defer list.deinit(self.allocator);
+        const current = try history.navigationEntries(self.allocator, &list);
+        const out = try arena.alloc(NavigationHistoryEntry, list.items.len);
+        for (list.items, out) |e, *o| o.* = .{
+            .id = e.id,
+            .url = try arena.dupe(u8, e.url),
+            .title = try arena.dupe(u8, e.title),
+            .transition = e.transition,
+            .user_typed_url = try arena.dupe(u8, e.user_typed_url),
+        };
+        return .{ .entries = out, .current = current };
+    }
+
+    /// Traversable `id`'s active document reports its title `title`: the
+    /// browser's record of the current history step takes it (Chrome's
+    /// WebContentsImpl::UpdateTitle sets the committed entry's title; CDP's
+    /// getNavigationHistory lists it). User agent data only: nothing of
+    /// HTML's reads it.
+    pub fn recordNavigationEntryTitle(self: *Browser, id: u64, title: []const u8) void {
+        const bc = self.openTraversable(id) orelse return;
+        const history = bc.ensureHistoryEntries(&historyDocumentInfo) catch return;
+        history.recordTitle(title);
+    }
+
     /// HTML "close a top-level traversable" for `id` as a page's
     /// window.close() would - prompting to unload: its documents are asked
     /// about unloading (beforeunload), unloaded and destroyed, and its

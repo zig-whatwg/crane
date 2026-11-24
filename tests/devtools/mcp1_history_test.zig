@@ -43,6 +43,23 @@ fn browserPath(allocator: Allocator, port: u16) ![]u8 {
     return allocator.dupe(u8, ws[std.mem.indexOf(u8, ws, "/devtools/").?..]);
 }
 
+/// 1 when the first entry is a browser's startup navigation to about:blank
+/// and not the current one: set apart from what is compared. Chrome
+/// navigates its startup URL (headless, and Puppeteer, start it with
+/// about:blank: entry e0, auto_toplevel), so its first navigation pushes;
+/// Firefox 159 and Safari 27.2 under WebDriver keep their first tab's
+/// initial about:blank, which the first navigation replaces (lane mcp1's
+/// probe, chat.local 2026-11-24, .mcp1/startup-probe.sh: history.length
+/// stays 1, back() stays), and Crane does as they and HTML do (main's
+/// ruling: the browser majority).
+fn startupEntry(entries: []const std.json.Value, current: i64) usize {
+    if (entries.len == 0 or current == 0) return 0;
+    const first = entries[0];
+    const is_startup = std.mem.eql(u8, cdp.stringAt(first, "transitionType") orelse "", "auto_toplevel") and
+        std.mem.eql(u8, cdp.stringAt(first, "url") orelse "", "about:blank");
+    return if (is_startup) 1 else 0;
+}
+
 const Probe = struct {
     arena: Allocator,
     rec: replay.Recorder,
@@ -93,8 +110,11 @@ const Probe = struct {
             try out.writer.print("error {s}", .{cdp.stringAt(e, "message") orelse "?"});
         } else {
             const result = cdp.at(answer, "result").?;
-            try out.writer.print("current {d}", .{result.object.get("currentIndex").?.integer});
-            for (result.object.get("entries").?.array.items) |entry| {
+            const current = result.object.get("currentIndex").?.integer;
+            const entries = result.object.get("entries").?.array.items;
+            const skip = startupEntry(entries, current);
+            try out.writer.print("current {d}", .{current - @as(i64, @intCast(skip))});
+            for (entries[skip..]) |entry| {
                 try out.writer.print("\n{s} {s} {s} typed={s} title={s}", .{
                     try self.label(entry.object.get("id").?.integer),
                     cdp.stringAt(entry, "transitionType") orelse "?",
@@ -108,10 +128,11 @@ const Probe = struct {
         return out.written();
     }
 
-    /// The id of entry `index` now.
+    /// The id of entry `index` now (counted after a startup entry).
     fn entryId(self: *Probe, index: usize) !i64 {
         const result = try self.rec.result(try self.rec.send("Page.getNavigationHistory", "{}", self.session));
-        return result.object.get("entries").?.array.items[index].object.get("id").?.integer;
+        const entries = result.object.get("entries").?.array.items;
+        return entries[index + startupEntry(entries, result.object.get("currentIndex").?.integer)].object.get("id").?.integer;
     }
 
     fn navigate(self: *Probe, url: []const u8) !void {
@@ -188,10 +209,10 @@ fn check(allocator: Allocator, arena: Allocator, client: *cdp.Client, s: *replay
     const submitted = try probe.history("form submitted");
     try probe.reload();
     const reloaded = try probe.history("reloaded");
-    try probe.go(1, true);
-    const back_far = try probe.history("navigateToHistoryEntry 1");
-    try probe.go(4, false);
-    const forward_same = try probe.history("navigateToHistoryEntry 4");
+    try probe.go(0, true);
+    const back_far = try probe.history("navigateToHistoryEntry 0");
+    try probe.go(3, false);
+    const forward_same = try probe.history("navigateToHistoryEntry 3");
     const unknown = try probe.errorOf("Page.navigateToHistoryEntry", "{\"entryId\":987654321}");
     try probe.run("history.back()", false);
     const page_back = try probe.history("history.back()");
@@ -205,51 +226,44 @@ fn check(allocator: Allocator, arena: Allocator, client: *cdp.Client, s: *replay
 }
 
 /// What Chrome for Testing 157.0.8103.78 answered (recorded on chat2 with
-/// CRANE_CDP_TRACE_CHROME_PORT, 2026-11-24), one line each.
+/// CRANE_CDP_TRACE_CHROME_PORT, 2026-11-24), one line each, its startup
+/// entry set apart (`startupEntry`).
 const chrome_157 = [_][]const u8{
     "current 0",
     "e0 auto_toplevel about:blank typed=about:blank title=",
-    "-- current 1",
-    "e0 auto_toplevel about:blank typed=about:blank title=",
+    "-- current 0",
     "e1 typed {site}/ typed={site}/ title=replay",
-    "-- current 2",
-    "e0 auto_toplevel about:blank typed=about:blank title=",
+    "-- current 1",
     "e1 typed {site}/ typed={site}/ title=replay",
     "e2 typed {site}/ typed={site}/ title=replay",
-    "-- current 3",
-    "e0 auto_toplevel about:blank typed=about:blank title=",
+    "-- current 2",
     "e1 typed {site}/ typed={site}/ title=replay",
     "e2 typed {site}/ typed={site}/ title=replay",
     "e3 link {site}/pushed typed={site}/ title=replay",
-    "-- current 4",
-    "e0 auto_toplevel about:blank typed=about:blank title=",
+    "-- current 3",
     "e1 typed {site}/ typed={site}/ title=replay",
     "e2 typed {site}/ typed={site}/ title=replay",
     "e3 link {site}/pushed typed={site}/ title=replay",
     "e4 link {site}/pushed#x typed={site}/ title=replay",
-    "-- current 4",
-    "e0 auto_toplevel about:blank typed=about:blank title=",
+    "-- current 3",
     "e1 typed {site}/ typed={site}/ title=replay",
     "e2 typed {site}/ typed={site}/ title=replay",
     "e3 link {site}/pushed typed={site}/ title=replay",
     "e4 link {site}/pushed#x typed={site}/ title=Changed",
-    "-- current 5",
-    "e0 auto_toplevel about:blank typed=about:blank title=",
+    "-- current 4",
     "e1 typed {site}/ typed={site}/ title=replay",
     "e2 typed {site}/ typed={site}/ title=replay",
     "e3 link {site}/pushed typed={site}/ title=replay",
     "e4 link {site}/pushed#x typed={site}/ title=Changed",
     "e5 typed {site}/streamed.html typed={site}/streamed.html title=streamed",
-    "-- current 6",
-    "e0 auto_toplevel about:blank typed=about:blank title=",
+    "-- current 5",
     "e1 typed {site}/ typed={site}/ title=replay",
     "e2 typed {site}/ typed={site}/ title=replay",
     "e3 link {site}/pushed typed={site}/ title=replay",
     "e4 link {site}/pushed#x typed={site}/ title=Changed",
     "e5 typed {site}/streamed.html typed={site}/streamed.html title=streamed",
     "e6 link {site}/reject.html typed={site}/reject.html title=reject",
-    "-- current 7",
-    "e0 auto_toplevel about:blank typed=about:blank title=",
+    "-- current 6",
     "e1 typed {site}/ typed={site}/ title=replay",
     "e2 typed {site}/ typed={site}/ title=replay",
     "e3 link {site}/pushed typed={site}/ title=replay",
@@ -257,8 +271,7 @@ const chrome_157 = [_][]const u8{
     "e5 typed {site}/streamed.html typed={site}/streamed.html title=streamed",
     "e6 link {site}/reject.html typed={site}/reject.html title=reject",
     "e7 form_submit {site}/frame.html?q=1 typed={site}/frame.html?q=1 title=",
-    "-- current 7",
-    "e0 auto_toplevel about:blank typed=about:blank title=",
+    "-- current 6",
     "e1 typed {site}/ typed={site}/ title=replay",
     "e2 typed {site}/ typed={site}/ title=replay",
     "e3 link {site}/pushed typed={site}/ title=replay",
@@ -266,8 +279,7 @@ const chrome_157 = [_][]const u8{
     "e5 typed {site}/streamed.html typed={site}/streamed.html title=streamed",
     "e6 link {site}/reject.html typed={site}/reject.html title=reject",
     "e7 reload {site}/frame.html?q=1 typed={site}/frame.html?q=1 title=",
-    "-- current 1",
-    "e0 auto_toplevel about:blank typed=about:blank title=",
+    "-- current 0",
     "e1 typed {site}/ typed={site}/ title=replay",
     "e2 typed {site}/ typed={site}/ title=replay",
     "e3 link {site}/pushed typed={site}/ title=replay",
@@ -275,8 +287,7 @@ const chrome_157 = [_][]const u8{
     "e5 typed {site}/streamed.html typed={site}/streamed.html title=streamed",
     "e6 link {site}/reject.html typed={site}/reject.html title=reject",
     "e7 reload {site}/frame.html?q=1 typed={site}/frame.html?q=1 title=",
-    "-- current 4",
-    "e0 auto_toplevel about:blank typed=about:blank title=",
+    "-- current 3",
     "e1 typed {site}/ typed={site}/ title=replay",
     "e2 typed {site}/ typed={site}/ title=replay",
     "e3 link {site}/pushed typed={site}/ title=replay",
@@ -285,8 +296,7 @@ const chrome_157 = [_][]const u8{
     "e6 link {site}/reject.html typed={site}/reject.html title=reject",
     "e7 reload {site}/frame.html?q=1 typed={site}/frame.html?q=1 title=",
     "-- -32602 No entry with passed id",
-    "-- current 3",
-    "e0 auto_toplevel about:blank typed=about:blank title=",
+    "-- current 2",
     "e1 typed {site}/ typed={site}/ title=replay",
     "e2 typed {site}/ typed={site}/ title=replay",
     "e3 link {site}/pushed typed={site}/ title=replay",
