@@ -130,8 +130,8 @@ test "owned is mutable, so borrowed memory cannot be adopted by mistake" {
     // borrowed from owned again, which is the V8-getter double free: the string is
     // adopted, then freed by deinit, while its real owner still holds it.
     try std.testing.expect(@FieldType(DOMString, "owned") == []u8);
-    try std.testing.expect(!@typeInfo(@FieldType(DOMString, "owned")).pointer.is_const);
+    try std.testing.expect(!@typeInfo(@FieldType(DOMString, "owned")).pointer.attrs.@"const");
 
     // interned stays const - it is the correct home for anything borrowed.
-    try std.testing.expect(@typeInfo(@FieldType(DOMString, "interned")).pointer.is_const);
+    try std.testing.expect(@typeInfo(@FieldType(DOMString, "interned")).pointer.attrs.@"const");
 }
