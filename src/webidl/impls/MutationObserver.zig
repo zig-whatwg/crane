@@ -54,15 +54,16 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     /// The observer's callback, a MutationCallback value: OWNED, released in
-    /// deinit - and held WEAKLY, the observer's wrapper keeping the function
-    /// (`callback_slot`, engine.traceValues; refcount step 8, decision D7):
-    /// a callback that closes over its observer, or over the nodes it
-    /// observes, no longer keeps them alive. WebKit marks the callback from
-    /// the observer's wrapper (JSMutationObserver::
-    /// visitAdditionalChildrenInGCThread -> callback().visitJSFunctionInGCThread,
-    /// bindings/js/JSMutationObserverCustom.cpp); Blink traces its delegate_.
-    /// Strong on an engine with no traced values.
-    callback: ?engine.CallbackFunction = null,
+    /// deinit - a TRACED hold (engine.TracedHold; refcount step 8, decision
+    /// D7): the observer's holder anchor keeps it when a collection reaches
+    /// the observer's wrapper (`traceHeldNodes`), and nothing roots it, so a
+    /// callback that closes over its observer, or over the nodes it
+    /// observes, no longer keeps them alive. Blink traces its delegate_
+    /// (MutationObserver::Trace); WebKit marks the callback from the
+    /// observer's wrapper (JSMutationObserver::
+    /// visitAdditionalChildrenInGCThread). Strong on an engine with no
+    /// traced values.
+    callback: ?engine.TracedCallback = null,
 
     /// The nodes this observer is registered on - "a list of weak references
     /// to nodes". A node going away removes itself (through
@@ -75,8 +76,8 @@ pub const InternalState = struct {
     // What keeps an observer script no longer names (refcount step 8, the
     // cycle breakers): a node's registered observers are strong references
     // in the spec, and here they are EDGES - every node that lists this
-    // observer keeps its wrapper from the node's own wrapper (`traceListed`,
-    // engine.traceValues in the node's "observers" slot), as Blink's node
+    // observer's wrapper is kept by the walk where it visits that node
+    // (dom.wrapper_tracing.traceNodeValues, engine.traceWrapperOf), as Blink's node
     // keeps MutationObserverRegistration's `Member<MutationObserver>
     // observer_` and WebKit's JSMutationObserverOwner answers "Reachable
     // from observed nodes" (MutationObserver::isReachableFromOpaqueRoots).
@@ -145,6 +146,8 @@ pub const InternalState = struct {
     /// own wrapper too - the walk's dedupe makes that cheap.
     pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
         const self = Accessor.get(instance) orelse return;
+        // The callback (refcount step 8).
+        if (self.callback) |callback| engine.traceHeld(tracer, callback.hold);
         for (self.record_queue.records.items) |record| traceRecord(record, tracer);
         for (self.delivering) |record| traceRecord(record, tracer);
     }
@@ -269,9 +272,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         // Off the agent's pending mutation observers, and the keep that
         // membership held, if any (dom.mutation_observer_algorithms).
         dom_module.mutation_observer_algorithms.forgetObserver(instance);
-        // An observer freed before its wrapper was made leaves no edge
-        // waiting for one (engine.forgetTracedChild).
-        engine.forgetTracedChild(instance, callback_slot);
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator - do NOT destroy
         // Return the block itself, not just what it points to. The comment this
@@ -298,12 +298,9 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallba
     // function over, and the observer keeps it (OWNED) with its callback
     // context.
     const internal = getInternal(instance);
-    const kept = callback.keep();
-    internal.callback = kept;
-    // The observer's wrapper keeps the function, the state's hold of it is
-    // weak (refcount step 8): until the binding wraps `this`, the edge waits
-    // in the realm's wrapper cache, strong.
-    if (engine.traceValues(instance, &.{kept.function.value}, callback_slot)) engine.holdWeakly(kept.function);
+    // A traced hold (refcount step 8): the observer's wrapper's anchor keeps
+    // it once the binding wraps `this`; until then the call's argument does.
+    internal.callback = callback.keepTraced();
 
     // Steps 2-3: "Set this's creation index to this's relevant agent's
     // mutation observer counter. Increase this's relevant agent's mutation
@@ -437,9 +434,9 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
                     .observer_generation = runtime.SlabAllocator.generationOf(instance),
                     .options = reg_options,
                 }) catch return error.OutOfMemory;
-                // Registered: the target keeps this observer from its
-                // wrapper (`traceListed`).
-                traceListed(target, nodebase);
+                // Registered: the walk keeps this observer from the target
+                // (dom.wrapper_tracing.traceNodeValues).
+                dom_module.wrapper_tracing.noteNodeHoldsValues(target, nodebase);
             }
         }
     } else {
@@ -461,52 +458,6 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
     }
 }
 
-/// The slot an observer's wrapper keeps its callback in.
-const callback_slot: engine.TracedSlot = .{ .name = "callback" };
-
-/// The slot a node's wrapper keeps the observers it lists in.
-const observers_slot: engine.TracedSlot = .{ .name = "observers" };
-
-/// `node`'s wrapper keeps every observer `nodebase` lists now - registered
-/// or transient - and nothing else (engine.traceValues): DOM's registered
-/// observer list holds its observers strongly, and so does Blink's
-/// (MutationObserverRegistration `Member<MutationObserver> observer_`,
-/// traced from the node; its transient registration nodes are traced too),
-/// as WebKit's MutationObserver is reachable from each registration's node
-/// and transient nodes (MutationObserverRegistration::
-/// isReachableFromOpaqueRoots). Called after every change of the list but
-/// the node's own teardown. A node script never wrapped gets no edge: no
-/// edge waits for its wrapper, a Global held per unwrapped node until it is
-/// freed (docs/lessons/architecture-trace-only-what-nothing-else-keeps.md) -
-/// a transient registration on such a node, whose subtree script reaches
-/// only below it, keeps its observer through the records it queues (the
-/// agent's pending keep), not before: the stated gap against WebKit's
-/// opaque roots, which find the observer from any wrapper of the tree.
-fn traceListed(node: *runtime.Instance, nodebase: *NodeBase) void {
-    if (!engine.hasWrapper(node)) return;
-    var inline_values: [8]runtime.JSValue = undefined;
-    var count: usize = 0;
-    var entries = nodebase.registeredObservers();
-    while (entries.next()) |_| count += 1;
-    const allocator = runtime.allocatorOf(node);
-    const values: []runtime.JSValue = if (count <= inline_values.len)
-        inline_values[0..count]
-    else
-        allocator.alloc(runtime.JSValue, count) catch return;
-    defer if (count > inline_values.len) allocator.free(values);
-    var at: usize = 0;
-    entries = nodebase.registeredObservers();
-    while (entries.next()) |registered| {
-        const observer: *runtime.Instance = @ptrCast(@alignCast(handles.mutationObserverToAnyopaque(registered.observer) orelse continue));
-        // An observer a teardown sweep freed first is no longer listed in
-        // any sense that matters (`observer_generation`).
-        if (runtime.SlabAllocator.generationOf(observer) != registered.observer_generation) continue;
-        values[at] = .{ .instance = observer };
-        at += 1;
-    }
-    _ = engine.traceValues(node, values[0..at], observers_slot);
-}
-
 /// Remove every registration whose observer is `instance` from the nodes in
 /// its node list that are still alive, and empty the list. The first step of
 /// disconnect(), and the observer's own teardown.
@@ -514,15 +465,12 @@ fn unregisterFromNodes(instance: *runtime.Instance, internal: *InternalState) vo
     const instance_ptr: *anyopaque = @ptrCast(instance);
     for (internal.node_list.items) |weak| {
         const nodebase = liveNode(weak) orelse continue;
-        var removed = false;
         var entries = nodebase.registeredObservers();
         while (entries.next()) |registered| {
             if (handles.mutationObserverToAnyopaque(registered.observer) == instance_ptr) {
                 nodebase.removeRegisteredObserver(registered);
-                removed = true;
             }
         }
-        if (removed) traceListed(@constCast(weak.instance), nodebase);
     }
     internal.node_list.clearRetainingCapacity();
     // And the transient copies, which borrow this observer's attribute
@@ -539,19 +487,16 @@ fn removeTransientsWhere(instance: *runtime.Instance, internal: *InternalState, 
     for (internal.transient_nodes.items) |weak| {
         var still_listed = false;
         if (liveNode(weak)) |nodebase| {
-            var removed = false;
             var entries = nodebase.registeredObservers();
             while (entries.next()) |registered| {
                 const mine = registered.transient_source != null and
                     handles.mutationObserverToAnyopaque(registered.observer) == instance_ptr;
                 if (mine and (source == null or registered.transient_source == source)) {
                     nodebase.removeRegisteredObserver(registered);
-                    removed = true;
                     continue;
                 }
                 if (mine) still_listed = true;
             }
-            if (removed) traceListed(@constCast(weak.instance), nodebase);
         }
         if (still_listed) {
             internal.transient_nodes.items[kept] = weak;
@@ -572,8 +517,9 @@ fn transientAddedHook(observer: *runtime.Instance, generation: u64, node: *runti
         if (namesNode(weak, node)) return;
     }
     const nodebase = instance_bridge.getNodeBase(@ptrCast(node)) orelse return;
-    // The node keeps the observer it lists now (`traceListed`).
-    traceListed(node, nodebase);
+    // The node keeps the observer it lists now (the walk's
+    // traceNodeValues).
+    dom_module.wrapper_tracing.noteNodeHoldsValues(node, nodebase);
     const weak = WeakNode.of(nodebase) orelse return;
     internal.transient_nodes.append(internal.allocator, weak) catch {};
 }
@@ -717,10 +663,18 @@ fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Instanc
     const realm = instance.ctx;
 
     // No callback - clean up records.
-    const callback = internal.callback orelse {
+    // A collected callback (no trace reached its observer) delivers nothing.
+    const traced = internal.callback orelse {
         for (records) |record| runtime.Instance.deinit(record);
         return;
     };
+    if (traced.hold.isEmpty()) {
+        for (records) |record| runtime.Instance.deinit(record);
+        return;
+    }
+    // BORROWED from the hold, which outlives the call (the observer is
+    // pending, and the call retains what it invokes).
+    const callback = traced.asFunction();
 
     // The records as a sequence<MutationRecord>, made in the callback's realm
     // and world (WebIDL invoke steps 5 and 10: dom.callback_sequences).

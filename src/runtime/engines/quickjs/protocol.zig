@@ -717,13 +717,6 @@ pub fn traceValue(_: *Instance, _: JSValue, _: engine.TracedSlot) void {}
 pub fn tracedValue(_: *Instance, _: engine.TracedSlot) ?Owned {
     return null;
 }
-/// No traced values: the caller keeps its holds strong. With QuickJS linked,
-/// the owner class's `gc_mark` would mark them (JS_MarkValue).
-pub fn traceValues(_: *Instance, _: []const JSValue, _: engine.TracedSlot) bool {
-    return false;
-}
-/// Never reached (`traceValues` answers false): holds stay strong.
-pub fn holdWeakly(_: Owned) void {}
 /// No node is wrapped yet, so there is no opaque root to keep. With QuickJS
 /// linked, a node class's `gc_mark` reports these edges natively.
 pub fn joinOpaqueRoot(_: *Instance, _: *Instance) void {}

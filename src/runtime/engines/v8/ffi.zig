@@ -3913,25 +3913,6 @@ pub extern fn v8_Proxy_IsRevoked(proxy: *Object) bool;
 /// taken over.
 pub extern fn v8_Object_SetPrivateRef(holder: *Object, key: [*]const u8, key_len: c_int, value: *Value) void;
 
-/// engine.traceValues: `holder` keeps exactly `values` (`count` BORROWED
-/// handles; an emptied one stands as undefined) under the private `key` -
-/// the value, or an Array of them; undefined for none. Whether it holds them.
-pub extern fn v8_Object_SetPrivateValues(holder: *Object, key: [*]const u8, key_len: c_int, values: [*]const ?*Value, count: usize) bool;
-
-/// The one value `v8_Object_SetPrivateValues` would keep for `values` under
-/// `key`, as a Global of the caller's own (an edge waiting for its owner's
-/// wrapper); `key` is registered as a traced values key.
-pub extern fn v8_Values_GatherTraced(key: [*]const u8, key_len: c_int, values: [*]const ?*Value, count: usize) ?*Value;
-
-/// Every traced values set `from` keeps (BORROWED), kept by `to` (BORROWED)
-/// too: an owner's wrapper made in one isolated world gets the sets its
-/// wrapper in another keeps (protocol_worlds.drawTracedValuesOnWrap).
-pub extern fn v8_Object_CopyTracedValues(from: *Object, to: *Object) void;
-
-/// engine.holdWeakly: `hold` stops keeping its value (a phantom handle V8
-/// resets when it collects the value); its realm tag goes with it.
-pub extern fn v8_Global_HoldWeakly(hold: *Value) void;
-
 pub extern fn v8_CreateLegacyPlatformObjectProxy(context: *Context, target: *Object, named_setter: bool) ?*Object;
 
 // Lane regions for additive FFI (AGENTS.md "The engine boundary"): each lane adds

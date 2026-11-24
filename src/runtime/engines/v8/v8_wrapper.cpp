@@ -3803,19 +3803,6 @@ struct IsolateData {
     /// it to: made on first use, reset by v8_Isolate_Dispose while the
     /// isolate lives. Never disposed by a caller.
     Global<Value> null_value;
-    /// engine.traceValues' private keys, by slot key (v8_Object_SetPrivateValues):
-    /// made on first use - Private::ForApi interns its name and looks it up
-    /// in the isolate's registry, which a listener added and removed in a
-    /// loop paid twice an iteration - and reset by v8_Isolate_Dispose while
-    /// the isolate lives. The same Private ForApi gives for the name, so
-    /// tracedValue, forgetTracedChild and a deferred edge drawn at a wrap
-    /// (v8_Object_SetPrivateRef) name the same property. A handful per
-    /// isolate: "listeners", "observers", an observer's "callback".
-    struct TracedValuesKey {
-        std::string name;
-        Global<Private> key;
-    };
-    std::vector<TracedValuesKey> traced_values_keys;
     // Inert unless a tests/v8 lifecycle probe is installed. The test clears
     // the hook before its borrowed stack payload expires.
     void (*test_promise_hook)(int, void*) = nullptr;
@@ -7116,8 +7103,6 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             for (SyntheticJsonExport* entry : record->synthetic_json_exports) deleteSyntheticExport(entry);
             record->synthetic_json_exports.clear();
             record->null_value.Reset();
-            for (IsolateData::TracedValuesKey& entry : record->traced_values_keys) entry.key.Reset();
-            record->traced_values_keys.clear();
         }
 
         // Records that a dispose detached from their Global while V8 still had
@@ -9663,166 +9648,6 @@ void v8_Object_SetPrivateRef(Global<Object>* holder, const char* key, int key_le
     notePlatformWrapperChanged(isolate, object);
 }
 
-/// engine.traceValues' private key named `key` on `isolate`: the isolate
-/// record's (IsolateData::traced_values_keys), made on first use. Empty only
-/// when the name cannot be made.
-static Local<Private> tracedValuesKey(Isolate* isolate, const char* key, int key_len) {
-    IsolateData* record = isolateData(isolate);
-    const size_t len = static_cast<size_t>(key_len);
-    if (record) {
-        for (IsolateData::TracedValuesKey& entry : record->traced_values_keys) {
-            if (entry.name.size() == len && memcmp(entry.name.data(), key, len) == 0) return entry.key.Get(isolate);
-        }
-    }
-    Local<String> name;
-    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return Local<Private>();
-    Local<Private> priv = Private::ForApi(isolate, name);
-    if (record) record->traced_values_keys.push_back({std::string(key, len), Global<Private>(isolate, priv)});
-    return priv;
-}
-
-/// The one value engine.traceValues keeps for `values` (`count` BORROWED
-/// handles), in the caller's HandleScope: undefined for none, the value
-/// itself for one, a new Array of them for more. A handle a collection
-/// emptied - a weak hold whose value is gone - stands as undefined: there is
-/// nothing left to keep. Every handle is read before anything here allocates
-/// (an allocation can start a collection that empties a weak one; see
-/// v8_Object_SetPrivateRef). Empty only when the Array cannot be made.
-static Local<Value> gatherTracedValues(Isolate* isolate, Global<Value>* const* values, size_t count) {
-    if (count == 0) return Undefined(isolate);
-    auto read = [&](size_t i) -> Local<Value> {
-        Global<Value>* handle = values[i];
-        if (!handle || handle->IsEmpty()) return Undefined(isolate);
-        return handle->Get(isolate);
-    };
-    if (count == 1) return read(0);
-    constexpr size_t kInline = 16;
-    Local<Value> inline_locals[kInline];
-    std::vector<Local<Value>> heap_locals;
-    Local<Value>* locals = inline_locals;
-    if (count > kInline) {
-        // Reading every handle into the HandleScope first is what the rule
-        // above needs; the vector's own allocation is malloc, never the heap.
-        heap_locals.resize(count);
-        locals = heap_locals.data();
-    }
-    for (size_t i = 0; i < count; i++) locals[i] = read(i);
-    return Array::New(isolate, locals, count);
-}
-
-/// engine.traceValues on V8: `holder` (an owner's wrapper, or a Window's
-/// retained store) keeps exactly `values` under the private `key` - the
-/// value itself, or an Array of them; undefined for none (the property, once
-/// made, is never deleted: a deletion of anything but the last property a
-/// wrapper got turns it into a dictionary-mode object). Whether the property
-/// holds them now. A private property makes the wrapper "modified": V8 no
-/// longer drops it in a young-generation collection
-/// (JSObject::IsUnmodifiedApiObject), so a node whose listeners only its
-/// wrapper keeps keeps that wrapper through scavenges; a wrapper cache record
-/// that held its wrapper by a traced reference holds it by a weak handle from
-/// here (notePlatformWrapperChanged).
-bool v8_Object_SetPrivateValues(Global<Object>* holder, const char* key, int key_len, Global<Value>* const* values, size_t count) {
-    if (!holder || holder->IsEmpty()) return false;
-    Isolate* isolate = Isolate::GetCurrent();
-    if (!isolate) return false;
-    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
-    HandleScope handle_scope(isolate);
-    Local<Object> object = holder->Get(isolate);
-    Local<Value> kept = gatherTracedValues(isolate, values, count);
-    if (object.IsEmpty() || kept.IsEmpty()) return false;
-    Local<Context> context = isolate->GetCurrentContext();
-    if (context.IsEmpty()) return false;
-    Local<Private> priv = tracedValuesKey(isolate, key, key_len);
-    if (priv.IsEmpty()) return false;
-    // Nothing to keep on a wrapper that never kept anything: no property, no
-    // map transition.
-    if (count == 0 && !object->HasPrivate(context, priv).FromMaybe(true)) return true;
-    if (!object->SetPrivate(context, priv, kept).FromMaybe(false)) return false;
-    notePlatformWrapperChanged(isolate, object);
-    return true;
-}
-
-/// The value engine.traceValues keeps for `values` (`count` BORROWED
-/// handles) under the private `key` as one Global of the caller's own - for
-/// an owner script has not seen yet, whose edge waits in its realm's wrapper
-/// cache for its wrapper (WrapperCache.deferEdge takes it over). The key is
-/// registered as a traced values key (`tracedValuesKey`) though no wrapper
-/// holds it yet, so a wrapper another world makes for the owner meanwhile
-/// copies it (v8_Object_CopyTracedValues). Null when it cannot be made.
-Global<Value>* v8_Values_GatherTraced(const char* key, int key_len, Global<Value>* const* values, size_t count) {
-    Isolate* isolate = Isolate::GetCurrent();
-    if (!isolate) return nullptr;
-    HandleScope handle_scope(isolate);
-    Local<Value> kept = gatherTracedValues(isolate, values, count);
-    if (kept.IsEmpty()) return nullptr;
-    (void)tracedValuesKey(isolate, key, key_len);
-    return trackHandle(new Global<Value>(isolate, kept));
-}
-
-/// engine.traceValues across isolated worlds (refcount step 8, option (c);
-/// protocol_worlds.drawTracedValuesOnWrap): every set `from` - a wrapper of
-/// an owner in one world - keeps under a traced values key, kept by `to` as
-/// well - the owner's wrapper just made in another world - the same value,
-/// so the set lives while ANY wrapper of the owner does, as Blink's
-/// listeners live while their C++ EventTarget does (EventTarget::Trace ->
-/// EventListenerMap -> TraceWrapperV8Reference), whichever world's wrapper
-/// keeps it. Both handles BORROWED. Every value is read before anything
-/// here allocates (`gatherTracedValues`' rule): `from` holds them until then.
-/// The value is shared, never changed in place: a later traceValues sets a
-/// new one on each wrapper. Needs a current context, which every wrap has.
-void v8_Object_CopyTracedValues(Global<Object>* from, Global<Object>* to) {
-    if (!from || !to || from->IsEmpty() || to->IsEmpty()) return;
-    Isolate* isolate = Isolate::GetCurrent();
-    if (!isolate) return;
-    IsolateData* record = isolateData(isolate);
-    if (!record || record->traced_values_keys.empty()) return;
-    NativeStepScope native_step(isolate);  // not a script call: no kAuto checkpoint (NativeStepScope)
-    HandleScope handle_scope(isolate);
-    Local<Context> context = isolate->GetCurrentContext();
-    if (context.IsEmpty()) return;
-    Local<Object> source = from->Get(isolate);
-    Local<Object> target = to->Get(isolate);
-    if (source.IsEmpty() || target.IsEmpty()) return;
-    constexpr size_t kInline = 8;
-    const size_t key_count = record->traced_values_keys.size();
-    if (key_count > kInline) return;  // a handful per isolate (TracedValuesKey)
-    Local<Private> keys[kInline];
-    Local<Value> kept[kInline];
-    size_t found = 0;
-    // Read first: GetPrivate allocates nothing, SetPrivate may.
-    for (size_t i = 0; i < key_count; i++) {
-        Local<Private> priv = record->traced_values_keys[i].key.Get(isolate);
-        if (!source->HasPrivate(context, priv).FromMaybe(false)) continue;
-        Local<Value> value;
-        if (!source->GetPrivate(context, priv).ToLocal(&value) || value->IsUndefined()) continue;
-        keys[found] = priv;
-        kept[found] = value;
-        found++;
-    }
-    bool changed = false;
-    for (size_t i = 0; i < found; i++) {
-        if (target->SetPrivate(context, keys[i], kept[i]).FromMaybe(false)) changed = true;
-    }
-    // A private property moves the wrapper off its initial map: a cache
-    // record holding it by a traced reference holds it by a weak handle from
-    // here, as for v8_Object_SetPrivateValues.
-    if (changed) notePlatformWrapperChanged(isolate, target);
-}
-
-/// engine.holdWeakly on V8: the hold - a Global box the protocol handed out
-/// (an Owned's handle) - stops keeping its value. Global::SetWeak() with no
-/// parameter makes a phantom handle V8 RESETS when it collects the value
-/// (v8-persistent-handle.h), so the box reads empty afterwards and is
-/// disposed as any other. Its realm tag goes first: the tag exists to make a
-/// listener's hold weak when its realm detaches (v8_Object_WeakenTaggedHandles),
-/// and the edge `traceValues` drew keeps the value now, from its owner. No
-/// weak arm: nothing runs when V8 resets it.
-void v8_Global_HoldWeakly(Global<Value>* hold) {
-    if (!hold || hold->IsEmpty()) return;
-    untagRealmHandle(hold);
-    if (hold->IsWeak()) return;
-    hold->SetWeak();
-}
 
 void v8_Object_Dispose(Global<Object>* obj) {
     if (!obj) return;

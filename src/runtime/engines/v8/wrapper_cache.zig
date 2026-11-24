@@ -50,7 +50,6 @@ const engine = @import("engine");
 const realm_finalizers = @import("realm_finalizers.zig");
 const node_wrappers = @import("node_wrappers.zig");
 const platform_anchor = @import("platform_anchor.zig");
-const protocol_worlds = @import("protocol_worlds.zig");
 const tombstones = @import("webidl").utils.tombstones;
 /// Every map keyed by an instance hashes it under a seed of its own
 /// (infra.address_map): this cache's end frees objects by walking `cache`,
@@ -2123,10 +2122,6 @@ pub const WrapperCache = struct {
     pub const DeferredEdge = struct {
         key: []u8,
         child: *v8.Value,
-        /// An engine.traceValues set, which every wrapper of the owner keeps
-        /// - an isolated world's made before this realm's included
-        /// (`takeWaitingValues`) - not one child's edge.
-        values: bool = false,
 
         fn dispose(self: DeferredEdge, allocator: std.mem.Allocator) void {
             v8.v8_Global_Dispose(self.child);
@@ -2136,9 +2131,8 @@ pub const WrapperCache = struct {
 
     /// Hold `child` - a Global the cache takes over, on failure too - for
     /// `owner`, whose wrapper is not made yet, under `key`; until then the
-    /// hold is strong. Replaces an edge in the same key. `values`: `child`
-    /// is an engine.traceValues set (`DeferredEdge.values`).
-    pub fn deferEdge(self: *Self, owner: *runtime.Instance, key: []const u8, child: *v8.Value, values: bool) error{OutOfMemory}!void {
+    /// hold is strong. Replaces an edge in the same key.
+    pub fn deferEdge(self: *Self, owner: *runtime.Instance, key: []const u8, child: *v8.Value) error{OutOfMemory}!void {
         errdefer v8.v8_Global_Dispose(child);
         const owners = self.edges_before_wrap.count();
         if (owners < small_deferred_map or owners >= self.prune_watermark) {
@@ -2159,41 +2153,11 @@ pub const WrapperCache = struct {
             if (!std.mem.eql(u8, edge.key, key)) continue;
             v8.v8_Global_Dispose(edge.child);
             edge.child = child;
-            edge.values = values;
             return;
         }
         const owned_key = try self.allocator.dupe(u8, key);
         errdefer self.allocator.free(owned_key);
-        try gop.value_ptr.edges.append(self.allocator, .{ .key = owned_key, .child = child, .values = values });
-    }
-
-    /// `owner`'s wrapper in ANOTHER realm - an isolated world's (refcount
-    /// step 8, option (c); protocol_worlds.drawTracedValuesOnWrap) - was
-    /// just made: it takes the engine.traceValues sets waiting here for
-    /// `owner`'s wrapper in this realm, drawn on `wrapper` (BORROWED), and
-    /// they wait no more - a wrapper this realm makes later copies them from
-    /// that one, and a set that waited on, strongly, would be a root for a
-    /// world's closure over its own owner. Child edges stay this realm's
-    /// wrapper's alone. Needs a current context, which every wrap has.
-    pub fn takeWaitingValues(self: *Self, owner: *runtime.Instance, wrapper: *v8.Object) void {
-        const deferred = self.edges_before_wrap.getPtr(owner) orelse return;
-        if (deferred.generation != runtime.SlabAllocator.generationOf(owner)) return;
-        var at: usize = 0;
-        while (at < deferred.edges.items.len) {
-            const edge = deferred.edges.items[at];
-            if (!edge.values) {
-                at += 1;
-                continue;
-            }
-            // A set a detached realm let go weak may be gone.
-            if (!v8.v8_Global_IsEmpty(edge.child)) v8.v8_Object_SetPrivateRef(wrapper, edge.key.ptr, @intCast(edge.key.len), edge.child);
-            edge.dispose(self.allocator);
-            _ = deferred.edges.swapRemove(at);
-        }
-        if (deferred.edges.items.len != 0) return;
-        var kv = self.edges_before_wrap.fetchRemove(owner) orelse return;
-        self.edges_guard.noteRemoval(&self.edges_before_wrap);
-        kv.value.dispose(self.allocator);
+        try gop.value_ptr.edges.append(self.allocator, .{ .key = owned_key, .child = child });
     }
 
     /// End a deferred edge (engine.forgetTracedChild on an owner script has
@@ -2717,9 +2681,6 @@ pub const WrapperCache = struct {
         }
         // Edges traced from the instance before script saw it.
         self.drawDeferredEdges(instance, entry.stamp.generation, wrapper);
-        // The traced values sets its wrapper in another world keeps
-        // (refcount step 8, option (c)): one load while no world exists.
-        if (protocol_worlds.instanceMayHaveWorlds(instance)) protocol_worlds.drawTracedValuesOnWrap(self, instance, wrapper);
         // (A holder of nodes was bound to its HolderAnchor with the wrapper -
         // platform_anchor.bind - so a collection that keeps this wrapper
         // keeps the wrappers of what it holds for script: the redesign's P6,
@@ -2768,9 +2729,6 @@ pub const WrapperCache = struct {
         defer node_wrappers.arm(isolate, instance, adopted);
         // Edges traced from the node before script saw it.
         self.drawDeferredEdges(instance, generation, adopted.handle);
-        // The traced values sets its wrapper in an isolated world keeps
-        // (refcount step 8, option (c)): one load while no world exists.
-        if (protocol_worlds.instanceMayHaveWorlds(instance)) protocol_worlds.drawTracedValuesOnWrap(self, instance, adopted.handle);
         return adopted.handle;
     }
 

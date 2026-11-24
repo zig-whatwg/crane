@@ -122,14 +122,11 @@ pub const NodeBase = extern struct {
     /// truth (dom.shadow_hosts.rootForHost).
     is_shadow_host: bool = false,
 
-    /// Whether this node's type holds nodes for script itself - its
-    /// VTable's `trace_held_nodes` (the wrapper redesign's P6: a Document's
-    /// active parser, top layer and autofocus candidates, a dialog's saved
-    /// focus) - so the walk (dom.wrapper_tracing) asks it for them where it
-    /// visits the node, with no VTable read for every other node. Set once,
-    /// when the node is registered (dom.instance_bridge.register). A byte
-    /// of its own: nothing rewrites it while a collector's walk reads it.
-    traces_held: bool = false,
+    /// What the walk (dom.wrapper_tracing) asks this node for where it
+    /// visits it, with no VTable read for every other node (`TracesHeld`).
+    /// A byte of its own: nothing rewrites it while a collector's walk reads
+    /// it (its writers run on the agent's thread, outside a collection).
+    traces_held: TracesHeld = .{},
 
     /// The reference counting state that is not a number (see RcFlags).
     rc_flags: RcFlags = .{},
@@ -373,6 +370,29 @@ pub const NodeBase = extern struct {
     pub const rc_parent_bit: u32 = 1;
 
     /// The booleans the count machinery keeps beside the numbers.
+    /// `traces_held`'s bits.
+    pub const TracesHeld = packed struct(u8) {
+        /// The node's type holds nodes for script itself - its VTable's
+        /// `trace_held_nodes` (the wrapper redesign's P6: a Document's active
+        /// parser, top layer and autofocus candidates, a dialog's saved
+        /// focus). Set once, when the node is registered
+        /// (dom.instance_bridge.register).
+        by_type: bool = false,
+        /// The node keeps values for script the walk traces (refcount step
+        /// 8): its event listener list, or the observers registered on it
+        /// (dom.wrapper_tracing.noteNodeHoldsValues). Never cleared.
+        values: bool = false,
+        /// Its wrapper carries the mark that keeps it through scavenges
+        /// (noteNodeHoldsValues). Never cleared.
+        marked: bool = false,
+        _: u5 = 0,
+
+        /// Whether the walk asks the node for anything.
+        pub inline fn any(self: TracesHeld) bool {
+            return self.by_type or self.values;
+        }
+    };
+
     pub const RcFlags = packed struct(u8) {
         /// The node is the root of a tree whose total reached zero and which
         /// is queued for teardown: a `Ref` taken on it is a bug, and a

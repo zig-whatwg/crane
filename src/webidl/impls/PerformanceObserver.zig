@@ -27,6 +27,14 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     observer: performance_timeline.Observer,
+
+    /// VTable.trace_held_nodes (runtime.lifetime.heldNodesOf): the
+    /// observer's holder anchor, reached in a collection's atomic pause,
+    /// keeps its callback - a traced hold (refcount step 8). Read-only.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const internal = instance.getState(State).own._internal orelse return;
+        if (internal.observer.callback) |callback| engine.traceHeld(tracer, callback.hold);
+    }
 };
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -62,21 +70,11 @@ pub fn init(
     return instance;
 }
 
-/// The slot the observer's wrapper keeps its callback in (refcount step 8,
-/// decision D7): the observer's hold of the callback is weak, its wrapper
-/// keeps the function - as WebKit marks an observer's callback from its
-/// wrapper and Blink traces it - so a callback that closes over its
-/// observer keeps it no longer than the observer's own keep while it
-/// observes does. Strong on an engine with no traced values.
-const callback_slot: engine.TracedSlot = .{ .name = "callback" };
-
 /// Deinitialize instance: off its global's list (if that is still there),
 /// its callback released.
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
-    // An observer freed before its wrapper was made leaves no edge waiting.
-    engine.forgetTracedChild(instance, callback_slot);
     internal.observer.deinit();
     internal.allocator.destroy(internal);
     state.own._internal = null;
@@ -94,9 +92,9 @@ fn observerOf(instance: *runtime.Instance) !*performance_timeline.Observer {
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.PerformanceObserverCallback) !*runtime.Instance {
     const instance = try init(ctx.allocator, State, &PerformanceObserver.vtable, ctx);
     const observer = observerOf(instance) catch unreachable;
-    const kept = callback.keep();
-    observer.callback = kept;
-    if (engine.traceValues(instance, &.{kept.function.value}, callback_slot)) engine.holdWeakly(kept.function);
+    // A traced hold (refcount step 8): the observer's holder anchor keeps it
+    // (`InternalState.traceHeldNodes`), as Blink traces it; nothing roots it.
+    observer.callback = callback.keepTraced();
     return instance;
 }
 

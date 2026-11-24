@@ -19,6 +19,14 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     observer: reporting.Observer,
+
+    /// VTable.trace_held_nodes (runtime.lifetime.heldNodesOf): the
+    /// observer's holder anchor, reached in a collection's atomic pause,
+    /// keeps its callback - a traced hold (refcount step 8). Read-only.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const internal = instance.getState(State).own._internal orelse return;
+        if (internal.observer.callback) |callback| engine.traceHeld(tracer, callback.hold);
+    }
 };
 
 /// Initialize instance (creates the instance)
@@ -52,20 +60,10 @@ pub fn installHooks() void {
     @import("dom").unloading_cleanup.installGlobalTeardown(&reporting.endRegistrations);
 }
 
-/// The slot the observer's wrapper keeps its callback in (refcount step 8,
-/// decision D7): the observer's hold of the callback is weak, its wrapper
-/// keeps the function - as WebKit marks an observer's callback from its
-/// wrapper and Blink traces it - so a callback that closes over its
-/// observer keeps it no longer than the observer's own keep while it
-/// observes does. Strong on an engine with no traced values.
-const callback_slot: engine.TracedSlot = .{ .name = "callback" };
-
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
-    // An observer freed before its wrapper was made leaves no edge waiting.
-    engine.forgetTracedChild(instance, callback_slot);
     internal.observer.deinit();
     internal.allocator.destroy(internal);
     state.own._internal = null;
@@ -75,7 +73,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.ReportingObserverCallback, options: webidl.Opt(dictionaries.ReportingObserverOptions)) !*runtime.Instance {
     // Reporting §4.1 constructor steps 1-3. The binding transfers callback.
-    const owned_callback = callback.keep();
+    // A traced hold (refcount step 8): the observer's holder anchor keeps it
+    // (`InternalState.traceHeldNodes`), as Blink traces it; nothing roots it.
+    const owned_callback = callback.keepTraced();
     const instance = init(ctx.allocator, State, &ReportingObserver.vtable, ctx) catch |err| {
         owned_callback.release();
         return err;
@@ -83,7 +83,6 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.ReportingObser
     errdefer runtime.Instance.deinit(instance);
     const observer = try observerOf(instance);
     observer.callback = owned_callback;
-    if (engine.traceValues(instance, &.{owned_callback.function.value}, callback_slot)) engine.holdWeakly(owned_callback.function);
     const value: dictionaries.ReportingObserverOptions = if (options.was_passed) options.value else .{};
     observer.buffered = value.buffered orelse false;
     if (value.types) |types| {

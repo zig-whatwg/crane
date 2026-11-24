@@ -47,14 +47,15 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     /// [[callback]]: the IntersectionObserverCallback value, OWNED -
-    /// released in deinit - and held WEAKLY: the observer's wrapper keeps the
-    /// function (`callback_slot`, engine.traceValues; refcount step 8,
-    /// decision D7), so a callback that closes over its observer keeps it no
-    /// longer than the observer's own liveness rule does (`kept_alive`, the
-    /// spec's "remain alive until ... not observing any targets"). Blink
-    /// traces it from the observer (IntersectionObserver::Trace ->
-    /// callback_); strong on an engine with no traced values.
-    callback: ?engine.CallbackFunction = null,
+    /// released in deinit - a TRACED hold (engine.TracedHold; refcount step
+    /// 8, decision D7): the observer's holder anchor keeps it
+    /// (`traceHeldNodes`), so a callback that closes over its observer keeps
+    /// it no longer than the observer's own liveness rule does
+    /// (`kept_alive`, the spec's "remain alive until ... not observing any
+    /// targets"). Blink traces it from the observer
+    /// (IntersectionObserver::Trace -> callback_); strong on an engine with
+    /// no traced values.
+    callback: ?engine.TracedCallback = null,
 
     /// List of observed targets with their state
     observations: std.ArrayListUnmanaged(Observation),
@@ -139,6 +140,8 @@ pub const InternalState = struct {
     /// 131.0.6778.0). In the collector's atomic pause; reads only.
     pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
         const self = Accessor.get(instance) orelse return;
+        // The callback (refcount step 8).
+        if (self.callback) |callback| engine.traceHeld(tracer, callback.hold);
         for (self.queued_entries.items) |entry| traceEntry(entry, tracer);
         for (self.delivering) |entry| traceEntry(entry, tracer);
     }
@@ -193,9 +196,6 @@ pub fn init(
 }
 
 /// Deinitialize instance
-/// The slot the observer's wrapper keeps its callback in.
-const callback_slot: engine.TracedSlot = .{ .name = "callback" };
-
 pub fn deinit(instance: *runtime.Instance) void {
     leaveObserving(instance);
     const state = instance.getState(State);
@@ -203,9 +203,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
         if (internal.has_thresholds_array) engine.forgetTracedChild(instance, thresholds_slot);
         internal.has_thresholds_array = false;
-        // An observer freed before its wrapper was made leaves no edge
-        // waiting for one.
-        engine.forgetTracedChild(instance, callback_slot);
         internal.deinit();
         // Return the block itself, not just what it points to. The comment this
         // replaces said the arena manages it; the arena had no way to, so the
@@ -229,12 +226,10 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
 
     // Set this's internal [[callback]] slot to callback: the binding hands
     // the converted function over, and the observer keeps it (OWNED) with
-    // its callback context - weakly, its wrapper keeping the function
-    // (refcount step 8): until the binding wraps `this`, the edge waits in
-    // the realm's wrapper cache, strong.
-    const kept = callback.keep();
-    internal.callback = kept;
-    if (engine.traceValues(instance, &.{kept.function.value}, callback_slot)) engine.holdWeakly(kept.function);
+    // its callback context - a traced hold (refcount step 8): the observer's
+    // holder anchor keeps it once the binding wraps `this`; until then the
+    // call's argument does.
+    internal.callback = callback.keepTraced();
 
     // Parse options
     const opts = if (options.was_passed) options.value else dictionaries.IntersectionObserverInit{};
@@ -896,10 +891,16 @@ fn invokeCallback(internal: *InternalState) !void {
     defer internal.allocator.free(queue);
 
     // 4. Let callback be the value of observer's internal [[callback]] slot.
-    const callback = internal.callback orelse {
+    const traced = internal.callback orelse {
         for (queue) |entry| runtime.Instance.deinit(entry);
         return;
     };
+    // A collected callback (no trace reached its observer) delivers nothing.
+    if (traced.hold.isEmpty()) {
+        for (queue) |entry| runtime.Instance.deinit(entry);
+        return;
+    }
+    const callback = traced.asFunction();
 
     // queue as a sequence<IntersectionObserverEntry>, made in the callback's
     // realm and world (WebIDL invoke steps 5 and 10: dom.callback_sequences).

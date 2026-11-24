@@ -792,12 +792,6 @@ pub fn traceValue(_: *Instance, _: JSValue, _: engine.TracedSlot) void {}
 pub fn tracedValue(_: *Instance, _: engine.TracedSlot) ?Owned {
     return null;
 }
-/// No traced values: the caller keeps its holds strong.
-pub fn traceValues(_: *Instance, _: []const JSValue, _: engine.TracedSlot) bool {
-    return false;
-}
-/// Never reached (`traceValues` answers false): holds stay strong.
-pub fn holdWeakly(_: Owned) void {}
 /// No node is wrapped yet, so there is no opaque root to keep. Designed
 /// (refcount design 2.5 item 3, decision D5): a per-realm WeakMap from the
 /// pristine intrinsics maps each wrapper to an edge record holding its

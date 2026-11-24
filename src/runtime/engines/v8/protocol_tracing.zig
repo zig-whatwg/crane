@@ -115,7 +115,7 @@ pub fn traceChild(owner: *Instance, child: *Instance, slot: TracedSlot) void {
             ffi.v8_Object_SetPrivateRef(@ptrCast(holder), key.ptr, @intCast(key.len), child_wrapper);
         },
         // The cache takes the child's Global over, on failure too.
-        .unwrapped => |cache| cache.deferEdge(owner, key, child_wrapper, false) catch {},
+        .unwrapped => |cache| cache.deferEdge(owner, key, child_wrapper) catch {},
         .none => ffi.v8_Global_Dispose(child_wrapper),
     }
 }
@@ -140,7 +140,7 @@ pub fn traceValue(owner: *Instance, value: engine.JSValue, slot: TracedSlot) voi
             ffi.v8_Object_SetPrivateRef(@ptrCast(holder), key.ptr, @intCast(key.len), held);
         },
         // The cache takes the Global over, on failure too.
-        .unwrapped => |cache| cache.deferEdge(owner, key, held, false) catch {},
+        .unwrapped => |cache| cache.deferEdge(owner, key, held) catch {},
         .none => ffi.v8_Global_Dispose(held),
     }
 }
@@ -166,138 +166,6 @@ pub fn tracedValue(owner: *Instance, slot: TracedSlot) ?engine.Owned {
         },
         .none => return null,
     }
-}
-
-/// `values` as the borrowed handles v8_Object_SetPrivateValues reads: an
-/// engine handle as it is, anything else - a platform object (its wrapper in
-/// its relevant realm), a primitive - as a Global of this list's own,
-/// released with it. A list of up to 16 needs no allocation.
-const HandleList = struct {
-    inline_handles: [16]?*ffi.Value = undefined,
-    heap: ?[]?*ffi.Value = null,
-    /// Which handles are this list's own (bit i: handles[i]); a list longer
-    /// than 64 owns its handles through `heap_owned`.
-    owned_bits: u64 = 0,
-    heap_owned: ?[]bool = null,
-    len: usize = 0,
-
-    const allocator = std.heap.c_allocator;
-
-    fn handles(self: *const HandleList) []const ?*ffi.Value {
-        return if (self.heap) |all| all[0..self.len] else self.inline_handles[0..self.len];
-    }
-
-    fn of(self: *HandleList, entered: anytype, values: []const engine.JSValue) error{ OutOfMemory, OperationFailed }!void {
-        const slots: []?*ffi.Value = if (values.len <= self.inline_handles.len)
-            self.inline_handles[0..values.len]
-        else blk: {
-            const all = try allocator.alloc(?*ffi.Value, values.len);
-            self.heap = all;
-            if (values.len > 64) {
-                const owned = allocator.alloc(bool, values.len) catch return error.OutOfMemory;
-                @memset(owned, false);
-                self.heap_owned = owned;
-            }
-            break :blk all;
-        };
-        for (values, slots, 0..) |value, *slot, i| {
-            if (support.handleOf(value)) |handle| {
-                slot.* = handle;
-            } else {
-                slot.* = support.ownGlobal(entered, value) catch {
-                    self.len = i;
-                    return error.OperationFailed;
-                };
-                self.markOwned(i);
-            }
-            self.len = i + 1;
-        }
-    }
-
-    fn markOwned(self: *HandleList, i: usize) void {
-        if (self.heap_owned) |owned| {
-            owned[i] = true;
-        } else self.owned_bits |= @as(u64, 1) << @intCast(i);
-    }
-
-    fn isOwned(self: *const HandleList, i: usize) bool {
-        if (self.heap_owned) |owned| return owned[i];
-        return self.owned_bits & (@as(u64, 1) << @intCast(i)) != 0;
-    }
-
-    fn release(self: *HandleList) void {
-        for (self.handles(), 0..) |handle, i| {
-            if (!self.isOwned(i)) continue;
-            if (handle) |h| ffi.v8_Global_Dispose(h);
-        }
-        if (self.heap) |all| allocator.free(all);
-        if (self.heap_owned) |owned| allocator.free(owned);
-        self.* = .{};
-    }
-};
-
-/// engine.traceValues: one private property on `owner`'s wrapper - its
-/// retained store, for a Window - holding exactly `values`: the value, or an
-/// Array of them (v8_Object_SetPrivateValues), in `traceChild`'s namespace.
-/// An owner with no wrapper yet keeps them as ONE value strongly in its
-/// realm's wrapper cache until it gets one (`deferEdge`, which draws the
-/// same property then), as `traceValue` does; an empty set ends that waiting
-/// edge. False where nothing can hang an edge: the owner's realm ended, its
-/// cache is tearing down, a Window whose global is gone.
-///
-/// Isolated worlds (refcount step 8, option (c); protocol_worlds.zig, "Traced
-/// values across worlds"): the owner's wrapper in every other world keeps
-/// the same set, so the set lives while ANY of its wrappers does - Blink
-/// traces it from the C++ object, which any world's wrapper keeps. An owner
-/// its own realm has not wrapped but another world has keeps the set there,
-/// and nothing waits for it strongly: a wrapper its realm makes later copies
-/// it (protocol_worlds.drawTracedValuesOnWrap). An edge already waiting is
-/// kept current.
-pub fn traceValues(owner: *Instance, values: []const engine.JSValue, slot: TracedSlot) bool {
-    var buffer: [128]u8 = undefined;
-    const key = keyOf(&buffer, slot) orelse return false;
-    if (owner.ctx.engine_ctx == null) return false;
-    const entered = support.enter(owner.ctx) catch return false;
-    defer entered.leave();
-    var list: HandleList = .{};
-    defer list.release();
-    list.of(entered, values) catch return false;
-    const handles = list.handles();
-    // The holder first: held from here, its wrapper keeps every value it
-    // keeps while the other worlds' sets are made (they allocate).
-    const holder = holderOf(owner);
-    defer switch (holder) {
-        .object => |object| ffi.v8_Global_Dispose(object),
-        .unwrapped, .none => {},
-    };
-    // One load while the Browser made no world.
-    const in_worlds = protocol_worlds.realmMayHaveWorlds(owner.ctx) and
-        protocol_worlds.traceValuesInWorlds(owner, ownCacheOf(owner), key, handles);
-    switch (holder) {
-        .object => |object| {
-            const drawn = ffi.v8_Object_SetPrivateValues(@ptrCast(object), key.ptr, @intCast(key.len), handles.ptr, handles.len);
-            return drawn or in_worlds;
-        },
-        .unwrapped => |cache| {
-            if (handles.len == 0) {
-                cache.forgetDeferredEdge(owner, key);
-                return true;
-            }
-            if (in_worlds and cache.deferredEdge(owner, key) == null) return true;
-            const kept = ffi.v8_Values_GatherTraced(key.ptr, @intCast(key.len), handles.ptr, handles.len) orelse return in_worlds;
-            // The cache takes the Global over, on failure too.
-            cache.deferEdge(owner, key, kept, true) catch return in_worlds;
-            return true;
-        },
-        .none => return in_worlds,
-    }
-}
-
-/// The wrapper cache of `owner`'s own realm - where `holderOf` hangs its
-/// edges, a Window's aside - or null.
-fn ownCacheOf(owner: *Instance) ?*const WrapperCache {
-    const storage = owner.ctx.getV8WrapperCacheStorage() orelse return null;
-    return @ptrCast(@alignCast(storage));
 }
 
 /// engine.TracedHold's value on V8: the box read through the Global<Value>
@@ -344,14 +212,6 @@ pub fn traceWrapperOf(tracer: *Tracer, instance: *Instance) void {
         cache.traceWorldEntry(instance, tracer.visitor);
     }
     if (tracer.registry.worlds) |worlds| protocol_worlds.traceWorldWrappers(worlds, instance, tracer.visitor);
-}
-
-/// engine.holdWeakly: the hold's Global becomes a phantom handle V8 resets
-/// when it collects the value (v8_Global_HoldWeakly). A hold that is no
-/// engine handle (undefined) holds nothing to weaken.
-pub fn holdWeakly(hold: engine.Owned) void {
-    const handle = support.handleOf(hold.value) orelse return;
-    ffi.v8_Global_HoldWeakly(handle);
 }
 
 /// engine.forgetTracedChild: the edge waiting for `owner`'s wrapper, if any,
