@@ -7,7 +7,8 @@
 //! in 4,096 (lane nav2 batch 7's pin). With 16-byte classes a block holds its
 //! request with less than 16 bytes to spare, as a malloc's tiny quantum does;
 //! above 4 KiB the classes stay powers of two (8 and 16 KiB), and past 16 KiB
-//! nothing is recycled or rounded.
+//! a block is a run of whole spans of the heap (lane hard1: the arena is a
+//! view of the Browser's heap, runtime.heap).
 
 const std = @import("std");
 const testing = std.testing;
@@ -29,16 +30,16 @@ test "a block holds its request with less than 16 bytes to spare, up to 4 KiB" {
     }
 }
 
-test "past 4 KiB the classes are 8 and 16 KiB, and past 16 KiB a request is held as it is" {
+test "past 4 KiB the classes are 8 and 16 KiB, and past 16 KiB a request takes a run of whole spans" {
     try testing.expectEqual(@as(usize, 8_192), ArenaAllocator.heldBytes(4_097, 8));
     try testing.expectEqual(@as(usize, 16_384), ArenaAllocator.heldBytes(8_193, 8));
-    try testing.expectEqual(@as(usize, 20_000), ArenaAllocator.heldBytes(20_000, 8));
+    try testing.expectEqual(std.mem.alignForward(usize, 20_000, runtime.heap.span_bytes), ArenaAllocator.heldBytes(20_000, 8));
 }
 
 test "a freed block serves its own 16-byte class only: a smaller request in it, never a larger one" {
-    var arena_value = ArenaAllocator.init(testing.allocator);
-    defer arena_value.deinit();
-    const arena = &arena_value;
+    var arena_scope = runtime.BrowserScope.init(testing.allocator);
+    defer arena_scope.deinit();
+    const arena = &arena_scope.arena;
 
     // A div-sized state goes back...
     const block = try arena.createRaw(1_288, 8);
@@ -86,18 +87,20 @@ test "every scheme's classes hold their requests, rise with them, and bound thei
     try testing.expectEqual(classes.ClassScheme.quantum16, classes.scheme);
 }
 
-test "a freed block is poisoned when its Browser asked for it, and left as it was by default" {
+test "a freed block is poisoned when its Browser asked for it, and zeroed by default" {
     for ([_]bool{ false, true }) |poison| {
-        var arena_value = ArenaAllocator.init(testing.allocator);
-        defer arena_value.deinit();
-        const arena = &arena_value;
+        var arena_scope = runtime.BrowserScope.init(testing.allocator);
+        defer arena_scope.deinit();
+        const arena = &arena_scope.arena;
+        // Before the heap starts (at the first block): its configuration.
         arena.poison_freed = poison;
         const block = try arena.createRaw(96, 8);
         @memset(block[0..96], 0x11);
         arena.destroyRaw(block, 96, 8);
-        // The first word is the free list's link; the rest is the state's.
-        const expected: u8 = if (poison) ArenaAllocator.poison_byte else 0x11;
-        for (block[8..96]) |byte| try testing.expectEqual(expected, byte);
+        // Every byte is the fill: no free-list link is written into a freed
+        // block any more (runtime.heap: free state is out of line).
+        const expected: u8 = if (poison) ArenaAllocator.poison_byte else 0;
+        for (block[0..96]) |byte| try testing.expectEqual(expected, byte);
         // A reuse zeroes the request, poisoned or not.
         const again = try arena.createRaw(96, 8);
         try testing.expectEqual(block, again);

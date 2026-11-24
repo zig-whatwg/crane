@@ -459,7 +459,7 @@ test "nm1 probe: the static layout of a node's storage" {
         .{ "engine.NodeWrapperSlot", engine.NodeWrapperSlot },
     };
     inline for (parts) |e| try dumpType(e[0], e[1]);
-    print("\n=== Slab slot: {d} B (Instance {d} + stamp 8), {d} slots per {d}-B slab\n", .{ runtime.SlabAllocator.slot_bytes, @sizeOf(runtime.Instance), runtime.SlabAllocator.SLOTS_PER_SLAB, runtime.SlabAllocator.slab_bytes });
+    print("\n=== Slab slot: {d} B (Instance {d} + stamp 8), {d} slots per {d}-B span of the heap\n", .{ runtime.SlabAllocator.slot_bytes, @sizeOf(runtime.Instance), runtime.SlabAllocator.slots_per_span, runtime.heap.span_bytes });
 
     // Everything the element, text and comment States point at, one level.
     const roots = [_]type{ interfaces.HTMLDivElement.State, interfaces.HTMLAnchorElement.State, interfaces.SVGPathElement.State, interfaces.Text.State, interfaces.Comment.State, dom.element_data.ElementData };

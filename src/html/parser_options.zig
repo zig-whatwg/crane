@@ -41,8 +41,8 @@ pub const ParserOptions = struct {
         /// options["sanitizer"], converted by its union (Sanitizer or
         /// SanitizerConfig or SanitizerPresets) - WebIDL conversion comes
         /// before every step of the method, Trusted Types included; null
-        /// when the member does not exist. A Sanitizer arm BORROWS the
-        /// binding's value for the synchronous part of the method.
+        /// when the member does not exist. A Sanitizer arm HOLDS the
+        /// Sanitizer until deinit (sanitizer.Converted).
         sanitizer: ?sanitizer.Converted = null,
         /// options["runScripts"]: null when it does not exist (SetHTMLOptions
         /// has no such member).
@@ -64,12 +64,16 @@ pub const ParserOptions = struct {
         self.* = undefined;
     }
 
-    /// A dictionary's options: `sanitizer_member` as the binding gave it
-    /// (null when absent; a JS null converts as an empty dictionary) is
-    /// converted now.
-    pub fn fromDictionary(realm: runtime.Context, sanitizer_member: ?runtime.JSValue, run_scripts: ?bool) !ParserOptions {
+    /// A dictionary's options: `sanitizer_member` as the binding converted
+    /// it - the generated (Sanitizer or SanitizerConfig or SanitizerPresets)
+    /// union, null when the member does not exist (a present null is the
+    /// union's empty SanitizerConfig) - or the literal `null` for a
+    /// dictionary with no members.
+    pub fn fromDictionary(realm: runtime.Context, sanitizer_member: anytype, run_scripts: ?bool) !ParserOptions {
         var converted: ?sanitizer.Converted = null;
-        if (sanitizer_member) |member| converted = try sanitizer.Converted.fromJS(realm.allocator, realm, member, true);
+        if (@TypeOf(sanitizer_member) != @TypeOf(null)) {
+            if (sanitizer_member) |member| converted = try sanitizer.Converted.fromTyped(realm.allocator, member);
+        }
         return .{ .allocator = realm.allocator, .value = .{ .dictionary = .{ .sanitizer = converted, .run_scripts = run_scripts } } };
     }
 
@@ -159,7 +163,7 @@ pub const ParserOptions = struct {
                 // 4. "Otherwise, if safe is false, then return null."
                 if (!safe) return null;
                 // 5, 7: "default" - the built-in safe default configuration.
-                var preset = try sanitizer.convertOptions(realm, null, true);
+                var preset = sanitizer.Converted.defaultPreset(allocator);
                 defer preset.deinit();
                 break :blk try sanitizer.Config.fromConverted(allocator, realm, &preset, permissive);
             },
@@ -356,8 +360,12 @@ fn sanitizerFromDictionary(realm: runtime.Context, dictionary: *const ParserOpti
 /// then its sanitizer configuration "got from realm and policyValue" (a new
 /// Sanitizer configured with the member and true, its configuration taken)
 /// and policyValue["runScripts"] with default false. Null for null or
-/// undefined; a value that is no object is a TypeError. The member is
-/// resolved while it is held: a Sanitizer arm borrows it.
+/// undefined; a value that is no object is a TypeError.
+///
+/// Converted BY HAND: no generated code converts a callback's return value
+/// yet (codegen's `callback_returns_converted_by_impl` lists
+/// CreateParserOptionsCallback); the generated callback invocation replaces
+/// this function and sanitizer.Converted.fromJS.
 fn trustedFromPolicyValue(realm: runtime.Context, value: runtime.JSValue) Error!?ParserOptions {
     switch (engine.typeOf(realm, value)) {
         .undefined, .null => return null,
@@ -371,7 +379,7 @@ fn trustedFromPolicyValue(realm: runtime.Context, value: runtime.JSValue) Error!
     defer member.release();
     var configuration: ?sanitizer.Config = null;
     if (engine.typeOf(realm, member.value) != .undefined) {
-        var converted = try sanitizer.Converted.fromJS(realm.allocator, realm, member.value, true);
+        var converted = try sanitizer.Converted.fromJS(realm.allocator, realm, member.value);
         defer converted.deinit();
         configuration = try sanitizer.Config.fromConverted(realm.allocator, realm, &converted, true);
     }
@@ -385,7 +393,7 @@ fn trustedFromPolicyValue(realm: runtime.Context, value: runtime.JSValue) Error!
 /// realm. `options` is the SetHTMLUnsafeOptions argument's members.
 pub fn createForPolicy(
     policy: *runtime.Instance,
-    sanitizer_member: ?runtime.JSValue,
+    sanitizer_member: anytype,
     run_scripts: ?bool,
     arguments: []const runtime.JSValue,
 ) Error!*runtime.Instance {

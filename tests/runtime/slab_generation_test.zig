@@ -24,9 +24,9 @@ const vtable = VTable{
 };
 
 test "a slot reads dead until issued, and dead again once freed" {
-    var slab_value = runtime.SlabAllocator.init(testing.allocator);
-    defer slab_value.deinit();
-    const slab = &slab_value;
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
 
     const inst = try slab.alloc(&vtable);
     try testing.expect(SlabAllocator.generationOf(inst) != SlabAllocator.dead_generation);
@@ -36,15 +36,15 @@ test "a slot reads dead until issued, and dead again once freed" {
 }
 
 test "a reissued slot carries a generation no earlier occupant saw" {
-    var slab_value = runtime.SlabAllocator.init(testing.allocator);
-    defer slab_value.deinit();
-    const slab = &slab_value;
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
 
     const first = try slab.alloc(&vtable);
     const g1 = SlabAllocator.generationOf(first);
     slab.free(first);
 
-    // Same address - the free list hands the slot straight back.
+    // Same address - the lowest free slot is issued first.
     const second = try slab.alloc(&vtable);
     try testing.expectEqual(first, second);
     const g2 = SlabAllocator.generationOf(second);
@@ -58,14 +58,14 @@ test "a reissued slot carries a generation no earlier occupant saw" {
 }
 
 test "generations are distinct across slots and across slabs" {
-    var slab_value = runtime.SlabAllocator.init(testing.allocator);
-    defer slab_value.deinit();
-    const slab = &slab_value;
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
 
-    // 300 > one slab's 256 slots, so the second slab's init path is covered too.
+    // 600 > one span's 512 slots, so the second span's open is covered too.
     var seen = std.AutoHashMap(u64, void).init(testing.allocator);
     defer seen.deinit();
-    var instances: [300]*Instance = undefined;
+    var instances: [600]*Instance = undefined;
     for (&instances) |*slot| {
         slot.* = try slab.alloc(&vtable);
         const g = SlabAllocator.generationOf(slot.*);

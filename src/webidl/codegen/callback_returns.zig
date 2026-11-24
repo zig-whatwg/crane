@@ -1,0 +1,102 @@
+//! Callback functions whose return value an impl still converts by hand.
+//!
+//! WebIDL "invoke a callback function" (3.12) ends by converting the value
+//! the function returned to the callback's declared return type - steps
+//! 13-14: "Return the result of converting callResult.[[Value]] to an IDL
+//! value of the same type as callable's return type", and when that type is
+//! a promise type an abrupt completion becomes "a promise rejected with" its
+//! value. Codegen emits no invocation for a callback yet: `callbacks/X.zig`
+//! is `runtime.BorrowedCallbackFunction`, an impl calls
+//! `engine.invokeCallbackFunction` and converts what comes back itself. For a
+//! return type of `undefined` or `any` there is nothing to convert; every
+//! other callback is listed here, with where its value is converted today.
+//!
+//! Lane bind1 batch B6 generates the invocation with the converted return
+//! value and removes each entry as its impl moves onto it. The list only
+//! shrinks, and tests/codegen/bind1_callback_returns_test.zig pins it against
+//! the generated callbacks: one a new IDL adds must be listed, or generated.
+
+/// How a listed callback's return value is converted today.
+pub const Conversion = enum {
+    /// An impl (or the src/dom, src/html code behind it) converts the value
+    /// with the engine's conversion operations.
+    hand,
+    /// `engine.invokeCallbackFunctionWithReturnType`: the protocol converts
+    /// for one fixed type, not from the IDL.
+    protocol_typed,
+    /// A promise type whose resolution value needs no conversion
+    /// (`Promise<undefined>`, `Promise<any>`): the impl makes the promise
+    /// from the completion by hand.
+    promise_wrap,
+    /// Nothing invokes the callback yet, so nothing converts.
+    not_invoked,
+};
+
+/// (callback, its IDL return type, how the value is converted today).
+pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u8, Conversion }{
+    // --- A value type ---
+    // Trusted Types' policy callbacks: impls/TrustedTypePolicy.zig policyValue
+    // (engine.convertToDOMString / convertToUSVString; null and undefined are
+    // null).
+    .{ "CreateHTMLCallback", "DOMString?", .hand },
+    .{ "CreateScriptCallback", "DOMString?", .hand },
+    .{ "CreateScriptURLCallback", "USVString?", .hand },
+    // Invoked in impls/TrustedTypePolicy.zig parserOptionsValue; converted in
+    // html/parser_options.zig trustedFromPolicyValue (the dictionary's
+    // members read by hand, its sanitizer member by
+    // html/sanitizer.zig Converted.fromJS and the hand readers behind it).
+    .{ "CreateParserOptionsCallback", "SetHTMLUnsafeOptions?", .hand },
+    // dom/streams_readable.zig defaultControllerEnqueueCompletion and
+    // dom/streams_writable.zig getChunkSize (engine.convertToUnrestrictedDouble).
+    .{ "QueuingStrategySize", "unrestricted double", .hand },
+    // html/custom_elements/creation.zig create + validateConstructed
+    // (engine.convertToPlatformObject, then HTMLElement's checks);
+    // html/upgrade.zig constructForUpgrade compares identity only.
+    .{ "CustomElementConstructor", "HTMLElement", .hand },
+    // impls/EventTarget.zig invokeIdlEventHandler (.nullable_dom_string).
+    .{ "OnBeforeUnloadEventHandlerNonNull", "DOMString?", .protocol_typed },
+    // Observable's every / some / find / filter are stubs.
+    .{ "Predicate", "boolean", .not_invoked },
+    // No AudioWorkletProcessor runs process().
+    .{ "AudioWorkletProcessCallback", "boolean", .not_invoked },
+    // registerProcessor() constructs nothing yet.
+    .{ "AudioWorkletProcessorConstructor", "AudioWorkletProcessor", .not_invoked },
+
+    // --- A promise type whose resolution value has a type to convert ---
+    .{ "LanguageModelToolFunction", "Promise<DOMString>", .not_invoked },
+    .{ "LoadDocumentCallback", "Promise<RemoteDocument>", .not_invoked },
+    .{ "ValidateAssertionCallback", "Promise<RTCIdentityValidationResult>", .not_invoked },
+    .{ "GenerateAssertionCallback", "Promise<RTCIdentityAssertionResult>", .not_invoked },
+
+    // --- Promise<undefined> ---
+    // Streams, all through dom/streams_js.zig Realm.promiseCall (a throw is
+    // a promise rejected with it, a return value a new promise resolved with
+    // it): dom/streams_readable.zig pullErased, cancelErased;
+    // dom/streams_writable.zig writeErased, closeErased, abortErased;
+    // dom/streams_transform.zig transformErased, flushErased, cancelErased.
+    .{ "UnderlyingSourcePullCallback", "Promise<undefined>", .promise_wrap },
+    .{ "UnderlyingSourceCancelCallback", "Promise<undefined>", .promise_wrap },
+    .{ "UnderlyingSinkWriteCallback", "Promise<undefined>", .promise_wrap },
+    .{ "UnderlyingSinkCloseCallback", "Promise<undefined>", .promise_wrap },
+    .{ "UnderlyingSinkAbortCallback", "Promise<undefined>", .promise_wrap },
+    .{ "TransformerTransformCallback", "Promise<undefined>", .promise_wrap },
+    .{ "TransformerFlushCallback", "Promise<undefined>", .promise_wrap },
+    .{ "TransformerCancelCallback", "Promise<undefined>", .promise_wrap },
+    // impls/Navigation.zig invokeToPromise (engine.promiseResolve: a promise
+    // of the realm passes through), from interceptCommitHandlerSteps and
+    // runPrecommitHandlers.
+    .{ "NavigationInterceptHandler", "Promise<undefined>", .promise_wrap },
+    .{ "NavigationPrecommitHandler", "Promise<undefined>", .promise_wrap },
+    // AutofillEvent.refill is null and nothing stores one.
+    .{ "RefillCallback", "Promise<undefined>", .not_invoked },
+
+    // --- Promise<any> ---
+    // impls/LockManager.zig invokeCallback (an object passes through as it
+    // is - the file's stated deviation; anything else is a new promise
+    // resolved with it).
+    .{ "LockGrantedCallback", "Promise<any>", .promise_wrap },
+    // dom/view_transitions.zig callUpdateCallback (engine.promiseResolve).
+    .{ "ViewTransitionUpdateCallback", "Promise<any>", .promise_wrap },
+    // ModelContext.registerTool / executeTool are not implemented.
+    .{ "ToolExecuteCallback", "Promise<any>", .not_invoked },
+};

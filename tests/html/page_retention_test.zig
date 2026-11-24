@@ -44,13 +44,9 @@ const Census = struct {
 
     fn of(browser: *browser_mod.Browser) Census {
         var census: Census = .{};
-        var slab = browser.scope.slab.slabs;
-        while (slab) |each| : (slab = each.next) {
-            for (&each.slots) |*slot| {
-                const instance: *runtime.Instance = @ptrCast(slot);
-                if (runtime.SlabAllocator.generationOf(instance) == runtime.SlabAllocator.dead_generation) continue;
-                census.add(instance.vtable.name, instance);
-            }
+        var live_slots = browser.scope.slab.iterateLive();
+        while (live_slots.next()) |instance| {
+            census.add(instance.vtable.name, instance);
         }
         return census;
     }
@@ -397,14 +393,10 @@ fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
 fn liveSlots(names: []const []const u8) usize {
     const scope = runtime.BrowserScope.standalone() orelse return 0;
     var live: usize = 0;
-    var slab = scope.slab.slabs;
-    while (slab) |each| : (slab = each.next) {
-        for (&each.slots) |*slot| {
-            const instance: *runtime.Instance = @ptrCast(slot);
-            if (runtime.SlabAllocator.generationOf(instance) == runtime.SlabAllocator.dead_generation) continue;
-            for (names) |name| {
-                if (std.mem.eql(u8, instance.vtable.name, name)) live += 1;
-            }
+    var live_slots = scope.slab.iterateLive();
+    while (live_slots.next()) |instance| {
+        for (names) |name| {
+            if (std.mem.eql(u8, instance.vtable.name, name)) live += 1;
         }
     }
     return live;

@@ -182,31 +182,11 @@ pub const Config = struct {
     /// Only the immediate, synchronous copy of Sanitizer.get() below uses
     /// this bridge. No callback runs while its borrowed result is copied.
     fn fromDictionary(allocator: Allocator, input: anytype) !Config {
-        comptime {
-            const fields = .{ "elements", "removeElements", "replaceWithChildrenElements", "attributes", "removeAttributes", "comments", "dataAttributes", "processingInstructions", "removeProcessingInstructions", "javascriptURLs" };
-            if (std.meta.fieldNames(@TypeOf(input)).len != fields.len) @compileError("Update the SanitizerConfig native copy for its changed members");
-            for (fields) |field| if (!@hasField(@TypeOf(input), field)) @compileError("SanitizerConfig is missing " ++ field);
-        }
         var result = Config{ .arena = .init(allocator), .data = .{} };
         errdefer result.deinit();
-        const a = result.arena.allocator();
-        result.data = .{
-            .comments = input.comments,
-            .data_attributes = input.dataAttributes,
-            .javascript_urls = input.javascriptURLs,
-            .attributes = try typedNames(a, input.attributes, false),
-            .remove_attributes = try typedNames(a, input.removeAttributes, false),
-            .remove_elements = try typedNames(a, input.removeElements, true),
-            .replace_elements = try typedNames(a, input.replaceWithChildrenElements, true),
-            .processing_instructions = try typedPIs(a, input.processingInstructions),
-            .remove_processing_instructions = try typedPIs(a, input.removeProcessingInstructions),
-        };
-        if (input.elements) |elements| {
-            result.data.elements = try a.alloc(Element, elements.len);
-            for (elements, result.data.elements.?) |element, *copy| copy.* = try typedElement(a, element);
-        }
         // The only input is an existing Sanitizer's get(): already canonical,
         // and possibly in a state a modifier legitimately left (see apply).
+        result.data = try typedData(result.arena.allocator(), input, .canonical);
         return result;
     }
 
@@ -217,23 +197,16 @@ pub const Config = struct {
         return result;
     }
 
-    /// Constructor convenience: WebIDL conversion, then HTML configuration.
-    pub fn fromJS(allocator: Allocator, realm: runtime.Context, input: runtime.JSValue, permissive: bool, allow_instance: bool) !Config {
-        var converted = try Converted.fromJS(allocator, realm, input, allow_instance);
-        defer converted.deinit();
-        return fromConverted(allocator, realm, &converted, permissive);
-    }
-
     pub fn fromConverted(allocator: Allocator, realm: runtime.Context, converted: *const Converted, permissive: bool) !Config {
         return switch (converted.value) {
             .preset => defaultConfig(allocator),
             .dictionary => |data| fromData(allocator, data, permissive),
-            .sanitizer => |value| blk: {
-                // The binding keeps the JSValue alive across any Trusted Types
+            .sanitizer => |held| blk: {
+                // `converted` holds the Sanitizer across any Trusted Types
                 // callback. Resolve it only now; that callback may have changed
                 // the Sanitizer's configuration. Copy the borrowed get() result
                 // immediately, with no callback between reading and copying.
-                const instance = engine.convertToPlatformObject(realm, value) orelse return error.TypeError;
+                const instance = engine.convertToPlatformObject(realm, held.value) orelse return error.TypeError;
                 break :blk fromDictionary(allocator, try interfaces.Sanitizer.call_get(instance));
             },
         };
@@ -432,15 +405,59 @@ pub const Config = struct {
 
 /// WebIDL conversion is earlier than the HTML algorithm's validation. In
 /// particular it runs before Trusted Types and the script-context early return.
-/// Dictionaries own only native strings; the Sanitizer arm borrows the JSValue
-/// already held by the binding for this synchronous operation.
+/// Dictionaries own only native strings. The Sanitizer arm HOLDS the Sanitizer
+/// (engine.retainValue, released by deinit): the binding's union member is a
+/// bare instance - the handle the dictionary's member was read into is gone
+/// when conversion returns - and a Trusted Types callback runs script, a
+/// collection included, between conversion and the step that reads the
+/// Sanitizer's configuration (Config.fromConverted).
 pub const Converted = struct {
     arena: std.heap.ArenaAllocator,
-    value: union(enum) { dictionary: Data, preset, sanitizer: runtime.JSValue },
+    value: union(enum) { dictionary: Data, preset, sanitizer: engine.Owned },
 
+    /// Every owner calls this on every path - success, a later conversion's
+    /// throw, a Trusted Types callback's throw: it releases the Sanitizer
+    /// arm's hold (tests/html/bind1_sanitizer_hold_test.zig counts them).
     pub fn deinit(self: *Converted) void {
+        switch (self.value) {
+            .sanitizer => |held| held.release(),
+            .dictionary, .preset => {},
+        }
         self.arena.deinit();
         self.* = undefined;
+    }
+
+    /// The "default" preset: SetHTMLOptions' default, and the Sanitizer
+    /// constructor's.
+    pub fn defaultPreset(allocator: Allocator) Converted {
+        return .{ .arena = .init(allocator), .value = .preset };
+    }
+
+    /// The binding's union as this: (Sanitizer or SanitizerConfig or
+    /// SanitizerPresets), or the constructor's (SanitizerConfig or
+    /// SanitizerPresets) - `input` is the generated union, already converted
+    /// by WebIDL 3.2.25 (null and undefined are its SanitizerConfig arm, an
+    /// empty dictionary; a string that is no preset threw there). The arms
+    /// are told by name, so a union with a new member fails to compile.
+    pub fn fromTyped(allocator: Allocator, input: anytype) engine.Error!Converted {
+        var result = Converted{ .arena = .init(allocator), .value = .{ .dictionary = .{} } };
+        errdefer result.deinit();
+        switch (input) {
+            inline else => |arm, tag| {
+                const name = @tagName(tag);
+                if (comptime std.mem.eql(u8, name, "sanitizer")) {
+                    // Held in its relevant realm, where its wrapper is.
+                    result.value = .{ .sanitizer = try engine.retainValue(arm.ctx, runtime.JSValue.fromInstance(arm)) };
+                } else if (comptime std.mem.eql(u8, name, "sanitizer_config")) {
+                    result.value = .{ .dictionary = try typedData(result.arena.allocator(), arm, .as_given) };
+                } else if (comptime std.mem.eql(u8, name, "sanitizer_presets")) {
+                    // SanitizerPresets has the one value, "default".
+                    comptime std.debug.assert(@typeInfo(@TypeOf(arm)).@"enum".field_names.len == 1);
+                    result.value = .preset;
+                } else @compileError("html.sanitizer.Converted.fromTyped: no conversion for the union member " ++ name);
+            },
+        }
+        return result;
     }
 
     /// Whether this is an empty SanitizerConfig: the dictionary arm with no
@@ -457,14 +474,20 @@ pub const Converted = struct {
         return true;
     }
 
-    pub fn fromJS(allocator: Allocator, realm: runtime.Context, input: runtime.JSValue, allow_instance: bool) engine.Error!Converted {
+    /// A script value converted BY HAND to (Sanitizer or SanitizerConfig or
+    /// SanitizerPresets). One caller is left: the sanitizer member of a
+    /// createParserOptions callback's RETURN value
+    /// (parser_options.trustedFromPolicyValue), which no generated code
+    /// converts yet - codegen's `callback_returns_converted_by_impl` lists
+    /// CreateParserOptionsCallback, and this reader goes with that entry.
+    pub fn fromJS(allocator: Allocator, realm: runtime.Context, input: runtime.JSValue) engine.Error!Converted {
         var result = Converted{ .arena = .init(allocator), .value = .{ .dictionary = .{} } };
         errdefer result.deinit();
         const kind = engine.typeOf(realm, input);
-        if (allow_instance and kind == .object) {
+        if (kind == .object) {
             if (engine.convertToPlatformObject(realm, input)) |instance| {
                 if (std.mem.eql(u8, instance.vtable.name, "Sanitizer")) {
-                    result.value = .{ .sanitizer = input };
+                    result.value = .{ .sanitizer = try engine.retainValue(realm, input) };
                     return result;
                 }
             }
@@ -492,9 +515,13 @@ pub const Converted = struct {
     }
 };
 
-pub fn convertOptions(realm: runtime.Context, option: ?runtime.JSValue, safe: bool) engine.Error!Converted {
-    return Converted.fromJS(realm.allocator, realm, option orelse
-        (if (safe) runtime.JSValue.fromStringRef("default") else runtime.JSValue.jsNull), true);
+/// A dictionary's `sanitizer` member as the binding converted it (the
+/// generated union, null when the member does not exist), with the member's
+/// IDL default: "default" for a safe method's SetHTMLOptions, `{}` otherwise.
+pub fn convertOptions(realm: runtime.Context, option: anytype, safe: bool) engine.Error!Converted {
+    if (option) |given| return Converted.fromTyped(realm.allocator, given);
+    if (safe) return Converted.defaultPreset(realm.allocator);
+    return .{ .arena = .init(realm.allocator), .value = .{ .dictionary = .{} } };
 }
 
 fn optionalStringEqual(a: ?[]const u8, b: ?[]const u8) bool {
@@ -662,9 +689,45 @@ fn typedNames(allocator: Allocator, input: anytype, comptime is_element: bool) !
     return result;
 }
 
-fn typedElement(allocator: Allocator, input: anytype) !Element {
+/// What a typed SanitizerConfig is read for. `.canonical`: a Sanitizer's
+/// get(), already canonical - an element given as a string allows every
+/// attribute (removeAttributes « »). `.as_given`: an author's dictionary,
+/// before "canonicalize the configuration" - an element given as a string
+/// has neither attribute list, which canonicalization and "valid" tell apart
+/// from an empty one.
+const TypedSource = enum { canonical, as_given };
+
+/// A generated SanitizerConfig's members, copied into `allocator`.
+fn typedData(allocator: Allocator, input: anytype, comptime source: TypedSource) !Data {
+    comptime {
+        const fields = .{ "elements", "removeElements", "replaceWithChildrenElements", "attributes", "removeAttributes", "comments", "dataAttributes", "processingInstructions", "removeProcessingInstructions", "javascriptURLs" };
+        if (std.meta.fieldNames(@TypeOf(input)).len != fields.len) @compileError("Update the SanitizerConfig native copy for its changed members");
+        for (fields) |field| if (!@hasField(@TypeOf(input), field)) @compileError("SanitizerConfig is missing " ++ field);
+    }
+    var data = Data{
+        .comments = input.comments,
+        .data_attributes = input.dataAttributes,
+        .javascript_urls = input.javascriptURLs,
+        .attributes = try typedNames(allocator, input.attributes, false),
+        .remove_attributes = try typedNames(allocator, input.removeAttributes, false),
+        .remove_elements = try typedNames(allocator, input.removeElements, true),
+        .replace_elements = try typedNames(allocator, input.replaceWithChildrenElements, true),
+        .processing_instructions = try typedPIs(allocator, input.processingInstructions),
+        .remove_processing_instructions = try typedPIs(allocator, input.removeProcessingInstructions),
+    };
+    if (input.elements) |elements| {
+        data.elements = try allocator.alloc(Element, elements.len);
+        for (elements, data.elements.?) |element, *copy| copy.* = try typedElement(allocator, element, source);
+    }
+    return data;
+}
+
+fn typedElement(allocator: Allocator, input: anytype, comptime source: TypedSource) !Element {
     return switch (input) {
-        .domstring => |string| .{ .name = try (Name{ .local = string.asSlice(), .namespace = html_namespace }).clone(allocator), .remove_attributes = &.{} },
+        .domstring => |string| .{
+            .name = try (Name{ .local = string.asSlice(), .namespace = html_namespace }).clone(allocator),
+            .remove_attributes = if (source == .canonical) &.{} else null,
+        },
         .sanitizer_element_namespace_with_attributes => |dictionary| .{
             .name = try (Name{ .local = dictionary.base.name.asSlice(), .namespace = if (dictionary.base.namespace.was_passed) normalizedNamespace(dictionary.base.namespace.value) else html_namespace }).clone(allocator),
             .attributes = try typedNames(allocator, dictionary.attributes, false),

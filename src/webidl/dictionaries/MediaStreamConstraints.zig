@@ -3,21 +3,17 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("typedefs");
 const enums = @import("enums");
-const MediaTrackConstraints = @import("MediaTrackConstraints.zig").MediaTrackConstraints;
 
 pub const MediaStreamConstraints = struct {
     /// A WebIDL dictionary (the binding's dictionary rules read this marker).
     pub const webidl_dictionary = true;
-    video: ?runtime.JSValue = null,
-    audio: ?runtime.JSValue = null,
+    video: ?typedefs.BooleanOrMediaTrackConstraints = null,
+    audio: ?typedefs.BooleanOrMediaTrackConstraints = null,
     semantics: ?enums.GetUserMediaSemantics = null,
     preferCurrentTab: ?bool = null,
     peerIdentity: ?runtime.DOMString = null,
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{ "video", "audio" };
 
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.

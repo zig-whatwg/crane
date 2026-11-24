@@ -26,14 +26,10 @@ const helpers = @import("edges_node_holders_helpers.zig");
 
 fn count(browser: *browser_mod.Browser, names: []const []const u8) usize {
     var live: usize = 0;
-    var slab = browser.scope.slab.slabs;
-    while (slab) |each| : (slab = each.next) {
-        for (&each.slots) |*slot| {
-            const instance: *runtime.Instance = @ptrCast(slot);
-            if (runtime.SlabAllocator.generationOf(instance) == runtime.SlabAllocator.dead_generation) continue;
-            for (names) |name| {
-                if (std.mem.eql(u8, instance.vtable.name, name)) live += 1;
-            }
+    var live_slots = browser.scope.slab.iterateLive();
+    while (live_slots.next()) |instance| {
+        for (names) |name| {
+            if (std.mem.eql(u8, instance.vtable.name, name)) live += 1;
         }
     }
     return live;

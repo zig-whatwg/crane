@@ -25,8 +25,9 @@ const no_methods = .{};
 const vtable: runtime.VTable = .{ .name = "Lifecycle", .deinit = null, .methods_ptr = &no_methods };
 
 test "a completed cleanup is still a started one, until the slot is reused" {
-    var slab = runtime.SlabAllocator.init(testing.allocator);
-    defer slab.deinit();
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
     const instance = try slab.alloc(&vtable);
 
     try testing.expect(lifecycle.markCleanupStarted(instance));
@@ -45,8 +46,9 @@ test "a completed cleanup is still a started one, until the slot is reused" {
 }
 
 test "a reissued slot starts fresh" {
-    var slab = runtime.SlabAllocator.init(testing.allocator);
-    defer slab.deinit();
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
     const instance = try slab.alloc(&vtable);
 
     try testing.expect(lifecycle.markCleanupStarted(instance));
@@ -63,8 +65,9 @@ test "a reissued slot starts fresh" {
 }
 
 test "flags are each instance's own, and never change its generation" {
-    var slab = runtime.SlabAllocator.init(testing.allocator);
-    defer slab.deinit();
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
     const first = try slab.alloc(&vtable);
     const second = try slab.alloc(&vtable);
     const generation = runtime.SlabAllocator.generationOf(first);
@@ -85,8 +88,9 @@ test "flags are each instance's own, and never change its generation" {
 // free the storage of nodes no wrapper ever reached.
 
 test "a wrap mark is sticky until the slab issues the slot again" {
-    var slab = runtime.SlabAllocator.init(testing.allocator);
-    defer slab.deinit();
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
     const instance = try slab.alloc(&vtable);
     const generation = runtime.SlabAllocator.generationOf(instance);
 
@@ -109,8 +113,9 @@ test "a wrap mark is sticky until the slab issues the slot again" {
 }
 
 test "the DEFAULT: an engine that does not track wraps proves no instance unwrapped" {
-    var slab = runtime.SlabAllocator.init(testing.allocator);
-    defer slab.deinit();
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
     const instance = try slab.alloc(&vtable);
 
     // Unmarked, on an engine that does not mark (JavaScriptCore, QuickJS,
@@ -131,8 +136,9 @@ test "the DEFAULT: an engine that does not track wraps proves no instance unwrap
 // host keeps. The mark is then the present, not only the history.
 
 test "the DEFAULT of a released wrap: only a release the adapter recorded proves an instance unreachable" {
-    var slab = runtime.SlabAllocator.init(testing.allocator);
-    defer slab.deinit();
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
 
     // Marked and never released: reachable, tracked or not.
     const held = try slab.alloc(&vtable);
@@ -160,8 +166,9 @@ test "the DEFAULT of a released wrap: only a release the adapter recorded proves
 }
 
 test "a new bind undoes a released wrap, and a reissued slot starts with neither" {
-    var slab = runtime.SlabAllocator.init(testing.allocator);
-    defer slab.deinit();
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
     const instance = try slab.alloc(&vtable);
     lifecycle.markWrapped(instance);
     lifecycle.markWrapperGone(instance);

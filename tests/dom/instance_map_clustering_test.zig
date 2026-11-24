@@ -6,8 +6,13 @@
 //! 1. A realm keeps its objects in a map keyed by instance - the wrapper
 //!    cache's `cache` - and its end frees them by walking that map, so in the
 //!    order of their home slots.
-//! 2. The slab's free list is LIFO: it issues those slots again in the
-//!    reverse of that order.
+//! 2. A LIFO allocator issues those slots again in the reverse of that
+//!    order. The slab's free list was LIFO; since lane hard1 the Browser's
+//!    heap issues the lowest free slot first and holds a task's frees in a
+//!    quarantine, which does not reproduce the order - but any LIFO reuse
+//!    does (glibc's tcache, a future allocator), so the case feeds the side
+//!    map the freed slots in exactly that order (`Reissue`), the slab's
+//!    own fresh slots after them.
 //! 3. The next page's side map - the wrapper cache's `edges_before_wrap`,
 //!    keyed by owners script has not seen: a burst of 2,000, then 16 a page,
 //!    each taken out again - receives its keys sorted by home slot. If every
@@ -54,13 +59,37 @@ const Worst = struct {
     }
 };
 
+/// The keys a LIFO allocator issues after the frees: the freed slots, the
+/// last freed first, then fresh ones from the slab. Keys only - the side
+/// map never reads through them.
+const Reissue = struct {
+    freed: std.ArrayListUnmanaged(*Instance) = .empty,
+    slab: *runtime.SlabAllocator,
+
+    fn free(self: *Reissue, instance: *Instance) !void {
+        try self.freed.append(testing.allocator, instance);
+        self.slab.free(instance);
+    }
+
+    fn next(self: *Reissue) !*Instance {
+        return self.freed.pop() orelse try self.slab.alloc(&vtable);
+    }
+
+    fn deinit(self: *Reissue) void {
+        self.freed.deinit(testing.allocator);
+    }
+};
+
 /// A page and its frame end, each freeing its objects by walking the table
-/// that keyed them, and the next page's side map is fed from the slab:
-/// `Walked` is a realm's table, `Side` the side map. Returns the worst page
-/// of the side map.
+/// that keyed them, and the next page's side map is fed what a LIFO
+/// allocator issues next (`Reissue`): `Walked` is a realm's table, `Side`
+/// the side map. Returns the worst page of the side map.
 fn churn(comptime Walked: type, comptime Side: type) !Worst {
-    var slab = runtime.SlabAllocator.init(testing.allocator);
-    defer slab.deinit();
+    var slab_scope = runtime.BrowserScope.init(testing.allocator);
+    defer slab_scope.deinit();
+    const slab = &slab_scope.slab;
+    var reissue: Reissue = .{ .slab = slab };
+    defer reissue.deinit();
 
     // The page's realm: 3,200 objects, a table of 4,096.
     var page: Walked = .empty;
@@ -76,21 +105,21 @@ fn churn(comptime Walked: type, comptime Side: type) !Worst {
     }
     for (made[0..2_000]) |instance| {
         try testing.expect(frame.remove(instance));
-        slab.free(instance);
+        try reissue.free(instance);
     }
     // The page ends: each realm frees what its table holds by walking it
     // (the wrapper cache's end), the page's first, then the frame's.
     for ([_]*Walked{ &page, &frame }) |table| {
         try testing.expectEqual(@as(usize, 4_096), table.capacity());
         var it = table.keyIterator();
-        while (it.next()) |instance| slab.free(instance.*);
+        while (it.next()) |instance| try reissue.free(instance.*);
         table.deinit(testing.allocator);
     }
 
     // The next page's side map, with the guard the wrapper cache's side maps
     // have: a burst of 2,000 owners, then 16 a page; every owner is taken out
-    // when its wrapper is made. Every key is a slot the slab issues again,
-    // the frame's last-freed first.
+    // when its wrapper is made. Every key is a slot a LIFO allocator issues
+    // again, the frame's last-freed first.
     var side: Side = .empty;
     defer side.deinit(testing.allocator);
     var guard: tombstones.TombstoneGuard = .{};
@@ -99,7 +128,7 @@ fn churn(comptime Walked: type, comptime Side: type) !Worst {
     for (0..300) |page_index| {
         const per_page: usize = if (page_index == 0) owners.len else 16;
         for (owners[0..per_page], 0..) |*owner, i| {
-            owner.* = try slab.alloc(&vtable);
+            owner.* = try reissue.next();
             if (i == 0 and page_index > 0) worst.note(&side);
             guard.beforeInsert(&side);
             try side.put(testing.allocator, owner.*, 1);

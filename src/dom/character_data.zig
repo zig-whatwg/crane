@@ -383,6 +383,13 @@ pub const Head = extern struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
+    /// A CharacterData node's State block lives in the heap's node
+    /// partition with character data only (runtime.ArenaAllocator.targetOf;
+    /// allocator-hardening design 3.2 step 4, [OSS] R14): the up to 8 bytes
+    /// of page text in its leaf word are only ever read as another
+    /// CharacterData's leaf word, never as an element's link.
+    pub const heap_kind: runtime.heap.NodeKind = .character_data;
+
     /// The data's length in bytes, and whether its bytes are the shared blob's.
     size: Data.Size,
 

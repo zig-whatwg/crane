@@ -152,10 +152,24 @@ fn isNavigableContainer(element: *Instance) bool {
     return named(element, "object") and contentDocumentOf(element) != null;
 }
 
+/// An SVG <a> that is a valid link by its XLink href alone. SVG 2 15.7
+/// ("Focus"): "all a elements that are valid links are focusable", and an SVG
+/// a links by href or, as legacy, xlink:href (SVG 2 16.2). Blink
+/// SVGAElement::SupportsFocus reads HrefURL (href, else xlink:href); Chrome
+/// 157.0.8103.78, Firefox 159.0.1 and Safari 27.2 all focus such a link with
+/// no tabindex (WebDriver probe, chat.local, 2026-11-24, lane a11y1;
+/// crane/a11y1-svg-link-focus.html). An HTML a stays href-only: there
+/// xlink:href is a plain attribute, in no namespace.
+fn isSvgXlinkLink(element: *Instance) bool {
+    const data = dom.element_data.of(element) orelse return false;
+    if (!std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/2000/svg")) return false;
+    return data.findAttribute("http://www.w3.org/1999/xlink", "href") != null;
+}
+
 /// The elements "should be considered as focusable areas and be sequentially
 /// focusable" when their tabindex value is null (6.6.3).
 fn isFocusableByDefault(element: *Instance) bool {
-    if (named(element, "a")) return form_associated.hasAttribute(element, "href");
+    if (named(element, "a")) return form_associated.hasAttribute(element, "href") or isSvgXlinkLink(element);
     if (element.stateAs(interfaces.HTMLOptionElement.State) != null) return @import("forms/select_picker.zig").optionFocusable(element);
     if (form_associated.isSelect(element)) return !(@import("forms/select_picker.zig").isListbox(element) and @import("forms/select_picker.zig").baseAppearance(element));
     if (form_associated.isButton(element) or form_associated.isTextArea(element)) return true;

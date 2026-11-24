@@ -1,741 +1,192 @@
-//! Arena allocator for variable-sized FullState allocations
+//! The state arena: where a Browser's platform objects take their State
+//! blocks and the side blocks their impls keep (`runtime.arenaOf(instance)
+//! .create/.destroy`) - now a VIEW of the Browser's heap (lane hard1,
+//! allocator-hardening batch A; tmp/plans/allocator-hardening-design.md 4.1,
+//! 7 item 3).
 //!
-//! This allocator manages FullState structs (variable sizes) using an arena
-//! approach for fast allocation with batch deallocation during GC sweeps.
+//! One per Browser (runtime.BrowserScope.arena, docs/instances.md). Its
+//! public API is what it was, so the arenaOf callers compile unchanged; what
+//! it does is the span engine's (src/runtime/heap/):
 //!
-//! Design:
-//! - Wraps std.heap.ArenaAllocator for bump allocation
-//! - No individual frees (arena reset during GC sweep)
-//! - Supports variable-size allocations (Node, Element, Text have different sizes)
-//! - Reset retains capacity for next GC cycle
+//! - a node's State goes to the NODE partition, keyed by its size class and
+//!   its kind - element, character data or other - a comptime property of
+//!   its State type (`targetOf`); every other State and side block to the
+//!   OBJECTS partition. One free list no longer serves every interface: a
+//!   freed div is never reissued as an Event (design 3.2);
+//! - a free is routed by its ADDRESS (the free path is untyped:
+//!   `Instance.deinit` has a vtable, not a type) and validated against the
+//!   size it is given - class, alignment, owner, double free - in every
+//!   build (design 3.3);
+//! - a freed block is zeroed (poisoned in Debug and the bug-finding run),
+//!   checked on its reissue, held until its task ends when the window
+//!   agent's loop runs one, and its span decommitted once empty and idle.
 //!
-//! One per Browser (runtime.BrowserScope.arena, docs/instances.md): a
-//! Browser's platform objects take their state from its own arena, and its
-//! end frees exactly them.
+//! What it no longer has: the inline LIFO free lists (a raw link in a freed
+//! block - one write after a free turned the next allocation into any
+//! address), the bump path that never freed (`alloc`/`dupe`: lane leak3 moved
+//! DOMException's strings off it), the uaf1 FIFO quarantine (the heap's
+//! task-scoped one replaces it, design 3.5), and its own mutex (the objects
+//! partition has one; the node partition needs none - one thread).
 //!
-//! Thread safety: every thread that makes platform objects takes its state
-//! from here - a Browser's thread and each of its workers' (docs/instances.md)
-//! - so every method takes `mutex`.
+//! Thread safety: the node partition is the window agent's thread's (an
+//! owner check on every call); the objects partition takes its lock.
 
 const std = @import("std");
+const heap = @import("heap/root.zig");
+const lifetime = @import("lifetime.zig");
 
-/// How the state arena rounds a request to a block it can recycle.
-///
-/// Lane perf2 batch 5 (tmp/plans/perf2b5-design.md 3.1): a node is ONE State
-/// block now - the generated State with every level's InternalState and the
-/// NodeBase by value (runtime.FlattenedState, Z7) - so the block's class is a
-/// node's whole storage. Power-of-two classes put a div's ~1,250 bytes in a
-/// 2,048-byte block and a Document's 2,168-byte state in 4,096 (lane nav2
-/// batch 7). Classes trade slack against reuse: a freed block serves only
-/// requests of its own class, and finer classes are narrower bands - jemalloc
-/// and PartitionAlloc keep four to eight per doubling, macOS malloc a 16-byte
-/// quantum to 1 KiB and 512 bytes above. The choice is MEASURED (the perf
-/// window's memory rows, both schemes) and stays one constant away.
-pub const ClassScheme = enum {
-    /// Every multiple of 16 bytes to 4 KiB, then 8 and 16 KiB: a block holds
-    /// its request with less than 16 bytes to spare.
-    quantum16,
-    /// 16-byte steps to 512 bytes, then eight classes per doubling to 16 KiB:
-    /// at most 12.5% slack, wider bands to recycle in.
-    eighths,
-    /// Powers of two from 16 bytes to 16 KiB: the classes before batch 5.
-    powers_of_two,
-};
+pub const ClassScheme = heap.classes.ClassScheme;
+pub const class_scheme = heap.classes.class_scheme;
+pub const SizeClasses = heap.classes.SizeClasses;
 
-/// The scheme the state arena uses.
-pub const class_scheme: ClassScheme = .quantum16;
-
-/// The size classes of `scheme`, for requests of 8 bytes to `max_size`.
-pub fn SizeClasses(comptime scheme: ClassScheme) type {
-    return struct {
-        /// The largest request a class holds; past it nothing is recycled.
-        pub const max_size: usize = 16 * 1024;
-
-        /// How many classes there are (one free list each).
-        pub const count: usize = switch (scheme) {
-            .quantum16 => 4096 / 16 + 2,
-            .eighths => 512 / 16 + 5 * 8,
-            .powers_of_two => 14 - 4 + 1,
-        };
-
-        /// The class of a request of `size` bytes, 8 <= size <= max_size.
-        pub fn of(size: usize) usize {
-            std.debug.assert(size >= 8 and size <= max_size);
-            switch (scheme) {
-                .quantum16 => {
-                    if (size <= 4096) return (size + 15) / 16 - 1;
-                    return if (size <= 8192) 256 else 257;
-                },
-                .eighths => {
-                    if (size <= 512) return (size + 15) / 16 - 1;
-                    // The doubling (base, 2 * base] the size falls in, and its
-                    // eighth: classes base + k * base / 8, k = 1..8.
-                    const d: usize = std.math.log2_int(usize, size - 1);
-                    const base = @as(usize, 1) << @intCast(d);
-                    const step = base / 8;
-                    const k = (size - base + step - 1) / step;
-                    return 32 + (d - 9) * 8 + (k - 1);
-                },
-                .powers_of_two => {
-                    const shift = std.math.log2_int_ceil(usize, @max(size, 16));
-                    return shift - 4;
-                },
-            }
-        }
-
-        /// The bytes a block of `class` holds.
-        pub fn bytes(class: usize) usize {
-            std.debug.assert(class < count);
-            switch (scheme) {
-                .quantum16 => {
-                    if (class < 256) return (class + 1) * 16;
-                    return if (class == 256) 8192 else 16384;
-                },
-                .eighths => {
-                    if (class < 32) return (class + 1) * 16;
-                    const i = class - 32;
-                    const base = @as(usize, 1) << @intCast(9 + i / 8);
-                    return base + (i % 8 + 1) * (base / 8);
-                },
-                .powers_of_two => return @as(usize, 1) << @intCast(class + 4),
-            }
-        }
-    };
-}
-
-/// Arena allocator for variable-sized FullState structs
+/// The state arena: a Browser's State blocks, in its heap. Only ever a
+/// field of a runtime.BrowserScope (it finds its heap through it).
 pub const ArenaAllocator = struct {
-    /// Underlying arena allocator
-    arena: std.heap.ArenaAllocator,
-
-    /// Statistics
-    total_allocations: usize,
-    total_bytes_allocated: usize,
-    total_resets: usize,
-
-    /// Bytes currently held by live states - allocated and not yet destroyed.
-    ///
-    /// `total_bytes_allocated` is cumulative and cannot answer "how much is held":
-    /// it rises identically whether or not anything is freed, which is exactly why
-    /// the retention it was used to report looked unfixable.
-    bytes_in_use: usize = 0,
-
-    /// Free lists, one per size class, of blocks handed back by `destroy`.
-    ///
-    /// This is what makes a create/discard loop bounded. The arena underneath still
-    /// only grows - it has no way to release an individual block - but a freed
-    /// block is handed straight back out, so the loop stops asking for new memory.
-    ///
-    /// Reuse rather than `reset()` deliberately. The arena is the Browser's and
-    /// holds the Window, the Document and every node still in the tree, so a
-    /// blanket reset would free live state along with dead. Reuse touches only
-    /// blocks their owners have already given up.
-    free_lists: [Classes.count]?*FreeBlock = @splat(null),
-    /// Blocks recycled rather than taken from the arena. Diagnostic: if this stays
-    /// at zero while a discard loop runs, states are not being returned at all.
-    total_recycled: usize = 0,
-
-    /// Whether `destroyRaw` overwrites a freed block with `poison_byte`, so a
-    /// read of a freed state faults instead of finding its old bytes - the
-    /// poison-on-free the WPT correctness runner's allocator gives every
-    /// block it frees (the user, 2026-11-05: on by default there, never in
-    /// Crane's builds or the release runner). Set once, where the Browser's
-    /// scope is made, before any state is: on in a Debug build
-    /// (runtime.BrowserScope.poisonsFreedStateByDefault: the unit tests and
-    /// the bug-finding runner, since lane uaf1 - a Debug build already
-    /// poisoned a released NodeBase, and its freed block read as merely
-    /// released), and in any build whose Browser asked
-    /// (BrowserConfig.poison_freed_state). Off in a bare arena and in every
-    /// release build by default, so a product build never pays it. Since
-    /// lane perf2 batch 5 a node's NodeBase and InternalStates are its State
-    /// block's (Z7): their release frees nothing the runner's allocator
-    /// would have poisoned.
+    /// Whether a freed state block is overwritten with `poison_byte` (the
+    /// heap's poisoning configuration: heap.Config.debug_default). Set once,
+    /// where the Browser's scope is made, before its heap starts: on in a
+    /// Debug build (runtime.BrowserScope.poisonsFreedStateByDefault: the
+    /// unit tests and the bug-finding runner) and in any build whose
+    /// Browser asked (BrowserConfig.poison_freed_state). Off in every
+    /// release build by default: the heap zeroes instead.
     poison_freed: bool = false,
 
-    /// Whether a poisoned freed block also waits in the QUARANTINE below
-    /// before it can be reissued. Only with `poison_freed`, and only for a
-    /// Browser that asked (BrowserConfig.poison_freed_state: the bug-finding
-    /// WPT runner) - not a Debug build's default: the quarantine holds up to
-    /// `quarantine_bytes` of freed state out of reuse, and the unit tests
-    /// that measure what a page keeps (live bytes per navigable, a recycled
-    /// block's address) measure the production arena's reuse.
+    /// Whether the Browser asked for the bug-finding run's detection
+    /// (BrowserConfig.poison_freed_state): with `poison_freed`, the heap's
+    /// bug-finding configuration (heap.Config.bug_finding) - an 8 MiB
+    /// quarantine, inaccessible freed spans, allocation sites.
     quarantine_freed: bool = false,
 
-    /// The QUARANTINE of a poisoning arena (lane uaf1): with
-    /// `quarantine_freed` set, a freed block does not go to its class's free
-    /// list - where the very next request of its class would take it,
-    /// zeroed, and a stale read would find the new occupant - but to the
-    /// tail of this queue, all poison, and leaves it oldest first only once
-    /// more than `quarantine_bytes` of newer frees wait behind it. So a read
-    /// through a pointer kept past a free finds the poison long after the
-    /// free, not only until the next allocation, and a WRITE through one is
-    /// found when the block leaves the queue (`checkStillPoison`: a panic).
-    /// AddressSanitizer's design (compiler-rt, sanitizer_common/
-    /// sanitizer_quarantine.h: freed chunks wait in a FIFO with a byte
-    /// budget, asan's `quarantine_size_mb`, and are recycled oldest first)
-    /// and the write check Zig's testing allocator makes when it releases a
-    /// bucket (std.heap.SafeAllocator, `check_write_after_free`).
-    ///
-    /// Never in production: an arena that does not quarantine keeps the
-    /// LIFO free lists, and `createRaw` is the same code either way - a
-    /// block that left the queue is on its class's list like any other.
-    quarantine_head: ?*Quarantined = null,
-    quarantine_tail: ?*Quarantined = null,
-    /// The bytes of the blocks in the queue (their classes' sizes).
-    quarantine_held: usize = 0,
+    /// The byte a poisoning heap fills a freed block with
+    /// (tests/test_runner/poisoning.zig's 0xdd).
+    pub const poison_byte: u8 = heap.poison_byte;
 
-    /// Protects `arena`, `free_lists` and the statistics: every thread that
-    /// makes or frees a platform object's state takes it, for one bump or one
-    /// free-list push or pop - never across a call out of this file.
-    mutex: std.Io.Mutex = .init,
-
-    /// A freed block, with the next pointer written into the block itself.
-    ///
-    /// Costs no side allocation, which matters because this runs on the free path
-    /// of every DOM node. It does require every recycled block to be at least
-    /// pointer-sized and pointer-aligned; `sizeClassOf` enforces that by refusing
-    /// anything smaller.
-    const FreeBlock = struct {
-        next: ?*FreeBlock,
-    };
-
-    /// The byte a freed block is overwritten with when `poison_freed` is set:
-    /// the tests' and the WPT runner's poison (tests/test_runner/poisoning.zig).
-    pub const poison_byte: u8 = 0xdd;
-
-    /// A block in the quarantine: the queue's link and the block's class,
-    /// in its first two words (the smallest class is 16 bytes). Every byte
-    /// after them is poison.
-    const Quarantined = struct {
-        next: ?*Quarantined,
-        class: usize,
-    };
-
-    comptime {
-        std.debug.assert(@sizeOf(Quarantined) <= Classes.bytes(0));
-    }
-
-    /// The quarantine's budget: the bytes of freed blocks a quarantining
-    /// arena keeps out of reuse - about 9,000 freed div states (112 bytes
-    /// each). The price of the window: such an arena holds up to this much
-    /// more than a production one, per Browser.
-    pub const quarantine_bytes: usize = 1024 * 1024;
-
-    /// The bytes waiting in the quarantine. Always 0 for an arena that does
-    /// not quarantine.
-    pub fn quarantinedBytes(self: *ArenaAllocator) usize {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        return self.quarantine_held;
-    }
-
-    /// The offset of the first byte of `bytes` that is not the poison, or
-    /// null: what `checkStillPoison` asks of a block leaving the quarantine.
-    pub fn firstNonPoison(bytes: []const u8) ?usize {
-        for (bytes, 0..) |byte, offset| if (byte != poison_byte) return offset;
-        return null;
-    }
-
-    /// A block of `class` at `ptr` leaves the quarantine (or the arena ends
-    /// with it there): everything after its header must still be the poison
-    /// its free wrote. Anything else was written through a pointer kept past
-    /// the free - in production, into whatever state took the block next.
-    fn checkStillPoison(ptr: [*]const u8, class: usize) void {
-        const size = classSize(class);
-        const offset = firstNonPoison(ptr[@sizeOf(Quarantined)..size]) orelse return;
-        writeAfterFree(ptr, size, @sizeOf(Quarantined) + offset);
-    }
-
-    fn writeAfterFree(ptr: [*]const u8, size: usize, offset: usize) noreturn {
-        @branchHint(.cold);
-        std.debug.panic("ArenaAllocator: a freed state block at {x} ({d}-byte class) was WRITTEN after its free: the byte at offset {d} is 0x{x:0>2}, not the poison. A pointer into the state was kept past its free; in production this write lands in the next state made in the block.", .{ @intFromPtr(ptr), size, offset, ptr[offset] });
-    }
-
-    /// A freed block of `class`, already all poison, joins the quarantine;
-    /// the oldest blocks past the budget go on to their classes' free lists.
-    fn quarantine(self: *ArenaAllocator, class: usize, ptr: [*]u8) void {
-        const block: *Quarantined = @ptrCast(@alignCast(ptr));
-        block.* = .{ .next = null, .class = class };
-        if (self.quarantine_tail) |tail| tail.next = block else self.quarantine_head = block;
-        self.quarantine_tail = block;
-        self.quarantine_held += classSize(class);
-        while (self.quarantine_held > quarantine_bytes) {
-            const oldest = self.quarantine_head.?;
-            const oldest_class = self.leaveQuarantine(oldest);
-            // Its header's second word is poison again: a block on a free
-            // list is its link and poison, whatever freed it.
-            const bytes: [*]u8 = @ptrCast(oldest);
-            @memset(bytes[@sizeOf(FreeBlock)..@sizeOf(Quarantined)], poison_byte);
-            self.pushFree(oldest_class, bytes);
-        }
-    }
-
-    /// Unlink the queue's head, checked (`checkStillPoison`); its class.
-    fn leaveQuarantine(self: *ArenaAllocator, oldest: *Quarantined) usize {
-        const class = oldest.class;
-        // The class word is the block's too: a write there is a write after
-        // the free like any other.
-        if (class >= Classes.count) writeAfterFree(@ptrCast(oldest), @sizeOf(Quarantined), @offsetOf(Quarantined, "class"));
-        checkStillPoison(@ptrCast(oldest), class);
-        self.quarantine_head = oldest.next;
-        if (self.quarantine_head == null) self.quarantine_tail = null;
-        self.quarantine_held -= classSize(class);
-        return class;
-    }
-
-    /// The arena ends, or is reset: every block still in the quarantine is
-    /// checked as one leaving it is, and the queue is dropped.
-    fn endQuarantine(self: *ArenaAllocator) void {
-        while (self.quarantine_head) |oldest| _ = self.leaveQuarantine(oldest);
-    }
-
-    /// The size classes (`class_scheme`, `SizeClasses`).
+    /// The size classes.
     const Classes = SizeClasses(class_scheme);
 
-    /// The class a request of `size`/`alignment` belongs to, or null if it must not
-    /// be recycled.
-    ///
-    /// Null for anything under 8 bytes (no room for the next pointer), anything
-    /// over 16 KiB (rare, and pooling them would hold a lot of memory hostage), and
-    /// anything needing more than a pointer's alignment (a class block is aligned
-    /// to a pointer).
-    fn sizeClassOf(size: usize, alignment: usize) ?usize {
-        if (size < @sizeOf(FreeBlock) or alignment > @alignOf(FreeBlock)) return null;
-        if (size > Classes.max_size) return null;
-        return Classes.of(size);
-    }
-
-    /// Bytes a block of the given class holds.
-    fn classSize(class: usize) usize {
-        return Classes.bytes(class);
+    fn engine(self: *ArenaAllocator) error{OutOfMemory}!*heap.Engine {
+        const BrowserScope = @import("browser_scope.zig").BrowserScope;
+        const scope: *BrowserScope = @alignCast(@fieldParentPtr("arena", self));
+        return scope.heapEngine() catch return error.OutOfMemory;
     }
 
     /// The bytes a state of `size`/`alignment` holds once made: its class's
-    /// block, or the request itself when it is not recycled (`createRaw`).
-    /// What a Browser's DOM memory counts for a node's state
-    /// (dom.instance_bridge.storageBytes).
+    /// block, or its run of spans. What a Browser's DOM memory counts for a
+    /// node's state (dom.instance_bridge.storageBytes); unchanged by the
+    /// move to the heap (the arena's classes are the heap's).
     pub fn heldBytes(size: usize, alignment: usize) usize {
-        const class = sizeClassOf(size, alignment) orelse return size;
-        return classSize(class);
-    }
-
-    /// Take a block of `class` off its free list, or null if the list is empty.
-    fn popFree(self: *ArenaAllocator, class: usize) ?[*]u8 {
-        const head = self.free_lists[class] orelse return null;
-        self.free_lists[class] = head.next;
-        self.total_recycled += 1;
-        return @ptrCast(head);
-    }
-
-    /// Put a block of `class` back on its free list.
-    fn pushFree(self: *ArenaAllocator, class: usize, ptr: [*]u8) void {
-        const block: *FreeBlock = @ptrCast(@alignCast(ptr));
-        block.next = self.free_lists[class];
-        self.free_lists[class] = block;
-    }
-
-    /// An empty arena over `backing_allocator`.
-    pub fn init(backing_allocator: std.mem.Allocator) ArenaAllocator {
-        return .{
-            .arena = std.heap.ArenaAllocator.init(backing_allocator),
-            .total_allocations = 0,
-            .total_bytes_allocated = 0,
-            .total_resets = 0,
+        if (size == 0) return 0;
+        const class = heap.classes.classOf(size, alignment) orelse {
+            const bytes = heap.classes.requestBytes(size, alignment);
+            return std.mem.alignForward(usize, bytes, heap.span_bytes);
         };
+        return Classes.bytes(class);
     }
 
-    /// Free every block - the state of every platform object made from it.
-    pub fn deinit(self: *ArenaAllocator) void {
-        self.endQuarantine();
-        self.arena.deinit();
-        self.free_lists = @splat(null);
+    /// The partition and kind a State of type `T` goes to: a node's State
+    /// (runtime.lifetime.countedOf finds it) to the node partition, by the
+    /// `heap_kind` its levels' InternalStates declare - Element's and
+    /// CharacterData's (found through the generated State's fields, as
+    /// countedOf finds `counted_node`, so nothing names an impl) - most
+    /// derived first, `other` when none does (Document, DocumentFragment,
+    /// ShadowRoot, Attr, DocumentType). Everything else to objects.
+    pub fn targetOf(comptime T: type) heap.Target {
+        comptime {
+            if (@typeInfo(T) != .@"struct" or lifetime.countedOf(T) == null) return .objects;
+            var Level: type = T;
+            while (true) {
+                if (@hasField(Level, "_embedded")) {
+                    const Embedded = @FieldType(Level, "_embedded");
+                    // hasdecl: a generated State level's InternalState kept by value - Element's (src/webidl/impls/Element.zig) and dom.character_data.Head declare heap_kind pub; every other one has none
+                    if (@typeInfo(Embedded) == .@"struct" and @hasDecl(Embedded, "heap_kind")) return .{ .node = Embedded.heap_kind };
+                }
+                if (!@hasField(Level, "base")) break;
+                const Base = @FieldType(Level, "base");
+                if (Base == void) break;
+                Level = Base;
+            }
+            return .{ .node = .other };
+        }
     }
 
-    /// Create (allocate) a single instance of type T
+    /// Create a `T` - ZEROED: Zig does not apply struct defaults through an
+    /// allocator, and every caller (Instance.init, OwnState.createIn,
+    /// InstanceRegistry.createIn) relies on the zero.
     ///
-    /// This is the primary allocation method used by generated code:
     ///   const state = try runtime.arenaOf(instance).create(FullState);
     pub fn create(self: *ArenaAllocator, comptime T: type) !*T {
-        return @ptrCast(@alignCast(try self.createRaw(@sizeOf(T), @alignOf(T))));
+        if (@sizeOf(T) == 0) return @ptrFromInt(@alignOf(T));
+        const e = try self.engine();
+        const block = try e.alloc(comptime targetOf(T), @sizeOf(T), @alignOf(T), heap.Site.of(T), @returnAddress());
+        return @ptrCast(@alignCast(block));
     }
 
-    /// `create` for a size known only at runtime.
+    /// `create` for a size known only at runtime: an objects-partition
+    /// block, zeroed.
     ///
-    /// `Instance.deinit` has a `*Instance` and a vtable, not a type, so the free
-    /// path is necessarily untyped; the allocate path has to match it or the two
-    /// would disagree about which class a block belongs to.
-    ///
-    /// The request's bytes are ZEROED, here and only here: Zig does not apply
-    /// struct defaults through an allocator, and a recycled block carries its
-    /// previous occupant's bytes - an optional pointer field coming back non-null
-    /// would be dereferenced. Instance.init, OwnState.createIn and
-    /// InstanceRegistry.createIn rely on it and do not zero again (lane perf2,
-    /// batch 3: a div's state block was zeroed twice, the whole 2,048-byte class
-    /// and then the State, and a fresh block was first filled with 0xAA by std's
-    /// `alignedAlloc` in ReleaseSafe - 2.0% of dom.create-element, MEASURED).
-    ///
-    /// Only the request, never the rest of its class: this occupant never reads
-    /// past its own bytes, and a later, larger occupant of the block zeroes its
-    /// own request when it takes it.
+    /// A zero-sized state is not exotic: any interface that keeps no
+    /// internal state has one (`Geolocation`, `Clipboard`). Zig's allocator
+    /// contract says what to hand back - a non-null, aligned pointer never
+    /// dereferenced - and `destroyRaw` frees nothing for it.
     pub fn createRaw(self: *ArenaAllocator, size: usize, alignment: usize) ![*]u8 {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        self.total_allocations += 1;
-        self.total_bytes_allocated += size;
-        self.bytes_in_use += size;
-
-        // A zero-sized state is not exotic: any interface that keeps no internal
-        // state has one, and `Geolocation` and `Clipboard` both declare
-        // `InternalState = struct {}`. std's ArenaAllocator opens `alloc` with
-        // `assert(n > 0)`, so forwarding the request aborted the process the
-        // first time script touched such an interface:
-        //
-        //     panic: reached unreachable code
-        //       heap.ArenaAllocator.alloc
-        //       arena_allocator.createRaw
-        //       instance.Instance.init
-        //
-        // Zig's allocator contract already says what to hand back - a non-null,
-        // correctly-aligned pointer that must never be dereferenced. The
-        // alignment itself is such an address, and it deliberately never
-        // reaches a size class, so `destroyRaw` cannot push it onto a free list
-        // where a later real allocation would take it.
-        if (size == 0) {
-            return @ptrFromInt(@max(alignment, 1));
-        }
-
-        if (sizeClassOf(size, alignment)) |class| {
-            if (self.popFree(class)) |recycled| {
-                @memset(recycled[0..size], 0);
-                return recycled;
-            }
-            // Allocate the whole class, not the request: the block goes back on
-            // this class's list, and a later request in the same class may be
-            // larger than this one. `rawAlloc`, not `alignedAlloc`: the latter
-            // writes `undefined` over the whole block first (0xAA in ReleaseSafe),
-            // a pass the zeroing below would only overwrite.
-            const bytes = self.arena.allocator().rawAlloc(
-                classSize(class),
-                .of(FreeBlock),
-                @returnAddress(),
-            ) orelse return error.OutOfMemory;
-            @memset(bytes[0..size], 0);
-            return bytes;
-        }
-
-        const bytes = self.arena.allocator().rawAlloc(
-            size,
-            std.mem.Alignment.fromByteUnits(@max(alignment, 1)),
-            @returnAddress(),
-        ) orelse return error.OutOfMemory;
-        @memset(bytes[0..size], 0);
-        return bytes;
+        if (size == 0) return @ptrFromInt(@max(alignment, 1));
+        const e = try self.engine();
+        return e.alloc(.objects, size, alignment, null, @returnAddress());
     }
 
-    /// Hand a state block back for reuse.
-    ///
-    /// Callers must have run the type's own cleanup first - this releases the
-    /// block, not what it points to. Both call sites (`Instance.deinit` and
-    /// `gc_integration.onObjectFreed`) invoke `vtable.deinit` before getting here,
-    /// which is the same ordering the slab allocator already relies on for the
-    /// Instance handle.
+    /// Hand a state block back. Callers have run the type's own cleanup
+    /// first - this releases the block, not what it points to
+    /// (`Instance.deinit`, `gc.releaseStorage`).
     pub fn destroy(self: *ArenaAllocator, comptime T: type, ptr: *T) void {
+        if (@sizeOf(T) == 0) return;
         self.destroyRaw(@ptrCast(ptr), @sizeOf(T), @alignOf(T));
     }
 
-    /// `destroy` for a size known only at runtime - the shape the vtable provides.
-    ///
-    /// A block outside every size class is simply dropped: the arena cannot release
-    /// an individual allocation, so the alternative to leaking it is corrupting
-    /// something. `bytes_in_use` is still decremented, so the figure stays honest
-    /// about what callers hold rather than what the arena has reserved.
+    /// `destroy` for a size known only at runtime - the vtable's: routed by
+    /// the block's address, validated against `size`/`alignment` (a free of
+    /// another class, an interior pointer, another Browser's block or a
+    /// double free is a panic in every build: design 3.3).
     pub fn destroyRaw(self: *ArenaAllocator, ptr: [*]u8, size: usize, alignment: usize) void {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        self.bytes_in_use -|= size;
-        const class = sizeClassOf(size, alignment) orelse {
-            if (self.poison_freed) @memset(ptr[0..size], poison_byte);
-            return;
-        };
-        if (!self.poison_freed) return self.pushFree(class, ptr);
-        // A poisoning arena: the whole block is poisoned - it is its class's
-        // size, whatever the request was (`createRaw`) - before the free
-        // list or the queue writes its header; and waits in the quarantine,
-        // where the Browser asked for one.
-        @memset(ptr[0..classSize(class)], poison_byte);
-        if (self.quarantine_freed) self.quarantine(class, ptr) else self.pushFree(class, ptr);
+        if (size == 0) return;
+        const e = self.engine() catch @panic("ArenaAllocator.destroyRaw: a block freed through a scope that never had a heap");
+        e.free(ptr, size, alignment);
     }
 
-    /// Allocate a slice of items
-    pub fn alloc(self: *ArenaAllocator, comptime T: type, n: usize) ![]T {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        const slice = try self.arena.allocator().alloc(T, n);
-        self.total_allocations += 1;
-        self.total_bytes_allocated += @sizeOf(T) * n;
-        self.bytes_in_use += @sizeOf(T) * n;
-        return slice;
+    /// The scope's end: nothing to free here - the heap's reservation goes,
+    /// with every block in it, when the scope releases it last.
+    pub fn deinit(self: *ArenaAllocator) void {
+        _ = self;
     }
 
-    /// Duplicate a slice
-    pub fn dupe(self: *ArenaAllocator, comptime T: type, m: []const T) ![]T {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        const slice = try self.arena.allocator().dupe(T, m);
-        self.total_allocations += 1;
-        self.total_bytes_allocated += @sizeOf(T) * m.len;
-        self.bytes_in_use += @sizeOf(T) * m.len;
-        return slice;
-    }
-
-    /// Reset the arena (called during GC sweep phase)
-    ///
-    /// Frees all allocated memory but retains capacity for next cycle.
-    /// This is much faster than individual frees.
-    ///
-    /// Important: Caller must ensure all FullState deinit() functions
-    /// have been called before reset to clean up owned resources.
-    pub fn reset(self: *ArenaAllocator) void {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        self.endQuarantine();
-        _ = self.arena.reset(.retain_capacity);
-        self.total_resets += 1;
-        // The free lists point into the memory just released. Dropping them is not
-        // optional: reusing a block from a reset arena hands out memory the arena
-        // has already given to someone else.
-        self.free_lists = @splat(null);
-        self.bytes_in_use = 0;
-        // Note: We don't reset statistics - they're cumulative
-    }
-
-    /// Get allocation statistics
+    /// Allocation statistics: the heap's State blocks, node and objects
+    /// partitions - its Instance slots (the slab's) left out.
     pub fn stats(self: *ArenaAllocator) Stats {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        return Stats{
-            .total_allocations = self.total_allocations,
-            .total_bytes_allocated = self.total_bytes_allocated,
-            .total_resets = self.total_resets,
-            .bytes_in_use = self.bytes_in_use,
-            .total_recycled = self.total_recycled,
-            .arena_state = self.arena.state,
+        const BrowserScope = @import("browser_scope.zig").BrowserScope;
+        const scope: *BrowserScope = @alignCast(@fieldParentPtr("arena", self));
+        const e = scope.existingHeapEngine() orelse return .{};
+        const s = e.stats();
+        const slots = e.instanceCounts();
+        const slot_request = heap.instance_fill_bytes;
+        return .{
+            .total_allocations = s.node.total_allocations + s.objects.total_allocations - slots.issued,
+            .total_bytes_allocated = s.node.total_requested_bytes + s.objects.total_requested_bytes - slots.issued * slot_request,
+            .bytes_in_use = s.node.requested_bytes + s.objects.requested_bytes -| slots.live * slot_request,
+            .total_recycled = s.node.total_reissued + s.objects.total_reissued,
+            .live_blocks = s.node.live_blocks + s.objects.live_blocks - slots.live,
         };
     }
 
-    /// Allocation statistics
     pub const Stats = struct {
-        total_allocations: usize,
-        total_bytes_allocated: usize,
-        total_resets: usize,
-        /// Bytes held by live states right now. The figure to read for retention;
-        /// `total_bytes_allocated` only ever rises.
-        bytes_in_use: usize,
-        /// How many allocations were satisfied from a free list.
-        total_recycled: usize,
-        arena_state: std.heap.ArenaAllocator.State,
+        /// State blocks made over the heap's life.
+        total_allocations: usize = 0,
+        /// Their requests' bytes: cumulative, it only rises.
+        total_bytes_allocated: usize = 0,
+        /// The requests' bytes of the State blocks live now: the figure to
+        /// read for retention.
+        bytes_in_use: usize = 0,
+        /// Blocks (Instance slots included) issued from a slot freed before.
+        total_recycled: usize = 0,
+        /// State blocks live now.
+        live_blocks: usize = 0,
     };
 };
-
-// Unit tests
-const testing = std.testing;
-
-test "ArenaAllocator init and deinit" {
-    var arena_value = ArenaAllocator.init(testing.allocator);
-    defer arena_value.deinit();
-    const arena = &arena_value;
-    try testing.expect(arena.total_allocations == 0);
-    try testing.expect(arena.total_bytes_allocated == 0);
-}
-
-test "ArenaAllocator.create allocates single item" {
-    var arena_value = ArenaAllocator.init(testing.allocator);
-    defer arena_value.deinit();
-    const arena = &arena_value;
-
-    const TestStruct = struct {
-        value: u32,
-    };
-
-    const item = try arena.create(TestStruct);
-    item.value = 42;
-
-    try testing.expectEqual(@as(u32, 42), item.value);
-    try testing.expectEqual(@as(usize, 1), arena.total_allocations);
-    try testing.expectEqual(@as(usize, @sizeOf(TestStruct)), arena.total_bytes_allocated);
-}
-
-test "ArenaAllocator.create multiple items" {
-    var arena_value = ArenaAllocator.init(testing.allocator);
-    defer arena_value.deinit();
-    const arena = &arena_value;
-
-    const TestStruct = struct {
-        value: u32,
-    };
-
-    const item1 = try arena.create(TestStruct);
-    const item2 = try arena.create(TestStruct);
-    const item3 = try arena.create(TestStruct);
-
-    item1.value = 1;
-    item2.value = 2;
-    item3.value = 3;
-
-    try testing.expectEqual(@as(u32, 1), item1.value);
-    try testing.expectEqual(@as(u32, 2), item2.value);
-    try testing.expectEqual(@as(u32, 3), item3.value);
-
-    try testing.expectEqual(@as(usize, 3), arena.total_allocations);
-    try testing.expectEqual(@as(usize, @sizeOf(TestStruct) * 3), arena.total_bytes_allocated);
-}
-
-test "ArenaAllocator.alloc allocates slice" {
-    var arena_value = ArenaAllocator.init(testing.allocator);
-    defer arena_value.deinit();
-    const arena = &arena_value;
-
-    const slice = try arena.alloc(u32, 10);
-    try testing.expectEqual(@as(usize, 10), slice.len);
-
-    for (slice, 0..) |*item, i| {
-        item.* = @intCast(i);
-    }
-
-    for (slice, 0..) |item, i| {
-        try testing.expectEqual(@as(u32, @intCast(i)), item);
-    }
-
-    try testing.expectEqual(@as(usize, 1), arena.total_allocations);
-    try testing.expectEqual(@as(usize, @sizeOf(u32) * 10), arena.total_bytes_allocated);
-}
-
-test "ArenaAllocator.dupe duplicates slice" {
-    var arena_value = ArenaAllocator.init(testing.allocator);
-    defer arena_value.deinit();
-    const arena = &arena_value;
-
-    const original = [_]u32{ 1, 2, 3, 4, 5 };
-    const duplicated = try arena.dupe(u32, &original);
-
-    try testing.expectEqual(original.len, duplicated.len);
-    for (original, duplicated) |orig, dup| {
-        try testing.expectEqual(orig, dup);
-    }
-
-    // Verify they're different allocations
-    try testing.expect(&original[0] != &duplicated[0]);
-
-    try testing.expectEqual(@as(usize, 1), arena.total_allocations);
-    try testing.expectEqual(@as(usize, @sizeOf(u32) * 5), arena.total_bytes_allocated);
-}
-
-test "ArenaAllocator.reset frees memory but retains capacity" {
-    var arena_value = ArenaAllocator.init(testing.allocator);
-    defer arena_value.deinit();
-    const arena = &arena_value;
-
-    // Allocate some items
-    _ = try arena.create(u32);
-    _ = try arena.create(u64);
-    _ = try arena.alloc(u8, 100);
-
-    const stats_before = arena.stats();
-    try testing.expectEqual(@as(usize, 3), stats_before.total_allocations);
-
-    // Reset
-    arena.reset();
-
-    const stats_after = arena.stats();
-    try testing.expectEqual(@as(usize, 3), stats_after.total_allocations); // Cumulative
-    try testing.expectEqual(@as(usize, 1), stats_after.total_resets);
-
-    // Can allocate again after reset
-    const item = try arena.create(u32);
-    item.* = 42;
-    try testing.expectEqual(@as(u32, 42), item.*);
-}
-
-test "ArenaAllocator supports variable-sized types" {
-    var arena_value = ArenaAllocator.init(testing.allocator);
-    defer arena_value.deinit();
-    const arena = &arena_value;
-
-    const SmallStruct = struct {
-        value: u8,
-    };
-
-    const MediumStruct = struct {
-        value: u64,
-        data: [16]u8,
-    };
-
-    const LargeStruct = struct {
-        values: [100]u64,
-    };
-
-    _ = try arena.create(SmallStruct);
-    _ = try arena.create(MediumStruct);
-    _ = try arena.create(LargeStruct);
-
-    try testing.expectEqual(@as(usize, 3), arena.total_allocations);
-
-    const expected_bytes = @sizeOf(SmallStruct) + @sizeOf(MediumStruct) + @sizeOf(LargeStruct);
-    try testing.expectEqual(expected_bytes, arena.total_bytes_allocated);
-}
-
-test "ArenaAllocator.stats accuracy" {
-    var arena_value = ArenaAllocator.init(testing.allocator);
-    defer arena_value.deinit();
-    const arena = &arena_value;
-
-    // Initial stats
-    var s = arena.stats();
-    try testing.expectEqual(@as(usize, 0), s.total_allocations);
-    try testing.expectEqual(@as(usize, 0), s.total_bytes_allocated);
-    try testing.expectEqual(@as(usize, 0), s.total_resets);
-
-    // Allocate some items
-    _ = try arena.create(u32);
-    _ = try arena.alloc(u64, 5);
-
-    s = arena.stats();
-    try testing.expectEqual(@as(usize, 2), s.total_allocations);
-    try testing.expectEqual(@as(usize, @sizeOf(u32) + @sizeOf(u64) * 5), s.total_bytes_allocated);
-
-    // Reset
-    arena.reset();
-
-    s = arena.stats();
-    try testing.expectEqual(@as(usize, 2), s.total_allocations); // Cumulative
-    try testing.expectEqual(@as(usize, 1), s.total_resets);
-
-    // Allocate more after reset
-    _ = try arena.create(u8);
-
-    s = arena.stats();
-    try testing.expectEqual(@as(usize, 3), s.total_allocations);
-    try testing.expectEqual(@as(usize, 1), s.total_resets); // Still 1 reset
-}
-
-test "heldBytes is the block createRaw hands out: a freed block of that size comes back to it, one byte more does not" {
-    var arena_value = ArenaAllocator.init(testing.allocator);
-    defer arena_value.deinit();
-    const arena = &arena_value;
-    for ([_]usize{ 16, 17, 100, 1100, 1700, 2048, 2049, 9000, 16384 }) |size| {
-        const held = ArenaAllocator.heldBytes(size, 8);
-        try testing.expect(held >= size);
-        const block = try arena.createRaw(size, 8);
-        arena.destroyRaw(block, size, 8);
-        // The whole block is the class's: a request of `held` bytes takes it back.
-        const again = try arena.createRaw(held, 8);
-        try testing.expectEqual(block, again);
-        arena.destroyRaw(again, held, 8);
-        // One byte more is the next class: a new block.
-        const bigger = try arena.createRaw(held + 1, 8);
-        try testing.expect(bigger != block);
-        arena.destroyRaw(bigger, held + 1, 8);
-    }
-    // Past the largest class nothing is rounded: the request is what is held.
-    try testing.expectEqual(@as(usize, 20000), ArenaAllocator.heldBytes(20000, 8));
-}

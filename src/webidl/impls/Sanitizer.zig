@@ -29,9 +29,16 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 }
 
 /// Constructor steps 1–2 and "configure": canonicalize, validate, retain.
-pub fn call_constructor(ctx: runtime.Context, configuration: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
-    const input = configuration.getOrDefault(runtime.JSValue.fromStringRef("default"));
-    var config = try model.Config.fromJS(ctx.allocator, ctx, input, true, false);
+///
+/// `optional (SanitizerConfig or SanitizerPresets) configuration = "default"`,
+/// converted by the binding: not passed is the "default" preset.
+pub fn call_constructor(ctx: runtime.Context, configuration: webidl.Opt(typedefs.SanitizerConfigOrSanitizerPresets)) !*runtime.Instance {
+    var converted = if (configuration.wasPassed())
+        try model.Converted.fromTyped(ctx.allocator, configuration.getValue())
+    else
+        model.Converted.defaultPreset(ctx.allocator);
+    defer converted.deinit();
+    var config = try model.Config.fromConverted(ctx.allocator, ctx, &converted, true);
     errdefer config.deinit();
     const internal = try ctx.allocator.create(InternalState);
     errdefer ctx.allocator.destroy(internal);

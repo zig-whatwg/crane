@@ -14,3 +14,5 @@
 4. Give the integrator the pid from `crane-remote: job pid N on <host>`; that is the one a stop can match.
 
 **Takeaway**: **The pool reads the command, not the script: say `zig build` in the command of anything that should be free to move, and give a build that must leave a closed host a mirror of its own.**
+
+**Status (2026-11-24, lane bind1)**: Recurred with a job that is not a build at all: a regeneration script (`bash .bind1/b5-codegen.sh`) launched on the server1 mirror sat queued for 25 minutes while chat2 showed 0 of 2 slots busy. The "no room" line lists EVERY host, which reads as "any of these will take it"; a non-build is eligible only for its mirror's home (`pool_place_build`: `elig=$home`). Before queueing a job whose output does not depend on the host, read `tmp/remote/pool/home/<mirror>` and pick the mirror whose home is open.
