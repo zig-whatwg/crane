@@ -1,9 +1,11 @@
 //! Lane mcp1, batch 4b item 2: Network.setExtraHTTPHeaders as Chrome 157
 //! applies it - where in a request's life the headers join it (before CORS:
 //! a cross-origin fetch's preflight names them), which requests get them (a
-//! navigation, the document's fetches, a dedicated worker's), the Referer
-//! entry, the validation errors, and the clear - recorded by a server that
-//! notes each request it is sent.
+//! navigation, a frame's, the document's fetches, a dedicated worker's
+//! script and not the worker's own fetch), a redirected, a failed and a
+//! cancelled navigation, the Referer entry, the validation errors, and the
+//! clear - then Network.setUserAgentOverride's User-Agent on the same
+//! requests - recorded by a server that notes each request it is sent.
 //!
 //! COMPARING with Chrome: run Chrome for Testing 157 with
 //! `--headless=new --remote-debugging-port=<port> --user-data-dir=<empty dir> about:blank`
@@ -34,6 +36,10 @@ const Recorder = struct {
     active: std.atomic.Value(u32) = .init(0),
     mutex: std.Io.Mutex = .init,
     lines: std.ArrayList([]u8) = .empty,
+    /// Lets /slow's connection go: it is held until the test has cancelled
+    /// the navigation that asked for it (bounded, so `stop` never waits on
+    /// a test that failed first).
+    release: std.atomic.Value(bool) = .init(false),
 
     const page =
         \\<!doctype html><title>headers</title>
@@ -50,6 +56,7 @@ const Recorder = struct {
     }
 
     fn stop(self: *Recorder) void {
+        self.release.store(true, .release);
         self.listener.stop();
         self.thread.?.join();
         self.listener.close();
@@ -126,18 +133,35 @@ const Recorder = struct {
         if (!std.mem.eql(u8, path, "/favicon.ico")) {
             const host = header(head, "host");
             const host_name = if (std.mem.indexOfScalar(u8, host, ':')) |c| host[0..c] else host;
-            const line = try std.fmt.allocPrint(self.allocator, "{s} {s}{s} x-test={s} acrh={s} referer={s}", .{
-                method,                                         host_name,                            path, header(head, "x-test"),
-                header(head, "access-control-request-headers"), refererPath(header(head, "referer")),
+            // The User-Agent only when it is the test's override (each
+            // browser's own differs).
+            const user_agent = header(head, "user-agent");
+            const line = try std.fmt.allocPrint(self.allocator, "{s} {s}{s} x-test={s} acrh={s} referer={s}{s}{s}", .{
+                method,                                         host_name,                            path,                                                             header(head, "x-test"),
+                header(head, "access-control-request-headers"), refererPath(header(head, "referer")), if (std.mem.startsWith(u8, user_agent, "Probe/")) " ua=" else "", if (std.mem.startsWith(u8, user_agent, "Probe/")) user_agent else "",
             });
             std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             self.lines.append(self.allocator, line) catch self.allocator.free(line);
         }
+        // A connection closed with no answer: the navigation fails.
+        if (std.mem.eql(u8, path, "/reset")) return;
+        // Held until the navigation that asked is cancelled (10 s at most).
+        if (std.mem.eql(u8, path, "/slow")) {
+            var waited: u32 = 0;
+            while (!self.release.load(.acquire) and waited < 1000) : (waited += 1) {
+                std.Io.sleep(std.testing.io, .fromMilliseconds(10), .awake) catch {};
+            }
+            return;
+        }
         const origin = header(head, "origin");
         var output: [4096]u8 = undefined;
         var writer = stream.writer(std.testing.io, &output);
         const out = &writer.interface;
+        if (std.mem.eql(u8, path, "/redirect")) {
+            try out.writeAll("HTTP/1.1 302 Found\r\nLocation: /page.html\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+            return out.flush();
+        }
         const is_page = std.mem.eql(u8, path, "/page.html");
         const is_worker = std.mem.eql(u8, path, "/worker.js");
         const body: []const u8 = if (is_page) page else if (is_worker) worker else "ok";
@@ -206,15 +230,61 @@ const Probe = struct {
         return std.fmt.allocPrint(self.arena, "{s}: {s}", .{ name, seen.text });
     }
 
-    fn navigate(self: *Probe, url: []const u8) ![]const u8 {
+    /// Network.setUserAgentOverride: "" on success, else "<code> <message>".
+    fn setUserAgent(self: *Probe, user_agent: []const u8) ![]const u8 {
+        const params = try std.fmt.allocPrint(self.arena, "{{\"userAgent\":{f}}}", .{std.json.fmt(user_agent, .{})});
+        const answer = self.rec.at(try self.rec.awaitResponse(try self.rec.send("Network.setUserAgentOverride", params, self.session)));
+        const e = cdp.at(answer, "error") orelse return "";
+        return std.fmt.allocPrint(self.arena, "{d} {s}", .{ (cdp.at(e, "code") orelse std.json.Value{ .integer = 0 }).integer, cdp.stringAt(e, "message") orelse "" });
+    }
+
+    fn navigate(self: *Probe, name: []const u8, url: []const u8) ![]const u8 {
         const from = self.server.count();
         const start = self.rec.log.items.len;
         const params = try std.fmt.allocPrint(self.arena, "{{\"url\":{f}}}", .{std.json.fmt(url, .{})});
         _ = try self.rec.send("Page.navigate", params, self.session);
         _ = try self.rec.awaitEvent("Page.loadEventFired", self.session, start, &.{});
         const seen = try self.server.since(self.arena, from);
-        if (verbose()) std.debug.print("mcp1_extra_headers: navigate: {s}\n", .{seen.text});
-        return std.fmt.allocPrint(self.arena, "navigate: {s}", .{seen.text});
+        if (verbose()) std.debug.print("mcp1_extra_headers: {s}: {s}\n", .{ name, seen.text });
+        return std.fmt.allocPrint(self.arena, "{s}: {s}", .{ name, seen.text });
+    }
+
+    /// A navigation that fails: Page.navigate's answer (its errorText said
+    /// only as whether there is one), and what the server saw.
+    fn navigateFailing(self: *Probe, name: []const u8, url: []const u8) ![]const u8 {
+        const from = self.server.count();
+        const params = try std.fmt.allocPrint(self.arena, "{{\"url\":{f}}}", .{std.json.fmt(url, .{})});
+        const answer = self.rec.at(try self.rec.awaitResponse(try self.rec.send("Page.navigate", params, self.session)));
+        const failed = if (cdp.at(answer, "result")) |r| cdp.at(r, "errorText") != null else false;
+        try self.awaitSeen(from);
+        const seen = try self.server.since(self.arena, from);
+        if (verbose()) std.debug.print("mcp1_extra_headers: {s}: {s} failed={}\n", .{ name, seen.text, failed });
+        return std.fmt.allocPrint(self.arena, "{s}: {s} failed={}", .{ name, seen.text, failed });
+    }
+
+    /// A frame's navigation cancelled in flight: the frame is made, the
+    /// server holds its request, and the frame is removed once the request
+    /// is in.
+    fn cancelledFrame(self: *Probe, name: []const u8) ![]const u8 {
+        const from = self.server.count();
+        const add = "(() => { const f = document.createElement('iframe'); f.id = 'slow'; f.src = '/slow'; document.body.appendChild(f); return 1; })()";
+        const remove = "(() => { document.getElementById('slow').remove(); return 1; })()";
+        _ = try self.rec.awaitResponse(try self.rec.send("Runtime.evaluate", try std.fmt.allocPrint(self.arena, "{{\"expression\":{f},\"returnByValue\":true}}", .{std.json.fmt(add, .{})}), self.session));
+        try self.awaitSeen(from);
+        _ = try self.rec.awaitResponse(try self.rec.send("Runtime.evaluate", try std.fmt.allocPrint(self.arena, "{{\"expression\":{f},\"returnByValue\":true}}", .{std.json.fmt(remove, .{})}), self.session));
+        self.server.release.store(true, .release);
+        const seen = try self.server.since(self.arena, from);
+        if (verbose()) std.debug.print("mcp1_extra_headers: {s}: {s}\n", .{ name, seen.text });
+        return std.fmt.allocPrint(self.arena, "{s}: {s}", .{ name, seen.text });
+    }
+
+    /// Until the server has seen a request since `from` (10 s at most).
+    fn awaitSeen(self: *Probe, from: usize) !void {
+        var waited: u32 = 0;
+        while (self.server.count() <= from) : (waited += 1) {
+            if (waited >= 1000) return error.NoRequest;
+            std.Io.sleep(std.testing.io, .fromMilliseconds(10), .awake) catch {};
+        }
     }
 };
 
@@ -225,11 +295,18 @@ fn check(allocator: Allocator, arena: Allocator, client: *cdp.Client, server: *R
     const p = server.port();
     var record: std.ArrayList([]const u8) = .empty;
 
+    const page_url = try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/page.html", .{p});
+    const worker = "new Promise(r => { const w = new Worker('/worker.js'); w.onmessage = e => r(e.data); })";
+    const frame = "new Promise(r => { const f = document.createElement('iframe'); f.onload = () => r(1); f.src = '/frame.html'; document.body.appendChild(f); })";
     try record.append(arena, try probe.setHeaders("{\"X-Test\":\"one\"}"));
-    try record.append(arena, try probe.navigate(try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/page.html", .{p})));
+    try record.append(arena, try probe.navigate("navigate", page_url));
     try record.append(arena, try probe.requests("same-origin", "fetch('/same').then(r => r.status)"));
     try record.append(arena, try probe.requests("cross-origin", try std.fmt.allocPrint(arena, "fetch('http://localhost:{d}/cross').then(r => r.status, e => 'failed')", .{p})));
-    try record.append(arena, try probe.requests("worker", "new Promise(r => { const w = new Worker('/worker.js'); w.onmessage = e => r(e.data); })"));
+    try record.append(arena, try probe.requests("worker", worker));
+    try record.append(arena, try probe.requests("frame", frame));
+    try record.append(arena, try probe.cancelledFrame("cancelled frame"));
+    try record.append(arena, try probe.navigateFailing("reset", try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/reset", .{p})));
+    try record.append(arena, try probe.navigate("redirect", try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/redirect", .{p})));
     try record.append(arena, try probe.setHeaders("{\"Referer\":\"http://example.com/ref\"}"));
     try record.append(arena, try probe.requests("referer", "fetch('/ref').then(r => r.status)"));
     try record.append(arena, try probe.setHeaders("{\"Bad Name\":\"x\"}"));
@@ -237,6 +314,11 @@ fn check(allocator: Allocator, arena: Allocator, client: *cdp.Client, server: *R
     try record.append(arena, try probe.setHeaders("{\"X-Test\":1}"));
     try record.append(arena, try probe.setHeaders("{}"));
     try record.append(arena, try probe.requests("cleared", "fetch('/cleared').then(r => r.status)"));
+    // The tab's User-Agent override reaches the same requests.
+    try record.append(arena, try probe.setUserAgent("Probe/1"));
+    try record.append(arena, try probe.navigate("ua navigate", page_url));
+    try record.append(arena, try probe.requests("ua worker", worker));
+    try record.append(arena, try probe.requests("ua frame", frame));
 
     const all = try std.mem.join(arena, "\n", record.items);
     if (verbose()) std.debug.print("mcp1_extra_headers: ALL\n{s}\n", .{all});
@@ -254,6 +336,10 @@ const chrome_157 = [_][]const u8{
     "same-origin: GET 127.0.0.1/same x-test=one acrh=- referer=/page.html",
     "cross-origin: GET localhost/cross x-test=one acrh=- referer=/ | OPTIONS localhost/cross x-test=- acrh=x-test referer=/",
     "worker: GET 127.0.0.1/from-worker x-test=- acrh=- referer=/worker.js | GET 127.0.0.1/worker.js x-test=one acrh=- referer=/page.html",
+    "frame: GET 127.0.0.1/frame.html x-test=one acrh=- referer=/page.html",
+    "cancelled frame: GET 127.0.0.1/slow x-test=one acrh=- referer=/page.html",
+    "reset: GET 127.0.0.1/reset x-test=one acrh=- referer=- failed=true",
+    "redirect: GET 127.0.0.1/page.html x-test=one acrh=- referer=- | GET 127.0.0.1/redirect x-test=one acrh=- referer=-",
     "",
     "referer: GET 127.0.0.1/ref x-test=- acrh=- referer=/ref",
     "-32602 Invalid header name",
@@ -261,6 +347,10 @@ const chrome_157 = [_][]const u8{
     "-32602 Invalid header value, string expected",
     "",
     "cleared: GET 127.0.0.1/cleared x-test=- acrh=- referer=/page.html",
+    "",
+    "ua navigate: GET 127.0.0.1/page.html x-test=- acrh=- referer=- ua=Probe/1",
+    "ua worker: GET 127.0.0.1/from-worker x-test=- acrh=- referer=/worker.js ua=Probe/1 | GET 127.0.0.1/worker.js x-test=- acrh=- referer=/page.html ua=Probe/1",
+    "ua frame: GET 127.0.0.1/frame.html x-test=- acrh=- referer=/page.html ua=Probe/1",
 };
 
 test "Network.setExtraHTTPHeaders: which requests carry the headers and where - before CORS, as Chrome's" {
