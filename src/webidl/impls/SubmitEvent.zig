@@ -83,9 +83,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor: DOM "inner event creation steps", then SubmitEventInit's
 /// submitter (null by default).
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.SubmitEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &SubmitEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.SubmitEventInit)) !void {
     const dict: dictionaries.SubmitEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{} };
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
     const internal = getInternal(instance) orelse return error.InvalidStateError;
@@ -95,7 +93,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         engine.traceChild(instance, element, .{ .name = "submitter" });
         internal.submitter_hold.set(element);
     }
-    return instance;
 }
 
 /// Getter for submitter: "the submitter attribute must return the value it

@@ -99,12 +99,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor: "constructor(TouchInit touchInitDict)" - every attribute
 /// from the dictionary, its defaults where a member is absent.
-pub fn call_constructor(ctx: runtime.Context, touchInitDict: dictionaries.TouchInit) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &Touch.vtable, ctx);
-    errdefer {
-        deinit(instance);
-        runtime.gc.releaseStorage(instance);
-    }
+pub fn call_constructor(instance: *runtime.Instance, touchInitDict: dictionaries.TouchInit) !void {
+    // The generated constructor made `instance` (WebIDL 3.7.1 step 1.8)
+    // and frees it whole when a step fails (lane ctor1).
+    const ctx = instance.ctx;
     const state = instance.stateAs(State) orelse return error.InvalidState;
     const internal = try ctx.allocator.create(InternalState);
     const d = touchInitDict;
@@ -128,7 +126,6 @@ pub fn call_constructor(ctx: runtime.Context, touchInitDict: dictionaries.TouchI
     state.own._internal = internal;
     engine.traceChild(instance, d.target, target_slot);
     internal.target_drawn = true;
-    return instance;
 }
 
 /// dom.touch_points.unadjustedTarget.

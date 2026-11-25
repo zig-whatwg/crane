@@ -90,8 +90,10 @@ fn setElement(instance: *runtime.Instance, i: usize, value: f64) !void {
 
 /// Geometry 6.3, the DOMMatrix(init) constructor: as DOMMatrixReadOnly's,
 /// of type DOMMatrix.
-pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(typedefs.DOMStringOrSequenceOfUnrestrictedDouble)) !*runtime.Instance {
-    return createFrom(ctx, try interfaces.DOMMatrixReadOnly.call_constructor(ctx, init_data));
+pub fn call_constructor(instance: *runtime.Instance, init_data: webidl.Opt(typedefs.DOMStringOrSequenceOfUnrestrictedDouble)) !void {
+    const made = try interfaces.DOMMatrixReadOnly.call_constructor(instance.ctx, init_data);
+    defer runtime.gc.releaseOwned(made);
+    try geometry_storage.setMatrix(instance, try matrixOf(made));
 }
 
 /// Geometry 6.3, DOMMatrix.fromMatrix(other): create a DOMMatrix from the

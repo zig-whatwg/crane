@@ -42,15 +42,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, path: webidl.Opt(typedefs.Path2DOrDOMString)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &Path2D.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, path: webidl.Opt(typedefs.Path2DOrDOMString)) !void {
+    _ = instance;
     _ = path;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Operation: lineTo

@@ -97,9 +97,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// EventInit part, then each SecurityPolicyViolationEventInit member
 /// initializing the attribute of its name (strings "", disposition
 /// "enforce", numbers 0 by default).
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.SecurityPolicyViolationEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &SecurityPolicyViolationEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.SecurityPolicyViolationEventInit)) !void {
+    const ctx = instance.ctx;
     const dict: dictionaries.SecurityPolicyViolationEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{} };
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
     const state = instance.getState(State);
@@ -117,7 +116,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.own.statusCode = dict.statusCode orelse 0;
     state.own.lineNumber = dict.lineNumber orelse 0;
     state.own.columnNumber = dict.columnNumber orelse 0;
-    return instance;
 }
 
 /// The event's own copy of a dictionary USVString member; "" when absent.

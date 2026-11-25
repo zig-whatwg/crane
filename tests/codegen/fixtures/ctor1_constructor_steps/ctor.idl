@@ -1,0 +1,17 @@
+// Lane ctor1: a constructor with arguments (one a keyword, one optional), an
+// overloaded constructor, and one with none.
+[Exposed=Window]
+interface Plain {
+  constructor(DOMString type, optional long count = 0);
+};
+
+[Exposed=Window]
+interface Overloaded {
+  constructor();
+  constructor(DOMString name);
+};
+
+[Exposed=Window]
+interface Bare {
+  constructor();
+};

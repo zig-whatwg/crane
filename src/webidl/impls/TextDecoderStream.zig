@@ -43,15 +43,16 @@ pub fn deinit(instance: *runtime.Instance) void {
     }
 }
 
-pub fn call_constructor(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.TextDecoderOptions)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.TextDecoderOptions)) !void {
+    // The generated constructor made `instance` and frees it whole when a
+    // step fails (lane ctor1).
+    const ctx = instance.ctx;
     const label_str = if (label.wasPassed()) label.getValue().asSlice() else "utf-8";
     const enc = encoding.getEncoding(label_str) orelse return error.RangeError;
     if (std.mem.eql(u8, enc.whatwg_name, "replacement")) return error.RangeError;
     const opts = if (options.wasPassed()) options.getValue() else dictionaries.TextDecoderOptions{};
     const fatal = opts.fatal orelse false;
     const ignore_bom = opts.ignoreBOM orelse false;
-    const instance = try init(ctx.allocator, State, &Interface.vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
     const internal = instance.getState(State).own._internal.?;
     internal.enc = enc;
     internal.fatal = fatal;
@@ -65,7 +66,6 @@ pub fn call_constructor(ctx: runtime.Context, label: webidl.Opt(runtime.DOMStrin
     // This object keeps its TransformStream (Blink: the codec stream traces
     // its transform_), which its readable and writable keep back.
     engine.traceChild(instance, transform_stream, js.slot.transform_stream);
-    return instance;
 }
 
 pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {

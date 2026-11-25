@@ -39,9 +39,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.QuotaExceededErrorOptions)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &QuotaExceededError.vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.QuotaExceededErrorOptions)) !void {
     // WebIDL §2.8.3 steps 1-2: the owning DOMException initializes its base.
     try @import("dom").dom_exceptions.initialize(instance, "QuotaExceededError", if (message.was_passed) message.value.asSlice() else "");
     const state = instance.getState(State);
@@ -60,7 +58,6 @@ pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMStr
     if (state.own.quota) |quota| if (state.own.requested) |requested| {
         if (requested < quota) return error.RangeError;
     };
-    return instance;
 }
 
 // ============================================================================

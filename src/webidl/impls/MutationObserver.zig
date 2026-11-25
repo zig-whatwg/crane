@@ -289,10 +289,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructs a MutationObserver and sets its callback to callback.
 /// The callback is invoked with a list of MutationRecord objects as first
 /// argument and the constructed MutationObserver object as second argument.
-pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallback) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &MutationObserver.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, callback: callbacks.MutationCallback) !void {
+    // The generated constructor made `instance` (WebIDL 3.7.1 step 1.8)
+    // and frees it whole when a step fails (lane ctor1).
 
     // "Set this's callback to callback": the binding hands the converted
     // function over, and the observer keeps it (OWNED) with its callback
@@ -308,7 +307,6 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallba
     internal.creation_index = dom_module.mutation_observer_algorithms.takeCreationIndex(instance.ctx);
 
     std.log.debug("[MutationObserver] call_constructor returning instance={*}", .{instance});
-    return instance;
 }
 
 /// DOM §7.1 - MutationObserver.observe(target, options)

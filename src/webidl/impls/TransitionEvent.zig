@@ -70,9 +70,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor: DOM "inner event creation steps" with the dictionary's
 /// EventInit part, then each TransitionEventInit member initializing the attribute
 /// of its name (propertyName and pseudoElement "", elapsedTime 0 by default).
-pub fn call_constructor(ctx: runtime.Context, @"type": typedefs.CSSOMString, transitionEventInitDict: webidl.Opt(dictionaries.TransitionEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &TransitionEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": typedefs.CSSOMString, transitionEventInitDict: webidl.Opt(dictionaries.TransitionEventInit)) !void {
+    const ctx = instance.ctx;
     const dict: dictionaries.TransitionEventInit = if (transitionEventInitDict.was_passed) transitionEventInitDict.value else .{ .base = .{} };
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
     const state = instance.getState(State);
@@ -87,7 +86,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": typedefs.CSSOMString, tra
         @import("engine").traceChild(instance, animation, animation_slot);
         state.own.animation = animation;
     }
-    return instance;
 }
 
 /// Getter for propertyName. A view of the event's own copy.

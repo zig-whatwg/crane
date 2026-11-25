@@ -71,9 +71,8 @@ fn pointOf(instance: *runtime.Instance) geometry.Point {
 /// 2. Set point's variables x coordinate to x, y coordinate to y, z
 ///    coordinate to z and w perspective to w.
 /// 3. Return point.
-pub fn call_constructor(ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), w: webidl.Opt(f64)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), w: webidl.Opt(f64)) !void {
     // 1.
-    const instance = try init(ctx.allocator, State, &DOMPointReadOnly.vtable, ctx);
     // 2. (The arguments' defaults: x, y and z 0, w 1.)
     setPoint(instance, .{
         .x = if (x.was_passed) x.value else 0,
@@ -82,7 +81,6 @@ pub fn call_constructor(ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(
         .w = if (w.was_passed) w.value else 1,
     });
     // 3.
-    return instance;
 }
 
 /// Getter for x: the x coordinate.

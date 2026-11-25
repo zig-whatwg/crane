@@ -135,15 +135,13 @@ fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 /// dictionary's EventInit, then changed and deleted - "the value they were
 /// initialized to": an item with no `value` member keeps none.
 /// https://cookiestore.spec.whatwg.org/#dom-extendablecookiechangeevent-extendablecookiechangeevent
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableCookieChangeEventInit)) !*runtime.Instance {
-    const instance = try ExtendableCookieChangeEvent.init(ctx.allocator, ctx);
-    errdefer ExtendableCookieChangeEvent.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableCookieChangeEventInit)) !void {
+    const ctx = instance.ctx;
     const given: dictionaries.ExtendableCookieChangeEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{} } };
     try dom.event_construction.innerEventCreationSteps(instance, @"type", dom.event_construction.eventInitFrom(given.base.base));
     const internal = getInternalState(instance) orelse return error.NotImplemented;
     if (given.changed) |changed_list| for (changed_list) |dict_item| try appendItem(&internal.changed, ctx.allocator, dict_item);
     if (given.deleted) |deleted_list| for (deleted_list) |dict_item| try appendItem(&internal.deleted, ctx.allocator, dict_item);
-    return instance;
 }
 
 fn appendItem(list: *std.ArrayListUnmanaged(CookieListItem), allocator: std.mem.Allocator, dict_item: dictionaries.CookieListItem) !void {

@@ -129,6 +129,39 @@ pub fn releaseOwned(child: *Instance) void {
         releaseStorage(child);
 }
 
+/// The constructor steps of `instance` failed (WebIDL 3.7.1, the interface
+/// object's step 1.9), so the binding never received it: the construction
+/// that made it (step 1.8) drops its reference - the generated
+/// `call_constructor`'s errdefer (lane ctor1).
+///
+/// - No engine object can reach it (instance_lifecycle.provablyUnwrapped:
+///   never wrapped, or its last wrapper finalized): it is freed WHOLE,
+///   destructor chain and storage, by releaseOwned's rules (an interface's
+///   deinit is a destructor, not a free - docs/lessons/architecture-an-
+///   interfaces-deinit-is-a-destructor-not-a-free.md).
+/// - Its own steps wrapped it (a traced edge drew its wrapper, as a stream's
+///   setup does): it is left WHOLE to that wrapper, whose end frees it like
+///   any wrapped object's. Script may still reach it through another object
+///   the steps handed out - a controller passed to start() - so neither its
+///   destructor nor its storage may go now. That is the browsers' model:
+///   Blink's Oilpan and WebKit's Ref<> free a failed construction's object
+///   when nothing reaches it, not when the constructor threw.
+///
+/// An engine that does not track wraps (capabilities.wrap_tracking
+/// .unsupported) cannot tell the two apart; the object is left to whatever
+/// owns it, as releaseOwned leaves its storage. Makes no engine call.
+pub fn releaseFailedConstruction(instance: *Instance) void {
+    // A node is not this function's: it holds its creator's reference (the
+    // DOM's refcount7), which only Node's own teardown ends - a node
+    // constructor stays a factory and frees through
+    // dom.node_creation.releaseIfUnwrapped.
+    std.debug.assert(instance.vtable.counted == null);
+    const instance_lifecycle = @import("instance_lifecycle.zig");
+    const tracked = @import("engine").capabilities.wrap_tracking != .unsupported;
+    if (!instance_lifecycle.provablyUnwrapped(tracked, instance)) return;
+    releaseOwned(instance);
+}
+
 /// A realm's global object - a Window - whose realm has ended: its
 /// destructor chain ran (its cleanup is marked complete) and its owner, the
 /// realm's end, severed every engine object that named it (the WindowProxy,

@@ -41,16 +41,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, deviceInterface: *runtime.Instance, alternateSetting: u8) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &USBAlternateInterface.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, deviceInterface: *runtime.Instance, alternateSetting: u8) !void {
+    _ = instance;
     _ = deviceInterface;
     _ = alternateSetting;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for alternateSetting

@@ -35,16 +35,12 @@ pub const InternalState = struct {};
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 /// Note: Use ctx.allocator for all allocations to ensure consistency with deinit
-pub fn call_constructor(ctx: runtime.Context, session: *runtime.Instance, device: *runtime.Instance) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, session: *runtime.Instance, device: *runtime.Instance) !void {
     // Create the instance through the generated construction chain.
-    const instance = try XRGPUBinding.init(ctx.allocator, ctx);
-    errdefer XRGPUBinding.deinit(instance);
-
+    _ = instance;
     _ = session;
     _ = device;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for nativeProjectionScaleFactor

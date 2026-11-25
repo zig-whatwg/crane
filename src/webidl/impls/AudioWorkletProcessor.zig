@@ -15,8 +15,8 @@ pub const InternalState = struct {};
 /// The constructor (1.32.4.1): step 2 looks up the pending processor
 /// construction data, and step 3 throws a TypeError when there is none -
 /// always, here: nothing constructs a processor for an AudioWorkletNode.
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    _ = ctx;
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
     return error.TypeError;
 }
 

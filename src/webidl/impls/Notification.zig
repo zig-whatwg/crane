@@ -373,7 +373,8 @@ const ErrorTask = struct {
 
 /// Constructor: new Notification(title, options) (3.2)
 /// https://notifications.spec.whatwg.org/#dom-notification-notification
-pub fn call_constructor(ctx: runtime.Context, title: runtime.DOMString, options_arg: webidl.Opt(dictionaries.NotificationOptions)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, title: runtime.DOMString, options_arg: webidl.Opt(dictionaries.NotificationOptions)) !void {
+    const ctx = instance.ctx;
     const options: dictionaries.NotificationOptions = if (options_arg.was_passed) options_arg.value else .{};
     // 1. If this's relevant global object is a ServiceWorkerGlobalScope
     //    object, then throw a TypeError.
@@ -391,11 +392,7 @@ pub fn call_constructor(ctx: runtime.Context, title: runtime.DOMString, options_
     errdefer notification.deinit();
 
     // 4. Associate this with notification.
-    const instance = try Notification.init(ctx.allocator, ctx);
-    const state = instance.stateAs(State) orelse {
-        instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
-        return error.InvalidStateError;
-    };
+    const state = instance.stateAs(State) orelse return error.InvalidStateError;
     state.own._internal = notification;
 
     // 5. Run these steps in parallel:
@@ -411,7 +408,6 @@ pub fn call_constructor(ctx: runtime.Context, title: runtime.DOMString, options_
         notification.kept_alive = true;
         ErrorTask.queue(instance);
     }
-    return instance;
 }
 
 /// Static getter for permission

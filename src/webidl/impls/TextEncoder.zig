@@ -69,11 +69,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Creates a new UTF-8 encoder (stateless).
 ///
 /// The new TextEncoder() constructor steps are to do nothing.
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &TextEncoder.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    const ctx = instance.ctx;
     const state = instance.getState(State);
 
     // Create InternalState
@@ -88,8 +85,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
     // Set encoding to "utf-8" (always UTF-8 per spec)
     state.own.encoding = runtime.DOMString.initInterned("utf-8");
-
-    return instance;
 }
 
 /// Getter for encoding

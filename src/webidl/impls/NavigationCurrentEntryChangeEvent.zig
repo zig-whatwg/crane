@@ -56,9 +56,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor: DOM "inner event creation steps" for the Event part, then
 /// navigationType and from from the dictionary.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.NavigationCurrentEntryChangeEventInit) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &NavigationCurrentEntryChangeEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: dictionaries.NavigationCurrentEntryChangeEventInit) !void {
+    const ctx = instance.ctx;
     const state = instance.getState(State);
     const init_dict = eventInitDict;
     // What deinit reads, should anything below fail.
@@ -84,7 +83,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // The inherited Event internal state and its initialized flag: without
     // them dispatchEvent throws InvalidStateError.
     try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
-    return instance;
 }
 
 /// Getter for navigationType

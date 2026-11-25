@@ -41,11 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://w3c.github.io/uievents/#dom-wheelevent-wheelevent
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.WheelEventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &WheelEvent.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.WheelEventInit)) !void {
     // Its state: the UIEvent, MouseEvent and own attributes are set below
     const state = instance.getState(State);
 
@@ -110,8 +106,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.own.deltaY = event_init.deltaY orelse 0.0;
     state.own.deltaZ = event_init.deltaZ orelse 0.0;
     state.own.deltaMode = event_init.deltaMode orelse 0;
-
-    return instance;
 }
 
 /// Getter for deltaX

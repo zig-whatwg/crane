@@ -111,9 +111,8 @@ fn keepRequest(ctx: runtime.Context, internal: *InternalState, request: *runtime
 /// then the dictionary's members - preloadResponse "a promise resolved with
 /// undefined" and handled "a pending promise" when not given (4.6.2,
 /// 4.6.6), the client ids the empty string.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.FetchEventInit) !*runtime.Instance {
-    const instance = try FetchEvent.init(ctx.allocator, ctx);
-    errdefer FetchEvent.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: dictionaries.FetchEventInit) !void {
+    const ctx = instance.ctx;
     try dom.event_construction.innerEventCreationSteps(instance, @"type", dom.event_construction.eventInitFrom(eventInitDict.base.base));
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     const allocator = internal.allocator;
@@ -130,7 +129,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     if (eventInitDict.clientId) |id| internal.client_id = try allocator.dupe(u8, id.asSlice());
     if (eventInitDict.resultingClientId) |id| internal.resulting_client_id = try allocator.dupe(u8, id.asSlice());
     if (eventInitDict.replacesClientId) |id| internal.replaces_client_id = try allocator.dupe(u8, id.asSlice());
-    return instance;
 }
 
 fn internalOf(instance: *runtime.Instance) !*InternalState {

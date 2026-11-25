@@ -89,16 +89,15 @@ fn internalOf(instance: *runtime.Instance) !*InternalState {
 }
 
 /// The VTTCue(startTime, endTime, text) constructor.
-pub fn call_constructor(ctx: runtime.Context, startTime: f64, endTime: f64, text: runtime.DOMString) !*runtime.Instance {
-    // 3. An end time of negative Infinity or NaN: TypeError (checked before
-    // anything is made).
+pub fn call_constructor(cue: *runtime.Instance, startTime: f64, endTime: f64, text: runtime.DOMString) !void {
+    // 1. A new WebVTT cue: `cue`, which the generated constructor made
+    // (WebIDL 3.7.1 step 1.8) and frees whole when a step fails (lane ctor1).
+    // 3. An end time of negative Infinity or NaN: TypeError.
     if (std.math.isNan(endTime) or endTime == -std.math.inf(f64)) return error.TypeError;
-    // 1. A new WebVTT cue; 5-15. its identifier "", pause-on-exit false,
-    // region null, writing direction horizontal, snap-to-lines true, line
-    // auto, line alignment start, position auto, position alignment auto,
-    // size 100, text alignment center (InternalState's and TextTrackCue's
-    // initial values).
-    const cue = try VTTCue.init(ctx.allocator, ctx);
+    // 5-15. its identifier "", pause-on-exit false, region null, writing
+    // direction horizontal, snap-to-lines true, line auto, line alignment
+    // start, position auto, position alignment auto, size 100, text
+    // alignment center (InternalState's and TextTrackCue's initial values).
     const internal = internalOf(cue) catch unreachable;
     // 2-3. Its start and end times. Neither setter can fail on a cue in no
     // list.
@@ -106,12 +105,8 @@ pub fn call_constructor(ctx: runtime.Context, startTime: f64, endTime: f64, text
     interfaces.TextTrackCue.set_endTime(cue, endTime) catch unreachable;
     // 4. Its cue text (the WebVTT rules for extracting the chapter title
     // are the format's own).
-    internal.text = text.clone(internal.allocator) catch |err| {
-        cue.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(cue));
-        return err;
-    };
-    // 16.
-    return cue;
+    internal.text = try text.clone(internal.allocator);
+    // 16. Return cue: the generated constructor does.
 }
 
 /// "The VTTRegion object representing the WebVTT cue region ... if any; or

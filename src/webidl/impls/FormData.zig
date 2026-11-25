@@ -117,7 +117,7 @@ pub fn call_constructor(ctx: runtime.Context, form: webidl.Opt(*runtime.Instance
     if (form.was_passed) {
         const given_submitter: ?*runtime.Instance = if (submitter.was_passed) submitter.value else null;
         @import("dom").form_submission.constructEntryList(form.value, given_submitter, instance) catch |err| {
-            instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+            runtime.gc.releaseFailedConstruction(instance);
             return err;
         };
     }
