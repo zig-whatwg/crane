@@ -1677,6 +1677,69 @@
           }
         }
       ]
+    },
+    {
+      "name": "memory: take_heapsnapshot",
+      "about": "take_heapsnapshot under --filesystemRoot: .heapsnapshot saved, extension replaced or appended, valid V8 snapshot containing page objects; outside roots, URL, path escape, and missing page refused.",
+      "files": true,
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/heap.html"
+          }
+        },
+        {
+          "tool": "take_heapsnapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "{files}/snap.heapsnapshot"
+          }
+        },
+        {
+          "tool": "take_heapsnapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "{files}/renamed.json"
+          }
+        },
+        {
+          "tool": "take_heapsnapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "{files}/noext"
+          }
+        },
+        {
+          "tool": "take_heapsnapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "/etc/crane-mcp-diff/x.heapsnapshot"
+          }
+        },
+        {
+          "tool": "take_heapsnapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "https://example.com/x.heapsnapshot"
+          }
+        },
+        {
+          "tool": "take_heapsnapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "{files}/../escape.heapsnapshot"
+          }
+        },
+        {
+          "tool": "take_heapsnapshot",
+          "args": {
+            "pageId": 9,
+            "filePath": "{files}/missing-page.heapsnapshot"
+          }
+        }
+      ]
     }
   ],
   "expected": [

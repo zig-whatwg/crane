@@ -83,11 +83,12 @@ const input_tools = @import("tools/input.zig");
 const snapshot_tools = @import("tools/snapshot.zig");
 const emulation_tools = @import("tools/emulation.zig");
 const logpoint_tools = @import("tools/logpoints.zig");
+const memory_tools = @import("tools/memory.zig");
 const logpoints = @import("logpoints.zig");
 
 /// Every tool Crane offers (tools/list orders them as the copied
 /// definitions do).
-pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list ++ network_tools.list ++ input_tools.list ++ snapshot_tools.list ++ emulation_tools.list ++ logpoint_tools.list);
+pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list ++ network_tools.list ++ input_tools.list ++ snapshot_tools.list ++ emulation_tools.list ++ logpoint_tools.list ++ memory_tools.list);
 
 /// The tools/list JSON array for `all`, from the copied definitions.
 pub fn listJson(allocator: Allocator) ![]u8 {
