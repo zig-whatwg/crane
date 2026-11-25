@@ -42,16 +42,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, descriptor: dictionaries.TableDescriptor, value: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &Table.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, descriptor: dictionaries.TableDescriptor, value: webidl.Opt(runtime.JSValue)) !void {
+    _ = instance;
     _ = descriptor;
     _ = value;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for length

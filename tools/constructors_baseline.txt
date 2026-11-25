@@ -7,73 +7,6 @@
 # part of `zig build test`, fails on a new one and on an entry that no longer
 # holds; after converting some, `zig build lint-constructors -- --update`. Never
 # raise it by hand.
-destructor AbsoluteOrientationSensor deinit(instance)
-destructor Accelerometer deinit(instance)
-destructor AmbientLightSensor deinit(instance)
-destructor AnalyserNode deinit(instance)
-destructor BarcodeDetector deinit(instance)
-destructor BluetoothDataFilter deinit(instance)
-destructor BluetoothLEScanFilter deinit(instance)
-destructor BluetoothManufacturerDataFilter deinit(instance)
-destructor BluetoothServiceDataFilter deinit(instance)
-destructor EncodedAudioChunk deinit(instance)
-destructor EncodedVideoChunk deinit(instance)
-destructor Exception deinit(instance)
-destructor EyeDropper deinit(instance)
-destructor FaceDetector deinit(instance)
-destructor FencedFrameConfig deinit(instance)
-destructor FragmentResult deinit(instance)
-destructor Global deinit(instance)
-destructor GravitySensor deinit(instance)
-destructor Gyroscope deinit(instance)
-destructor HandwritingStroke deinit(instance)
-destructor IdleDetector deinit(instance)
-destructor Instance deinit(instance)
-destructor JsonLdProcessor deinit(instance)
-destructor LinearAccelerationSensor deinit(instance)
-destructor MLGraphBuilder deinit(instance)
-destructor Magnetometer deinit(instance)
-destructor ManagedMediaSource deinit(instance)
-destructor Memory deinit(instance)
-destructor Module deinit(instance)
-destructor NDEFMessage deinit(instance)
-destructor NDEFReader deinit(instance)
-destructor NDEFRecord deinit(instance)
-destructor Observable deinit(instance)
-destructor OfflineAudioContext deinit(instance)
-destructor PointerTimeline deinit(instance)
-destructor PressureObserver deinit(instance)
-destructor Profiler deinit(instance)
-destructor ProximitySensor deinit(instance)
-destructor RdfDataset deinit(instance)
-destructor RdfGraph deinit(instance)
-destructor RdfLiteral deinit(instance)
-destructor RdfTriple deinit(instance)
-destructor RelativeOrientationSensor deinit(instance)
-destructor RemoteDocument deinit(instance)
-destructor Table deinit(instance)
-destructor Tag deinit(instance)
-destructor TextDetector deinit(instance)
-destructor USBAlternateInterface deinit(instance)
-destructor USBConfiguration deinit(instance)
-destructor USBEndpoint deinit(instance)
-destructor USBInTransferResult deinit(instance)
-destructor USBInterface deinit(instance)
-destructor USBIsochronousInTransferPacket deinit(instance)
-destructor USBIsochronousInTransferResult deinit(instance)
-destructor USBIsochronousOutTransferPacket deinit(instance)
-destructor USBIsochronousOutTransferResult deinit(instance)
-destructor USBOutTransferResult deinit(instance)
-destructor UncalibratedMagnetometer deinit(instance)
-factory AbsoluteOrientationSensor
-factory Accelerometer
-factory AmbientLightSensor
-factory AnalyserNode
-factory BarcodeDetector
-factory BluetoothDataFilter
-factory BluetoothLEScanFilter
-factory BluetoothManufacturerDataFilter
-factory BluetoothServiceDataFilter
 factory CSSKeywordValue
 factory CSSMathClamp
 factory CSSMathInvert
@@ -100,65 +33,16 @@ factory Comment
 factory Document
 factory DocumentFragment
 factory DragEvent
-factory EncodedAudioChunk
-factory EncodedVideoChunk
-factory Exception
-factory EyeDropper
-factory FaceDetector
-factory FencedFrameConfig
 factory FormData
-factory FragmentResult
 factory GamepadEvent
-factory Global
-factory GravitySensor
-factory Gyroscope
-factory HandwritingStroke
-factory IdleDetector
-factory Instance
 factory IntersectionObserverEntry
-factory JsonLdProcessor
-factory LinearAccelerationSensor
-factory MLGraphBuilder
-factory Magnetometer
-factory ManagedMediaSource
-factory Memory
 factory MessageEvent
-factory Module
 factory MouseEvent
-factory NDEFMessage
-factory NDEFReader
-factory NDEFRecord
-factory Observable
-factory OfflineAudioContext
-factory PointerTimeline
-factory PressureObserver
 factory ProcessingInstruction
-factory Profiler
-factory ProximitySensor
-factory RdfDataset
-factory RdfGraph
-factory RdfLiteral
-factory RdfTriple
 factory ReadableStream
 factory ReadableStreamBYOBReader
 factory ReadableStreamDefaultReader
-factory RelativeOrientationSensor
-factory RemoteDocument
-factory Table
-factory Tag
 factory Text
-factory TextDetector
 factory TransformStream
-factory USBAlternateInterface
-factory USBConfiguration
-factory USBEndpoint
-factory USBInTransferResult
-factory USBInterface
-factory USBIsochronousInTransferPacket
-factory USBIsochronousInTransferResult
-factory USBIsochronousOutTransferPacket
-factory USBIsochronousOutTransferResult
-factory USBOutTransferResult
-factory UncalibratedMagnetometer
 factory WritableStream
 factory WritableStreamDefaultWriter
