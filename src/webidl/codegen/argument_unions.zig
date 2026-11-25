@@ -486,16 +486,27 @@ pub fn unionName(allocator: std.mem.Allocator, members: []const types.IDLType) !
 /// case, a sequence's or record's with its element types ("SequenceOfLong",
 /// "RecordOfDOMStringToDOMString"), so that (DOMString or sequence<DOMString>)
 /// and (DOMString or sequence<long>) are two unions.
-fn appendTypeName(allocator: std.mem.Allocator, out: *std.ArrayList(u8), t: types.IDLType) !void {
+///
+/// An element type's `?` is part of the name ("SequenceOfNullableDouble"):
+/// the typedef's body depends on it, and one name is one typedef - the first
+/// union named makes it and every later one of that name reuses it
+/// (`unionTypedef`). Without it (double? or sequence<double?>) - Web
+/// Animations' BasePropertyIndexedKeyframe.offset - and (double or
+/// sequence<double>) - IntersectionObserverInit.threshold - were one typedef,
+/// the first one named, and IntersectionObserverInit.threshold took the other's
+/// element type and nullability (lane bind1 batch B, B5 group 3b). A MEMBER's
+/// own `?` is not: 3.2.25 step 2 puts it on the position (`nameType`), and the
+/// typedef's arms are the same either way.
+fn appendTypeName(allocator: std.mem.Allocator, out: *std.ArrayList(u8), t: types.IDLType) std.mem.Allocator.Error!void {
     if (t.sequence) |element| {
         try out.appendSlice(allocator, "SequenceOf");
-        return appendTypeName(allocator, out, element.*);
+        return appendElementName(allocator, out, element.*);
     }
     if (t.record) |record| {
         try out.appendSlice(allocator, "RecordOf");
-        try appendTypeName(allocator, out, record.key.*);
+        try appendElementName(allocator, out, record.key.*);
         try out.appendSlice(allocator, "To");
-        return appendTypeName(allocator, out, record.value.*);
+        return appendElementName(allocator, out, record.value.*);
     }
     try appendWords(allocator, out, t.type);
     if (t.generic) |text| {
@@ -509,15 +520,28 @@ fn appendTypeName(allocator: std.mem.Allocator, out: *std.ArrayList(u8), t: type
             if (!in_brackets) try plain.append(allocator, c);
             if (c == ']') in_brackets = false;
         }
-        // "K, V" (a record's), "T": each name's words, joined.
+        // "K, V" (a record's), "T": each name's words, joined; a `?` after a
+        // name puts "Nullable" before that word (`T?` is "NullableT"). The
+        // parser writes a sequence's element type with a space before its
+        // `?` ("double ?").
         var parts = std.mem.tokenizeAny(u8, plain.items, ",<>() ?");
         var first = true;
         while (parts.next()) |part| {
             if (!first and std.mem.eql(u8, t.type, "record")) try out.appendSlice(allocator, "To");
             first = false;
+            var after = parts.index;
+            while (after < plain.items.len and plain.items[after] == ' ') after += 1;
+            if (after < plain.items.len and plain.items[after] == '?') try out.appendSlice(allocator, "Nullable");
             try appendWords(allocator, out, part);
         }
     }
+}
+
+/// A sequence's or record's element type's part of a union's name: its `?`
+/// included ("NullableDouble"; see `appendTypeName`).
+fn appendElementName(allocator: std.mem.Allocator, out: *std.ArrayList(u8), t: types.IDLType) std.mem.Allocator.Error!void {
+    if (t.nullable) try out.appendSlice(allocator, "Nullable");
+    return appendTypeName(allocator, out, t);
 }
 
 /// `text`'s words in upper camel case; an extended attribute (`[EnforceRange]`)

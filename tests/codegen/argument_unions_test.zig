@@ -137,6 +137,51 @@ test "every other position is named: attribute, return, variadic, sequence and r
     try expectIn(nullable, "dictionaries/WithNullable.zig", "typedefs.DOMStringOrLong");
 }
 
+test "a sequence element's nullability names another union; a member's makes the position nullable" {
+    // One name is one typedef (unionTypedef reuses the first union named).
+    // (double? or sequence<double?>) and (double or sequence<double>) were
+    // both "DoubleOrSequenceOfDouble": IntersectionObserverInit.threshold
+    // took BasePropertyIndexedKeyframe.offset's typedef once both were named
+    // (lane bind1 batch B, B5 group 3b).
+    var out = try Generated.init();
+    defer out.deinit();
+    const plain = try out.read("dictionaries/ElementsPlain.zig");
+    defer testing.allocator.free(plain);
+    try expectIn(plain, "dictionaries/ElementsPlain.zig", "threshold: ?typedefs.DoubleOrSequenceOfDouble = null");
+    const nullable = try out.read("dictionaries/ElementsNullable.zig");
+    defer testing.allocator.free(nullable);
+    try expectIn(nullable, "dictionaries/ElementsNullable.zig", "typedefs.DoubleOrSequenceOfNullableDouble");
+    const member = try out.read("dictionaries/MemberNullable.zig");
+    defer testing.allocator.free(member);
+    try expectIn(member, "dictionaries/MemberNullable.zig", "value: ?typedefs.DoubleOrSequenceOfDouble");
+    try expectIn(member, "dictionaries/MemberNullable.zig", "pub const nullable_members = .{\"value\"};");
+    const typedef = try out.read("typedefs/DoubleOrSequenceOfDouble.zig");
+    defer testing.allocator.free(typedef);
+    try expectIn(typedef, "typedefs/DoubleOrSequenceOfDouble.zig", "double_sequence: []const f64,");
+    try expectIn(typedef, "typedefs/DoubleOrSequenceOfDouble.zig", "pub const restricted_arms = .{ \"double\", \"double_sequence\" };");
+    const other = try out.read("typedefs/DoubleOrSequenceOfNullableDouble.zig");
+    defer testing.allocator.free(other);
+    try expectIn(other, "typedefs/DoubleOrSequenceOfNullableDouble.zig", "pub const DoubleOrSequenceOfNullableDouble = union(enum) {");
+}
+
+test "unionName names an element type's nullability, not a member's" {
+    const allocator = testing.allocator;
+    var element = codegen.types.IDLType{ .type = "double", .nullable = true };
+    var members = [_]codegen.types.IDLType{ .{ .type = "double", .nullable = true }, .{ .type = "sequence", .sequence = &element } };
+    const name = try codegen.argument_unions.unionName(allocator, &members);
+    defer allocator.free(name);
+    try testing.expectEqualStrings("DoubleOrSequenceOfNullableDouble", name);
+    var text_members = [_]codegen.types.IDLType{ .{ .type = "DOMString" }, .{ .type = "sequence", .generic = "DOMString?" } };
+    const text_name = try codegen.argument_unions.unionName(allocator, &text_members);
+    defer allocator.free(text_name);
+    try testing.expectEqualStrings("DOMStringOrSequenceOfNullableDOMString", text_name);
+    // As the IDL parser writes a sequence's element text: a space before `?`.
+    var spaced_members = [_]codegen.types.IDLType{ .{ .type = "double", .nullable = true }, .{ .type = "sequence", .generic = "double ?" } };
+    const spaced_name = try codegen.argument_unions.unionName(allocator, &spaced_members);
+    defer allocator.free(spaced_name);
+    try testing.expectEqualStrings("DoubleOrSequenceOfNullableDouble", spaced_name);
+}
+
 test "the IndexedDB source attributes, and only they, keep the object itself" {
     const table = codegen.argument_unions.object_identity_attributes;
     try testing.expectEqual(@as(usize, 2), table.len);
