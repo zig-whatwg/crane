@@ -693,3 +693,82 @@ test "handle counts over 64 calls: zero global handle bytes leaked across all B6
     const after: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate()));
     try testing.expectEqual(@as(i64, 0), after - before);
 }
+
+test "streams QueuingStrategySize converts return inside callback associated realm (WebIDL 3.12 step 13)" {
+    const page = try Page.open();
+    defer page.close();
+    const other = try page.openSecondRealm();
+    defer protocol.destroyWindowRealm(other, .global_detached);
+
+    const other_size = try Page.evalIn(other, "() => Symbol('bad-size')");
+    defer other_size.release();
+    const other_type_error = try Page.evalIn(other, "TypeError");
+    defer other_type_error.release();
+
+    // Hand `other_size` and `other.TypeError` into `page.realm`.
+    const install = try Page.makeCallback(page.realm, "(s, TE) => { globalThis.__otherSize = s; globalThis.__otherTE = TE; }", page.realm);
+    defer install.release();
+    switch (try protocol.invokeCallbackFunctionAs(void, .{}, page.realm, &install, .undefined, .{ other_size.borrow(), other_type_error.borrow() }, .rethrow, testing.allocator)) {
+        .normal => |h| h.release(testing.allocator),
+        .throw => |t| {
+            t.release();
+            return error.UnexpectedThrow;
+        },
+    }
+
+    // ReadableStreamDefaultController.enqueue: size() returning Symbol() throws
+    // other.TypeError (from size's associated realm, not the stream's realm).
+    const rs_check = try Page.makeCallback(
+        page.realm,
+        \\() => {
+        \\  let ctrl;
+        \\  new ReadableStream({ start(c) { ctrl = c; } }, { size: globalThis.__otherSize, highWaterMark: 1 });
+        \\  try { ctrl.enqueue('x'); return false; } catch (e) { return e instanceof globalThis.__otherTE; }
+        \\}
+    ,
+        page.realm,
+    );
+    defer rs_check.release();
+    switch (try protocol.invokeCallbackFunctionAs(bool, .{}, page.realm, &rs_check, .undefined, .{}, .rethrow, testing.allocator)) {
+        .normal => |h| {
+            defer h.release(testing.allocator);
+            try testing.expect(h.value);
+        },
+        .throw => |t| {
+            t.release();
+            return error.UnexpectedThrow;
+        },
+    }
+
+    // WritableStream: size() returning Symbol() rejects write() with other.TypeError.
+    const ws_check = try Page.makeCallback(
+        page.realm,
+        \\() => {
+        \\  globalThis.__wsOk = false;
+        \\  const ws = new WritableStream({}, { size: globalThis.__otherSize, highWaterMark: 1 });
+        \\  ws.getWriter().write('x').catch(e => { globalThis.__wsOk = (e instanceof globalThis.__otherTE); });
+        \\}
+    ,
+        page.realm,
+    );
+    defer ws_check.release();
+    switch (try protocol.invokeCallbackFunctionAs(void, .{}, page.realm, &ws_check, .undefined, .{}, .rethrow, testing.allocator)) {
+        .normal => |h| h.release(testing.allocator),
+        .throw => |t| {
+            t.release();
+            return error.UnexpectedThrow;
+        },
+    }
+    const read_ok = try Page.makeCallback(page.realm, "() => globalThis.__wsOk", page.realm);
+    defer read_ok.release();
+    switch (try protocol.invokeCallbackFunctionAs(bool, .{}, page.realm, &read_ok, .undefined, .{}, .rethrow, testing.allocator)) {
+        .normal => |h| {
+            defer h.release(testing.allocator);
+            try testing.expect(h.value);
+        },
+        .throw => |t| {
+            t.release();
+            return error.UnexpectedThrow;
+        },
+    }
+}

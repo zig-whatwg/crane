@@ -35,9 +35,6 @@ pub const Conversion = enum {
 /// (callback, its IDL return type, how the value is converted today).
 pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u8, Conversion }{
     // --- A value type ---
-    // dom/streams_readable.zig defaultControllerEnqueueCompletion and
-    // dom/streams_writable.zig getChunkSize (engine.convertToUnrestrictedDouble).
-    .{ "QueuingStrategySize", "unrestricted double", .hand },
     // html/custom_elements/creation.zig create + validateConstructed
     // (engine.convertToPlatformObject, then HTMLElement's checks);
     // html/upgrade.zig constructForUpgrade compares identity only.
@@ -46,19 +43,6 @@ pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u
     .{ "OnBeforeUnloadEventHandlerNonNull", "DOMString?", .protocol_typed },
 
     // --- Promise<undefined> ---
-    // Streams, all through dom/streams_js.zig Realm.promiseCall (a throw is
-    // a promise rejected with it, a return value a new promise resolved with
-    // it): dom/streams_readable.zig pullErased, cancelErased;
-    // dom/streams_writable.zig writeErased, closeErased, abortErased;
-    // dom/streams_transform.zig transformErased, flushErased, cancelErased.
-    .{ "UnderlyingSourcePullCallback", "Promise<undefined>", .promise_wrap },
-    .{ "UnderlyingSourceCancelCallback", "Promise<undefined>", .promise_wrap },
-    .{ "UnderlyingSinkWriteCallback", "Promise<undefined>", .promise_wrap },
-    .{ "UnderlyingSinkCloseCallback", "Promise<undefined>", .promise_wrap },
-    .{ "UnderlyingSinkAbortCallback", "Promise<undefined>", .promise_wrap },
-    .{ "TransformerTransformCallback", "Promise<undefined>", .promise_wrap },
-    .{ "TransformerFlushCallback", "Promise<undefined>", .promise_wrap },
-    .{ "TransformerCancelCallback", "Promise<undefined>", .promise_wrap },
     // impls/Navigation.zig invokeToPromise (engine.promiseResolve: a promise
     // of the realm passes through), from interceptCommitHandlerSteps and
     // runPrecommitHandlers.

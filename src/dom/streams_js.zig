@@ -184,21 +184,21 @@ pub const Realm = struct {
         };
     }
 
-    /// WebIDL "invoke a callback function" whose return type is a promise:
-    /// a throw becomes a rejected promise, a return value becomes "a promise
-    /// resolved with" it. Owned.
-    pub fn promiseCall(self: Realm, function: Value, this: ?Value, args: []const Value) Error!Value {
-        const completion = try self.call(function, this, args);
-        switch (completion) {
-            .normal => |v| {
-                defer dispose(v);
-                return self.promiseResolvedWith(v);
-            },
-            .thrown => |e| {
-                defer dispose(e);
-                return self.promiseRejectedWith(e);
-            },
-        }
+    /// Adopt an `engine.Owned` value (e.g. a Promise from a generated callback
+    /// invoker) as a streams `Value` of this realm.
+    pub fn adoptOwned(self: Realm, owned: engine.Owned) Value {
+        return adopt(self.ctx, owned);
+    }
+
+    /// Borrow `function` as an `engine.CallbackFunction` with this realm as
+    /// its callback context.
+    pub fn callbackOf(self: Realm, function: Value) engine.CallbackFunction {
+        return .{ .function = .{ .value = function.value }, .context = self.ctx };
+    }
+
+    /// Convert an optional streams `this` value into `engine.CallbackThis`.
+    pub fn thisOf(this: ?Value) engine.CallbackThis {
+        return if (this) |t| .{ .value = t.value } else .undefined;
     }
 
     // ------------------------------------------------------------------
