@@ -37,6 +37,12 @@ pub const ClassScheme = enum {
     /// idle partly filled spans per Browser nearly in half again against
     /// `quarters` while keeping every power-of-two array/table exact (M7-1).
     halves,
+    /// `halves` through 4 KiB, then span-divisor-clean upper classes: 5,120 B
+    /// (3 slots per 16 KiB span, replacing 6,144 B which fit only 2 and wasted
+    /// 25% of every span — -17.3 MiB peak on `page.query`), 8,192 B (2/span),
+    /// and 16,384 B (1/span, dropping redundant 12,288 B): 19 classes, every
+    /// class divisible by every power-of-two alignment up to itself (M8-4a).
+    halves_span,
     /// Powers of two from 16 bytes to 16 KiB: the classes before batch 5.
     powers_of_two,
 };
@@ -57,6 +63,7 @@ pub fn SizeClasses(comptime scheme: ClassScheme) type {
             .eighths => 512 / 16 + 5 * 8,
             .quarters => 128 / 16 + 7 * 4,
             .halves => 64 / 16 + 8 * 2,
+            .halves_span => 19,
             .powers_of_two => 14 - 4 + 1,
         };
 
@@ -98,6 +105,17 @@ pub fn SizeClasses(comptime scheme: ClassScheme) type {
                     const shift: std.math.Log2Int(usize) = @intCast(d - 1);
                     return (d - 5) * 2 + ((size - 1) >> shift);
                 },
+                .halves_span => {
+                    if (size <= 64) return (size - 1) >> 4;
+                    if (size <= 4096) {
+                        const d: usize = std.math.log2_int(usize, size - 1);
+                        const shift: std.math.Log2Int(usize) = @intCast(d - 1);
+                        return (d - 5) * 2 + ((size - 1) >> shift);
+                    }
+                    if (size <= 5120) return 16;
+                    if (size <= 8192) return 17;
+                    return 18;
+                },
                 .powers_of_two => {
                     const shift = std.math.log2_int_ceil(usize, @max(size, 16));
                     return shift - 4;
@@ -130,6 +148,19 @@ pub fn SizeClasses(comptime scheme: ClassScheme) type {
                     const i = class - 4;
                     const base = @as(usize, 1) << @intCast(6 + i / 2);
                     return base + (i % 2 + 1) * (base / 2);
+                },
+                .halves_span => {
+                    if (class < 4) return (class + 1) * 16;
+                    if (class < 16) {
+                        const i = class - 4;
+                        const base = @as(usize, 1) << @intCast(6 + i / 2);
+                        return base + (i % 2 + 1) * (base / 2);
+                    }
+                    return switch (class) {
+                        16 => 5120,
+                        17 => 8192,
+                        else => 16384,
+                    };
                 },
                 .powers_of_two => return @as(usize, 1) << @intCast(class + 4),
             }
