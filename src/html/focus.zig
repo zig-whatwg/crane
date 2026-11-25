@@ -910,10 +910,17 @@ pub fn autofocusDelegate(focus_target: *Instance, trigger: Trigger) ?*Instance {
 /// (its viewport).
 pub fn focusingSteps(new_focus_target_in: *Instance, fallback_target: ?*Instance, trigger: Trigger) void {
     var new_focus_target: ?*Instance = new_focus_target_in;
+    var verified_not_inert = false;
     // Step 1: "If new focus target is not a focusable area, then set it to
     // the result of getting the focusable area for it."
-    if (isElement(new_focus_target_in) and !isFocusableArea(new_focus_target_in)) {
-        new_focus_target = getFocusableArea(new_focus_target_in, trigger);
+    if (isElement(new_focus_target_in)) {
+        if (isFocusableArea(new_focus_target_in)) {
+            // isFocusableArea already verified !isHostInert and
+            // isRenderedForFocus (interactivity != inert) — or isInert for <area>.
+            verified_not_inert = true;
+        } else {
+            new_focus_target = getFocusableArea(new_focus_target_in, trigger);
+        }
     }
     // Step 2: fall back, or return.
     const target = new_focus_target orelse fallback_target orelse return;
@@ -924,7 +931,7 @@ pub fn focusingSteps(new_focus_target_in: *Instance, fallback_target: ?*Instance
     }
     // Step 4: "If new focus target is a focusable area and its DOM anchor is
     // inert, then return."
-    if (isElement(resolved) and isInert(resolved)) return;
+    if (!(verified_not_inert and resolved == new_focus_target_in) and isElement(resolved) and isInert(resolved)) return;
     const document = nodeDocument(resolved) orelse return;
     // Steps 5-6 read the area the traversable focuses - or, without system
     // focus, the one it designates, which the browsers move all the same

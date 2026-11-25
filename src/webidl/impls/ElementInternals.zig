@@ -1050,6 +1050,7 @@ pub fn call_setValidity(instance: *runtime.Instance, flags: webidl.Opt(dictionar
     internal.allocator.free(internal.validation_message);
     internal.validation_message = owned_message;
     internal.validity_flags = new_flags;
+    @import("dom").style.dynamicStateChanged(target);
     // Steps 9–11: the anchor must be a shadow-including inclusive descendant.
     const selected_anchor = anchor.getOrDefault(target);
     var ancestor: ?*runtime.Instance = selected_anchor;

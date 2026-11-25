@@ -16,6 +16,11 @@ pub const State = interfaces.CustomStateSet.State;
 pub const InternalState = struct {
     /// The states set's values (HTML: "a CustomStateSet, initially empty").
     values: webidl.setlike.Strings,
+    /// Generation-checked weak link to the owning custom element for `:state()`
+    /// style invalidation on add/delete/clear (the traced edge keeps it alive
+    /// while script can reach this set).
+    target: ?*runtime.Instance = null,
+    target_generation: u64 = 0,
     target_traced: bool = false,
 };
 
@@ -27,8 +32,18 @@ pub fn installHooks() void {
     ce.installCustomStates(.{ .set_target = &setTarget, .has = &hasState });
 }
 
+fn statesChanged(context: *anyopaque) void {
+    const internal: *InternalState = @ptrCast(@alignCast(context));
+    const target = internal.target orelse return;
+    if (runtime.SlabAllocator.generationOf(target) != internal.target_generation) return;
+    @import("dom").style.dynamicStateChanged(target);
+}
+
 fn setTarget(instance: *runtime.Instance, target: *runtime.Instance) !void {
     const internal = try internalOf(instance);
+    internal.target = target;
+    internal.target_generation = runtime.SlabAllocator.generationOf(target);
+    internal.values.on_change = .{ .context = internal, .callback = &statesChanged };
     // Blink's CustomStateSet traces its element. This edge keeps the target
     // reachable only while script can reach the set, without a persistent root.
     if (instance.ctx.hasEngine()) {

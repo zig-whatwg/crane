@@ -342,6 +342,7 @@ fn isSettled(option: *runtime.Instance) bool {
 /// Copy before a possible map growth; no
 /// borrowed value pointer survives writing another option's entry.
 fn writeSelection(option: *runtime.Instance, selected: bool, dirtiness: ?bool, settled: ?bool) !void {
+    const previous = ownSelectedness(option);
     if (StateMap.get(option)) |state| {
         const dirty = dirtiness orelse state.dirtiness;
         const processed = selected and (settled orelse state.settled);
@@ -349,15 +350,18 @@ fn writeSelection(option: *runtime.Instance, selected: bool, dirtiness: ?bool, s
             // No allocation or other option write while this value is
             // borrowed. The common dirty-setter path needs one map lookup.
             state.* = .{ .selectedness = selected, .dirtiness = dirty, .settled = processed };
+            if (previous != selected) @import("dom").style.dynamicStateChanged(option);
             return;
         }
         _ = StateMap.remove(option);
+        if (previous != selected) @import("dom").style.dynamicStateChanged(option);
         return;
     }
     const dirty = dirtiness orelse false;
     const processed = selected and (settled orelse false);
     if (!dirty and !processed and selected == hasAttr(option, "selected")) return;
     try StateMap.put(option, .{ .selectedness = selected, .dirtiness = dirty, .settled = processed });
+    if (previous != selected) @import("dom").style.dynamicStateChanged(option);
 }
 
 fn deselectOthers(options: []const *runtime.Instance, chosen: *runtime.Instance) !void {
@@ -827,7 +831,11 @@ pub fn set_selected(instance: *runtime.Instance, value: bool) anyerror!void {
         if (value and !hasAttr(select, "multiple")) try deselectOthers(options.items, instance);
         _ = try setSelectednessForList(select, options.items);
         try selected_content.updateAll(select);
-    } else try StateMap.put(instance, .{ .selectedness = value, .dirtiness = true });
+    } else {
+        const previous = ownSelectedness(instance);
+        try StateMap.put(instance, .{ .selectedness = value, .dirtiness = true });
+        if (previous != value) @import("dom").style.dynamicStateChanged(instance);
+    }
 }
 
 /// Setter for text
