@@ -32,6 +32,11 @@ pub const ClassScheme = enum {
     /// 36 classes, at most 25% slack past 128 B, half the partly filled spans
     /// of `eighths`.
     quarters,
+    /// 16-byte steps to 64 bytes, then two classes per doubling to 16 KiB
+    /// (every power of two and every 1.5x midpoint exact): 20 classes, cutting
+    /// idle partly filled spans per Browser nearly in half again against
+    /// `quarters` while keeping every power-of-two array/table exact (M7-1).
+    halves,
     /// Powers of two from 16 bytes to 16 KiB: the classes before batch 5.
     powers_of_two,
 };
@@ -51,6 +56,7 @@ pub fn SizeClasses(comptime scheme: ClassScheme) type {
             .quantum16 => 4096 / 16 + 2,
             .eighths => 512 / 16 + 5 * 8,
             .quarters => 128 / 16 + 7 * 4,
+            .halves => 64 / 16 + 8 * 2,
             .powers_of_two => 14 - 4 + 1,
         };
 
@@ -82,6 +88,16 @@ pub fn SizeClasses(comptime scheme: ClassScheme) type {
                     const shift: std.math.Log2Int(usize) = @intCast(d - 2);
                     return (d - 6) * 4 + ((size - 1) >> shift);
                 },
+                .halves => {
+                    if (size <= 64) return (size - 1) >> 4;
+                    // The doubling (base, 2 * base] the size falls in, and its
+                    // half: base = 2^d (d in 6..13), step = 2^(d-1). (size-1)
+                    // >> (d-1) is 2 or 3, so (d - 5) * 2 + ((size - 1) >> (d - 1))
+                    // yields 4..19 with zero runtime divisions.
+                    const d: usize = std.math.log2_int(usize, size - 1);
+                    const shift: std.math.Log2Int(usize) = @intCast(d - 1);
+                    return (d - 5) * 2 + ((size - 1) >> shift);
+                },
                 .powers_of_two => {
                     const shift = std.math.log2_int_ceil(usize, @max(size, 16));
                     return shift - 4;
@@ -108,6 +124,12 @@ pub fn SizeClasses(comptime scheme: ClassScheme) type {
                     const i = class - 8;
                     const base = @as(usize, 1) << @intCast(7 + i / 4);
                     return base + (i % 4 + 1) * (base / 4);
+                },
+                .halves => {
+                    if (class < 4) return (class + 1) * 16;
+                    const i = class - 4;
+                    const base = @as(usize, 1) << @intCast(6 + i / 2);
+                    return base + (i % 2 + 1) * (base / 2);
                 },
                 .powers_of_two => return @as(usize, 1) << @intCast(class + 4),
             }

@@ -61,7 +61,7 @@ test "a freed block serves its own 16-byte class only: a smaller request in it, 
 
 test "every scheme's classes hold their requests, rise with them, and bound their slack" {
     const classes = runtime.arena_classes;
-    inline for (.{ classes.ClassScheme.quantum16, classes.ClassScheme.eighths, classes.ClassScheme.quarters, classes.ClassScheme.powers_of_two }) |scheme| {
+    inline for (.{ classes.ClassScheme.quantum16, classes.ClassScheme.eighths, classes.ClassScheme.quarters, classes.ClassScheme.halves, classes.ClassScheme.powers_of_two }) |scheme| {
         const C = classes.SizeClasses(scheme);
         var previous: usize = 0;
         var size: usize = 8;
@@ -78,6 +78,7 @@ test "every scheme's classes hold their requests, rise with them, and bound thei
                 .quantum16 => if (size <= 4096) try testing.expect(held - size < 16),
                 .eighths => if (size > 512) try testing.expect((held - size) * 8 <= held),
                 .quarters => if (size > 128) try testing.expect((held - size) * 4 <= held),
+                .halves => if (size > 64) try testing.expect((held - size) * 3 <= held),
                 .powers_of_two => {},
             }
         }

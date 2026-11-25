@@ -58,11 +58,12 @@ pub const general = @import("general.zig");
 
 const BrowserHeap = browser_heap.BrowserHeap;
 const Classes = classes.Classes;
-/// The classes general blocks take (batch B, M6): PartitionAlloc's quarters
-/// scheme - 16-byte steps to 128 B, then four per doubling to 16 KiB, 36
-/// classes (allocator-hardening design 3.3 & 6.3) - half the classes of
-/// eighths (72), halving partly filled spans committed per Browser.
-pub const GeneralClasses = classes.SizeClasses(.quarters);
+/// The classes general blocks take (batch B, M7-1): halves scheme - 16-byte
+/// steps to 64 B, then two per doubling to 16 KiB, 20 classes (every power of
+/// two and every 1.5x midpoint exact) - cutting idle partly filled spans per
+/// Browser nearly in half again against quarters (36) while keeping every
+/// power-of-two array/table exact.
+pub const GeneralClasses = classes.SizeClasses(.halves);
 
 /// Comptime magic multiplier for exact `within / block_bytes` over any offset
 /// within a 16 KiB span (`within < 16384`, `block_bytes = 16 * m`, `1 <= m <= 1024`):
@@ -110,12 +111,12 @@ inline fn generalClassOf(size: usize, alignment: usize) ?usize {
     return class;
 }
 
-/// Fast general class lookup from `std.mem.Alignment` (batch B, M4): 99%+ of
-/// calls have `alignment <= 16` (`align_log2 <= 4`) and 70-92% have
-/// `size <= 128`, avoiding `toByteUnits()`, `alignForward` and runtime modulo.
+/// Fast general class lookup from `std.mem.Alignment` (batch B, M4/M7-1):
+/// 99%+ of calls have `alignment <= 16` (`align_log2 <= 4`) and most have
+/// `size <= 64`, avoiding `toByteUnits()`, `alignForward` and runtime modulo.
 inline fn generalClassOfAlign(size: usize, alignment: std.mem.Alignment) ?usize {
     if (@backingInt(alignment) <= 4) {
-        if (size <= 128) return if (size == 0) 0 else (size - 1) >> 4;
+        if (size <= 64) return if (size == 0) 0 else (size - 1) >> 4;
         if (size <= GeneralClasses.max_size) return GeneralClasses.of(size);
         return null;
     }
@@ -237,9 +238,15 @@ pub const Config = struct {
     }
 };
 
-/// How long an emptied span stays committed before an idle loop decommits
-/// it (design 5.1: libpas's 1.5 s on Mac, 750 ms elsewhere; 1 s here).
+/// How long an emptied State span stays committed before an idle loop
+/// decommits it (design 5.1: libpas's 1.5 s on Mac, 750 ms elsewhere; 1 s here).
 pub const decommit_age_ms: u32 = 1000;
+/// How long an emptied general span or MRU general large run stays committed
+/// before an idle loop decommits it (M7-3: matches `memory_release.idle_delay_ns`,
+/// 200 ms, so active timed loops keep their hot empty-span cache and 4 MiB MRU
+/// large-run ring with zero syscalls while idle pages reclaim to zero beside
+/// libc's idle release).
+pub const general_decommit_age_ms: u32 = 200;
 
 /// What a heap check found.
 pub const Violation = enum(u8) {
@@ -576,8 +583,18 @@ const Partition = struct {
     huge_table: u32 = no_chunk,
     huge_count: u32 = 0,
     /// Committed bytes of general large runs currently in the empty tier
-    /// (maintained by `setTier`, bounded by `empty_large_budget_bytes`: M5).
+    /// (maintained by `setTier`, bounded by `empty_large_budget_bytes`: M7-2).
     empty_large_bytes: usize = 0,
+    /// MRU ring of committed empty general large-run span indices (oldest at
+    /// index 0, newest at `empty_large_len - 1`): hot streaming/parser loops
+    /// reuse 256 KiB-2 MiB buffers with zero syscalls, while oldest entries
+    /// evict & decommit past `empty_large_ring_cap` or `empty_large_budget_bytes`
+    /// and all decommit at `general_decommit_age_ms` idle (M7-2/M7-3).
+    empty_large_ring: [empty_large_ring_cap]u32 = @splat(no_span),
+    empty_large_len: u8 = 0,
+    /// Committed empty general class spans currently in the empty tier
+    /// (maintained by `setTier`, bounded by `empty_class_budget_spans`: M7-2).
+    empty_class_spans: usize = 0,
     stats: PartitionStats = .{},
 };
 
@@ -602,17 +619,25 @@ const huge_bucket: u16 = std.math.maxInt(u16) - 1;
 pub const cache_depth: usize = 8;
 
 /// Largest general class cached in `AgentCache` (M3): classes past 2 KiB
-/// (2.5-16 KiB) go straight to the shared path so large spans are never
+/// (3-16 KiB) go straight to the shared path so large spans are never
 /// pinned `.cached` in a thread cache.
 pub const cache_max_bytes: usize = 2048;
 const cache_class_count: usize = GeneralClasses.of(cache_max_bytes) + 1;
 
-/// M5 (bounded empty large-run retention): a general large run at or below
-/// `large_keep_max_bytes` keeps at most one empty run per bucket while the
-/// partition's empty large-run total stays within `empty_large_budget_bytes`;
-/// larger runs and anything past the budget decommit immediately at free.
-const large_keep_max_bytes: usize = 128 * KiB;
-const empty_large_budget_bytes: usize = 256 * KiB;
+/// M7-2 (bounded active empty-span retention for general partitions):
+/// - Large runs (16 KiB..2 MiB): keep up to `empty_large_ring_cap` runs and
+///   `empty_large_budget_bytes` total (at most 1 empty run per bucket),
+///   evicting oldest runs immediately past the cap so streaming/parser loops
+///   hit 100% with zero `madvise` + kernel zero-fill churn, and reclaiming
+///   all of them at `general_decommit_age_ms` (200 ms) idle.
+/// - Class spans (<= 16 KiB): keep up to `empty_class_per_bucket` per class
+///   and `empty_class_budget_spans` (512 KiB) per partition during active
+///   work to prevent span-boundary `madvise` ping-pong, decommitting bursts
+///   immediately and reclaiming all of them at 200 ms idle.
+const empty_large_ring_cap: usize = 8;
+const empty_large_budget_bytes: usize = 4 * MiB;
+const empty_class_per_bucket: u32 = 4;
+const empty_class_budget_spans: usize = 32;
 
 /// An agent's general-memory cache (design 3.7): per small class (<= 2 KiB)
 /// of the objects and bytes partitions, a stack of released blocks' offsets -
@@ -1163,10 +1188,33 @@ pub const Engine = struct {
         if (tier == .empty and was != on) {
             if (on) {
                 b.empty_count += 1;
-                if (b.general and b.kind == .large) p.empty_large_bytes += b.block_bytes;
+                if (b.general) {
+                    if (b.kind == .large) {
+                        p.empty_large_bytes += b.block_bytes;
+                    } else if (b.kind == .class) {
+                        p.empty_class_spans += 1;
+                    }
+                }
             } else {
                 b.empty_count -= 1;
-                if (b.general and b.kind == .large) p.empty_large_bytes -= b.block_bytes;
+                if (b.general) {
+                    if (b.kind == .large) {
+                        p.empty_large_bytes -= b.block_bytes;
+                        const span_idx = c.spans[e.ordinal];
+                        const len: usize = p.empty_large_len;
+                        for (0..len) |i| {
+                            if (p.empty_large_ring[i] == span_idx) {
+                                var k = i;
+                                while (k + 1 < len) : (k += 1) p.empty_large_ring[k] = p.empty_large_ring[k + 1];
+                                p.empty_large_ring[len - 1] = no_span;
+                                p.empty_large_len -= 1;
+                                break;
+                            }
+                        }
+                    } else if (b.kind == .class) {
+                        p.empty_class_spans -= 1;
+                    }
+                }
             }
         }
         if (on) {
@@ -1482,7 +1530,7 @@ pub const Engine = struct {
     /// and the cache to the engine's reuse list. Its allocator stays valid:
     /// an operation through it after this takes the shared path.
     pub fn detachAgent(self: *Engine, cache: *AgentCache) void {
-        self.flushCache(cache);
+        self.flushCache(cache, null);
         cache.owner.store(0, .monotonic);
         std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
@@ -1500,13 +1548,15 @@ pub const Engine = struct {
     /// once every agent is gone, before the leak report reads the buckets.
     pub fn flushAllCaches(self: *Engine) void {
         var at = self.caches;
-        while (at) |cache| : (at = cache.next) self.flushCache(cache);
+        while (at) |cache| : (at = cache.next) self.flushCache(cache, null);
     }
 
     /// The caches whose agent runs on this thread give their blocks back
     /// (idle decommit's first step: a span only a cache keeps open would be
-    /// kept committed).
-    fn flushCachesOfThisThread(self: *Engine) void {
+    /// kept committed). `empty_since`: the timestamp idle-flushed spans are
+    /// aged from (M7-3: preserves the idle delay already waited before
+    /// `decommitAged` ran, instead of resetting `empty_since` to `now`).
+    fn flushCachesOfThisThread(self: *Engine, empty_since: ?u32) void {
         const thread = platform.currentThreadToken();
         var found: [8]*AgentCache = undefined;
         var n: usize = 0;
@@ -1520,10 +1570,10 @@ pub const Engine = struct {
                 n += 1;
             }
         }
-        for (found[0..n]) |cache| self.flushCache(cache);
+        for (found[0..n]) |cache| self.flushCache(cache, empty_since);
     }
 
-    fn flushCache(self: *Engine, cache: *AgentCache) void {
+    fn flushCache(self: *Engine, cache: *AgentCache, empty_since: ?u32) void {
         inline for (.{ PartitionId.objects, PartitionId.bytes }, 0..) |pid, pi| {
             const p = self.partition(pid);
             std.Io.Threaded.mutexLockUncancelable(&p.mutex);
@@ -1531,7 +1581,7 @@ pub const Engine = struct {
             for (0..cache_class_count) |class| {
                 const count = cache.counts[pi][class];
                 if (count == 0) continue;
-                self.giveBack(p, generalBucket(pid, class, 0), cache.slots[pi][class][0..count]);
+                self.giveBack(p, generalBucket(pid, class, 0), cache.slots[pi][class][0..count], empty_since);
                 cache.counts[pi][class] = 0;
             }
             cache.held_local[pi] = 0;
@@ -1541,15 +1591,18 @@ pub const Engine = struct {
 
     /// Blocks a cache held (`at`: offsets / 16, state `.cached`) back to
     /// their spans. The partition's lock held.
-    fn giveBack(self: *Engine, p: *Partition, bi: u16, at: []const u32) void {
+    fn giveBack(self: *Engine, p: *Partition, bi: u16, at: []const u32, empty_since: ?u32) void {
         const b = &self.buckets(p.id)[bi];
-        const now = self.now_ms.load(.monotonic);
+        const since = empty_since orelse self.now_ms.load(.monotonic);
+        const class: usize = if (p.id == .bytes) bi else bi - general_objects_base;
+        const magic = general_slot_div[class].magic;
         for (at) |a| {
             const offset = @as(usize, a) * 16;
             const index = offset / span_bytes;
-            const slot = (offset - index * span_bytes) / b.block_bytes;
+            const within = offset & (span_bytes - 1);
+            const slot = ((within >> 4) * magic) >> 20;
             b.live -= 1;
-            self.releaseSlot(p, b, index, slot, now);
+            self.releaseSlot(p, b, index, slot, since);
         }
     }
 
@@ -1625,12 +1678,6 @@ pub const Engine = struct {
             return self.freeGeneral(ptr, size, alignment.toByteUnits());
         }
         const want = generalBucket(expected, class, 0);
-        if (expected == .objects and self.holds(thread)) {
-            std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
-            defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
-            self.freeIn(&self.objects, offset, want, false, size, thread);
-            return;
-        }
         if (offset >= cache.seen_frontier[pi]) {
             @branchHint(.cold);
             const p = self.partition(expected);
@@ -1655,6 +1702,25 @@ pub const Engine = struct {
             return self.violation(.invalid_free, address);
         }
         const map: *[map_words]u64 = @ptrFromInt(cache.bitmaps_base + index * (map_words * 8));
+        if (expected == .objects and self.holds(thread)) {
+            // M7-4: validate, atomically claim `.quarantined`, and fill outside
+            // `objects.mutex` (zero `udiv`, no duplicate bounds checks, shorter
+            // critical section). Only `b.live`, `e.quarantined` and `hold` run
+            // under the mutex.
+            if (!slotSwap(map, slot, .allocated, .quarantined)) {
+                @branchHint(.cold);
+                return self.violation(.double_free, address);
+            }
+            @memset(ptr[0..div.block_bytes], self.config.fillByte());
+            std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+            const b = &self.objects_buckets[want];
+            b.live -= 1;
+            b.requested -|= size;
+            e.quarantined += 1;
+            self.hold(address, div.block_bytes, true);
+            return;
+        }
         if (!slotSwap(map, slot, .allocated, .cached)) {
             @branchHint(.cold);
             return self.violation(.double_free, address);
@@ -1681,7 +1747,7 @@ pub const Engine = struct {
         {
             std.Io.Threaded.mutexLockUncancelable(&p.mutex);
             defer std.Io.Threaded.mutexUnlock(&p.mutex);
-            self.giveBack(p, want, arr[0..half]);
+            self.giveBack(p, want, arr[0..half], null);
         }
         std.mem.copyForwards(u32, arr[0 .. cache_depth - half], arr[half..cache_depth]);
         cache.counts[pi][class] = cache_depth - half;
@@ -1689,10 +1755,10 @@ pub const Engine = struct {
     }
 
     /// Fill `cache`'s stack for `class` of `pid` with up to `want` blocks
-    /// (at most `cache_depth / 2` and at most ~1 KiB), lowest address first,
-    /// under the partition's lock. Past the first block, only already-committed
-    /// spans with room are drawn from (`takeSlotExisting`): refill never opens
-    /// or recommits an extra span just to top up a cache (M3).
+    /// (at most `cache_depth` and at most ~2 KiB), lowest address first, under
+    /// the partition's lock. Past the first block, only already-committed spans
+    /// with room are drawn from (`takeSlotExisting`): refill never opens or
+    /// recommits an extra span just to top up a cache (M3/M7-4).
     fn refill(self: *Engine, cache: *AgentCache, pid: PartitionId, class: usize) Error!void {
         const p = self.partition(pid);
         if (p.lo == p.hi) return error.OutOfMemory;
@@ -1700,10 +1766,10 @@ pub const Engine = struct {
         const b = &self.buckets(pid)[bi];
         const pi = cacheIndex(pid);
         const arr = &cache.slots[pi][class];
-        const want: usize = @min(cache_depth / 2, @max(@as(usize, 1), 1024 / general_slot_div[class].block_bytes));
+        const want: usize = @min(cache_depth, @max(@as(usize, 1), 2048 / general_slot_div[class].block_bytes));
         std.Io.Threaded.mutexLockUncancelable(&p.mutex);
         defer std.Io.Threaded.mutexUnlock(&p.mutex);
-        var got: [cache_depth / 2]u32 = undefined;
+        var got: [cache_depth]u32 = undefined;
         const first = try self.takeSlot(p, b, bi);
         got[0] = @intCast(first / 16);
         var n: usize = 1;
@@ -2160,20 +2226,40 @@ pub const Engine = struct {
         if (e.used == 0) {
             self.setTier(p, b, e, .empty, true);
             p.stats.spans_empty += 1;
-            // M5 (batch B): bounded empty-span retention for general buckets
-            // (PartitionAlloc's bounded empty slot-span ring):
-            // - class buckets keep at most 1 empty span committed for hot reuse
-            //   and decommit additional empty spans immediately at free (fixes
-            //   the 35-118 MB bursts held across settles in streams/qSA/observers);
-            // - large runs keep 1 empty run only when <= 128 KiB and the
-            //   partition's empty large-run total is <= 256 KiB; larger runs
-            //   (e.g. 1-2 MiB gzip/br buffers) and excess runs decommit at once.
+            // M7-2 (batch B): bounded active empty-span retention for general
+            // buckets, paired with fast idle reclaim (`general_decommit_age_ms`):
+            // - class buckets keep up to `empty_class_per_bucket` (4) empty spans
+            //   per bucket and `empty_class_budget_spans` (32 = 512 KiB) per
+            //   partition so active loops never madvise-thrash across span
+            //   boundaries while large bursts still decommit immediately;
+            // - large runs (16 KiB..2 MiB) keep at most 1 empty run per bucket
+            //   in a per-partition MRU ring capped at `empty_large_ring_cap` (8)
+            //   runs / `empty_large_budget_bytes` (4 MiB), evicting oldest empty
+            //   runs past the cap so streaming/parser loops hit 100% with zero
+            //   madvise + kernel zero-fill churn, then drop to 0 KiB at idle.
             if (b.general) {
-                const decommit_now = if (b.kind == .large)
-                    b.empty_count > 1 or b.block_bytes > large_keep_max_bytes or p.empty_large_bytes > empty_large_budget_bytes
-                else
-                    b.empty_count > 1;
-                if (decommit_now) {
+                if (b.kind == .large) {
+                    if (b.empty_count > 1) {
+                        self.releaseSpan(p, b, @intCast(index), false);
+                        return;
+                    }
+                    while (p.empty_large_len >= empty_large_ring_cap or
+                        (p.empty_large_len > 0 and p.empty_large_bytes > empty_large_budget_bytes))
+                    {
+                        const before_len = p.empty_large_len;
+                        const victim = p.empty_large_ring[0];
+                        const ve = self.entry(victim);
+                        self.releaseSpan(p, &self.buckets(p.id)[ve.bucket], victim, false);
+                        if (p.empty_large_len == before_len) break;
+                    }
+                    if (p.empty_large_len < empty_large_ring_cap and p.empty_large_bytes <= empty_large_budget_bytes) {
+                        p.empty_large_ring[p.empty_large_len] = @intCast(index);
+                        p.empty_large_len += 1;
+                    } else {
+                        self.releaseSpan(p, b, @intCast(index), false);
+                        return;
+                    }
+                } else if (b.empty_count > empty_class_per_bucket or p.empty_class_spans > empty_class_budget_spans) {
                     self.releaseSpan(p, b, @intCast(index), false);
                     return;
                 }
@@ -2361,7 +2447,11 @@ pub const Engine = struct {
         const index = offset / span_bytes;
         const e = self.entry(index);
         const b = &self.buckets(pid)[e.bucket];
-        const slot = (offset - index * span_bytes) / b.block_bytes;
+        const within = offset & (span_bytes - 1);
+        const slot = if (b.general and b.kind == .class) blk: {
+            const class: usize = if (pid == .bytes) e.bucket else e.bucket - general_objects_base;
+            break :blk ((within >> 4) * general_slot_div[class].magic) >> 20;
+        } else within / b.block_bytes;
         std.debug.assert(slotGet(self.slotMap(index), slot) == .quarantined);
         e.quarantined -= 1;
         self.release(p, b, index, slot);
@@ -2393,8 +2483,11 @@ pub const Engine = struct {
     pub fn decommitAged(self: *Engine, now_ms: u32, min_age_ms: u32, budget: usize) DecommitResult {
         var result: DecommitResult = .{};
         // A span only an agent's cache keeps open would stay committed: this
-        // thread's agents give their blocks back first.
-        self.flushCachesOfThisThread();
+        // thread's agents give their blocks back first, aged from the idle
+        // window already waited (`general_decommit_age_ms`) so idle-flushed
+        // spans decommit on this pass instead of waiting another cycle (M7-3).
+        const gen_age = @min(min_age_ms, general_decommit_age_ms);
+        self.flushCachesOfThisThread(now_ms -% gen_age);
         const on_owner = if (self.node.owner) |owner| owner == platform.currentThreadToken() else true;
         if (on_owner) {
             self.drainMagazines(&self.node);
@@ -2418,6 +2511,7 @@ pub const Engine = struct {
     fn decommitIn(self: *Engine, p: *Partition, now_ms: u32, min_age_ms: u32, budget: usize, result: *DecommitResult) void {
         if (p.stats.spans_empty == 0) return;
         for (self.buckets(p.id)) |*b| {
+            const age_limit: u32 = if (b.general) @min(min_age_ms, general_decommit_age_ms) else min_age_ms;
             var id = b.hints[@backingInt(Tier.empty)];
             while (id != no_chunk) : (id = self.chunk(p, id).next) {
                 const c = self.chunk(p, id);
@@ -2426,8 +2520,8 @@ pub const Engine = struct {
                     const index = c.spans[@ctz(mask)];
                     const e = self.entry(index);
                     const age = now_ms -% e.empty_since;
-                    if (age < min_age_ms) {
-                        const due = e.empty_since +% min_age_ms;
+                    if (age < age_limit) {
+                        const due = e.empty_since +% age_limit;
                         result.next_due_ms = if (result.next_due_ms) |d| @min(d, due) else due;
                         continue;
                     }
