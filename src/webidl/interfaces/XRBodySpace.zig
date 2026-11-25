@@ -11,12 +11,12 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const XRSpace = @import("interfaces").XRSpace;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const Event = @import("interfaces").Event;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const XRBodyJoint = @import("enums").XRBodyJoint;
-const Event = @import("interfaces").Event;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const DOMString = @import("typedefs").DOMString;
 const Observable = @import("interfaces").Observable;
 

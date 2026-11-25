@@ -1,4 +1,5 @@
 //! Auto-generated
+pub const AddEventListenerOptionsOrBoolean = @import("AddEventListenerOptionsOrBoolean.zig").AddEventListenerOptionsOrBoolean;
 pub const AddressValue = @import("AddressValue.zig").AddressValue;
 pub const AlgorithmIdentifier = @import("AlgorithmIdentifier.zig").AlgorithmIdentifier;
 pub const AllowSharedBufferSource = @import("AllowSharedBufferSource.zig").AllowSharedBufferSource;
@@ -85,6 +86,7 @@ pub const ElementOrProcessingInstruction = @import("ElementOrProcessingInstructi
 pub const ElementOrText = @import("ElementOrText.zig").ElementOrText;
 pub const EpochTimeStamp = @import("EpochTimeStamp.zig").EpochTimeStamp;
 pub const EventHandler = @import("EventHandler.zig").EventHandler;
+pub const EventListenerOptionsOrBoolean = @import("EventListenerOptionsOrBoolean.zig").EventListenerOptionsOrBoolean;
 pub const EventOrDOMString = @import("EventOrDOMString.zig").EventOrDOMString;
 pub const EventOrUndefined = @import("EventOrUndefined.zig").EventOrUndefined;
 pub const FileOrUSVStringOrFormData = @import("FileOrUSVStringOrFormData.zig").FileOrUSVStringOrFormData;
