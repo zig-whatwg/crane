@@ -726,7 +726,9 @@ const Covered = struct {
         }
         const css = @import("css");
         const property = css.properties.lookup(name) orelse return out[0..0];
-        const style = @import("../style/root.zig").engine.computedStyle(target, null) catch null;
+        const held = @import("../style/root.zig").engine.computedStyle(target, null) catch null;
+        defer if (held) |h| h.release();
+        const style: ?*const css.computed_style.ComputedStyle = if (held) |h| h.style else null;
         var count: usize = 0;
         switch (property) {
             .longhand => |l| {

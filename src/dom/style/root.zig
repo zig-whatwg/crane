@@ -31,6 +31,8 @@ pub const MediaOf = sheet.MediaOf;
 pub const RulesOf = sheet.RulesOf;
 pub const ElementStyle = element_style.ElementStyle;
 pub const computedStyle = engine.computedStyle;
+/// What computedStyle answers: a computed style held until released.
+pub const HeldStyle = engine.HeldStyle;
 pub const hasComputedStyle = engine.hasComputedStyle;
 pub const isBeingRendered = engine.isBeingRendered;
 pub const reportMediaQueryChanges = engine.reportMediaQueryChanges;

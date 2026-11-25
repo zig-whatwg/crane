@@ -1049,7 +1049,10 @@ pub fn keyframesForScript(effect: *const model.Effect) Allocator.Error!?keyframe
     errdefer list.deinit(allocator);
     const target = effect.targetElement();
     const bare: ?[]const u8 = if (effect.pseudo) |p| std.mem.trimStart(u8, p, ":") else null;
-    const base = if (target) |t| baseStyle(t, bare) else null;
+    // Held across the serializations below (dom.style.HeldStyle).
+    const base_hold = if (target) |t| @import("../style/root.zig").engine.baseStyle(t, bare) catch null else null;
+    defer if (base_hold) |held| held.release();
+    const base = if (base_hold) |held| held.style else null;
     for (list.frames.items) |*frame| {
         var i: usize = 0;
         while (i < frame.properties.items.len) {
@@ -1074,16 +1077,6 @@ pub fn keyframesForScript(effect: *const model.Effect) Allocator.Error!?keyframe
         }
     }
     return list;
-}
-
-/// The base style of (element, pseudo): its style without the animation
-/// and transition origins, resolved now. Borrowed until the next read.
-fn baseStyle(element: *runtime.Instance, pseudo: ?[]const u8) ?*const ComputedStyle {
-    const style_engine = @import("../style/root.zig").engine;
-    const style = (style_engine.computedStyle(element, pseudo) catch null) orelse return null;
-    const state = element_style.existingOf(element) orelse return style;
-    const cached = if (pseudo) |p| (if (state.pseudoCached(p)) |c| c.cached else return style) else (state.cached orelse return style);
-    return cached.base orelse cached.style;
 }
 
 fn serializeComputed(allocator: Allocator, style: *const ComputedStyle, name: []const u8, out: *std.ArrayList(u8)) Allocator.Error!void {
@@ -1156,7 +1149,7 @@ pub fn flushPendingStyle(animation: *model.Animation) void {
     const element = link.get() orelse return;
     const style_engine = @import("../style/root.zig").engine;
     const bare: ?[]const u8 = if (state.pseudo.len != 0) std.mem.trimStart(u8, state.pseudo, ":") else null;
-    _ = style_engine.computedStyle(element, bare) catch {};
+    style_engine.resolveStyle(element, bare) catch {};
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
     sweep(document);
     @import("css_transitions.zig").sweep(document);

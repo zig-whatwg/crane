@@ -1,6 +1,7 @@
 # Debugging: A computed style is borrowed only until the next style read anywhere in its lineage
 
 **Date**: 2026-11-24
+**Status** (2026-11-24, lane cs1): superseded for callers - `dom.style.computedStyle` now answers a `HeldStyle` that stays valid until released, whatever is read meanwhile; the raw borrow this lesson describes is `resolvedStyle`, private to src/dom/style/engine.zig, where it still holds. See architecture-a-borrow-the-next-call-can-free-is-a-hold-in-the-type-not-a-comment.md.
 **Lesson**: `style.computedStyle` returns a pointer that is valid only until the next style read of that element - and a read of any descendant counts, since it walks the lineage from the root and resolves every volatile ancestor again. Read every value you need into locals before calling anything that may read style (`rendered()`, `isBeingRendered*`, `hasBox`, a child's style).
 
 **Why**: The engine caches one ComputedStyle per element and `ElementStyle.setCached` destroys the previous one when it stores a new one. A style that read per-element dynamic state (a formish element matched against `:checked`, `:default`, `:invalid`, `:read-write`... - `selector_matching.readsVolatileState`) is marked volatile and resolved anew on EVERY read, and a volatile parent makes the whole lineage below it resolve again. So "the next read" frees the pointer for exactly the elements whose style depends on state, which on an ordinary page are form controls - and only when a second read happens between the borrow and its last use.

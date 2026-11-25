@@ -78,9 +78,11 @@ pub const Cached = struct {
         return self.base orelse self.style;
     }
 
-    fn destroy(self: Cached) void {
-        self.style.destroy();
-        if (self.base) |base| base.destroy();
+    /// The cache's hold on its styles ends: each is freed now, or by the
+    /// last caller still reading it (dom.style.HeldStyle; lane cs1).
+    fn release(self: Cached) void {
+        self.style.release();
+        if (self.base) |base| base.release();
     }
 };
 
@@ -295,10 +297,10 @@ pub const ElementStyle = struct {
 
     /// Forget every cached style.
     pub fn dropCache(self: *ElementStyle) void {
-        if (self.cached) |c| c.destroy();
+        if (self.cached) |c| c.release();
         self.cached = null;
         for (self.pseudo.items) |p| {
-            p.cached.destroy();
+            p.cached.release();
             self.allocator.free(p.name);
         }
         self.pseudo.clearRetainingCapacity();
@@ -306,7 +308,7 @@ pub const ElementStyle = struct {
 
     /// Replace the cached style (taken).
     pub fn setCached(self: *ElementStyle, cached: Cached) void {
-        if (self.cached) |old| old.destroy();
+        if (self.cached) |old| old.release();
         self.cached = cached;
     }
 
@@ -325,11 +327,11 @@ pub const ElementStyle = struct {
     /// Replace the cached style of pseudo-element `name` (taken).
     pub fn setPseudoCached(self: *ElementStyle, name: []const u8, cached: Cached) Allocator.Error!void {
         if (self.pseudoCached(name)) |existing| {
-            existing.cached.destroy();
+            existing.cached.release();
             existing.cached = cached;
             return;
         }
-        errdefer cached.destroy();
+        errdefer cached.release();
         const copy = try self.allocator.dupe(u8, name);
         errdefer self.allocator.free(copy);
         try self.pseudo.append(self.allocator, .{ .name = copy, .cached = cached });
