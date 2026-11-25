@@ -47,6 +47,7 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const properties = @import("properties.zig");
 const values = @import("style_values.zig");
+const color_mod = @import("values/color.zig");
 const color_scheme = @import("color_scheme.zig");
 const custom_properties = @import("custom_properties.zig");
 const registered_properties = @import("registered_properties.zig");
@@ -59,6 +60,47 @@ const Color = values.Color;
 
 /// The groups a style holds a reference on: bit g for groups g.
 pub const Held = std.bit_set.IntegerBitSet(groups.count);
+
+/// Inherited UA-origin forced text color (CSS Color Adjustment 1 §3.1: the
+/// system color that would result from an empty author stylesheet, inherited
+/// by descendants such as `<button><em>` and `<a><em>`). Fits in 3 bits of
+/// `Flags` (0 bytes added to `ComputedStyle`).
+pub const ForcedColor = enum(u3) {
+    canvastext,
+    linktext,
+    visitedtext,
+    activetext,
+    marktext,
+    buttontext,
+    fieldtext,
+    graytext,
+
+    pub fn systemColor(self: ForcedColor) color_mod.SystemColor {
+        return switch (self) {
+            .canvastext => .canvastext,
+            .linktext => .linktext,
+            .visitedtext => .visitedtext,
+            .activetext => .activetext,
+            .marktext => .marktext,
+            .buttontext => .buttontext,
+            .fieldtext => .fieldtext,
+            .graytext => .graytext,
+        };
+    }
+
+    pub fn fromSystemColor(c: color_mod.SystemColor) ForcedColor {
+        return switch (c.standard()) {
+            .linktext => .linktext,
+            .visitedtext => .visitedtext,
+            .activetext => .activetext,
+            .marktext => .marktext,
+            .buttontext => .buttontext,
+            .fieldtext => .fieldtext,
+            .graytext => .graytext,
+            else => .canvastext,
+        };
+    }
+};
 
 /// ComputedStyle's bits that are no property.
 pub const Flags = packed struct(u8) {
@@ -76,7 +118,16 @@ pub const Flags = packed struct(u8) {
     /// color, and a highlight that inherits it takes its own originating
     /// element's (currentColor computes to itself). Not a property.
     highlight_current_color: bool = false,
-    _: u5 = 0,
+    /// CSS Color Adjustment 1 §3: the document is in forced colors mode
+    /// (`forced-colors: active`), so system colors resolve against the §5.2
+    /// forced-colors palette.
+    forced_colors_active: bool = false,
+    /// CSS Color Adjustment 1 §3.1: this element is affected by forced colors
+    /// mode (`forced_colors_active` and `forced-color-adjust` is `auto`;
+    /// Blink ComputedStyle InForcedColorsMode).
+    in_forced_colors_mode: bool = false,
+    /// Inherited UA-origin forced text color (CSS Color Adjustment 1 §3.1).
+    forced_color: ForcedColor = .canvastext,
 };
 
 /// A counted group of values: this header, then `len` Values. One reference
@@ -808,9 +859,42 @@ pub const ComputedStyle = struct {
         return k == .none or k == .hidden;
     }
 
+    /// The element's used `color` value (CSS Color 4 §6.4, CSS Color
+    /// Adjustment 1 §3.1): in forced colors mode, the forced UA system color
+    /// unless computed `color` is already a `<system-color>`; otherwise the
+    /// computed `color`. Does not allocate or retain.
+    pub fn effectiveCurrentColor(self: *const ComputedStyle) Color {
+        const v = self.get(.color);
+        const computed = if (v == .color) v.color else Color.black;
+        if (!self.flags.in_forced_colors_mode) return computed;
+        if (computed.isSystemColor()) return computed;
+        const sys = self.flags.forced_color.systemColor();
+        return .{ .resolved_system = .{ .rgba = sys.colorIn(self.used_color_scheme, true), .keyword = sys } };
+    }
+
     /// The used color of a color property: currentcolor is the element's
-    /// `color` (CSS Color 4 6.4).
+    /// `color` (CSS Color 4 6.4); in forced colors mode, non-system colors
+    /// resolve to their forced system colors (CSS Color Adjustment 1 §3.1).
     pub fn usedColor(self: *const ComputedStyle, l: Longhand) values.RgbaColor {
+        if (self.flags.in_forced_colors_mode) {
+            const current = self.effectiveCurrentColor();
+            const current_rgba = current.absolute() orelse values.RgbaColor.black;
+            const phys = self.physical(l);
+            if (phys == .color) return current_rgba;
+            const v = self.get(phys);
+            const c = if (v == .color) v.color else Color.black;
+            if (c.isSystemColor()) return c.absolute() orelse current_rgba;
+            if (phys == .background_color) {
+                if (c == .current) return current_rgba;
+                const orig = c.absolute() orelse values.RgbaColor.transparent;
+                if (orig.a <= 0) return values.RgbaColor.transparent;
+                const fg_sys = current.systemKeyword() orelse self.flags.forced_color.systemColor();
+                var bg = fg_sys.oppositeBackground().colorIn(self.used_color_scheme, true);
+                bg.a = orig.a;
+                return bg;
+            }
+            if (isForcedColorLonghand(phys)) return current_rgba;
+        }
         const v = self.get(l);
         const c = if (v == .color) v.color else Color.black;
         return c.absolute() orelse (self.get(.color).color.absolute() orelse values.RgbaColor.black);
@@ -821,13 +905,55 @@ pub const ComputedStyle = struct {
     pub fn resolvedColor(self: *const ComputedStyle, l: Longhand, allocator: Allocator) Allocator.Error!Color {
         const value = self.get(l);
         const color = if (value == .color) value.color else Color.current;
-        return color.resolveComputed(allocator, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color });
+        if (self.flags.in_forced_colors_mode) {
+            const current = self.effectiveCurrentColor();
+            const phys = self.physical(l);
+            if (phys == .color) {
+                current.retain();
+                return current;
+            }
+            if (color.isSystemColor()) {
+                color.retain();
+                return color;
+            }
+            if (phys == .background_color) {
+                if (color == .current) {
+                    current.retain();
+                    return current;
+                }
+                const resolved = try color.resolveComputed(allocator, .{
+                    .scheme = self.used_color_scheme,
+                    .current = current,
+                    .forced_colors = true,
+                });
+                defer resolved.release();
+                const orig = resolved.absolute() orelse values.RgbaColor.transparent;
+                if (orig.a <= 0) return .{ .rgba = values.RgbaColor.transparent };
+                const fg_sys = current.systemKeyword() orelse self.flags.forced_color.systemColor();
+                var bg = fg_sys.oppositeBackground().colorIn(self.used_color_scheme, true);
+                bg.a = orig.a;
+                return .{ .rgba = bg };
+            }
+            if (isForcedColorLonghand(phys)) {
+                current.retain();
+                return current;
+            }
+        }
+        return color.resolveComputed(allocator, .{
+            .scheme = self.used_color_scheme,
+            .current = self.effectiveCurrentColor(),
+            .forced_colors = self.flags.forced_colors_active,
+        });
     }
 
     /// Owned gap decoration list for CSSOM §9 (Gaps 1 §4): currentcolor
     /// resolved for this receiver, the computed list unchanged.
     pub fn resolvedGapList(self: *const ComputedStyle, l: Longhand, allocator: Allocator) Allocator.Error!Value {
-        return @import("gap_decorations.zig").resolveValue(allocator, self.get(l), .{ .scheme = self.used_color_scheme, .current = self.get(.color).color });
+        return @import("gap_decorations.zig").resolveValue(allocator, self.get(l), .{
+            .scheme = self.used_color_scheme,
+            .current = self.effectiveCurrentColor(),
+            .forced_colors = self.flags.forced_colors_active,
+        }, self.flags.in_forced_colors_mode);
     }
 
     /// Owned image aggregate for CSSOM §6.7.2: resolve currentcolor for this
@@ -835,7 +961,8 @@ pub const ComputedStyle = struct {
     pub fn resolvedImageValue(self: *const ComputedStyle, l: Longhand, allocator: Allocator) Allocator.Error!Value {
         return @import("image_values.zig").resolveCurrentColors(allocator, l, self.get(l), .{
             .scheme = self.used_color_scheme,
-            .current = self.get(.color).color,
+            .current = self.effectiveCurrentColor(),
+            .forced_colors = self.flags.forced_colors_active,
         });
     }
 
@@ -938,14 +1065,23 @@ pub const ComputedStyle = struct {
         if (l == .letter_spacing and v == .length and v.length.value == 0)
             return out.appendSlice(allocator, "normal");
         if (l == .animation_duration) return @import("animation_values.zig").serializeDurationResolved(v, self.get(.animation_timeline), out, allocator);
-        if (l == .caret_color) return @import("ui_values.zig").serializeCaretResolved(v, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color }, out, allocator);
+        if (l == .caret_color) return @import("ui_values.zig").serializeCaretResolved(v, .{
+            .scheme = self.used_color_scheme,
+            .current = self.effectiveCurrentColor(),
+            .forced_colors = self.flags.forced_colors_active,
+        }, self.flags.in_forced_colors_mode, out, allocator);
         // Scrollbars 1 §3: "two computed colors", each resolved for this
         // receiver as a color property's (CSSOM §9).
         if (l == .scrollbar_color and v == .text_values) {
+            const current = self.effectiveCurrentColor();
             for (v.text_values.items, 0..) |item, i| {
                 if (i > 0) try out.append(allocator, ' ');
                 const color: Color = if (item == .color) item.color else .current;
-                const resolved = try color.resolveComputed(allocator, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color });
+                const resolved = try color.resolveComputed(allocator, .{
+                    .scheme = self.used_color_scheme,
+                    .current = current,
+                    .forced_colors = self.flags.forced_colors_active,
+                });
                 defer resolved.release();
                 try resolved.serializeComputed(out, allocator);
             }
@@ -954,7 +1090,11 @@ pub const ComputedStyle = struct {
         // Backgrounds 3 §3.3: a side whose style is none or hidden keeps its
         // computed width (inherit passes it on) but resolves to zero.
         if (self.undrawnBorderWidth(l)) return out.appendSlice(allocator, "0px");
-        if (v == .gap_list) return @import("gap_decorations.zig").serializeResolved(l, v.gap_list, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color }, out, allocator);
+        if (v == .gap_list) return @import("gap_decorations.zig").serializeResolved(l, v.gap_list, .{
+            .scheme = self.used_color_scheme,
+            .current = self.effectiveCurrentColor(),
+            .forced_colors = self.flags.forced_colors_active,
+        }, self.flags.in_forced_colors_mode, out, allocator);
         if (self.relativeAutoInset(l)) |inset| {
             try values.appendNumber(inset, out, allocator);
             return out.appendSlice(allocator, "px");
@@ -974,10 +1114,10 @@ pub const ComputedStyle = struct {
         switch (properties.Longhand.info(l).grammar) {
             .shape_outside => if (l == .shape_outside and v == .shape and v.shape.data == .path)
                 return @import("box_shape_values.zig").serializeResolved(v.shape, out, allocator),
-            .paint => return @import("svg_paint.zig").serializeResolved(v, self.get(.color).color, out, allocator),
-            .filter => if (v == .filter) return v.filter.serializeResolved(self.get(.color).color, out, allocator),
-            .box_shadow => if (v == .box_shadow) return v.box_shadow.serializeResolved(self.get(.color).color, out, allocator),
-            .text_shadow => if (v == .text_shadow) return v.text_shadow.serialize(self.get(.color).color, out, allocator),
+            .paint => return @import("svg_paint.zig").serializeResolved(v, self.effectiveCurrentColor(), self.flags.in_forced_colors_mode, out, allocator),
+            .filter => if (v == .filter) return v.filter.serializeResolved(self.effectiveCurrentColor(), out, allocator),
+            .box_shadow => if (v == .box_shadow) return v.box_shadow.serializeResolved(self.effectiveCurrentColor(), out, allocator),
+            .text_shadow => if (v == .text_shadow) return v.text_shadow.serialize(self.effectiveCurrentColor(), out, allocator),
             // "line-height: the resolved value is normal if the computed
             // value is normal, or the used value otherwise." A number's
             // used value is that many times the font size.
@@ -1046,6 +1186,33 @@ test "initial values compute" {
     out.clearRetainingCapacity();
     try style.serializeResolved(.font_family, &out, std.testing.allocator);
     try std.testing.expectEqualStrings("serif", out.items);
+}
+
+/// Physical color longhands whose non-system values are forced to the
+/// element's forced used `color` in forced colors mode (CSS Color Adjustment 1
+/// §3.1). `color` and `background-color` are handled explicitly; `accent-color`
+/// and `scrollbar-color` are adjusted at computed-value time.
+fn isForcedColorLonghand(phys: Longhand) bool {
+    return switch (phys) {
+        .border_top_color,
+        .border_right_color,
+        .border_bottom_color,
+        .border_left_color,
+        .outline_color,
+        .column_rule_color,
+        .row_rule_color,
+        .text_decoration_color,
+        .text_emphasis_color,
+        .fill,
+        .stroke,
+        .flood_color,
+        .lighting_color,
+        .stop_color,
+        ._webkit_text_fill_color,
+        ._webkit_text_stroke_color,
+        => true,
+        else => false,
+    };
 }
 
 /// CSSOM 9's properties whose resolved value is the used value for a
