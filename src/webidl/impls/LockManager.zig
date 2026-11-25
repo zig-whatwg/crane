@@ -28,12 +28,6 @@
 //! requests runs there, entering the worker's realm (engine.runTaskInRealm).
 //!
 //! Stated deviations:
-//! - "Converting the callback's result to Promise<any>" (PromiseResolve) has
-//!   no protocol operation: a result that is an object resolves the waiting
-//!   promise directly. Exact for a promise of %Promise% (PromiseResolve returns
-//!   it); a thenable or another object settles the waiting promise two
-//!   microtask ticks sooner than the spec. Primitives and abrupt completions
-//!   are converted exactly.
 //! - The clientId is the environment's id, which the service worker
 //!   registry keeps (its Client's `id`); an environment that is no service
 //!   worker client - an opaque origin's - has a random UUID of its own.
@@ -667,7 +661,7 @@ fn granted(manager: *runtime.Instance, internal: *InternalState, id: u64) void {
         return;
     };
     const lock_generation = runtime.SlabAllocator.generationOf(lock);
-    const completion = invokeCallback(realm, record, .{ .instance = lock });
+    const completion = invokeCallback(realm, record, lock);
     // Not wrapped - the invocation failed before it was - it is still ours.
     lock.releaseIfUnwrapped(lock_generation);
     const r = completion orelse {
@@ -705,7 +699,7 @@ fn notGranted(manager: *runtime.Instance, internal: *InternalState, id: u64) voi
     defer record.destroy();
     // "1. Let r be the result of invoking callback with null as the only
     // argument."
-    const r = invokeCallback(manager.ctx, record, runtime.JSValue.jsNull) orelse return;
+    const r = invokeCallback(manager.ctx, record, null) orelse return;
     defer r.release();
     // "2. Resolve promise with r and abort these steps."
     engine.resolvePromise(&record.promise, r.borrow()) catch {};
@@ -725,31 +719,14 @@ fn stolen(manager: *runtime.Instance, internal: *InternalState, id: u64) void {
 /// return type is Promise<any> - and `argument`: the callback's result as a
 /// Promise<any>, OWNED. The callback is released after its one invocation.
 /// Null when it could not be invoked at all.
-fn invokeCallback(realm: runtime.Context, record: *Record, argument: runtime.JSValue) ?engine.Owned {
+fn invokeCallback(realm: runtime.Context, record: *Record, lock: ?*runtime.Instance) ?engine.Owned {
     const callback = record.callback orelse return null;
     record.callback = null;
     defer callback.release();
-    const completion = engine.invokeCallbackFunction(realm, &callback, .undefined, &.{argument}, .rethrow) catch |err| {
+    return callbacks.call.LockGrantedCallback.invoke(realm, &callback, .undefined, .{ .lock = lock }) catch |err| {
         log.debug("lock callback not invoked: {s}", .{@errorName(err)});
         return null;
     };
-    switch (completion) {
-        // "If completion is an abrupt completion ... return a promise
-        // rejected with completion.[[Value]]" (the return type is a promise
-        // type).
-        .throw => |thrown| {
-            defer thrown.release();
-            return engine.createRejectedPromise(realm, thrown.borrow()) catch null;
-        },
-        // Converted to Promise<any>: PromiseResolve(%Promise%, V). A
-        // primitive is a new promise resolved with it; an object is resolved
-        // with as it is (the stated deviation in the file comment).
-        .normal => |value| {
-            if (engine.typeOf(realm, value.value) == .object) return value;
-            defer value.release();
-            return engine.createResolvedPromise(realm, value.borrow()) catch null;
-        },
-    }
 }
 
 const holding_steps: engine.PromiseReactionSteps = .{

@@ -17,7 +17,8 @@ const std = @import("std");
 const codegen = @import("codegen");
 const testing = std.testing;
 
-const list = codegen.callback_returns.callback_returns_converted_by_impl;
+const Entry = struct { []const u8, []const u8, codegen.callback_returns.Conversion };
+const list: []const Entry = &codegen.callback_returns.callback_returns_converted_by_impl;
 
 fn read(path: []const u8) ![]u8 {
     return std.Io.Dir.cwd().readFileAlloc(testing.io, path, testing.allocator, .limited(1024 * 1024));
@@ -41,8 +42,8 @@ fn returnTypeOf(source: []const u8, name: []const u8) ?[]const u8 {
     return null;
 }
 
-fn listed(name: []const u8) ?usize {
-    for (list, 0..) |entry, i| if (std.mem.eql(u8, entry[0], name)) return i;
+fn listed(name: []const u8) ?Entry {
+    for (list) |entry| if (std.mem.eql(u8, entry[0], name)) return entry;
     return null;
 }
 
@@ -70,13 +71,13 @@ test "the list is exactly the generated callbacks whose return type is neither u
         // Every generated callback now emits a typed `pub fn invoke(`.
         try testing.expect(std.mem.indexOf(u8, source, "pub fn invoke(") != null);
         const converts = !std.mem.eql(u8, return_type, "undefined") and !std.mem.eql(u8, return_type, "any");
-        if (listed(name)) |index| {
+        if (listed(name)) |entry| {
             seen += 1;
             if (!converts) {
                 std.debug.print("{s} returns {s}: nothing to convert, it does not belong in the list\n", .{ name, return_type });
                 return error.TestUnexpectedResult;
             }
-            try testing.expectEqualStrings(return_type, list[index][1]);
+            try testing.expectEqualStrings(return_type, entry[1]);
         }
     }
     // Every entry names a generated callback, once.
@@ -88,15 +89,8 @@ test "the list is exactly the generated callbacks whose return type is neither u
 }
 
 test "the callback returns an impl still converts only shrink" {
-    // 28 -> 19 (codegen) -> 15 (Trusted Types) -> 6 (Streams) -> 5 (Custom Elements) -> 4 (beforeunload). Batch B6 is done at zero.
-    try testing.expectEqual(@as(usize, 4), list.len);
-    var by_kind: [4]usize = @splat(0);
-    for (list) |entry| by_kind[@backingInt(entry[2])] += 1;
-    const Conversion = codegen.callback_returns.Conversion;
-    try testing.expectEqual(@as(usize, 0), by_kind[@backingInt(Conversion.hand)]);
-    try testing.expectEqual(@as(usize, 0), by_kind[@backingInt(Conversion.protocol_typed)]);
-    try testing.expectEqual(@as(usize, 4), by_kind[@backingInt(Conversion.promise_wrap)]);
-    try testing.expectEqual(@as(usize, 0), by_kind[@backingInt(Conversion.not_invoked)]);
+    // 28 -> 19 (codegen) -> 15 (Trusted Types) -> 6 (Streams) -> 5 (Custom Elements) -> 4 (beforeunload) -> 0 (Navigation/ViewTransition/Locks).
+    try testing.expectEqual(@as(usize, 0), list.len);
 }
 
 const iface_list = codegen.callback_returns.callback_interface_returns_converted_by_impl;

@@ -33,22 +33,9 @@ pub const Conversion = enum {
 };
 
 /// (callback, its IDL return type, how the value is converted today).
-pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u8, Conversion }{
-    // --- Promise<undefined> ---
-    // impls/Navigation.zig invokeToPromise (engine.promiseResolve: a promise
-    // of the realm passes through), from interceptCommitHandlerSteps and
-    // runPrecommitHandlers.
-    .{ "NavigationInterceptHandler", "Promise<undefined>", .promise_wrap },
-    .{ "NavigationPrecommitHandler", "Promise<undefined>", .promise_wrap },
-
-    // --- Promise<any> ---
-    // impls/LockManager.zig invokeCallback (an object passes through as it
-    // is - the file's stated deviation; anything else is a new promise
-    // resolved with it).
-    .{ "LockGrantedCallback", "Promise<any>", .promise_wrap },
-    // dom/view_transitions.zig callUpdateCallback (engine.promiseResolve).
-    .{ "ViewTransitionUpdateCallback", "Promise<any>", .promise_wrap },
-};
+/// Batch B6 drove this list to zero: every generated callback invokes and
+/// converts its return type through `callbacks.call.<Name>.invoke`.
+pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u8, Conversion }{};
 
 /// Callback interface operations whose return value is not `undefined`/`any`
 /// and is still converted by hand in an impl (WebIDL 3.11 step 14).
