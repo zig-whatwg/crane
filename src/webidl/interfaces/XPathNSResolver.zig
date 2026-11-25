@@ -149,4 +149,18 @@ pub const XPathNSResolver = struct {
     pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOMString) anyerror!?runtime.DOMString {
         return try XPathNSResolverImpl.call_lookupNamespaceURI(instance, prefix);
     }
+
+    const engine = @import("engine");
+
+    /// WebIDL 3.11 "call a user object's operation" for `lookupNamespaceURI`.
+    pub fn invoke_lookupNamespaceURI(
+        realm: engine.Context,
+        callback: *const engine.CallbackInterface,
+        this_arg: engine.CallbackThis,
+        prefix: ?runtime.DOMString,
+        behavior: engine.ExceptionBehavior,
+        allocator: std.mem.Allocator,
+    ) engine.Error!engine.Returned(?runtime.DOMString) {
+        return engine.callUserObjectOperationAs(?runtime.DOMString, .{}, realm, callback, "lookupNamespaceURI", this_arg, .{prefix}, behavior, allocator);
+    }
 };

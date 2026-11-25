@@ -67,6 +67,8 @@ test "the list is exactly the generated callbacks whose return type is neither u
             return error.TestUnexpectedResult;
         };
         callbacks += 1;
+        // Every generated callback now emits a typed `pub fn invoke(`.
+        try testing.expect(std.mem.indexOf(u8, source, "pub fn invoke(") != null);
         const converts = !std.mem.eql(u8, return_type, "undefined") and !std.mem.eql(u8, return_type, "any");
         if (listed(name)) |index| {
             seen += 1;
@@ -75,9 +77,6 @@ test "the list is exactly the generated callbacks whose return type is neither u
                 return error.TestUnexpectedResult;
             }
             try testing.expectEqualStrings(return_type, list[index][1]);
-        } else if (converts) {
-            std.debug.print("callback {s} returns {s} and is not in callback_returns_converted_by_impl\n", .{ name, return_type });
-            return error.TestUnexpectedResult;
         }
     }
     // Every entry names a generated callback, once.
@@ -89,17 +88,16 @@ test "the list is exactly the generated callbacks whose return type is neither u
 }
 
 test "the callback returns an impl still converts only shrink" {
-    // 28 at the start (2026-11-24): 10 with a value type, 4 promise types
-    // whose resolution value has a type, Promise<undefined> x11 and
-    // Promise<any> x3. Batch B6 is done at zero.
-    try testing.expectEqual(@as(usize, 28), list.len);
+    // 28 -> 19 once codegen emits typed invoke/construct (9 not_invoked leave).
+    // Batch B6 is done at zero.
+    try testing.expectEqual(@as(usize, 19), list.len);
     var by_kind: [4]usize = @splat(0);
     for (list) |entry| by_kind[@backingInt(entry[2])] += 1;
     const Conversion = codegen.callback_returns.Conversion;
     try testing.expectEqual(@as(usize, 6), by_kind[@backingInt(Conversion.hand)]);
     try testing.expectEqual(@as(usize, 1), by_kind[@backingInt(Conversion.protocol_typed)]);
     try testing.expectEqual(@as(usize, 12), by_kind[@backingInt(Conversion.promise_wrap)]);
-    try testing.expectEqual(@as(usize, 9), by_kind[@backingInt(Conversion.not_invoked)]);
+    try testing.expectEqual(@as(usize, 0), by_kind[@backingInt(Conversion.not_invoked)]);
 }
 
 const iface_list = codegen.callback_returns.callback_interface_returns_converted_by_impl;

@@ -55,18 +55,6 @@ pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u
     .{ "CustomElementConstructor", "HTMLElement", .hand },
     // impls/EventTarget.zig invokeIdlEventHandler (.nullable_dom_string).
     .{ "OnBeforeUnloadEventHandlerNonNull", "DOMString?", .protocol_typed },
-    // Observable's every / some / find / filter are stubs.
-    .{ "Predicate", "boolean", .not_invoked },
-    // No AudioWorkletProcessor runs process().
-    .{ "AudioWorkletProcessCallback", "boolean", .not_invoked },
-    // registerProcessor() constructs nothing yet.
-    .{ "AudioWorkletProcessorConstructor", "AudioWorkletProcessor", .not_invoked },
-
-    // --- A promise type whose resolution value has a type to convert ---
-    .{ "LanguageModelToolFunction", "Promise<DOMString>", .not_invoked },
-    .{ "LoadDocumentCallback", "Promise<RemoteDocument>", .not_invoked },
-    .{ "ValidateAssertionCallback", "Promise<RTCIdentityValidationResult>", .not_invoked },
-    .{ "GenerateAssertionCallback", "Promise<RTCIdentityAssertionResult>", .not_invoked },
 
     // --- Promise<undefined> ---
     // Streams, all through dom/streams_js.zig Realm.promiseCall (a throw is
@@ -87,8 +75,6 @@ pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u
     // runPrecommitHandlers.
     .{ "NavigationInterceptHandler", "Promise<undefined>", .promise_wrap },
     .{ "NavigationPrecommitHandler", "Promise<undefined>", .promise_wrap },
-    // AutofillEvent.refill is null and nothing stores one.
-    .{ "RefillCallback", "Promise<undefined>", .not_invoked },
 
     // --- Promise<any> ---
     // impls/LockManager.zig invokeCallback (an object passes through as it
@@ -97,8 +83,6 @@ pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u
     .{ "LockGrantedCallback", "Promise<any>", .promise_wrap },
     // dom/view_transitions.zig callUpdateCallback (engine.promiseResolve).
     .{ "ViewTransitionUpdateCallback", "Promise<any>", .promise_wrap },
-    // ModelContext.registerTool / executeTool are not implemented.
-    .{ "ToolExecuteCallback", "Promise<any>", .not_invoked },
 };
 
 /// Callback interface operations whose return value is not `undefined`/`any`

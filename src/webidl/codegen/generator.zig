@@ -581,6 +581,12 @@ pub fn generateCallbacksRoot(
     for (sorted_names) |name| {
         try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
     }
+    try w.writeAll("\n/// Generated callback modules (`Return`, `Args`, `invoke`, `construct`).\n");
+    try w.writeAll("pub const call = struct {\n");
+    for (sorted_names) |name| {
+        try w.print("    pub const {s} = @import(\"{s}.zig\");\n", .{ name, name });
+    }
+    try w.writeAll("};\n");
 
     try w.flush();
 }
@@ -1971,6 +1977,12 @@ fn generateInterfaceFile(
         try writer.writeCSSPropertyAttributes(w, impl_name);
     }
 
+    // WebIDL 3.11 "call a user object's operation": typed invoke helpers for
+    // callback interfaces (EventListener, NodeFilter, XPathNSResolver).
+    if (interface.callback) {
+        try writeCallbackInterfaceInvokers(allocator, w, own_ops.items, type_registry, ir);
+    }
+
     // Close struct
     try writer.writeStructEnd(w);
 
@@ -2082,7 +2094,7 @@ pub fn generateFromFile(
         var callback_iter = ir.callbacks.iterator();
         while (callback_iter.next()) |entry| {
             const callback = entry.value_ptr.*;
-            try generateCallback(allocator, callback, callbacks_path, &ir.type_registry);
+            try generateCallback(allocator, callback, callbacks_path, &ir);
         }
     }
 
@@ -2396,13 +2408,13 @@ fn checkGenericStringForType(generic_str: []const u8, type_registry: *const ir_m
     // Split on commas and check each part
     var iter = std.mem.splitSequence(u8, generic_str, ",");
     while (iter.next()) |part| {
-        const trimmed = std.mem.trim(u8, part, " \t\n<>");
+        const trimmed = std.mem.trim(u8, part, " \t\n<>?");
         // Extract just the type name (skip sequence/record keywords)
         var type_name = trimmed;
         if (std.mem.startsWith(u8, trimmed, "sequence<")) {
             const start = "sequence<".len;
             if (start < trimmed.len) {
-                type_name = std.mem.trim(u8, trimmed[start..], " \t\n<>");
+                type_name = std.mem.trim(u8, trimmed[start..], " \t\n<>?");
             }
         }
         // Check if this type is the target kind
@@ -2434,7 +2446,7 @@ fn collectReferencedDictionaries(idl_type: types.IDLType, type_registry: *const 
             // Extract the dictionary names from generic string
             var iter = std.mem.splitSequence(u8, generic_str, ",");
             while (iter.next()) |part| {
-                const trimmed = std.mem.trim(u8, part, " \t\n<>");
+                const trimmed = std.mem.trim(u8, part, " \t\n<>?");
                 if (type_registry.lookup(trimmed)) |kind| {
                     if (kind == .dictionary and !std.mem.eql(u8, trimmed, self_name)) {
                         try result.put(trimmed, {});
@@ -2612,7 +2624,12 @@ fn freeInlineType(allocator: std.mem.Allocator, idl_type: types.IDLType) void {
 }
 
 fn parseInlineType(allocator: std.mem.Allocator, type_str: []const u8) !types.IDLType {
-    const trimmed = std.mem.trim(u8, type_str, " \t\n");
+    var trimmed = std.mem.trim(u8, type_str, " \t\n");
+    var nullable = false;
+    if (trimmed.len > 1 and trimmed[trimmed.len - 1] == '?') {
+        nullable = true;
+        trimmed = std.mem.trimEnd(u8, trimmed[0 .. trimmed.len - 1], " \t\n");
+    }
 
     // Handle sequence<T>
     if (std.mem.startsWith(u8, trimmed, "sequence<")) {
@@ -2629,6 +2646,27 @@ fn parseInlineType(allocator: std.mem.Allocator, type_str: []const u8) !types.ID
             return types.IDLType{
                 .type = try allocator.dupe(u8, "sequence"),
                 .generic = try allocator.dupe(u8, inner),
+                .nullable = nullable,
+            };
+        }
+    }
+
+    // Handle FrozenArray<T>
+    if (std.mem.startsWith(u8, trimmed, "FrozenArray<")) {
+        const start = "FrozenArray<".len;
+        var depth: usize = 1;
+        var end = start;
+        while (end < trimmed.len and depth > 0) {
+            if (trimmed[end] == '<') depth += 1;
+            if (trimmed[end] == '>') depth -= 1;
+            if (depth > 0) end += 1;
+        }
+        if (end > start) {
+            const inner = trimmed[start..end];
+            return types.IDLType{
+                .type = try allocator.dupe(u8, "FrozenArray"),
+                .generic = try allocator.dupe(u8, inner),
+                .nullable = nullable,
             };
         }
     }
@@ -2648,6 +2686,7 @@ fn parseInlineType(allocator: std.mem.Allocator, type_str: []const u8) !types.ID
             return types.IDLType{
                 .type = try allocator.dupe(u8, "record"),
                 .generic = try allocator.dupe(u8, inner),
+                .nullable = nullable,
             };
         }
     }
@@ -2655,6 +2694,7 @@ fn parseInlineType(allocator: std.mem.Allocator, type_str: []const u8) !types.ID
     // Simple type name
     return types.IDLType{
         .type = try allocator.dupe(u8, trimmed),
+        .nullable = nullable,
     };
 }
 
@@ -2676,9 +2716,10 @@ fn writeTypeForTypedefWithRegistry(allocator: std.mem.Allocator, w: anytype, idl
         }
     }
 
-    // Handle sequence types: sequence<T> -> []const T
+    // Handle sequence types: sequence<T> -> []const T (and sequence<T?> -> []const ?T)
     if (idl_type.sequence) |elem_type| {
         try w.writeAll("[]const ");
+        if (elem_type.nullable) try w.writeAll("?");
         try writeTypeForTypedefWithRegistry(allocator, w, elem_type.*, typedefs_path, type_registry);
         return;
     }
@@ -2689,6 +2730,7 @@ fn writeTypeForTypedefWithRegistry(allocator: std.mem.Allocator, w: anytype, idl
         try w.writeAll("[]const ");
         const inner_idl_type = try parseInlineType(allocator, inner_type_str);
         defer freeInlineType(allocator, inner_idl_type);
+        if (inner_idl_type.nullable) try w.writeAll("?");
         try writeTypeForTypedefWithRegistry(allocator, w, inner_idl_type, typedefs_path, type_registry);
         return;
     }
@@ -2917,9 +2959,10 @@ pub fn writeRestrictedArms(allocator: std.mem.Allocator, w: anytype, union_types
 fn writeDictionaryMemberType(allocator: std.mem.Allocator, w: anytype, idl_type: types.IDLType, type_registry: *const ir_mod.TypeRegistry) !void {
     const type_str = idl_type.type;
 
-    // Handle sequence types: sequence<T> -> []const T
+    // Handle sequence types: sequence<T> -> []const T (and sequence<T?> -> []const ?T)
     if (idl_type.sequence) |elem_type| {
         try w.writeAll("[]const ");
+        if (elem_type.nullable) try w.writeAll("?");
         try writeDictionaryMemberType(allocator, w, elem_type.*, type_registry);
         return;
     }
@@ -2930,6 +2973,7 @@ fn writeDictionaryMemberType(allocator: std.mem.Allocator, w: anytype, idl_type:
         try w.writeAll("[]const ");
         const inner_idl_type = try parseInlineType(allocator, inner_type_str);
         defer freeInlineType(allocator, inner_idl_type);
+        if (inner_idl_type.nullable) try w.writeAll("?");
         try writeDictionaryMemberType(allocator, w, inner_idl_type, type_registry);
         return;
     }
@@ -3290,21 +3334,242 @@ pub fn writeEnum(w: *std.Io.Writer, enum_type: types.Enum) !void {
     try w.writeAll("};\n");
 }
 
-/// Generate a callback Zig file with proper type resolution
-///
-/// Uses the type registry to properly resolve types WITHOUT importing other
-/// generated modules (to avoid circular dependencies):
-/// - Interface types → *runtime.Instance
-/// - Typedef types → *runtime.Instance (most are interface unions)
-/// - Enum types → []const u8 (strings at runtime)
-/// - Dictionary types → runtime.JSValue (complex objects)
-/// - Promise<T> return types → runtime.JSValue
+const CallbackImports = struct {
+    webidl: bool = false,
+    dictionaries: bool = false,
+    typedefs: bool = false,
+    enums: bool = false,
+    interfaces: bool = false,
+};
+
+fn formatCallbackZigType(
+    allocator: std.mem.Allocator,
+    idl_type: types.IDLType,
+    type_registry: ?*const ir_mod.TypeRegistry,
+    used: *CallbackImports,
+) ![]u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    if (idl_type.nullable) try out.append(allocator, '?');
+    try appendCallbackBaseZigType(allocator, &out, idl_type, type_registry, used);
+    return out.toOwnedSlice(allocator);
+}
+
+fn appendCallbackBaseZigType(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    idl_type: types.IDLType,
+    type_registry: ?*const ir_mod.TypeRegistry,
+    used: *CallbackImports,
+) !void {
+    const t = idl_type.type;
+    if (idl_type.sequence) |elem| {
+        try out.appendSlice(allocator, "[]const ");
+        if (elem.nullable) try out.append(allocator, '?');
+        try appendCallbackBaseZigType(allocator, out, elem.*, type_registry, used);
+        return;
+    }
+    if ((std.mem.eql(u8, t, "sequence") or std.mem.eql(u8, t, "FrozenArray")) and idl_type.generic != null) {
+        try out.appendSlice(allocator, "[]const ");
+        const inner = try parseInlineType(allocator, idl_type.generic.?);
+        defer freeInlineType(allocator, inner);
+        if (inner.nullable) try out.append(allocator, '?');
+        try appendCallbackBaseZigType(allocator, out, inner, type_registry, used);
+        return;
+    }
+    if (std.mem.eql(u8, t, "void") or std.mem.eql(u8, t, "undefined")) {
+        try out.appendSlice(allocator, "void");
+    } else if (std.mem.eql(u8, t, "any") or std.mem.eql(u8, t, "object")) {
+        try out.appendSlice(allocator, "runtime.JSValue");
+    } else if (std.mem.eql(u8, t, "boolean")) {
+        try out.appendSlice(allocator, "bool");
+    } else if (std.mem.eql(u8, t, "byte")) {
+        try out.appendSlice(allocator, "i8");
+    } else if (std.mem.eql(u8, t, "octet")) {
+        try out.appendSlice(allocator, "u8");
+    } else if (std.mem.eql(u8, t, "short")) {
+        try out.appendSlice(allocator, "i16");
+    } else if (std.mem.eql(u8, t, "unsigned short") or std.mem.eql(u8, t, "unsignedshort")) {
+        try out.appendSlice(allocator, "u16");
+    } else if (std.mem.eql(u8, t, "long")) {
+        try out.appendSlice(allocator, "i32");
+    } else if (std.mem.eql(u8, t, "unsigned long") or std.mem.eql(u8, t, "unsignedlong")) {
+        try out.appendSlice(allocator, "u32");
+    } else if (std.mem.eql(u8, t, "long long") or std.mem.eql(u8, t, "longlong")) {
+        try out.appendSlice(allocator, "i64");
+    } else if (std.mem.eql(u8, t, "unsigned long long") or std.mem.eql(u8, t, "unsignedlonglong")) {
+        try out.appendSlice(allocator, "u64");
+    } else if (std.mem.eql(u8, t, "float") or std.mem.eql(u8, t, "unrestricted float") or std.mem.eql(u8, t, "unrestrictedfloat")) {
+        try out.appendSlice(allocator, "f32");
+    } else if (std.mem.eql(u8, t, "double") or std.mem.eql(u8, t, "unrestricted double") or std.mem.eql(u8, t, "unrestricteddouble")) {
+        try out.appendSlice(allocator, "f64");
+    } else if (std.mem.eql(u8, t, "DOMString")) {
+        try out.appendSlice(allocator, "runtime.DOMString");
+    } else if (std.mem.eql(u8, t, "USVString")) {
+        try out.appendSlice(allocator, "runtime.USVString");
+    } else if (std.mem.eql(u8, t, "ByteString")) {
+        try out.appendSlice(allocator, "runtime.ByteString");
+    } else if (type_registry) |reg| {
+        if (reg.lookup(t)) |kind| {
+            switch (kind) {
+                .interface => try out.appendSlice(allocator, "*runtime.Instance"),
+                .callback_interface => try out.appendSlice(allocator, "runtime.BorrowedCallbackInterface"),
+                .callback => try out.appendSlice(allocator, "runtime.BorrowedCallbackFunction"),
+                .dictionary => {
+                    used.dictionaries = true;
+                    try out.appendSlice(allocator, "dictionaries.");
+                    try out.appendSlice(allocator, t);
+                },
+                .typedef => {
+                    used.typedefs = true;
+                    try out.appendSlice(allocator, "typedefs.");
+                    try out.appendSlice(allocator, t);
+                },
+                .enum_type => {
+                    used.enums = true;
+                    try out.appendSlice(allocator, "enums.");
+                    try out.appendSlice(allocator, t);
+                },
+                else => try out.appendSlice(allocator, "runtime.JSValue"),
+            }
+        } else {
+            try out.appendSlice(allocator, "runtime.JSValue");
+        }
+    } else {
+        try out.appendSlice(allocator, "runtime.JSValue");
+    }
+}
+
+fn formatReturnOptionsLiteral(
+    allocator: std.mem.Allocator,
+    idl_type: types.IDLType,
+    type_registry: ?*const ir_mod.TypeRegistry,
+    ir: ?*const ir_mod.IR,
+    used: *CallbackImports,
+    inline_interfaces_import: bool,
+) ![]u8 {
+    const iface_name = writer.interfaceTypeName(idl_type, type_registry);
+    const restricted = writer.isRestrictedFloat(idl_type, ir);
+    const byte_str = writer.isByteString(idl_type, ir);
+    if (iface_name == null and !restricted and !byte_str) {
+        return allocator.dupe(u8, ".{}");
+    }
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    try out.appendSlice(allocator, ".{ ");
+    var first = true;
+    if (iface_name) |name| {
+        if (!inline_interfaces_import) used.interfaces = true;
+        try out.appendSlice(allocator, if (inline_interfaces_import) ".interface = @import(\"interfaces\")." else ".interface = interfaces.");
+        try out.appendSlice(allocator, name);
+        first = false;
+    }
+    if (restricted) {
+        if (!first) try out.appendSlice(allocator, ", ");
+        try out.appendSlice(allocator, ".restricted_float = true");
+        first = false;
+    }
+    if (byte_str) {
+        if (!first) try out.appendSlice(allocator, ", ");
+        try out.appendSlice(allocator, ".byte_string = true");
+    }
+    try out.appendSlice(allocator, " }");
+    return out.toOwnedSlice(allocator);
+}
+
+/// WebIDL 3.11 "call a user object's operation": emit `invoke_<op>` helpers on
+/// generated callback interfaces (`EventListener`, `NodeFilter`, `XPathNSResolver`).
+fn writeCallbackInterfaceInvokers(
+    allocator: std.mem.Allocator,
+    w: anytype,
+    own_ops: []const types.Operation,
+    type_registry: ?*const ir_mod.TypeRegistry,
+    ir: ?*const ir_mod.IR,
+) !void {
+    var has_named = false;
+    for (own_ops) |op| {
+        if (op.name != null and !op.static) {
+            has_named = true;
+            break;
+        }
+    }
+    if (!has_named) return;
+
+    try w.writeAll("\n    const engine = @import(\"engine\");\n");
+    for (own_ops) |op| {
+        const op_name = op.name orelse continue;
+        if (op.static) continue;
+
+        var used: CallbackImports = .{};
+        const ret_type = try formatCallbackZigType(allocator, op.idlType, type_registry, &used);
+        defer allocator.free(ret_type);
+        const ret_opts = try formatReturnOptionsLiteral(allocator, op.idlType, type_registry, ir, &used, true);
+        defer allocator.free(ret_opts);
+
+        try w.print("\n    /// WebIDL 3.11 \"call a user object's operation\" for `{s}`.\n", .{op_name});
+        try w.print("    pub fn invoke_{s}(\n", .{op_name});
+        try w.writeAll("        realm: engine.Context,\n");
+        try w.writeAll("        callback: *const engine.CallbackInterface,\n");
+        try w.writeAll("        this_arg: engine.CallbackThis,\n");
+        for (op.arguments) |arg| {
+            const arg_type = try formatCallbackZigType(allocator, arg.idlType, type_registry, &used);
+            defer allocator.free(arg_type);
+            const escaped = escapeIfKeyword(arg.name);
+            if (arg.optional) {
+                try w.print("        {s}: webidl.Opt({s}),\n", .{ escaped, arg_type });
+            } else {
+                try w.print("        {s}: {s},\n", .{ escaped, arg_type });
+            }
+        }
+        try w.writeAll("        behavior: engine.ExceptionBehavior,\n");
+        try w.writeAll("        allocator: std.mem.Allocator,\n");
+        try w.print("    ) engine.Error!engine.Returned({s}) {{\n", .{ret_type});
+        try w.print("        return engine.callUserObjectOperationAs({s}, {s}, realm, callback, \"{s}\", this_arg, .{{", .{ ret_type, ret_opts, op_name });
+        for (op.arguments, 0..) |arg, i| {
+            if (i > 0) try w.writeAll(", ");
+            try w.writeAll(escapeIfKeyword(arg.name));
+        }
+        try w.writeAll("}, behavior, allocator);\n");
+        try w.writeAll("    }\n");
+    }
+}
+
+/// Generate a callback Zig file with its borrowed alias, typed `Return` /
+/// `return_options` (or `is_promise = true`), typed `Args`, and `invoke` /
+/// `construct` wrappers over the engine protocol (WebIDL 3.12).
 pub fn generateCallback(
     allocator: std.mem.Allocator,
     callback: types.Callback,
     callbacks_path: []const u8,
-    type_registry: *const ir_mod.TypeRegistry,
+    ir: *const ir_mod.IR,
 ) !void {
+    const type_registry = &ir.type_registry;
+    const is_promise = std.mem.eql(u8, callback.idlType.type, "Promise");
+
+    var used: CallbackImports = .{};
+    const ret_type = if (is_promise)
+        try allocator.dupe(u8, "engine.Owned")
+    else
+        try formatCallbackZigType(allocator, callback.idlType, type_registry, &used);
+    defer allocator.free(ret_type);
+
+    const ret_opts = if (is_promise)
+        try allocator.dupe(u8, ".{}")
+    else
+        try formatReturnOptionsLiteral(allocator, callback.idlType, type_registry, ir, &used, false);
+    defer allocator.free(ret_opts);
+
+    var arg_types = std.ArrayList([]u8).empty;
+    defer {
+        for (arg_types.items) |s| allocator.free(s);
+        arg_types.deinit(allocator);
+    }
+    for (callback.arguments) |arg| {
+        const zig_t = try formatCallbackZigType(allocator, arg.idlType, type_registry, &used);
+        try arg_types.append(allocator, zig_t);
+        if (arg.optional) used.webidl = true;
+    }
+
     // Create callbacks directory
     const io = host.io();
     try host.cwd().createDirPath(io, callbacks_path);
@@ -3329,21 +3594,89 @@ pub fn generateCallback(
     try w.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
     try w.writeAll("\n");
 
-    // Callbacks only import runtime - no other generated modules to avoid circular deps
-    // (typedefs imports callbacks, so callbacks can't import typedefs)
+    if (!is_promise) try w.writeAll("const std = @import(\"std\");\n");
     try w.writeAll("const runtime = @import(\"runtime\");\n");
+    try w.writeAll("const engine = @import(\"engine\");\n");
+    if (used.webidl) try w.writeAll("const webidl = @import(\"webidl\");\n");
+    if (used.dictionaries) try w.writeAll("const dictionaries = @import(\"dictionaries\");\n");
+    if (used.typedefs) try w.writeAll("const typedefs = @import(\"typedefs\");\n");
+    if (used.enums) try w.writeAll("const enums = @import(\"enums\");\n");
+    if (used.interfaces) try w.writeAll("const interfaces = @import(\"interfaces\");\n");
     try w.writeAll("\n");
 
     // The type every position of this callback function type converts to
     // (WebIDL 3.2.19): the engine protocol's borrowed callback function -
     // BORROWED for the call, kept with `keep()` (engine.keepCallbackFunction).
-    // Its IDL signature is for the reader; the invoke operations take the
-    // arguments as values.
     try w.writeAll("/// ");
     try writeIdlCallbackSignature(w, callback);
     try w.writeAll("\n");
-    try w.print("pub const {s} = runtime.BorrowedCallbackFunction;\n", .{callback.name});
-    _ = type_registry;
+    try w.print("pub const {s} = runtime.BorrowedCallbackFunction;\n\n", .{callback.name});
+
+    if (is_promise) {
+        try w.writeAll("pub const is_promise = true;\n\n");
+    } else {
+        try w.print("pub const Return = {s};\n", .{ret_type});
+        try w.print("pub const return_options: engine.ReturnOptions = {s};\n\n", .{ret_opts});
+    }
+
+    // Typed WebIDL argument struct (converted in declaration order by WebIDL 3.12 step 10).
+    try w.writeAll("pub const Args = struct {");
+    if (callback.arguments.len == 0) {
+        try w.writeAll("};\n\n");
+    } else {
+        try w.writeAll("\n");
+        for (callback.arguments, arg_types.items) |arg, zig_t| {
+            const escaped = escapeIfKeyword(arg.name);
+            if (arg.variadic) {
+                try w.print("    {s}: []const {s} = &.{{}},\n", .{ escaped, zig_t });
+            } else if (arg.optional) {
+                try w.print("    {s}: webidl.Opt({s}) = .notPassed(),\n", .{ escaped, zig_t });
+            } else {
+                try w.print("    {s}: {s},\n", .{ escaped, zig_t });
+            }
+        }
+        try w.writeAll("};\n\n");
+    }
+
+    if (is_promise) {
+        try w.writeAll(
+            \\/// WebIDL 3.12 "invoke a callback function" for a Promise-returning callback.
+            \\pub fn invoke(
+            \\    realm: engine.Context,
+            \\    callback: *const engine.CallbackFunction,
+            \\    this_arg: engine.CallbackThis,
+            \\    args: Args,
+            \\) engine.Error!engine.Owned {
+            \\    return engine.invokeCallbackFunctionToPromise(realm, callback, this_arg, args);
+            \\}
+            \\
+        );
+    } else {
+        try w.writeAll(
+            \\/// WebIDL 3.12 "invoke a callback function" with typed arguments and return conversion.
+            \\pub fn invoke(
+            \\    realm: engine.Context,
+            \\    callback: *const engine.CallbackFunction,
+            \\    this_arg: engine.CallbackThis,
+            \\    args: Args,
+            \\    behavior: engine.ExceptionBehavior,
+            \\    allocator: std.mem.Allocator,
+            \\) engine.Error!engine.Returned(Return) {
+            \\    return engine.invokeCallbackFunctionAs(Return, return_options, realm, callback, this_arg, args, behavior, allocator);
+            \\}
+            \\
+            \\/// WebIDL 3.12 "construct a callback function" with typed arguments and return conversion.
+            \\pub fn construct(
+            \\    realm: engine.Context,
+            \\    callback: *const engine.CallbackFunction,
+            \\    args: Args,
+            \\    allocator: std.mem.Allocator,
+            \\) engine.Error!engine.Returned(Return) {
+            \\    return engine.constructCallbackFunctionAs(Return, return_options, realm, callback, args, allocator);
+            \\}
+            \\
+        );
+    }
 
     try w.flush();
 }

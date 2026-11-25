@@ -8,11 +8,11 @@ const typedefs = @import("root.zig");
 
 pub const DoubleOrSequenceOfNullableDouble = union(enum) {
     double: f64,
-    double_sequence: []const runtime.JSValue,
+    double_sequence: []const ?f64,
 
     /// WebIDL `double` and `float` arms (not `unrestricted`): a value one of
     /// them takes is a TypeError when NaN or infinite (3.2.5, 3.2.7, 3.2.25).
-    pub const restricted_arms = .{"double"};
+    pub const restricted_arms = .{ "double", "double_sequence" };
 
     /// What each field's member type is, for the binding's union conversion
     /// (WebIDL 3.2.25; webidl.union_arms).

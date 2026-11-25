@@ -1,0 +1,24 @@
+interface HTMLElement {};
+interface Node {};
+
+dictionary SampleOptions {
+  DOMString mode;
+};
+
+callback SampleCreateHTML = DOMString? (DOMString input, any... arguments);
+callback SampleCreateOptions = SampleOptions? (SampleOptions options, optional long count);
+callback SampleSize = unrestricted double (any chunk);
+callback SampleRestricted = double (double x);
+callback SampleByteString = ByteString (DOMString s);
+callback SampleConstructor = HTMLElement ();
+callback SamplePromise = Promise<undefined> (Node node);
+
+callback interface SampleFilter {
+  unsigned short acceptNode(Node node);
+};
+
+callback interface SampleResolver {
+  DOMString? lookupNamespaceURI(DOMString? prefix);
+};
+
+typedef (double or sequence<double?>) SampleOffset;

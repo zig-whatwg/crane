@@ -7020,6 +7020,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     runtime_mod.addImport("engine", engine_mod);
 
     // Cross-imports for WebIDL modules
+    interfaces_mod.addImport("engine", engine_mod); // For callback interface typed invoke helpers
     interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
     interfaces_mod.addImport("impls", impls_mod);
     namespaces_mod.addImport("impls", impls_mod); // Namespaces need access to impls
@@ -7027,6 +7028,11 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     interfaces_mod.addImport("dictionaries", dictionaries_mod);
     interfaces_mod.addImport("enums", enums_mod);
     interfaces_mod.addImport("callbacks", callbacks_mod);
+    callbacks_mod.addImport("engine", engine_mod);
+    callbacks_mod.addImport("interfaces", interfaces_mod);
+    callbacks_mod.addImport("typedefs", typedefs_mod);
+    callbacks_mod.addImport("dictionaries", dictionaries_mod);
+    callbacks_mod.addImport("enums", enums_mod);
     impls_mod.addImport("interfaces", interfaces_mod);
     impls_mod.addImport("typedefs", typedefs_mod);
     impls_mod.addImport("dictionaries", dictionaries_mod);
