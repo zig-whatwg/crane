@@ -75,6 +75,12 @@ const max_slots: usize = span_bytes / 16;
 const map_words: usize = max_slots * 2 / 64;
 /// The largest block the engine serves: a run of every span of a super page.
 pub const max_block_bytes: usize = max_run_spans * span_bytes;
+/// A general block past this is HUGE (batch B, `Engine.allocHuge`): whole
+/// super pages of its partition with guard spans, retired on free. A large
+/// run below it. At most `max_block_bytes`; measured with time and memory
+/// before it is chosen (the design's 1 MiB own-mapping threshold is 2 MiB
+/// here: the runs below are batch A's large buckets).
+pub const huge_threshold_bytes: usize = max_block_bytes;
 
 /// The byte a poisoning heap fills a freed block with (the state arena's
 /// and the test allocators' poison, tests/test_runner/poisoning.zig).
@@ -1275,7 +1281,7 @@ pub const Engine = struct {
         const bytes = classes.requestBytes(size, alignment);
         std.Io.Threaded.mutexLockUncancelable(&p.mutex);
         defer std.Io.Threaded.mutexUnlock(&p.mutex);
-        if (bytes > max_block_bytes) return self.allocHuge(p, bytes);
+        if (bytes > huge_threshold_bytes) return self.allocHuge(p, bytes);
         const bi = generalBucket(pid, classes.classOf(size, alignment), runOf(bytes));
         return self.allocIn(p, bi, size, null, return_address | site_general_tag);
     }
@@ -1296,7 +1302,7 @@ pub const Engine = struct {
         if (offset >= p.frontier) return self.violation(.invalid_free, address);
         const e = self.entry(offset / span_bytes);
         if (e.bucket == huge_bucket and e.state != .run_tail and e.state != .unopened) return self.freeHuge(p, offset, bytes);
-        if (bytes > max_block_bytes) return self.violation(if (e.state == .active) .wrong_size else .invalid_free, address);
+        if (bytes > huge_threshold_bytes) return self.violation(if (e.state == .active) .wrong_size else .invalid_free, address);
         const want = generalBucket(pid, classes.classOf(size, alignment), runOf(bytes));
         self.freeIn(p, offset, want, false, size, null);
     }
@@ -1562,8 +1568,8 @@ pub const Engine = struct {
         _ = ptr;
         const old_bytes = classes.requestBytes(old_size, alignment);
         const new_bytes = classes.requestBytes(new_size, alignment);
-        if (old_bytes > max_block_bytes or new_bytes > max_block_bytes)
-            return old_bytes > max_block_bytes and new_bytes > max_block_bytes and runOf(old_bytes) == runOf(new_bytes);
+        if (old_bytes > huge_threshold_bytes or new_bytes > huge_threshold_bytes)
+            return old_bytes > huge_threshold_bytes and new_bytes > huge_threshold_bytes and runOf(old_bytes) == runOf(new_bytes);
         const old_class = classes.classOf(old_size, alignment);
         const new_class = classes.classOf(new_size, alignment);
         if (old_class) |o| return if (new_class) |n| o == n else false;
@@ -1634,7 +1640,7 @@ pub const Engine = struct {
         const e = self.entry(index);
         if (offset % span_bytes != 0) return self.violation(.invalid_free, address);
         if (e.state != .active) return self.violation(.double_free, address);
-        if (bytes <= max_block_bytes or runOf(bytes) != e.slots) return self.violation(.wrong_size, address);
+        if (bytes <= huge_threshold_bytes or runOf(bytes) != e.slots) return self.violation(.wrong_size, address);
         const regions = self.hugeRegions(p) catch unreachable;
         const r = for (regions[0..p.huge_count]) |*r| {
             if (r.first == index) break r;
