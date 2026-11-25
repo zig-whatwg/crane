@@ -57,8 +57,8 @@ const log = std.log.scoped(.stream_html);
 
 /// Element's / ShadowRoot's streamHTML, streamAppendHTML and
 /// streamPrependHTML (Safe): `sanitizer_member` is SetHTMLOptions'
-/// sanitizer as the binding gave it.
-pub fn containerSafe(this: *runtime.Instance, position: ContainerPosition, sanitizer_member: ?runtime.JSValue) !*runtime.Instance {
+/// sanitizer as the binding converted it (ParserOptions.fromDictionary).
+pub fn containerSafe(this: *runtime.Instance, position: ContainerPosition, sanitizer_member: anytype) !*runtime.Instance {
     var options = try ParserOptions.fromDictionary(this.ctx, sanitizer_member, null);
     defer options.deinit();
     return containerSteps(this, position, &options, .safe);
@@ -99,7 +99,7 @@ fn containerSteps(this: *runtime.Instance, position: ContainerPosition, options:
 
 /// NonDocumentTypeChildNode's streamBeforeHTML, streamAfterHTML and
 /// streamReplaceWithHTML (Safe).
-pub fn childSafe(this: *runtime.Instance, position: ChildPosition, sanitizer_member: ?runtime.JSValue) !*runtime.Instance {
+pub fn childSafe(this: *runtime.Instance, position: ChildPosition, sanitizer_member: anytype) !*runtime.Instance {
     var options = try ParserOptions.fromDictionary(this.ctx, sanitizer_member, null);
     defer options.deinit();
     return childSteps(this, position, &options, .safe);

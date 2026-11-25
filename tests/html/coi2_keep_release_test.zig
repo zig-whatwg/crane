@@ -41,13 +41,9 @@ fn openPage(html: []const u8) !*browser_mod.Browser {
 /// slab, so an object whose teardown never ran still counts.
 fn liveOf(browser: *browser_mod.Browser, name: []const u8) usize {
     var count: usize = 0;
-    var slab = browser.scope.slab.slabs;
-    while (slab) |each| : (slab = each.next) {
-        for (&each.slots) |*slot| {
-            const instance: *runtime.Instance = @ptrCast(slot);
-            if (runtime.SlabAllocator.generationOf(instance) == runtime.SlabAllocator.dead_generation) continue;
-            if (std.mem.eql(u8, instance.vtable.name, name)) count += 1;
-        }
+    var live_slots = browser.scope.slab.iterateLive();
+    while (live_slots.next()) |instance| {
+        if (std.mem.eql(u8, instance.vtable.name, name)) count += 1;
     }
     return count;
 }

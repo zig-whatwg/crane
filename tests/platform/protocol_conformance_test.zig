@@ -90,8 +90,10 @@ test "conformance: the bound platform matches every operation" {
     // made the waits block with no timeout on a wake (devtoolsWakeNew,
     // devtoolsWake, devtoolsWakeClose; devtoolsReadOrWake replaced
     // devtoolsReadTimeout); 251 since lane cdpd1 added the files a host
-    // names by path (6.10.3: userFile, userDirectory).
-    try testing.expectEqual(@as(usize, 251), count);
+    // names by path (6.10.3: userFile, userDirectory); 254 since lane mcp1
+    // added the MCP server's file operations (6.5: writeFilePrivate,
+    // realPath, tempDirectory).
+    try testing.expectEqual(@as(usize, 254), count);
 }
 
 test "address space (6.11): this platform reserves, commits, decommits and releases" {

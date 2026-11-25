@@ -33,6 +33,9 @@ pub const Response = struct {
     /// ending in a newline), the attached request's and message's detailed
     /// text, then the request list's and the console list's lines.
     snapshot: ?[]const u8 = null,
+    /// includeSnapshot with a filePath: the file it went to, said in the
+    /// snapshot's place ("Saved snapshot to <file>.").
+    snapshot_file: ?[]const u8 = null,
     detailed_network: ?[]const u8 = null,
     detailed_console: ?[]const u8 = null,
     network_list: ?[]const []const u8 = null,
@@ -84,7 +87,9 @@ pub const Response = struct {
             try out.append(self.arena, try std.fmt.allocPrint(self.arena, "# Open dialog\n{s}: {s}{s}.\nCall handle_dialog to handle it before continuing.", .{ dialog.type, dialog.message, default_value }));
         };
         if (self.include_pages) try self.pagesSection(session, &out);
-        if (self.snapshot) |text| {
+        if (self.snapshot_file) |file| {
+            try out.append(self.arena, try std.fmt.allocPrint(self.arena, "Saved snapshot to {s}.", .{file}));
+        } else if (self.snapshot) |text| {
             try out.append(self.arena, "## Latest page snapshot");
             try out.append(self.arena, text);
         }

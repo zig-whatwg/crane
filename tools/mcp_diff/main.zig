@@ -15,6 +15,14 @@
 //! Chrome's snapshots are compared with its user-agent shadow nodes set
 //! apart (user_agent.zig): Crane has no user-agent shadow DOM.
 //!
+//! A case with `files` gives each server a directory of its own (the
+//! fixtures' files/ copied in, "{files}" in arguments, normalised back in
+//! answers) as its --filesystemRoot; with `client_roots`, the client
+//! advertises roots and answers roots/list with that directory instead. Its
+//! last compared answer is the directory afterwards - each file's path, mode
+//! and bytes. The working directory, which a relative path resolves under,
+//! reads "{cwd}".
+//!
 //! Output: <out>/report.md (per case equal / differs, each differing call's
 //! two answers) and <out>/results.json; each server's stderr in <out>/logs.
 
@@ -46,6 +54,10 @@ pub const Case = struct {
     /// What it measures (the report's line).
     about: []const u8 = "",
     calls: []const Call,
+    /// A directory per server, its --filesystemRoot ("{files}").
+    files: bool = false,
+    /// The directory reached through the client's MCP roots instead.
+    client_roots: bool = false,
 };
 
 /// A call whose answers are known to differ, and why (main, 2:24 PM ET
@@ -100,15 +112,29 @@ pub fn checkCases(cases: Cases) ![]const u8 {
     return "";
 }
 
-/// The arguments' JSON with "{fixture}" replaced by `origin`.
-pub fn argsJson(arena: Allocator, args: std.json.Value, origin: []const u8) ![]const u8 {
+/// What a side's arguments and answers name in their own way: the fixture
+/// server's origin, the side's files directory, the working directory.
+pub const Places = struct {
+    origin: []const u8,
+    files: ?[]const u8 = null,
+    cwd: ?[]const u8 = null,
+};
+
+/// The arguments' JSON with "{fixture}" and "{files}" made the side's.
+pub fn argsJson(arena: Allocator, args: std.json.Value, places: Places) ![]const u8 {
     const text = if (args == .null) "{}" else try std.json.Stringify.valueAlloc(arena, args, .{});
-    return std.mem.replaceOwned(u8, arena, text, "{fixture}", origin);
+    const with_origin = try std.mem.replaceOwned(u8, arena, text, "{fixture}", places.origin);
+    return if (places.files) |dir| std.mem.replaceOwned(u8, arena, with_origin, "{files}", dir) else with_origin;
 }
 
-/// The answer as compared: the fixture server's origin as "{fixture}".
-pub fn normalize(arena: Allocator, text: []const u8, origin: []const u8) ![]const u8 {
-    return std.mem.replaceOwned(u8, arena, text, origin, "{fixture}");
+/// The answer as compared: the side's places by their names - the files
+/// directory before the working directory, which may hold it.
+pub fn normalize(arena: Allocator, text: []const u8, places: Places) ![]const u8 {
+    var out = text;
+    if (places.files) |dir| out = try std.mem.replaceOwned(u8, arena, out, dir, "{files}");
+    out = try std.mem.replaceOwned(u8, arena, out, places.origin, "{fixture}");
+    if (places.cwd) |dir| out = try std.mem.replaceOwned(u8, arena, out, dir, "{cwd}");
+    return out;
 }
 
 const Side = enum { chrome, crane };
@@ -126,13 +152,19 @@ const ChromePage = struct {
     replay: user_agent.Replay = .{},
 };
 
-fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, log_path: []const u8, case: Case, origin: []const u8, chrome_page: ?*ChromePage) Outcome {
+fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, log_path: []const u8, case: Case, places: Places, chrome_page: ?*ChromePage) Outcome {
     var answers: std.ArrayList(client.Answer) = .empty;
     const server = client.Server.start(gpa, io, argv, log_path) catch |err| {
         return .{ .answers = &.{}, .failure = std.fmt.allocPrint(arena, "could not start: {t}", .{err}) catch "could not start" };
     };
     defer server.stop();
-    _ = server.request(arena, "initialize", "{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},\"clientInfo\":{\"name\":\"crane-mcp-diff\",\"version\":\"1\"}}", call_timeout_ms) catch |err| {
+    var capabilities: []const u8 = "{}";
+    if (case.client_roots) if (places.files) |dir| {
+        server.roots_json = std.fmt.allocPrint(arena, "[{{\"uri\":\"file://{s}\",\"name\":\"files\"}}]", .{dir}) catch return .{ .answers = &.{}, .failure = "out of memory" };
+        capabilities = "{\"roots\":{\"listChanged\":true}}";
+    };
+    const initialize = std.fmt.allocPrint(arena, "{{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{s},\"clientInfo\":{{\"name\":\"crane-mcp-diff\",\"version\":\"1\"}}}}", .{capabilities}) catch return .{ .answers = &.{}, .failure = "out of memory" };
+    _ = server.request(arena, "initialize", initialize, call_timeout_ms) catch |err| {
         return .{ .answers = &.{}, .failure = std.fmt.allocPrint(arena, "initialize: {t}", .{err}) catch "initialize failed" };
     };
     server.notify(arena, "notifications/initialized", null) catch {};
@@ -143,18 +175,70 @@ fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, l
         }
         // A uid a call names is Crane's numbering: Chrome's for Chrome.
         const call_args = if (chrome_page) |c| c.replay.argsForChrome(arena, call.args) catch call.args else call.args;
-        const args = argsJson(arena, call_args, origin) catch return .{ .answers = answers.items, .failure = "out of memory" };
+        const args = argsJson(arena, call_args, places) catch return .{ .answers = answers.items, .failure = "out of memory" };
         const params = std.fmt.allocPrint(arena, "{{\"name\":{f},\"arguments\":{s}}}", .{ std.json.fmt(call.tool, .{}), args }) catch return .{ .answers = answers.items, .failure = "out of memory" };
         const message = server.request(arena, "tools/call", params, call_timeout_ms) catch |err| {
             return .{ .answers = answers.items, .failure = std.fmt.allocPrint(arena, "{s}: {t}", .{ call.tool, err }) catch "call failed" };
         };
         var answer = client.answerOf(arena, message) catch return .{ .answers = answers.items, .failure = "unreadable answer" };
         if (chrome_page) |c| if (user_agent.hasSnapshot(answer.text)) setApart(gpa, arena, io, c, call, &answer);
-        answer.text = normalize(arena, answer.text, origin) catch answer.text;
-        if (answer.raw) |raw| answer.raw = normalize(arena, raw, origin) catch raw;
+        answer.text = normalize(arena, answer.text, places) catch answer.text;
+        if (answer.raw) |raw| answer.raw = normalize(arena, raw, places) catch raw;
         answers.append(arena, answer) catch return .{ .answers = answers.items, .failure = "out of memory" };
     }
+    if (places.files) |dir| {
+        // What the calls left in the directory, compared as one more answer.
+        const listing = filesListing(arena, io, dir) catch |err| return .{ .answers = answers.items, .failure = std.fmt.allocPrint(arena, "listing the files: {t}", .{err}) catch "listing failed" };
+        answers.append(arena, .{ .text = normalize(arena, listing, places) catch listing, .is_error = false }) catch return .{ .answers = answers.items, .failure = "out of memory" };
+    }
     return .{ .answers = answers.items };
+}
+
+/// Every regular file under `dir`, by path: "<path> <mode>" then its bytes.
+fn filesListing(arena: Allocator, io: Io, dir_path: []const u8) ![]const u8 {
+    const dir = try Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true });
+    defer dir.close(io);
+    var walker = try dir.walk(arena);
+    defer walker.deinit();
+    var names: std.ArrayList([]const u8) = .empty;
+    while (try walker.next(io)) |entry| {
+        if (entry.kind != .file) continue;
+        try names.append(arena, try arena.dupe(u8, entry.path));
+    }
+    std.mem.sort([]const u8, names.items, {}, struct {
+        fn less(_: void, x: []const u8, y: []const u8) bool {
+            return std.mem.lessThan(u8, x, y);
+        }
+    }.less);
+    var out: Io.Writer.Allocating = .init(arena);
+    for (names.items) |name| {
+        const st = try dir.statFile(io, name, .{});
+        const bytes = try dir.readFileAlloc(io, name, arena, .limited(1 << 20));
+        try out.writer.print("{s} {o}\n{s}\n", .{ name, st.permissions.toMode() & 0o777, bytes });
+    }
+    return out.written();
+}
+
+/// A fresh directory for one side of a case, the fixtures' files/ copied in;
+/// its canonical path.
+fn filesDirectory(arena: Allocator, io: Io, options: Options, slug: []const u8, side: []const u8) ![]const u8 {
+    const path = try std.fmt.allocPrint(arena, "{s}/files/{s}/{s}", .{ options.out, slug, side });
+    const cwd = Io.Dir.cwd();
+    try cwd.deleteTree(io, path);
+    try cwd.createDirPath(io, path);
+    const source_path = try std.fmt.allocPrint(arena, "{s}/files", .{options.fixtures});
+    if (cwd.openDir(io, source_path, .{ .iterate = true })) |opened| {
+        const source = opened;
+        defer source.close(io);
+        const target = try cwd.openDir(io, path, .{});
+        defer target.close(io);
+        var it = source.iterate();
+        while (try it.next(io)) |entry| {
+            if (entry.kind != .file) continue;
+            try source.copyFile(entry.name, target, entry.name, io, .{});
+        }
+    } else |err| if (err != error.FileNotFound) return err;
+    return try cwd.realPathFileAlloc(io, path, arena);
 }
 
 /// Chrome's snapshot with its user-agent nodes set apart, numbered as Crane
@@ -280,7 +364,7 @@ pub fn main(init: std.process.Init) !void {
     defer fixtures.stop();
     const origin = try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}", .{fixtures.port()});
 
-    const crane_argv = [_][]const u8{ options.crane, "--mcp" };
+    const cwd_path = try Io.Dir.cwd().realPathFileAlloc(io, ".", arena);
 
     var report: Io.Writer.Allocating = .init(arena);
     const w = &report.writer;
@@ -298,9 +382,22 @@ pub fn main(init: std.process.Init) !void {
         // harness's own reads of the page (user_agent.zig).
         var chrome_page: ChromePage = .{ .port = try user_agent.freePort(io) };
         const port_arg = try std.fmt.allocPrint(arena, "--chromeArg=--remote-debugging-port={d}", .{chrome_page.port});
-        const chrome_argv = [_][]const u8{ options.node, options.chrome_mcp, "--executablePath", options.chrome, "--headless", "--isolated", "--no-usage-statistics", "--no-performance-crux", port_arg };
-        const chrome = runSide(gpa, arena, io, &chrome_argv, try std.fmt.allocPrint(arena, "{s}/logs/{s}.chrome.log", .{ options.out, slug }), case, origin, &chrome_page);
-        const crane = runSide(gpa, arena, io, &crane_argv, try std.fmt.allocPrint(arena, "{s}/logs/{s}.crane.log", .{ options.out, slug }), case, origin, null);
+        var chrome_places: Places = .{ .origin = origin, .cwd = cwd_path };
+        var crane_places: Places = .{ .origin = origin, .cwd = cwd_path };
+        var chrome_argv: std.ArrayList([]const u8) = .empty;
+        try chrome_argv.appendSlice(arena, &.{ options.node, options.chrome_mcp, "--executablePath", options.chrome, "--headless", "--isolated", "--no-usage-statistics", "--no-performance-crux", port_arg });
+        var crane_argv: std.ArrayList([]const u8) = .empty;
+        try crane_argv.appendSlice(arena, &.{ options.crane, "--mcp" });
+        if (case.files or case.client_roots) {
+            chrome_places.files = try filesDirectory(arena, io, options, slug, "chrome");
+            crane_places.files = try filesDirectory(arena, io, options, slug, "crane");
+            if (!case.client_roots) {
+                try chrome_argv.appendSlice(arena, &.{ "--filesystemRoot", chrome_places.files.? });
+                try crane_argv.appendSlice(arena, &.{ "--filesystemRoot", crane_places.files.? });
+            }
+        }
+        const chrome = runSide(gpa, arena, io, chrome_argv.items, try std.fmt.allocPrint(arena, "{s}/logs/{s}.chrome.log", .{ options.out, slug }), case, chrome_places, &chrome_page);
+        const crane = runSide(gpa, arena, io, crane_argv.items, try std.fmt.allocPrint(arena, "{s}/logs/{s}.crane.log", .{ options.out, slug }), case, crane_places, null);
         const equal = chrome.failure == null and crane.failure == null and sameAnswers(chrome.answers, crane.answers);
         const only_expected = !equal and chrome.failure == null and crane.failure == null and differsOnlyWhereExpected(cases, case.name, chrome.answers, crane.answers);
         if (equal) equal_cases += 1;
@@ -390,6 +487,14 @@ fn caseSection(arena: Allocator, cases: Cases, case: Case, chrome: Outcome, cran
             if (b) |x| x.text else "(none)",
         });
     }
+    // The files directory's listing, after the calls.
+    if (index < chrome.answers.len or index < crane.answers.len) {
+        const a: ?client.Answer = if (index < chrome.answers.len) chrome.answers[index] else null;
+        const b: ?client.Answer = if (index < crane.answers.len) crane.answers[index] else null;
+        if (!(a != null and b != null and std.mem.eql(u8, a.?.text, b.?.text))) {
+            try w.print("### the files written\n\nChrome:\n\n```\n{s}\n```\n\nCrane:\n\n```\n{s}\n```\n\n", .{ if (a) |x| x.text else "(none)", if (b) |x| x.text else "(none)" });
+        }
+    }
     return out.written();
 }
 
@@ -409,8 +514,16 @@ test "cases: parsed, checked, their arguments made with the fixture origin and a
         \\{"cases":[{"name":"a","calls":[{"tool":"navigate_page","args":{"pageId":1,"url":"{fixture}/x.html"}},{"sleep_ms":10}]}]}
     );
     try std.testing.expectEqualStrings("", try checkCases(cases));
-    try std.testing.expectEqualStrings("{\"pageId\":1,\"url\":\"http://127.0.0.1:9/x.html\"}", try argsJson(arena, cases.cases[0].calls[0].args, "http://127.0.0.1:9"));
-    try std.testing.expectEqualStrings("Successfully navigated to {fixture}/x.html.", try normalize(arena, "Successfully navigated to http://127.0.0.1:9/x.html.", "http://127.0.0.1:9"));
+    try std.testing.expectEqualStrings("{\"pageId\":1,\"url\":\"http://127.0.0.1:9/x.html\"}", try argsJson(arena, cases.cases[0].calls[0].args, .{ .origin = "http://127.0.0.1:9" }));
+    try std.testing.expectEqualStrings("Successfully navigated to {fixture}/x.html.", try normalize(arena, "Successfully navigated to http://127.0.0.1:9/x.html.", .{ .origin = "http://127.0.0.1:9" }));
+    // A side's files directory, inside the working directory, and the
+    // working directory itself.
+    const places: Places = .{ .origin = "http://127.0.0.1:9", .files = "/w/out/files/a/crane", .cwd = "/w" };
+    const with_files = try parseCases(arena,
+        \\{"cases":[{"name":"f","files":true,"calls":[{"tool":"take_snapshot","args":{"filePath":"{files}/s.txt"}}]}]}
+    );
+    try std.testing.expectEqualStrings("{\"filePath\":\"/w/out/files/a/crane/s.txt\"}", try argsJson(arena, with_files.cases[0].calls[0].args, places));
+    try std.testing.expectEqualStrings("Saved snapshot to {files}/s.txt. Access denied: path \"{cwd}/x.js\"", try normalize(arena, "Saved snapshot to /w/out/files/a/crane/s.txt. Access denied: path \"/w/x.js\"", places));
     const twice = try parseCases(arena,
         \\{"cases":[{"name":"a","calls":[{"tool":"list_pages"}]},{"name":"a","calls":[{"tool":"list_pages"}]}]}
     );

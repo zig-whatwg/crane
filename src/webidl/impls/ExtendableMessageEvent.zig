@@ -161,7 +161,13 @@ fn keepPorts(ctx: runtime.Context, internal: *InternalState, ports: []const *run
 /// creation steps, then the dictionary's members.
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableMessageEventInit)) !*runtime.Instance {
     const instance = try ExtendableMessageEvent.init(ctx.allocator, ctx);
-    errdefer ExtendableMessageEvent.deinit(instance);
+    // Until it is returned, the construction is the object's only owner: a
+    // failed step (a source that is no Client, ServiceWorker or MessagePort)
+    // frees it whole. Its own deinit is its destructor, not a free, and left
+    // its slot and State until the Browser ended
+    // (tests/v8/constructor_error_receiver_test.zig;
+    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    errdefer runtime.gc.releaseOwned(instance);
     const given: dictionaries.ExtendableMessageEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{} } };
     try dom.event_construction.innerEventCreationSteps(instance, @"type", dom.event_construction.eventInitFrom(given.base.base));
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;

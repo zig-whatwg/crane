@@ -221,6 +221,10 @@ pub const PlatformEvents = struct {
     /// the collection freed with it.
     fn collectAndRelease(data: ?*anyopaque) void {
         const loop: *EventLoop = @ptrCast(@alignCast(data.?));
+        // The heap first (allocator-hardening design 5.4: PartitionAlloc's
+        // 90% rule, 04875c40bc09): its quarantine purged, every empty span
+        // decommitted - on this thread, the node partition's.
+        if (loop.heap) |heap| _ = heap.relievePressure();
         engine.notifyMemoryPressure(loop.agent, .critical);
         // Refused while a release runs or the hold-off after the last one
         // has not passed: memory returned seconds ago is not asked for
@@ -229,6 +233,16 @@ pub const PlatformEvents = struct {
     }
 
     fn dropNothing(_: ?*anyopaque) void {}
+
+    /// The Browser's heap passed 90% of a partition's address space
+    /// (runtime.heap.Engine.pressure_hook): answered as a critical
+    /// memory-pressure event is. Any thread, possibly inside the heap's
+    /// allocation: it only posts.
+    pub fn heapPressure(context: *anyopaque, partition: runtime.heap.PartitionId) void {
+        _ = partition;
+        const self: *PlatformEvents = @ptrCast(@alignCast(context));
+        self.postCritical();
+    }
 };
 
 /// A tab's new window rect, on its way to the window's loop.

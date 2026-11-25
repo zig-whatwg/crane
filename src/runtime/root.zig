@@ -301,6 +301,9 @@ pub const BrowserPause = browser_pause.BrowserPause;
 /// A Browser's scope: its per-Browser state, as supplements reached through
 /// the realm (ContextData.browser_scope; docs/instances.md rule 2).
 pub const BrowserScope = @import("browser_scope.zig").BrowserScope;
+/// The span engine every State block and Instance slot of a Browser lives in
+/// (src/runtime/heap/: allocator-hardening batch A).
+pub const heap = @import("heap/root.zig");
 /// A tab's state, reached through the realm (ContextData.tab_scope;
 /// docs/instances.md rule 2): made and closed by its top-level browsing
 /// context's record.

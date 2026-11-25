@@ -89,9 +89,30 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
+/// dom.teardown_sweeps: a link still alive at its Browser's end - held past
+/// every realm's end, so its deinit never ran - returns its InternalState
+/// block, which the old state arena freed wholesale (lane hard1: the span
+/// engine's leak report named 27 in the full worklist;
+/// tests/html/hard1_orphan_side_blocks_test.zig). What the block points to
+/// is left as before: its realm and documents are gone, and the style engine
+/// and the loader end with them. Its State block and slot go after it, at the
+/// scope's end (BrowserScope.releaseSweptNodes). A walk of the Browser's
+/// live objects (SlabAllocator.iterateLive): at its end no other thread
+/// makes or frees them.
+fn sweepLive(scope: *runtime.BrowserScope) void {
+    var live = scope.slab.iterateLive();
+    while (live.next()) |instance| {
+        const state = instance.stateAs(State) orelse continue;
+        const internal = state.own._internal orelse continue;
+        runtime.arenaOf(instance).destroy(InternalState, internal);
+        state.own._internal = null;
+    }
+}
+
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    dom_module.teardown_sweeps.install(.element_types, &sweepLive);
     style_sheet_loading.installDocumentAbort();
     // CSSOM insertRule()'s @import: the loader fetches its sheet.
     style_sheet_loading.installImportInserted();

@@ -868,16 +868,20 @@ const Command = struct {
         if (interfaces.Node.get_isConnected(element) catch false) {
             _ = knownElement(self.element) orelse return self.reject(staleElement());
         }
-        const accessibility = @import("dom").accessibility;
-        const options: accessibility.Options = .{ .is_focusable = html.focus.isFocusableArea };
-        const allocator = self.driver.allocator;
-        if (self.kind == .computed_role) {
-            const value = accessibility.computedRole(allocator, element, options) catch return self.reject(outOfMemory());
-            return self.resolve(JSValue.fromStringRef(value));
-        }
-        const value = accessibility.computedName(allocator, element, options) catch return self.reject(outOfMemory());
-        defer allocator.free(value);
-        self.resolve(JSValue.fromStringRef(value));
+        // The role is the accessibility tree's, as the Accessibility domain
+        // answers getPartialAXTree (chromedriver's source); the label is
+        // AccName, the browser majority's (accessibility_tree.webdriverLabel)
+        // - both with HTML's answers for focus, inertness and disabledness
+        // (lane a11y1).
+        var arena_state = std.heap.ArenaAllocator.init(self.driver.allocator);
+        defer arena_state.deinit();
+        const tree = @import("dom").accessibility_tree;
+        const options = html.accessibility_host.options;
+        const answer = (if (self.kind == .computed_role)
+            tree.webdriverRole(arena_state.allocator(), element, options)
+        else
+            tree.webdriverLabel(arena_state.allocator(), element, options)) catch return self.reject(outOfMemory());
+        self.resolve(JSValue.fromStringRef(answer));
     }
 
     /// Permissions B.1.1 steps 5-6, after argument conversion: the target

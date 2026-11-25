@@ -44,6 +44,13 @@ const Registry = runtime.InstanceRegistry(.html_form_element, InternalState);
 
 /// Internal state for HTMLFormElement implementation
 pub const InternalState = struct {
+    /// The form's slab generation when this state was made: a walk of the
+    /// registry - keyed by address - reads the form through its entry only
+    /// while the slot is still that form's (`cancelPlannedNavigationsOf`).
+    /// Lane hard1: the heap zeroes a freed slot's Instance words, so a read
+    /// through a slot freed without the form's deinit is a crash, where it
+    /// used to read the slab's free-list link.
+    owner_generation: u64 = 0,
     /// What the tree names now: each name's candidates (`NamedElements`).
     named: NamedElements = .{},
     /// HTML's past names map (`PastNames`).
@@ -236,7 +243,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
-    internal.* = .{};
+    internal.* = .{ .owner_generation = runtime.SlabAllocator.generationOf(instance) };
 }
 
 /// HTMLFormElement's own teardown: the generated chain runs HTMLElement's after it.
@@ -889,6 +896,8 @@ fn cancelPlannedNavigationsOf(document: *runtime.Instance) void {
     var registered = Registry.iterator(runtime.BrowserScope.ofInstance(document)) orelse return;
     while (registered.next()) |entry| {
         const form: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
+        // Only a form whose slot is still its own is read through.
+        if (runtime.SlabAllocator.generationOf(form) != entry.internal.owner_generation) continue;
         const owner = interfaces.Node.get_ownerDocument(form) catch continue;
         if (owner != document) continue;
         entry.internal.pending_navigations.clearRetainingCapacity();

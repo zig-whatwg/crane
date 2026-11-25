@@ -922,6 +922,7 @@ progress = [
   "decided 2026-11-23 12:51 PM ET (the user, option 1) - element input by uid is element-targeted trusted input (WebDriver's element-origin path, Crane's user_input pipeline): Chrome's events, order, isTrusted, focus and :hover; no approximate geometry in 0.1 (that is roadmap approx-layout, 0.2). Design tmp/plans/mcp1-design.md pins chrome-devtools-mcp v1.13.0",
   "a11y1 batch 1 7d1d1da2e (+ 2dfe377d9 1be369e16 ca0b28ec9 58fa6198f) - the Accessibility domain's commands, AXNode shape, ids and frames equal Chrome 157's on the trace; batch 2 43ee1cbc7 - name sources, rule 2 on groups in a name from contents, mcp1's label and image-url differences; batch 3 43513fa99 - loadComplete and nodesUpdated (focus and control-value probes); Crane equals Chrome for Testing 157 on all 83 steps of 11 trace pages",
   "a11y1 WPT survey (the integrator 2026-11-24 7:27 AM ET: all 12 added; Crane main 187de50e1 / Chrome 158 / Firefox 160 / Safari 27.2): core-aam/role/roles-contextual 8/8 7/8 8/8 8/8; graphics-aria/graphics-roles 3/3 3/3 0/3 3/3; svg-aam/name/comp_label 4/4 x4; svg-aam/role/roles-generic 9/9 x4; css-display display-contents-role-and-label 111/112 112 112 112; dpub-aam/role/roles 37/39 39 39 0; svg-aam/name/comp_labelledby 8/9 9 9 9; svg-aam/name/comp_host_language_label 10/18 18 18 18; svg-aam/role/roles 0/4 4 4 4; popover-minimum-role 0/2 2 2 0; accname alt_counter_invalidation and alt_counter_multi_instance 0/3 3 0 0 (follows-majority). The 18 failures and html-aam/table-roles el-th-in-row are the role-unification batch's red list",
+  "a11y1 role batch 23be5b38a a3e03f144 909a4555d 724c2c847 60929340f b38018bc4 f6ff67afb 938655068 - WebDriver's computed role is the accessibility tree's getPartialAXTree node role (chromedriver's source), the label AccName (golden rule 2: Firefox and Safari); one role decision: dom/accessibility.zig's role answers only a detached element; SVG links focusable by xlink:href; the red list gained, one subtest lost to the Chrome + Firefox answer (html-aam/roles-contextual el-img-empty-alt-title: image); Crane equals Chrome for Testing 157 on all 84 steps of 12 trace pages",
 ]
 
   [[infra.items]]
@@ -934,11 +935,11 @@ progress = [
 
   [[infra.items]]
   name = "CDP Accessibility domain as Chrome 157 answers it (lane a11y1; take_snapshot's tree)"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Accessibility roles: one decision, two vocabularies - WebDriver's computedRole as Chrome's ComputedRoleForNode (AriaRoleName of the tree's final role) with golden-rule-2 overrides commented in it; tracked debt until then: two role decisions, dom/accessibility.zig's spec strings for WebDriver and dom/accessibility_tree.zig's Chromium role for CDP (main 2026-11-24 6:58 AM ET: its own a11y1 batch after batch 3, no traded subtests)"
-  status = "todo"
+  status = "done"
 
 [[infra]]
 id = "approx-layout"

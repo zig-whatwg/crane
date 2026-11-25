@@ -25,6 +25,7 @@ pub const snapshot = @import("snapshot.zig");
 pub const ax_tree = @import("ax_tree.zig");
 pub const query = @import("query.zig");
 pub const elements = @import("elements.zig");
+pub const paths = @import("paths.zig");
 
 test {
     @import("std").testing.refAllDecls(@This());

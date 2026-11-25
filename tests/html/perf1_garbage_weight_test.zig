@@ -19,6 +19,7 @@
 const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
+const runtime = @import("runtime");
 const engine = @import("engine");
 const loop_settle = @import("loop_settle.zig");
 
@@ -123,9 +124,21 @@ test "lists replaced by innerHTML inside one script stay bounded by the queue's 
 const joins_total = 3000;
 
 /// The peak of the Browser's platform objects while `shape` runs edit4's
-/// delete-join row `joins_total` times in a contenteditable host: the slab
-/// never gives a slab back, so its capacity after the run is the most objects
-/// that were ever alive at once.
+/// delete-join row `joins_total` times in a contenteditable host: the most
+/// objects alive at once (the slab's `peak_allocated`).
+///
+/// Until lane hard1 (2026-11-23) this read the slab's capacity, on the
+/// premise that a slot is taken only by a live object, so capacity after the
+/// run is the most objects ever alive at once. Delayed reuse ended that:
+/// the heap's quarantine holds freed slots to the task's end (up to its cap:
+/// then 2 MiB, 512 KiB since the user's ruling 2026-11-24), and a bucket's
+/// magazine caches up to `heap.magazine_depth` freed slots, so capacity is
+/// live + quarantined + cached. One timer callback is
+/// one task: on macOS its capacity read 35,840 (70 spans) against 13,312
+/// spread - 2.69x, over the bound - at every hard1 tree, and passed with
+/// the quarantine's cap at 0. The heap now counts the live high-water mark
+/// itself, and the run also checks that what capacity keeps beyond it stays
+/// within what the quarantine and the magazine may hold.
 const JoinShape = enum {
     /// ONE timer callback runs them all: the way a page runs a long loop.
     one_callback,
@@ -135,7 +148,20 @@ const JoinShape = enum {
 
 /// What a run left to read: its peak, and the nodes the queue freed at
 /// binding returns inside callbacks (DeferredTeardown.freed_in_callbacks).
-const JoinRun = struct { peak: usize, freed_in_callbacks: usize };
+const JoinRun = struct {
+    peak: usize,
+    freed_in_callbacks: usize,
+    /// The slab's capacity: slots taken, live or not.
+    capacity: usize = 0,
+    /// The slots that can be taken with no live Instance in them: the
+    /// Instance slots the quarantine's cap holds, a magazine's depth, and
+    /// the span the last allocation opened. The quarantine evicts an entry
+    /// at random, whatever its size, so what it holds is the run's frees in
+    /// their proportions: its cap divided by the heap bytes the run made per
+    /// Instance (every block of either partition, the slots' own included)
+    /// is the slots it holds when full.
+    retained_bound: usize = 0,
+};
 
 fn joinPeak(shape: JoinShape) !JoinRun {
     // The churn tests' allocator: every join makes and frees hundreds of
@@ -176,9 +202,17 @@ fn joinPeak(shape: JoinShape) !JoinRun {
                 try loop_settle.settle(browser);
             },
         }
+        const slab_stats = browser.scope.slab.stats();
+        const heap_engine = browser.scope.existingHeapEngine() orelse return error.NoHeap;
+        const heap_stats = heap_engine.stats();
+        const bytes_made = heap_stats.node.total_requested_bytes + heap_stats.objects.total_requested_bytes;
+        const bytes_per_instance = @max(1, bytes_made / @max(1, slab_stats.total_allocated));
         run = .{
-            .peak = browser.scope.slab.stats().total_capacity,
+            .peak = slab_stats.peak_allocated,
             .freed_in_callbacks = browser.agent_host.deferred_teardown.freed_in_callbacks,
+            .capacity = slab_stats.total_capacity,
+            .retained_bound = heap_engine.config.quarantine_cap / bytes_per_instance +
+                runtime.heap.magazine_depth + runtime.SlabAllocator.slots_per_span,
         };
     }
     try churn.deinit();
@@ -214,7 +248,13 @@ fn oneCallbackStaysNearTheSpreadPeak() !void {
     const spread = try joinPeak(.spread);
     const one = try joinPeak(.one_callback);
     std.debug.print("{d} joins: one callback peaked at {d} objects ({d} nodes freed inside callbacks), callbacks of 100 at {d} ({d})\n", .{ joins_total, one.peak, one.freed_in_callbacks, spread.peak, spread.freed_in_callbacks });
+    std.debug.print("slots taken: one callback {d} (at most {d} with no live object in them), callbacks of 100 {d} (at most {d})\n", .{ one.capacity, one.retained_bound, spread.capacity, spread.retained_bound });
     if (2 * one.peak > 5 * spread.peak) return error.OneCallbackPeakUnbounded;
+    // What delayed reuse keeps taken is bounded by the quarantine and the
+    // magazine, in either shape.
+    for ([_]JoinRun{ one, spread }) |run| {
+        if (run.capacity -| run.peak > run.retained_bound) return error.RetentionUnbounded;
+    }
 }
 
 test "3,000 delete-joins in one timer callback peak within 2.5x of the same joins spread over callbacks of 100" {

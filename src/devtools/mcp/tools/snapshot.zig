@@ -8,9 +8,13 @@
 //! puppeteer-core 25.17.0 cdp/Accessibility.js, Copyright 2018 Google Inc.,
 //! Apache-2.0; THIRD_PARTY_NOTICES.md).
 //!
-//! Not yet: take_snapshot's `filePath` (the server's file access comes with
-//! the path policy, batch 3) and wait_for's `visible` (whether text is
-//! visible needs layout, which Crane does not have).
+//! take_snapshot's `filePath` (batch 3): checked by the path policy
+//! (paths.zig) before the page is resolved, then the snapshot's text
+//! written there with the extension .txt (McpResponse.#handleSnapshot's
+//! saveFile) and "Saved snapshot to <file>." said in its place.
+//!
+//! Not yet: wait_for's `visible` (whether text is visible needs layout,
+//! which Crane does not have).
 
 const std = @import("std");
 const platform = @import("platform");
@@ -28,13 +32,21 @@ const query = @import("../query.zig");
 const console = @import("../console.zig");
 
 pub const list = [_]Tool{
-    .{ .name = "take_snapshot", .page_tool = true, .blocked_by_dialog = true, .run = takeSnapshot },
+    .{ .name = "take_snapshot", .page_tool = true, .blocked_by_dialog = true, .files = &.{.{ .name = "filePath" }}, .run = takeSnapshot },
     .{ .name = "wait_for", .page_tool = true, .blocked_by_dialog = true, .run = waitFor },
 };
 
 fn takeSnapshot(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Response) anyerror!void {
-    if (registry.stringArg(args, "filePath") != null) return ctx.fail("filePath is not supported by Crane's MCP server yet.", .{});
-    response.snapshot = try capture(ctx, page.?, registry.boolArg(args, "verbose") orelse false);
+    const text = try capture(ctx, page.?, registry.boolArg(args, "verbose") orelse false);
+    if (registry.stringArg(args, "filePath")) |path| {
+        // In McpResponse.handle: a failure is the message alone.
+        response.snapshot_file = ctx.session.paths.saveFile(ctx.arena, text, path, ".txt") catch |err| switch (err) {
+            error.Denied => return ctx.failPlain("{s}", .{ctx.session.paths.message}),
+            error.OutOfMemory => return error.OutOfMemory,
+        };
+        return;
+    }
+    response.snapshot = text;
 }
 
 /// The Locator's own timeout: Locator.race makes a RaceLocator, whose

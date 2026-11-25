@@ -76,6 +76,23 @@ pub const ServerInfo = struct {
     version: []const u8,
 };
 
+/// One entry of a client's roots/list answer.
+pub const RootEntry = struct {
+    uri: []const u8,
+    name: []const u8 = "",
+};
+
+/// Where the client's roots go (the path policy's client roots).
+pub const RootsHooks = struct {
+    context: *anyopaque,
+    set: *const fn (context: *anyopaque, roots: []const RootEntry) void,
+};
+
+/// How long a tool call waits for the client's roots (index.ts
+/// ROOTS_REQUEST_TIMEOUT: "matching the 5s default used for page
+/// operations").
+pub const roots_timeout_ms = 5_000;
+
 /// One client's protocol state (stdio: the process's; HTTP: per request in
 /// the modern era, per session in the legacy one).
 pub const Protocol = struct {
@@ -84,6 +101,23 @@ pub const Protocol = struct {
     /// Legacy: the version `initialize` settled on (null before it).
     negotiated: ?[]const u8 = null,
     initialized: bool = false,
+    /// The client's roots (chrome-devtools-mcp src/index.ts: roots/list
+    /// after `initialized` and on notifications/roots/list_changed when the
+    /// client offers the capability; a tool call waits for the first list).
+    roots: ?RootsHooks = null,
+    /// initialize's capabilities named `roots`.
+    client_roots: bool = false,
+    /// The id of the next request this server sends.
+    next_request_id: i64 = 0,
+    /// roots/list requests not answered yet.
+    pending_roots: [8]?i64 = @splat(null),
+    /// A roots/list answer came (#lastClientRoots is set).
+    roots_listed: bool = false,
+    /// The first tool call's wait for roots is over (#initialRoots settled):
+    /// later calls never wait.
+    roots_waited: bool = false,
+    /// The request that wait is for, until it is answered.
+    roots_wait_id: ?i64 = null,
 
     /// Answer one message (`text`, a JSON-RPC request or notification).
     /// Null: nothing to send (a notification, or a response a client sent).
@@ -98,20 +132,95 @@ pub const Protocol = struct {
         const has_id = object.get("id") != null;
         const method_value = object.get("method") orelse {
             // A response or something else a client sent: nothing to answer.
-            if (has_id and (object.get("result") != null or object.get("error") != null)) return null;
+            if (has_id and (object.get("result") != null or object.get("error") != null)) {
+                self.response(id, object.get("result"));
+                return null;
+            }
             return try errorMessage(arena, id, .invalid_request, "Invalid Request", null);
         };
         if (method_value != .string) return try errorMessage(arena, id, .invalid_request, "Invalid Request", null);
         const method = method_value.string;
         const params: json.Value = object.get("params") orelse .{ .object = .empty };
         if (!has_id) {
-            // A notification: never answered.
-            if (std.mem.eql(u8, method, "notifications/initialized")) self.initialized = true;
+            // A notification: never answered - but the client's roots are
+            // asked for once it is initialized and whenever they change.
+            if (std.mem.eql(u8, method, "notifications/initialized")) {
+                self.initialized = true;
+                if (self.client_roots) return try self.rootsRequest(arena);
+            }
+            if (std.mem.eql(u8, method, "notifications/roots/list_changed") and self.client_roots) return try self.rootsRequest(arena);
             return null;
         }
         return self.request(arena, id, method, params) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
         };
+    }
+
+    /// A roots/list request to the client (#updateRoots), its id kept.
+    fn rootsRequest(self: *Protocol, arena: Allocator) Allocator.Error![]u8 {
+        const id = self.next_request_id;
+        self.next_request_id += 1;
+        for (&self.pending_roots) |*slot| if (slot.* == null) {
+            slot.* = id;
+            break;
+        };
+        return std.fmt.allocPrint(arena, "{{\"jsonrpc\":\"2.0\",\"id\":{d},\"method\":\"roots/list\"}}", .{id});
+    }
+
+    /// A response the client sent: a roots/list answer gives the client's
+    /// roots (a failed one changes nothing, as #updateRoots logs and moves
+    /// on).
+    fn response(self: *Protocol, id: json.Value, result: ?json.Value) void {
+        if (id != .integer) return;
+        var ours = false;
+        for (&self.pending_roots) |*slot| if (slot.* == id.integer) {
+            slot.* = null;
+            ours = true;
+        };
+        if (!ours) return;
+        if (self.roots_wait_id == id.integer) self.roots_wait_id = null;
+        const value = result orelse return;
+        if (value != .object) return;
+        const list = value.object.get("roots") orelse return;
+        if (list != .array) return;
+        var entries: [64]RootEntry = undefined;
+        var count: usize = 0;
+        for (list.array.items) |item| {
+            if (item != .object or count == entries.len) continue;
+            const uri = item.object.get("uri") orelse continue;
+            if (uri != .string) continue;
+            const name: []const u8 = if (item.object.get("name")) |n| (if (n == .string) n.string else "") else "";
+            entries[count] = .{ .uri = uri.string, .name = name };
+            count += 1;
+        }
+        self.roots_listed = true;
+        if (self.roots) |hooks| hooks.set(hooks.context, entries[0..count]);
+    }
+
+    /// McpServer #getContext before a tool call: when `text` is a tools/call
+    /// and the client offers roots that have not come, the roots/list
+    /// request to send - its answer is waited for, up to roots_timeout_ms,
+    /// once (#initialRoots); null when the call need not wait.
+    pub fn rootsWaitRequest(self: *Protocol, arena: Allocator, text: []const u8) Allocator.Error!?[]u8 {
+        if (!self.client_roots or self.roots_listed or self.roots_waited) return null;
+        const parsed = json.parseFromSliceLeaky(json.Value, arena, text, .{}) catch return null;
+        if (parsed != .object) return null;
+        const method = parsed.object.get("method") orelse return null;
+        if (method != .string or !std.mem.eql(u8, method.string, "tools/call") or parsed.object.get("id") == null) return null;
+        const request_text = try self.rootsRequest(arena);
+        self.roots_wait_id = self.next_request_id - 1;
+        return request_text;
+    }
+
+    /// Whether the wait `rootsWaitRequest` started is still on.
+    pub fn waitingForRoots(self: *const Protocol) bool {
+        return self.roots_wait_id != null;
+    }
+
+    /// The wait is over (answered or timed out): no call waits again.
+    pub fn endRootsWait(self: *Protocol) void {
+        self.roots_waited = true;
+        self.roots_wait_id = null;
     }
 
     fn request(self: *Protocol, arena: Allocator, id: json.Value, method: []const u8, params: json.Value) Allocator.Error![]u8 {
@@ -141,6 +250,10 @@ pub const Protocol = struct {
         const requested: []const u8 = if (params.get("protocolVersion")) |v| (if (v == .string) v.string else "") else "";
         const version = if (requested.len != 0 and isSupported(requested) and !std.mem.eql(u8, requested, modern_version)) requested else latest_legacy_version;
         self.negotiated = version;
+        // getClientCapabilities()?.roots.
+        if (params.get("capabilities")) |caps| if (caps == .object) {
+            if (caps.object.get("roots")) |r| self.client_roots = r != .null;
+        };
         var out: std.Io.Writer.Allocating = .init(arena);
         const w = &out.writer;
         w.writeAll("{\"protocolVersion\":") catch return error.OutOfMemory;
@@ -365,4 +478,55 @@ test "modern: server/discover; an unsupported version is -32022 naming the suppo
     try testing.expect(std.mem.indexOf(u8, no_caps, "\"code\":-32602") != null);
     try testing.expect(std.mem.indexOf(u8, (try p.handle(arena, "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/list\"}")).?, "\"code\":-32601") != null);
     try testing.expect(std.mem.indexOf(u8, (try p.handle(arena, "{not json")).?, "\"code\":-32700") != null);
+}
+
+test "roots: asked for once initialized when the client offers them, again on list_changed; an answer sets them; the first tool call waits once" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var dummy: u8 = 0;
+    var p = testProtocol(&dummy);
+    const Seen = struct {
+        count: usize = 0,
+        first: [64]u8 = undefined,
+        first_len: usize = 0,
+        fn set(context: *anyopaque, roots: []const RootEntry) void {
+            const self: *@This() = @ptrCast(@alignCast(context));
+            self.count = roots.len;
+            if (roots.len > 0) {
+                self.first_len = @min(roots[0].uri.len, self.first.len);
+                @memcpy(self.first[0..self.first_len], roots[0].uri[0..self.first_len]);
+            }
+        }
+    };
+    var seen: Seen = .{};
+    p.roots = .{ .context = &seen, .set = Seen.set };
+    _ = (try p.handle(arena, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"roots\":{\"listChanged\":true}}}}")).?;
+    try testing.expect(p.client_roots);
+    try testing.expectEqualStrings("{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"roots/list\"}", (try p.handle(arena, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}")).?);
+    // A tool call before the answer waits, on a request of its own.
+    const call = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{}}}";
+    try testing.expectEqualStrings("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"roots/list\"}", (try p.rootsWaitRequest(arena, call)).?);
+    try testing.expect(p.waitingForRoots());
+    try testing.expectEqual(@as(?[]u8, null), try p.handle(arena, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"roots\":[{\"uri\":\"file:///work\",\"name\":\"work\"}]}}"));
+    try testing.expect(!p.waitingForRoots());
+    try testing.expectEqual(@as(usize, 1), seen.count);
+    try testing.expectEqualStrings("file:///work", seen.first[0..seen.first_len]);
+    p.endRootsWait();
+    try testing.expectEqual(@as(?[]u8, null), try p.rootsWaitRequest(arena, call));
+    // A change asks again; a response to an id it never sent is ignored.
+    try testing.expectEqualStrings("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"roots/list\"}", (try p.handle(arena, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/roots/list_changed\"}")).?);
+    try testing.expectEqual(@as(?[]u8, null), try p.handle(arena, "{\"jsonrpc\":\"2.0\",\"id\":77,\"result\":{\"roots\":[]}}"));
+    try testing.expectEqual(@as(usize, 1), seen.count);
+}
+
+test "roots: a client that does not offer them is never asked and no call waits" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var dummy: u8 = 0;
+    var p = testProtocol(&dummy);
+    _ = (try p.handle(arena, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{}}}")).?;
+    try testing.expectEqual(@as(?[]u8, null), try p.handle(arena, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}"));
+    try testing.expectEqual(@as(?[]u8, null), try p.rootsWaitRequest(arena, "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\"}}"));
 }

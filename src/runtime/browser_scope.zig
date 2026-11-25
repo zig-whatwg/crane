@@ -11,8 +11,12 @@
 //! object of the Browser takes its Instance handle from `slab` and its state
 //! from `arena` (`Instance.init`, through the realm's `browser_scope`), and
 //! the Browser's end frees exactly its own objects - never another
-//! Browser's. An object finds its scope from its address alone
-//! (`ofInstance`): the slab is aligned so that its header names it.
+//! Browser's. Both are views of the Browser's HEAP (`heap`, its span engine
+//! `heapEngine`: lane hard1, allocator-hardening batch A), so an object finds
+//! its scope from its address alone (`ofInstance`: browser_heap.heapOf).
+//! A Browser reserves its heap at its start (`reserveHeap`); any other
+//! scope - a unit test's, the standalone one - at its first object
+//! (`heapEngine`), with the platform's address space and the OS's entropy.
 //!
 //! A supplement type `T` has `pub fn init(allocator: Allocator) T` and
 //! `pub fn deinit(self: *T) void`. It is keyed by its type: `of(T)` returns
@@ -31,6 +35,7 @@ const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
 const Instance = @import("instance.zig").Instance;
 const browser_heap = @import("browser_heap.zig");
+const heap_engine = @import("heap/root.zig");
 
 /// The scope of objects made with no Browser - unit tests, and a host that
 /// starts the runtime itself (runtime.initializeRuntime). A Browser never
@@ -51,10 +56,28 @@ pub const BrowserScope = struct {
     /// Thread-safe: supplements are made on whichever thread first asks.
     allocator: Allocator,
     /// The Browser's heap - one reservation of address space (`Heap`) -
-    /// once `reserveHeap` made it: a Browser's at its start. Null in a scope
-    /// that never reserved (the standalone scope, unit tests' scopes):
-    /// nothing allocates from a heap yet (phase H1).
+    /// once `reserveHeap` made it: a Browser's at its start, any other
+    /// scope's at its first object (`heapEngine`).
     heap: ?*browser_heap.BrowserHeap = null,
+    /// The heap's span engine (heap.Engine): every State block and Instance
+    /// slot of the Browser. Published with a release store once started, so
+    /// `heapEngine` reads it without the lock.
+    engine: std.atomic.Value(?*heap_engine.Engine) = .init(null),
+    /// Whether the scope's end reports the State blocks still alive in its
+    /// heap (`reportHeapLeaks`), where the heap records sites (Debug builds,
+    /// the bug-finding run): a Browser's scope (Browser.init sets it). Its
+    /// end frees every one with the reservation, so a block alive then is a
+    /// lifetime the heap took over from the old arena, which hid it.
+    report_heap_leaks: bool = false,
+    /// Where the scope's end writes how many blocks its heap still held
+    /// after the final sweep's nodes went (the leak report's count, which a
+    /// Browser's end logs as `heap leak:` lines): a test's question, null
+    /// otherwise.
+    heap_leak_count_out: ?*usize = null,
+    /// Serialises the heap's start (`reserveHeap`, `heapEngine`'s first
+    /// call). Not `mutex`: a supplement's `init` may make the scope's first
+    /// object, and `of` holds `mutex` across it.
+    heap_mutex: std.Io.Mutex = .init,
     /// The Instance handles of every platform object of this Browser. Never
     /// moves once it has issued one (its slabs record its address).
     slab: SlabAllocator,
@@ -200,8 +223,8 @@ pub const BrowserScope = struct {
         _ = live_scopes.fetchAdd(1, .monotonic);
         var scope: BrowserScope = .{
             .allocator = allocator,
-            .slab = SlabAllocator.init(allocator),
-            .arena = ArenaAllocator.init(allocator),
+            .slab = .{},
+            .arena = .{},
         };
         scope.arena.poison_freed = poisonsFreedStateByDefault(@import("builtin").mode);
         return scope;
@@ -243,19 +266,89 @@ pub const BrowserScope = struct {
     /// cannot match another Browser's object. Until H3 moves the stamps into
     /// the blocks, the seed goes to this scope's slab.
     pub fn reserveHeap(self: *BrowserScope, comptime P: type, browser: ?*anyopaque) browser_heap.Error!void {
+        std.Io.Threaded.mutexLockUncancelable(&self.heap_mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.heap_mutex);
         if (self.heap != null) @panic("BrowserScope.reserveHeap: this scope already has its heap");
-        const heap = try browser_heap.BrowserHeap.reserve(browser_heap.Platform.of(P), self.allocator, browser);
+        _ = try self.startHeap(browser_heap.Platform.of(P), browser);
+    }
+
+    /// Reserve the heap and start its engine, under `heap_mutex`.
+    fn startHeap(self: *BrowserScope, platform: *const browser_heap.Platform, browser: ?*anyopaque) browser_heap.Error!*heap_engine.Engine {
+        const heap = try browser_heap.BrowserHeap.reserve(platform, self.allocator, browser);
+        errdefer heap.release(self.allocator);
+        // The quarantine's evictions draw from the Browser's stream after
+        // the generations' seed, so a seeded run replays both.
+        var seed_bytes: [8]u8 = undefined;
+        if (!platform.browser_random(browser, &seed_bytes)) {
+            // A test build's heap with no seeded Browser draws from the
+            // test's seed (std.testing.random_seed, the launcher's --seed),
+            // so a seeded run replays its bucket placement as a seeded
+            // Browser's does. A failure sweep (checkAllAllocationFailures)
+            // makes a scope per attempt; from the OS's entropy each attempt
+            // put its node types in other random buckets, opened another
+            // count of spans - each a probe of the scope's allocator
+            // (grow_hook) - and the sweep failed as nondeterministic (lane
+            // hard1, K = 2: xm1_svg_interfaces_test FLAKY on server1,
+            // 2026-11-24). Every other build keeps the OS's entropy.
+            if (comptime @import("builtin").is_test)
+                std.mem.writeInt(u64, &seed_bytes, std.testing.random_seed, .little)
+            else
+                platform.random(&seed_bytes);
+        }
+        const config = heap_engine.Config.of(self.arena.poison_freed, self.arena.quarantine_freed);
+        const engine = heap_engine.Engine.init(heap, config, std.mem.readInt(u64, &seed_bytes, .little)) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.NotSupported => error.NotSupported,
+        };
         heap.owner = self;
         self.heap = heap;
-        std.Io.Threaded.mutexLockUncancelable(&self.slab.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.slab.mutex);
+        // A test build's heap asks the scope's allocator before it opens a
+        // span, as the state arena's chunk growth did: a scope over a
+        // FailingAllocator fails its State allocations there.
+        if (@import("builtin").is_test) engine.grow_hook = .{ .context = self, .call = probeAllocator };
         // Never back: generations stay unique within the slab even if an
         // object was made before the heap.
-        self.slab.next_generation = @max(self.slab.next_generation, heap.generation_seed);
+        self.slab.seedGenerations(heap.generation_seed);
+        self.engine.store(engine, .release);
+        return engine;
+    }
+
+    /// The failure injector's question (`heap.Engine.grow_hook`): may the
+    /// heap grow? Whether the scope's allocator gives a byte now.
+    fn probeAllocator(context: *anyopaque) bool {
+        const self: *BrowserScope = @ptrCast(@alignCast(context));
+        const byte = self.allocator.alloc(u8, 1) catch return false;
+        self.allocator.free(byte);
+        return true;
+    }
+
+    /// The span engine of this scope's heap, reserving the heap at the
+    /// scope's first object when the scope has none (H1's queued follow-up,
+    /// tmp/plans/lane-h1-handoff.md: a unit test's scope, the standalone
+    /// one): the platform's address space (`@import("platform")`), the OS's
+    /// entropy. One atomic load once started. A scope that cannot reserve
+    /// fails the allocation (OutOfMemory, NotSupported), which every
+    /// Instance.init caller propagates.
+    pub inline fn heapEngine(self: *BrowserScope) browser_heap.Error!*heap_engine.Engine {
+        if (self.engine.load(.acquire)) |engine| return engine;
+        return self.startHeapLazily();
+    }
+
+    fn startHeapLazily(self: *BrowserScope) browser_heap.Error!*heap_engine.Engine {
+        @branchHint(.cold);
+        std.Io.Threaded.mutexLockUncancelable(&self.heap_mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.heap_mutex);
+        if (self.engine.load(.acquire)) |engine| return engine;
+        return self.startHeap(browser_heap.Platform.of(@import("platform")), null);
+    }
+
+    /// The span engine if the heap was started; never starts one.
+    pub inline fn existingHeapEngine(self: *const BrowserScope) ?*heap_engine.Engine {
+        return self.engine.load(.acquire);
     }
 
     /// The scope whose heap `heap` is.
-    pub fn ofHeap(heap: *const browser_heap.BrowserHeap) *BrowserScope {
+    pub inline fn ofHeap(heap: *const browser_heap.BrowserHeap) *BrowserScope {
         return @ptrCast(@alignCast(heap.owner orelse @panic("BrowserScope.ofHeap: a heap with no scope")));
     }
 
@@ -289,10 +382,96 @@ pub const BrowserScope = struct {
         self.arena.deinit();
         self.slab.deinit();
         if (self.heap) |heap| {
+            if (self.engine.load(.acquire)) |engine| {
+                const swept = self.releaseSweptNodes(engine);
+                if (self.heap_leak_count_out) |out| out.* = engine.leakReport({}, struct {
+                    fn line(_: void, _: heap_engine.LeakLine) void {}
+                }.line);
+                if (self.report_heap_leaks and engine.config.record_sites) {
+                    if (swept != 0) std.log.scoped(.heap).warn("heap swept: {d} node(s) released at the Browser's end, after the final sweep (held past every realm's end: refcount_teardown.agentEnded's count)", .{swept});
+                    reportHeapLeaks(engine);
+                }
+            }
+            self.engine.store(null, .release);
             self.heap = null;
             heap.release(self.allocator);
         }
         _ = live_scopes.fetchSub(1, .monotonic);
+    }
+
+    /// The final sweep's nodes (dom.teardown_sweeps: the nodes held past
+    /// every realm's end, refcount decision D9) - their side tables freed,
+    /// their deinit chains run or never needed - have their State block and
+    /// slot released explicitly: the final sweep is their reviewed owner (the
+    /// integrator, 2026-11-23 6:18 AM ET), and the arena that used to free
+    /// them wholesale is gone. Every other live Instance is left for the
+    /// leak report. On the scope's thread, after its agent ended and its
+    /// tables, so nothing reaches them. The count of nodes released.
+    pub fn releaseSweptNodes(self: *BrowserScope, engine: *heap_engine.Engine) usize {
+        var released: usize = 0;
+        var slots = engine.instanceSlots();
+        while (slots.next()) |bytes| {
+            const instance: *Instance = @ptrCast(@alignCast(bytes));
+            if (SlabAllocator.generationOf(instance) == SlabAllocator.dead_generation) continue;
+            if (instance.vtable.counted == null) continue;
+            if (instance.vtable.state_size != 0) self.arena.destroyRaw(@ptrCast(instance.state), instance.vtable.state_size, instance.vtable.state_align);
+            self.slab.free(instance);
+            released += 1;
+        }
+        return released;
+    }
+
+    /// The heap's leak report at the scope's end: one `heap leak:` line per
+    /// type (or site) with blocks still alive - the line the bug-finding
+    /// gate counts (tests/wpt_runner/build_compare.zig) - and the Instance
+    /// slots still issued.
+    fn reportHeapLeaks(engine: *heap_engine.Engine) void {
+        const log = std.log.scoped(.heap);
+        const Report = struct {
+            fn line(_: void, l: heap_engine.LeakLine) void {
+                if (l.type_name) |name|
+                    log.warn("heap leak: {d} block(s) of {d} B alive at the Browser's end: {s}", .{ l.count, l.block_bytes, name })
+                else if (l.return_address != 0)
+                    log.warn("heap leak: {d} block(s) of {d} B alive at the Browser's end: made at 0x{x}", .{ l.count, l.block_bytes, l.return_address })
+                else
+                    log.warn("heap leak: {d} block(s) of {d} B alive at the Browser's end (no site recorded)", .{ l.count, l.block_bytes });
+            }
+        };
+        const blocks = engine.leakReport({}, Report.line);
+        const slots = engine.instanceCounts().live;
+        if (blocks != 0 or slots != 0) {
+            reportLiveInstances(engine);
+            log.warn("heap leak: {d} State block(s) and {d} Instance slot(s) alive at the Browser's end", .{ blocks, slots });
+        }
+    }
+
+    /// The Instances alive at the scope's end, by interface and lifecycle
+    /// flags (runtime.instance_lifecycle: wrapped, wrapper gone, cleanup
+    /// started / complete): what held each - a wrapper that never died, one
+    /// whose finalizer never freed it, a native owner. Reads each live
+    /// slot's vtable and stamp only (its realm may have ended).
+    fn reportLiveInstances(engine: *heap_engine.Engine) void {
+        const log = std.log.scoped(.heap);
+        const Group = struct { name: []const u8, bits: u8, count: usize };
+        var groups: [24]Group = undefined;
+        var n: usize = 0;
+        var slots = engine.instanceSlots();
+        while (slots.next()) |bytes| {
+            const instance: *Instance = @ptrCast(@alignCast(bytes));
+            if (SlabAllocator.generationOf(instance) == SlabAllocator.dead_generation) continue;
+            const name = instance.vtable.name;
+            const bits = SlabAllocator.lifecycleBitsOf(instance);
+            for (groups[0..n]) |*g| {
+                if (g.bits == bits and std.mem.eql(u8, g.name, name)) {
+                    g.count += 1;
+                    break;
+                }
+            } else if (n < groups.len) {
+                groups[n] = .{ .name = name, .bits = bits, .count = 1 };
+                n += 1;
+            }
+        }
+        for (groups[0..n]) |g| log.warn("heap leak: {d} live {s} (lifecycle flags 0b{b:0>8}: cleanup_started, cleanup_complete, attached, weak_pending, wrapped, wrapper_gone from bit 0)", .{ g.count, g.name, g.bits });
     }
 
     /// How many scopes are alive in the process: every Browser's, and the
@@ -303,11 +482,12 @@ pub const BrowserScope = struct {
         return live_scopes.load(.monotonic);
     }
 
-    /// The scope of the Browser that made `instance`: the scope whose slab
-    /// issued it. Read from the address alone, so it answers for a freed
-    /// instance too, until its scope ends.
-    pub fn ofInstance(instance: *const Instance) *BrowserScope {
-        return @fieldParentPtr("slab", SlabAllocator.ownerOf(instance));
+    /// The scope of the Browser that made `instance`: the scope whose heap
+    /// issued its slot (browser_heap.heapOf: the address masked to its
+    /// window, one load). Read from the address alone, so it answers for a
+    /// freed instance too, until its scope ends.
+    pub inline fn ofInstance(instance: *const Instance) *BrowserScope {
+        return ofHeap(browser_heap.heapOf(instance));
     }
 
     /// Whether a node released by its teardown has its NodeBase overwritten

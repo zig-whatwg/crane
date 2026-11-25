@@ -11,9 +11,15 @@
 //! reported. Translated from the TypeScript (Copyright 2025 Google LLC and
 //! Copyright 2017 Google Inc., Apache-2.0; THIRD_PARTY_NOTICES.md).
 //!
-//! Not yet: `sourcePath` and `filePath` (the server's file access, with
-//! verifyFilesSchema's checks, comes with the transports' security, batch
-//! 3) and the service worker target (extensions are a Chrome product).
+//! `sourcePath` and `filePath` (batch 3) go through the path policy
+//! (paths.zig): checked before the page is resolved (verifyFilesSchema
+//! {filePath: true, sourcePath: {allowUrl: true}}); the source read as
+//! resolveScriptSource and loadResource read it - from a file: URL, or from
+//! any other value as a path, an http(s) URL included (never fetched in
+//! v1.13.0: Policy.loadScriptSource); the result written as .json with
+//! "Script ran on page. Output saved to <file>." (performEvaluation).
+//!
+//! Not yet: the service worker target (extensions are a Chrome product).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -30,7 +36,7 @@ const elements = @import("../elements.zig");
 pub const list = [_]Tool{
     // evaluate_script resolves its page itself (defineTool with
     // pageIdSchema): its response does not show the page's dialog.
-    .{ .name = "evaluate_script", .page_tool = true, .set_page = false, .run = evaluateScript },
+    .{ .name = "evaluate_script", .page_tool = true, .set_page = false, .files = &.{ .{ .name = "filePath" }, .{ .name = "sourcePath", .allow_url = true } }, .run = evaluateScript },
 };
 
 /// PuppeteerURL.INTERNAL_URL's comment, which Puppeteer appends to what it
@@ -70,13 +76,8 @@ const stringify_value = "value => JSON.stringify(value)";
 
 fn evaluateScript(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Response) anyerror!void {
     const target = page.?;
-    const function = registry.stringArg(args, "function");
-    const source_path = registry.stringArg(args, "sourcePath");
-    // resolveScriptSource.
-    if (function != null and source_path != null) return ctx.fail("Specify exactly one of function or sourcePath.", .{});
-    if (function == null and source_path == null) return ctx.fail("Specify exactly one of function or sourcePath.", .{});
-    if (source_path != null) return ctx.fail("sourcePath is not supported by Crane's MCP server yet.", .{});
-    if (registry.stringArg(args, "filePath") != null) return ctx.fail("filePath is not supported by Crane's MCP server yet.", .{});
+    const source = try resolveScriptSource(ctx, registry.stringArg(args, "function"), registry.stringArg(args, "sourcePath"));
+    const file_path = registry.stringArg(args, "filePath");
     const format = registry.stringArg(args, "format") orelse "function";
     const uids: []const std.json.Value = if (args.get("args")) |a| (if (a == .array) a.array.items else &.{}) else &.{};
     if (std.mem.eql(u8, format, "script") and uids.len > 0) return ctx.fail("args cannot be used when format is \"script\".", .{});
@@ -108,11 +109,21 @@ fn evaluateScript(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, respons
         source: []const u8,
         script: bool,
         arguments: []const u8,
+        file_path: ?[]const u8,
         response: *Response,
 
         pub fn run(self: @This(), c: *Context) !void {
             const where: Where = .{ .page = self.page, .context_id = self.context_id };
             const result = if (self.script) try evaluateAsScript(c, where, self.source) else try evaluateAsFunction(c, where, self.source, self.arguments);
+            if (self.file_path) |path| {
+                // `result ?? 'undefined'`: callWith already says "undefined".
+                const saved = c.session.paths.saveFile(c.arena, result, path, ".json") catch |err| switch (err) {
+                    error.Denied => return c.fail("{s}", .{c.session.paths.message}),
+                    error.OutOfMemory => return error.OutOfMemory,
+                };
+                try self.response.line("Script ran on page. Output saved to {s}.", .{saved});
+                return;
+            }
             try self.response.line("Script ran on page and returned:", .{});
             try self.response.line("```json", .{});
             try self.response.line("{s}", .{result});
@@ -122,8 +133,23 @@ fn evaluateScript(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, respons
     const result = try wait.afterAction(ctx, target, .{
         .dialog_action = .{ .all = dialog_action },
         .wait_for_stable_dom = registry.boolArg(args, "waitForStableDom") orelse true,
-    }, Evaluate{ .page = target, .context_id = context_id, .source = function.?, .script = std.mem.eql(u8, format, "script"), .arguments = arguments.written(), .response = response });
+    }, Evaluate{ .page = target, .context_id = context_id, .source = source, .script = std.mem.eql(u8, format, "script"), .arguments = arguments.written(), .file_path = file_path, .response = response });
     response.wait_result = result.forResponse();
+}
+
+/// resolveScriptSource (chrome-devtools-mcp v1.13.0 src/tools/script.ts):
+/// exactly one of the inline source and the file; the file's text, or the
+/// tool fails with why it could not be read.
+fn resolveScriptSource(ctx: *Context, function: ?[]const u8, source_path: ?[]const u8) ![]const u8 {
+    if (function) |inline_source| {
+        if (source_path != null) return ctx.fail("Specify exactly one of function or sourcePath.", .{});
+        return inline_source;
+    }
+    const path = source_path orelse return ctx.fail("Specify exactly one of function or sourcePath.", .{});
+    return ctx.session.paths.loadScriptSource(ctx.arena, path) catch |err| switch (err) {
+        error.Denied => ctx.fail("Unable to read script source from {s}: {s}", .{ path, ctx.session.paths.message }),
+        error.OutOfMemory => error.OutOfMemory,
+    };
 }
 
 /// Where an evaluation runs: the page's session, in a context (null: the

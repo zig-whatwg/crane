@@ -857,6 +857,34 @@ pub inline fn writeFileAtomic(path: Str, bytes: Bytes) Error!void {
     return impl.writeFileAtomic(path, bytes);
 }
 
+/// Write `bytes` to `path` in place - created, or truncated when it exists -
+/// readable and writable by its owner only (0600), and refused with
+/// `error.AccessDenied` when `path` itself is a symbolic link (O_NOFOLLOW): a
+/// link planted at the target must not redirect the write. The MCP server's
+/// writes under its path policy (chrome-devtools-mcp McpContext #writeFile:
+/// O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, mode 0o600).
+pub inline fn writeFilePrivate(path: Str, bytes: Bytes) Error!void {
+    return impl.writeFilePrivate(path, bytes);
+}
+
+/// `path`'s canonical absolute form, every symbolic link and `.`/`..`
+/// resolved (realpath(3)), OWNED. `error.NotFound` when it or one of its
+/// components does not exist (ENOENT) - not when a component is a file
+/// (ENOTDIR: `error.Io`), so a caller walking up to the nearest existing
+/// ancestor stops there, as Node's ENOENT-only walk does. A relative path is
+/// taken from the process's working directory.
+pub inline fn realPath(allocator: std.mem.Allocator, path: Str) Error![]u8 {
+    return impl.realPath(allocator, path);
+}
+
+/// The directory for temporary files, OWNED: Node's os.tmpdir() on POSIX -
+/// TMPDIR, TMP or TEMP (the first set and not empty), else "/tmp", without a
+/// trailing slash. On iOS the system sets TMPDIR to the app's tmp directory
+/// (NSTemporaryDirectory's answer).
+pub inline fn tempDirectory(allocator: std.mem.Allocator) Error![]u8 {
+    return impl.tempDirectory(allocator);
+}
+
 pub inline fn deleteFile(path: Str) Error!void {
     return impl.deleteFile(path);
 }

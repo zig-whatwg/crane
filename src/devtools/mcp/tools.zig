@@ -33,7 +33,18 @@ pub const Tool = struct {
     /// The response shows the page's dialog (definePageTool's setPage);
     /// evaluate_script resolves its page without it.
     set_page: bool = true,
+    /// verifyFilesSchema: the parameters that name the server's files,
+    /// checked against the path policy before the page is resolved.
+    files: []const FileParam = &.{},
     run: Run,
+};
+
+/// One verifyFilesSchema entry. Crane's browser is always local (it is this
+/// process), so `{local: true}` and `true` alike are checked.
+pub const FileParam = struct {
+    name: []const u8,
+    /// allowUrl: an http(s) or ws(s) URL passes unchanged.
+    allow_url: bool = false,
 };
 
 /// One call's context.
@@ -176,6 +187,12 @@ pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: 
     };
     var ctx: Context = .{ .session = session, .arena = arena };
     var response: Response = .init(arena);
+    // validateToolFiles, inside ToolHandler's try and before the page is
+    // resolved: a refusal is the response's "Error: ..." line.
+    if (!try checkFiles(session, arena, tool, arguments)) {
+        response.error_message = session.paths.message;
+        return try response.finish(session);
+    }
     var page: ?*Page = null;
     if (tool.page_tool) {
         // routedPageId: an integer pageId names the page; any other number
@@ -210,6 +227,45 @@ pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: 
     };
     try session.initPages();
     return try response.finish(session);
+}
+
+/// validateToolFiles (chrome-devtools-mcp v1.13.0 src/ToolHandler.ts): each
+/// file parameter given as a string, or each string of an array, replaced
+/// by what validateAndResolvePathOrUrl makes of it - its canonical path, a
+/// file: URL of it, a remote URL kept where allowed - an empty one left out
+/// (undefined). False when the policy refused one (its `message` says why).
+fn checkFiles(session: *Session, arena: Allocator, tool: Tool, arguments: std.json.Value) !bool {
+    if (arguments != .object) return true;
+    for (tool.files) |param| {
+        const slot = arguments.object.getPtr(param.name) orelse continue;
+        switch (slot.*) {
+            .string => |value| {
+                const checked = session.paths.checkParam(arena, value, param.allow_url) catch |err| switch (err) {
+                    error.Denied => return false,
+                    error.OutOfMemory => return error.OutOfMemory,
+                };
+                slot.* = if (checked) |c| .{ .string = c } else .null;
+            },
+            .array => |items| {
+                var kept = std.json.Array.init(arena);
+                for (items.items) |item| {
+                    // The schema has made every item a string.
+                    if (item != .string) {
+                        session.paths.message = "Unexpected non-string value as a file path or URL";
+                        return false;
+                    }
+                    const checked = session.paths.checkParam(arena, item.string, param.allow_url) catch |err| switch (err) {
+                        error.Denied => return false,
+                        error.OutOfMemory => return error.OutOfMemory,
+                    };
+                    if (checked) |c| try kept.append(.{ .string = c });
+                }
+                slot.* = .{ .array = kept };
+            },
+            else => {},
+        }
+    }
+    return true;
 }
 
 /// zod's name for a JSON value's type ("received <type>").

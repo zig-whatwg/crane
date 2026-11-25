@@ -25,8 +25,8 @@ test "liveCount counts each scope from its init to its deinit" {
 test "a scope that made objects and tables is counted until its end" {
     const before = runtime.BrowserScope.liveCount();
     var scope = runtime.BrowserScope.init(std.testing.allocator);
-    // Its arena in use, as a Browser's is.
-    _ = try scope.arena.alloc(u8, 64);
+    // Its arena in use, as a Browser's is: a block in its heap.
+    _ = try scope.arena.createRaw(64, 8);
     try std.testing.expectEqual(before + 1, runtime.BrowserScope.liveCount());
     scope.deinit();
     try std.testing.expectEqual(before, runtime.BrowserScope.liveCount());

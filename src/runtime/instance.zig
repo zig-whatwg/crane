@@ -174,23 +174,20 @@ pub const Instance = struct {
         // State under a child's vtable would cut a node in half.
         std.debug.assert(vtable.state_size == 0 or vtable.state_size == @sizeOf(StateType));
 
-        // Step 1: Allocate the Instance handle from the Browser's slab (24
-        // bytes). A reissued slot starts with no lifecycle flags.
-        const instance = try scope.slab.alloc(vtable);
-        errdefer scope.slab.free(instance);
+        // Steps 1-2: the Instance handle (24 bytes, in a slot of the
+        // Browser's slab; a reissued slot starts with no lifecycle flags)
+        // and the state (variable size, based on StateType), from the
+        // Browser's heap in one call (SlabAllocator.allocWithState: one
+        // lock, not two - lane hard1). The state comes back ZEROED - every
+        // pointer field null, every number 0 - which the state needs: Zig
+        // does not apply struct defaults (= null) through an allocator, and
+        // an optional pointer holding garbage crashes when unwrapped
+        // (Blink's C++ constructors initialize every field instead). The
+        // heap zeroes the request once; this used to zero it again (lane
+        // perf2, batch 3).
+        const instance = try scope.slab.allocWithState(vtable, StateType);
 
-        // Step 2: Allocate state from the Browser's arena (variable size
-        // based on StateType). It comes back ZEROED - every pointer field
-        // null, every number 0 - which the state needs: Zig does not apply
-        // struct defaults (= null) through an allocator, and an optional
-        // pointer holding garbage crashes when unwrapped (Blink's C++
-        // constructors initialize every field instead). The arena zeroes the
-        // request once (ArenaAllocator.createRaw); this used to zero it again
-        // (lane perf2, batch 3).
-        const state = try scope.arena.create(StateType);
-
-        // Step 3: Link state and context to instance
-        instance.state = state;
+        // Step 3: Link the context to the instance (the state is linked).
         instance.ctx = ctx;
 
         return instance;

@@ -22,6 +22,7 @@ pub const ir = @import("ir.zig");
 pub const type_registry = @import("type_registry.zig");
 pub const pipeline = @import("pipeline.zig");
 pub const argument_unions = @import("argument_unions.zig");
+pub const callback_returns = @import("callback_returns.zig");
 pub const setlike = @import("setlike.zig");
 pub const maplike = @import("maplike.zig");
 pub const duplicates = @import("duplicates.zig");

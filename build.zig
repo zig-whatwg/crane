@@ -364,6 +364,7 @@ const codegen_slow = [_][]const u8{
 const html_tsan_skip = [_]DeclaredTest{
     .{ .name = "detplat1_virtual_time_test.test.virtual clock: a timer-heavy page runs far faster than real time (measured)", .reason = "the subject is real time: it measures how much faster than real time a virtual clock runs a timer-heavy page, and ThreadSanitizer's slowdown is that measurement" },
     .{ .name = "fk2_idle_period_spin_test.test.every idle period that starts runs an idle callback (no empty periods spinning)", .reason = "the subject is real time: an idle period's callbacks run only before its real-time deadline, and under ThreadSanitizer's slowdown the task that runs them can start after it - an empty period the spec allows; its scenario needs a fetch in flight, which stops a virtual clock (event_loop.fastForwardToNextWakeUp)" },
+    .{ .name = "rep2_worker_async_start_test.test.a worker starts while its owner's script still runs: its script is fetched in parallel", .reason = "the subject is real time: a worker must fetch and start its script inside its owner's 600 ms busy loop, at least 100 ms before it returns, and ThreadSanitizer's slowdown of a worker isolate's start is that measurement" },
 };
 
 const html_slow = [_][]const u8{
@@ -7480,6 +7481,11 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     fetch_mod.addImport("storage", storage_mod);
     dom_mod.addImport("platform", platform_mod);
     storage_mod.addImport("platform", platform_mod);
+    // A scope with no Browser (a unit test's, the standalone one) reserves
+    // its heap at its first object with the platform's address space
+    // (runtime.BrowserScope.heapEngine; allocator-hardening batch A). No new
+    // cycle: runtime already reaches platform through storage.
+    runtime_mod.addImport("platform", platform_mod);
     // The cookie jar's persistence in a profile directory: the platform's
     // stores, and storage's commit timer (cookiestore/storage_integration.zig).
     cookiestore_mod.addImport("platform", platform_mod);
