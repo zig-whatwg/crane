@@ -41,9 +41,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     }
 }
 
-pub fn call_constructor(ctx: runtime.Context, format: enums.CompressionFormat) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &Interface.vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, format: enums.CompressionFormat) !void {
+    const ctx = instance.ctx;
     const realm = try js.Realm.ofContext(ctx);
     const codec = try Codec.create(ctx.allocator, switch (format) {
         ._deflate_ => .deflate,
@@ -58,7 +57,6 @@ pub fn call_constructor(ctx: runtime.Context, format: enums.CompressionFormat) !
     // This object keeps its TransformStream (Blink: the codec stream traces
     // its transform_), which its readable and writable keep back.
     engine.traceChild(instance, transform_stream, js.slot.transform_stream);
-    return instance;
 }
 
 pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {

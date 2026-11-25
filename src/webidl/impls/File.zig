@@ -79,16 +79,8 @@ fn setRelativePath(instance: *runtime.Instance, path: []const u8) anyerror!void 
 /// Constructor implementation
 ///
 /// Spec: https://w3c.github.io/FileAPI/#file-constructor
-pub fn call_constructor(ctx: runtime.Context, fileBits: runtime.JSValue, fileName: runtime.USVString, options: webidl.Opt(dictionaries.FilePropertyBag)) !*runtime.Instance {
-    const instance = try File.init(ctx.allocator, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step ("process blob parts"' TypeErrors) frees it whole, as
-    // Blob's constructor does. Its own deinit is its destructor, not a free,
-    // and left its slot and State until the Browser ended
-    // (tests/v8/constructor_error_receiver_test.zig;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    errdefer runtime.gc.releaseOwned(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, fileBits: runtime.JSValue, fileName: runtime.USVString, options: webidl.Opt(dictionaries.FilePropertyBag)) !void {
+    const ctx = instance.ctx;
     // Step 1: bytes, the result of processing blob parts given fileBits and
     // options.
     const endings: file.algorithms.Endings = blk: {
@@ -114,8 +106,6 @@ pub fn call_constructor(ctx: runtime.Context, fileBits: runtime.JSValue, fileNam
     // Steps 2 and 3.3: the name, and lastModified - now, when not given.
     const last_modified = if (options.wasPassed()) options.value.lastModified else null;
     try setFileState(instance, ctx.allocator, fileName, last_modified);
-
-    return instance;
 }
 
 fn setFileState(instance: *runtime.Instance, allocator: std.mem.Allocator, name: []const u8, last_modified: ?i64) !void {

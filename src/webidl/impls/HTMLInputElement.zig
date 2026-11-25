@@ -472,6 +472,7 @@ fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void
     defer sanitized.deinit(internal.allocator);
     const empty = sanitized.isEmpty();
     try internal.setValue(sanitized.asSlice());
+    dom.style.dynamicStateChanged(instance);
     dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
     if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
     internal.editor_text = raw;
@@ -587,10 +588,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &HTMLInputElement.vtable, ctx);
-    errdefer deinit(instance);
-    return instance;
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
 }
 
 fn isInput(instance: *runtime.Instance) bool {
@@ -840,8 +839,10 @@ fn abortImageDocument(document: *runtime.Instance) void {
 /// unchecks the others in its group.
 fn setCheckedness(instance: *runtime.Instance, checked: bool) void {
     const internal = getInternal(instance) orelse return;
+    const changed = internal.checkedness != checked;
     internal.checkedness = checked;
     if (checked and typeOf(instance) == .radio) uncheckOthersInGroup(instance);
+    if (changed) dom.style.dynamicStateChanged(instance);
 }
 
 /// The radio button group's name: a name attribute that is not empty.
@@ -940,6 +941,7 @@ fn legacyCanceledActivation(instance: *runtime.Instance) void {
         .checkbox => {
             internal.checkedness = internal.saved_checkedness;
             internal.indeterminate = internal.saved_indeterminate;
+            dom.style.dynamicStateChanged(instance);
         },
         .radio => {
             // The remembered button, if it is still in this element's group,
@@ -958,6 +960,7 @@ fn legacyCanceledActivation(instance: *runtime.Instance) void {
                 }
             }
             internal.checkedness = false;
+            dom.style.dynamicStateChanged(instance);
         },
         else => {},
     }
@@ -1059,7 +1062,10 @@ fn userValidity(instance: *runtime.Instance) bool {
 
 fn setUserValidity(instance: *runtime.Instance, value: bool) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.user_validity = value;
+    if (internal.user_validity != value) {
+        internal.user_validity = value;
+        dom.style.dynamicStateChanged(instance);
+    }
 }
 
 /// dom.form_controls: "The reset algorithm for input elements is to set the
@@ -1081,6 +1087,7 @@ fn resetAlgorithm(instance: *runtime.Instance) void {
     emptySelectedFiles(instance);
     internal.dirty_checkedness = false;
     setCheckedness(instance, hasAttribute(instance, "checked"));
+    dom.style.dynamicStateChanged(instance);
     dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
     if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
 }
@@ -1172,6 +1179,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
             // selected text and resetting the selection direction to "none"."
             if (changed) {
                 internal.selection = .{ .start = end, .end = end, .direction = .none };
+                dom.style.dynamicStateChanged(instance);
                 dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
                 if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
             }
@@ -1183,6 +1191,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
         .filename => {
             if (value.asSlice().len != 0) return error.InvalidStateError;
             emptySelectedFiles(instance);
+            dom.style.dynamicStateChanged(instance);
         },
     }
 }
@@ -2009,7 +2018,10 @@ pub fn get_indeterminate(instance: *runtime.Instance) anyerror!bool {
 /// Setter for indeterminate
 pub fn set_indeterminate(instance: *runtime.Instance, value: bool) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    internal.indeterminate = value;
+    if (internal.indeterminate != value) {
+        internal.indeterminate = value;
+        dom.style.dynamicStateChanged(instance);
+    }
 }
 
 /// Getter for colorSpace
@@ -2313,6 +2325,7 @@ pub fn set_files(instance: *runtime.Instance, value: ?*runtime.Instance) anyerro
         @import("engine").traceChild(instance, files, .{ .name = "files" });
         internal.files_traced = true;
     }
+    dom.style.dynamicStateChanged(instance);
 }
 
 /// Setter for capture
@@ -2376,6 +2389,7 @@ fn showPickerIfApplicable(instance: *runtime.Instance, input_type: InputType) vo
 pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
     // HTML setCustomValidity steps 1–2: normalize newlines, then replace.
     try (try validationState(instance)).setCustomError(instance.ctx.allocator, @"error".asSlice());
+    dom.style.dynamicStateChanged(instance);
 }
 
 /// Operation: checkValidity
@@ -2523,6 +2537,7 @@ fn setRangeText(instance: *runtime.Instance, replacement: []const u8, range: ?[2
     defer internal.allocator.free(result.value);
     // 2. Set the dirty value flag; 9-10 the relevant value changed.
     try internal.setValue(result.value);
+    dom.style.dynamicStateChanged(instance);
     dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
     if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
     // 14. Set the selection range with selection start and selection end.

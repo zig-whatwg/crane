@@ -1,0 +1,48 @@
+# WebIDL constructors held to tools/lint_constructors.zig: a construction that
+# fails frees its object WHOLE (lane ctor1). `factory Name`: an impl whose
+# call_constructor still makes its own object (the factory form) instead of
+# taking the one the generated constructor made (`instance: *runtime.Instance`,
+# the this form). `destructor Name callee(arg)`: a bare destructor in a
+# constructor - a destructor, not a free. A ratchet: `zig build lint-constructors`,
+# part of `zig build test`, fails on a new one and on an entry that no longer
+# holds; after converting some, `zig build lint-constructors -- --update`. Never
+# raise it by hand.
+factory CSSKeywordValue
+factory CSSMathClamp
+factory CSSMathInvert
+factory CSSMathMax
+factory CSSMathMin
+factory CSSMathNegate
+factory CSSMathProduct
+factory CSSMathSum
+factory CSSMatrixComponent
+factory CSSPerspective
+factory CSSRotate
+factory CSSScale
+factory CSSSkew
+factory CSSSkewX
+factory CSSSkewY
+factory CSSStyleSheet
+factory CSSTransformValue
+factory CSSTranslate
+factory CSSUnitValue
+factory CSSUnparsedValue
+factory CSSVariableReferenceValue
+factory ClipboardEvent
+factory Comment
+factory Document
+factory DocumentFragment
+factory DragEvent
+factory FormData
+factory GamepadEvent
+factory IntersectionObserverEntry
+factory MessageEvent
+factory MouseEvent
+factory ProcessingInstruction
+factory ReadableStream
+factory ReadableStreamBYOBReader
+factory ReadableStreamDefaultReader
+factory Text
+factory TransformStream
+factory WritableStream
+factory WritableStreamDefaultWriter

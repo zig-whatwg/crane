@@ -83,15 +83,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://urlpattern.spec.whatwg.org/#dom-urlpattern-urlpattern
-pub fn call_constructor(ctx: runtime.Context, args: interfaces.URLPattern.ConstructorArgs) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &URLPatternInterface.vtable, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step frees it whole. Its own deinit is its destructor, not a
-    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    errdefer runtime.gc.releaseOwned(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, args: interfaces.URLPattern.ConstructorArgs) !void {
+    const ctx = instance.ctx;
     const state = instance.getState(State);
 
     // Create steps 1-3 preserve the input kind: a string is parsed by the
@@ -141,8 +134,6 @@ pub fn call_constructor(ctx: runtime.Context, args: interfaces.URLPattern.Constr
     };
 
     state.own._internal = internal;
-
-    return instance;
 }
 
 /// Convert WebIDL URLPatternInit to internal URLPatternInit

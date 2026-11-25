@@ -63,11 +63,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Steps:
 /// 1. Set this.[[highWaterMark]] to init["highWaterMark"]
-pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.QueuingStrategyInit) !*runtime.Instance {
-    // Create instance
-    const instance = try init(ctx.allocator, State, &CountQueuingStrategy.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, init_data: dictionaries.QueuingStrategyInit) !void {
+    const ctx = instance.ctx;
     const state = instance.getState(State);
 
     // Create InternalState
@@ -80,8 +77,6 @@ pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.QueuingStr
     };
 
     state.own._internal = internal;
-
-    return instance;
 }
 
 /// Getter for highWaterMark

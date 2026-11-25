@@ -42,16 +42,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(dictionaries.DynamicsCompressorOptions)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &DynamicsCompressorNode.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, context: *runtime.Instance, options: webidl.Opt(dictionaries.DynamicsCompressorOptions)) !void {
+    _ = instance;
     _ = context;
     _ = options;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for threshold

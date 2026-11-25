@@ -123,7 +123,13 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     const global: *runtime.Instance = @ptrCast(@alignCast(realm.global_object orelse return error.InvalidStateError));
     const document = try interfaces.Window.get_document(global);
     const instance = try DocumentFragment.init(ctx.allocator, ctx);
-    errdefer DocumentFragment.deinit(instance);
+    // Until it is returned, the construction holds the node's creator's
+    // reference: a failed step frees it - uninserted, unwrapped - through
+    // Node's own teardown (dom.node_creation.releaseIfUnwrapped). Its deinit
+    // alone was a destructor, not a free: the slot and State stayed until
+    // the Browser ended (lane ctor1).
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    errdefer @import("dom").node_creation.releaseIfUnwrapped(instance, generation);
     // Constructor steps: node document is the current global's document.
     try dom.node_document.set(instance, document);
     return instance;

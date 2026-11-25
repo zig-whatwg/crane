@@ -42,16 +42,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, status: enums.USBTransferStatus, data: webidl.Opt(?runtime.JSValue)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &USBInTransferResult.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, status: enums.USBTransferStatus, data: webidl.Opt(?runtime.JSValue)) !void {
+    _ = instance;
     _ = status;
     _ = data;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for data

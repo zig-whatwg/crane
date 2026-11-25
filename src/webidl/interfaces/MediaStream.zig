@@ -229,8 +229,20 @@ pub const MediaStream = struct {
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
     pub fn call_constructor(ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
-        // Pass args union directly to impl
-        return try MediaStreamImpl.call_constructor(ctx, args);
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(MediaStreamImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try MediaStreamImpl.call_constructor(instance, args);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try MediaStreamImpl.call_constructor(ctx, args);
+        }
     }
 
     /// WebIDL interface types: the interface each interface-typed constructor

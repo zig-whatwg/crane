@@ -346,8 +346,9 @@ fn abortOwner(context: *anyopaque) void {
     const self: *InternalState = @ptrCast(@alignCast(context));
     self.cancel();
 }
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    return init(ctx.allocator, State, &interfaces.HTMLTrackElement.vtable, ctx);
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    // The generated constructor made it (WebIDL 3.7.1 step 1.8): no steps.
+    _ = instance;
 }
 pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return ensureTrack(instance);

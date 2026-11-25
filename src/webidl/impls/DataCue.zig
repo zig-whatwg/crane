@@ -24,7 +24,9 @@ pub const InternalState = struct {};
 
 /// DataCue (WICG DataCue): a TextTrackCue, made through the generated
 /// construction chain so TextTrackCue's and EventTarget's state are there.
-pub fn call_constructor(ctx: runtime.Context, startTime: f64, endTime: f64, value: runtime.JSValue, @"type": webidl.Opt(runtime.DOMString)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, startTime: f64, endTime: f64, value: runtime.JSValue, @"type": webidl.Opt(runtime.DOMString)) !void {
+    // The generated constructor made `instance` (WebIDL 3.7.1 step 1.8)
+    // and frees it whole when a step fails (lane ctor1).
     // As VTTCue() steps 2-3: an end time of negative Infinity or NaN is a
     // TypeError.
     if (std.math.isNan(endTime) or endTime == -std.math.inf(f64)) return error.TypeError;
@@ -32,10 +34,8 @@ pub fn call_constructor(ctx: runtime.Context, startTime: f64, endTime: f64, valu
     _ = @"type";
     // TODO(datacue): the value and type members (WICG DataCue) - not in the
     // 0.1 worklist (unratified).
-    const instance = try DataCue.init(ctx.allocator, ctx);
     interfaces.TextTrackCue.set_startTime(instance, startTime) catch unreachable;
     interfaces.TextTrackCue.set_endTime(instance, endTime) catch unreachable;
-    return instance;
 }
 
 /// Getter for value

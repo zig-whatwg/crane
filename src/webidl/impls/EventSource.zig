@@ -423,7 +423,10 @@ pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *con
     const instance = try interfaces.EventTarget.initWithState(allocator, StateType, vtable, ctx);
     const state = instance.getState(State);
     state.own._internal = null;
-    errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+    errdefer {
+        interfaces.EventTarget.deinit(instance);
+        runtime.gc.releaseStorage(instance);
+    }
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator, .instance = instance, .parser = eventsource.Parser.init(allocator) };
     state.own._internal = internal;
@@ -443,7 +446,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     }
     interfaces.EventTarget.deinit(instance);
 }
-pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, eventSourceInitDict: webidl.Opt(dictionaries.EventSourceInit)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, url: runtime.USVString, eventSourceInitDict: webidl.Opt(dictionaries.EventSourceInit)) !void {
+    const ctx = instance.ctx;
     // 9.2.2 steps 2–5: encoding-parse against this realm's settings.
     const parsed = (try parseUrl(ctx, url)) orelse return error.SyntaxError;
     var url_taken = false;
@@ -456,8 +460,6 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, eventSourc
         try engine.throwValue(ctx, exception.borrow());
         return error.ExceptionPending;
     }
-    const instance = try init(ctx.allocator, State, &EventSource.vtable, ctx);
-    errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
     const internal = getInternal(instance);
     if (globalOf(ctx)) |global| if (std.mem.eql(u8, global.vtable.name, "Window")) {
         if (interfaces.Window.get_document(global) catch null) |document| internal.document = same_object.Link.to(document);
@@ -478,7 +480,6 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, eventSourc
     // Before wrapping: a Pin here would create a competing wrapper.
     internal.syncPendingActivity();
     try internal.connect();
-    return instance;
 }
 fn parseUrl(ctx: runtime.Context, input: []const u8) !?[]const u8 {
     const sniffing = @import("html_core").parser.encoding_sniffing;

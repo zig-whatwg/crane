@@ -143,8 +143,8 @@ fn matrixFromInit(ctx: runtime.Context, init_data: webidl.Opt(typedefs.DOMString
 }
 
 /// Geometry 6.3, the DOMMatrixReadOnly(init) constructor.
-pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(typedefs.DOMStringOrSequenceOfUnrestrictedDouble)) !*runtime.Instance {
-    return create(ctx, try matrixFromInit(ctx, init_data));
+pub fn call_constructor(instance: *runtime.Instance, init_data: webidl.Opt(typedefs.DOMStringOrSequenceOfUnrestrictedDouble)) !void {
+    setMatrix(instance, try matrixFromInit(instance.ctx, init_data));
 }
 
 /// Getter for a: an alias of m11 - the m11 element (Geometry 6.4).

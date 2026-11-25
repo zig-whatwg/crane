@@ -103,12 +103,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Creates a new DOMParser instance
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-domparser-constructor
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &DOMParser.vtable, ctx);
-    errdefer deinit(instance);
-
-    return instance;
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
 }
 
 /// Operation: parseFromString

@@ -42,18 +42,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, l: typedefs.CSSColorPercent, a: typedefs.CSSColorNumber, b: typedefs.CSSColorNumber, alpha: webidl.Opt(typedefs.CSSColorPercent)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &CSSLab.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, l: typedefs.CSSColorPercent, a: typedefs.CSSColorNumber, b: typedefs.CSSColorNumber, alpha: webidl.Opt(typedefs.CSSColorPercent)) !void {
+    _ = instance;
     _ = l;
     _ = a;
     _ = b;
     _ = alpha;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for l

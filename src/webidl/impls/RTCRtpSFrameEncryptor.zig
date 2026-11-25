@@ -35,15 +35,11 @@ pub const InternalState = struct {};
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 /// Note: Use ctx.allocator for all allocations to ensure consistency with deinit
-pub fn call_constructor(ctx: runtime.Context, options: dictionaries.RTCRtpSFrameEncryptorOptions) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, options: dictionaries.RTCRtpSFrameEncryptorOptions) !void {
     // Create the instance through the generated construction chain.
-    const instance = try RTCRtpSFrameEncryptor.init(ctx.allocator, ctx);
-    errdefer RTCRtpSFrameEncryptor.deinit(instance);
-
+    _ = instance;
     _ = options;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Operation: setEncryptionKey

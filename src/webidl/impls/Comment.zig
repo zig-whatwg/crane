@@ -74,7 +74,13 @@ pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString
     const global: *runtime.Instance = @ptrCast(@alignCast(realm.global_object orelse return error.InvalidStateError));
     const document = try interfaces.Window.get_document(global);
     const instance = try Comment.initWith(ctx.allocator, ctx, .{ .data = data_slice });
-    errdefer Comment.deinit(instance);
+    // Until it is returned, the construction holds the node's creator's
+    // reference: a failed step frees it - uninserted, unwrapped - through
+    // Node's own teardown (dom.node_creation.releaseIfUnwrapped). Its deinit
+    // alone was a destructor, not a free: the slot and State stayed until
+    // the Browser ended (lane ctor1).
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    errdefer @import("dom").node_creation.releaseIfUnwrapped(instance, generation);
     // Constructor steps: node document is the current global's document.
     try @import("dom").node_document.set(instance, document);
     return instance;

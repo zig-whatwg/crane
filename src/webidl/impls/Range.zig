@@ -269,17 +269,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// DOM §5 - Range constructor
 /// The new Range() constructor steps are to set this's start and end to
 /// (current global object's associated Document, 0).
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    // The generated constructor made `instance` (WebIDL 3.7.1 step 1.8) and
+    // frees it whole when a step fails (lane ctor1).
     // "the current global object's associated Document"
-    const document = currentDocument(ctx) orelse return error.InvalidStateError;
-
-    const instance = try init(ctx.allocator, State, &Range.vtable, ctx);
-    errdefer deinit(instance);
+    const document = currentDocument(instance.ctx) orelse return error.InvalidStateError;
 
     // Set this's start and end to (document, 0), and make it live.
     try collapseLive(instance, document, 0);
-
-    return instance;
 }
 
 /// Set `range`'s start and end to (node, offset) and make it a live range of

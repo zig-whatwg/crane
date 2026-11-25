@@ -124,10 +124,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &HTMLButtonElement.vtable, ctx);
-    errdefer deinit(instance);
-    return instance;
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
 }
 
 // ============================================================================
@@ -486,4 +484,5 @@ pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
 pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
     // HTML setCustomValidity steps 1–2: normalize newlines, then replace.
     try (try validationState(instance)).setCustomError(instance.ctx.allocator, @"error".asSlice());
+    @import("dom").style.dynamicStateChanged(instance);
 }

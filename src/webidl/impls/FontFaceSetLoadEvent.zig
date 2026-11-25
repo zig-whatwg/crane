@@ -42,9 +42,10 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// DOM §2.5 inner event creation steps, followed by the dictionary's
 /// fontfaces member. WebIDL's FrozenArray conversion copies the sequence;
 /// retain neither its caller-owned storage nor a parallel native root.
-pub fn call_constructor(ctx: runtime.Context, @"type": typedefs.CSSOMString, eventInitDict: webidl.Opt(dictionaries.FontFaceSetLoadEventInit)) !*runtime.Instance {
-    const instance = try FontFaceSetLoadEvent.init(ctx.allocator, ctx);
-    errdefer runtime.Instance.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": typedefs.CSSOMString, eventInitDict: webidl.Opt(dictionaries.FontFaceSetLoadEventInit)) !void {
+    // The generated constructor made `instance` (WebIDL 3.7.1 step 1.8)
+    // and frees it whole when a step fails (lane ctor1).
+    const ctx = instance.ctx;
     const dict: dictionaries.FontFaceSetLoadEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{} };
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
     const members = dict.fontfaces orelse &.{};
@@ -54,7 +55,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": typedefs.CSSOMString, eve
     const array = try engine.createFrozenArray(ctx, values);
     defer array.release();
     engine.traceValue(instance, array.borrow(), faces_slot);
-    return instance;
 }
 
 /// SameObject: each binding read owns a hold of the same traced array.

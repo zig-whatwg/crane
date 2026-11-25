@@ -92,13 +92,11 @@ fn observerOf(instance: *runtime.Instance) !*performance_timeline.Observer {
 /// Constructor: a new PerformanceObserver with its observer callback set to
 /// `callback` (OWNED from here: the binding hands the converted function
 /// over).
-pub fn call_constructor(ctx: runtime.Context, callback: callbacks.PerformanceObserverCallback) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &PerformanceObserver.vtable, ctx);
+pub fn call_constructor(instance: *runtime.Instance, callback: callbacks.PerformanceObserverCallback) !void {
     const observer = observerOf(instance) catch unreachable;
     // A traced hold (refcount step 8): the observer's holder anchor keeps it
     // (`InternalState.traceHeldNodes`), as Blink traces it; nothing roots it.
     observer.callback = callback.keepTraced();
-    return instance;
 }
 
 /// The member a global keeps its frozen array of supported entry types in

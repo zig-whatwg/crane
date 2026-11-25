@@ -137,6 +137,10 @@ pub const InternalState = struct {
         if (!self.activity.playing) self.unregister();
         self.syncDelay();
         self.activity.sync();
+        self.styleStateChanged();
+    }
+    fn styleStateChanged(self: *InternalState) void {
+        if (self.activity.instance) |instance| dom.style.dynamicStateChanged(instance);
     }
     fn cancel(self: *InternalState) void {
         self.stopClock();
@@ -149,9 +153,11 @@ pub const InternalState = struct {
         for (self.pending_play.items) |*promise| engine.releasePromiseCapability(promise);
         self.pending_play.clearRetainingCapacity();
         self.activity.sync();
+        self.styleStateChanged();
     }
     fn selectLater(self: *InternalState) !void {
         const generation = self.load.beginSelection();
+        self.styleStateChanged();
         self.syncDelay();
         try self.register();
         self.delayUntilSelection();
@@ -466,6 +472,7 @@ pub const InternalState = struct {
 
     /// Queue what a ready-state change asks (4.8.11.7), in its order.
     fn readyChanged(self: *InternalState, change: LoadState.ReadyChange) !void {
+        self.styleStateChanged();
         if (change.loadedmetadata) try self.event("loadedmetadata");
         if (change.loadeddata) {
             self.syncDelay();
@@ -500,6 +507,7 @@ pub const InternalState = struct {
         // yet (src/html/permissions_policy.zig is not delivered), so every
         // document is allowed, as a top-level or same-origin one is.
         const steps = self.load.autoplay() orelse return;
+        self.styleStateChanged();
         // Step 2: the show poster flag was set; time marches on.
         if (steps.time_marches_on) self.timeMarchesOn(false);
         if (steps.play_event) try self.event("play");
@@ -845,6 +853,7 @@ pub const InternalState = struct {
         // Steps 2-11: nothing with no resource; the position moves now.
         self.advanceClock();
         _ = self.load.beginSeek(target) orelse return;
+        self.styleStateChanged();
         self.holdOfficial();
         try self.seekInParallel();
     }
@@ -865,6 +874,7 @@ fn seekStable(context: *anyopaque, generation: u64) void {
     if (generation != self.load.generation) return;
     // Step 14: only the newest seek finishes.
     if (!self.load.finishSeek(self.load.seek_id)) return;
+    self.styleStateChanged();
     // The frame at the new position may have another size.
     self.followSize(null);
     // Step 16: time marches on.
@@ -1270,12 +1280,14 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
         .progress_tick => {
             if (self.activity.fetching and self.progress.takeProgress()) {
                 self.load.stalled = false;
+                self.styleStateChanged();
                 if (task.event) |event| event.dispatch();
             }
         },
         .stalled => {
             if (self.activity.fetching and self.progress.takeStalled()) {
                 self.load.stalled = true;
+                self.styleStateChanged();
                 if (task.event) |event| event.dispatch();
             }
         },
@@ -1354,6 +1366,7 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
             fire(instance, "timeupdate");
             if (self.load.endedPlayback(self.looping()) and self.load.playback_rate >= 0 and !self.load.paused) {
                 self.load.paused = true;
+                self.styleStateChanged();
                 self.syncClock();
                 fire(instance, "pause");
                 rejectPending(self, "AbortError") catch {};
@@ -1379,6 +1392,7 @@ pub fn call_load(instance: *runtime.Instance) anyerror!void {
     self.endFetch();
     self.unregister();
     const reset = self.load.beginLoad();
+    self.styleStateChanged();
     // Step 7.5's readyState back to HAVE_NOTHING unsets every cue's active
     // flag (4.8.11.11.1), as Blink's CueTimeline::OnReadyStateReset does.
     if (reset.forget_tracks) self.deactivateCues();
@@ -1425,6 +1439,7 @@ pub fn call_play(instance: *runtime.Instance) anyerror!runtime.JSValue {
     self.advanceClock();
     const loop = self.looping();
     const steps = self.load.play(loop);
+    self.styleStateChanged();
     if (steps.select) self.selectLater() catch self.cancel();
     // Step 2's seek sets the position now; the rest of it runs in parallel
     // (seek step 5), so its events and ready-state change follow step 3's.
@@ -1448,6 +1463,7 @@ pub fn call_pause(instance: *runtime.Instance) anyerror!void {
     // The current playback position up to now, before it stops moving.
     self.advanceClock();
     if (!self.load.pause()) return;
+    self.styleStateChanged();
     self.syncClock();
     // Internal pause steps 2.2-2.3: take the pending play promises; one task
     // fires timeupdate and pause, then rejects them.
@@ -1538,7 +1554,10 @@ pub fn get_muted(instance: *runtime.Instance) anyerror!bool {
 pub fn set_muted(instance: *runtime.Instance, value: bool) anyerror!void {
     const previous = try get_muted(instance);
     data(instance).muted = value;
-    if (previous != value) try data(instance).event("volumechange");
+    if (previous != value) {
+        dom.style.dynamicStateChanged(instance);
+        try data(instance).event("volumechange");
+    }
 }
 pub fn get_defaultPlaybackRate(instance: *runtime.Instance) anyerror!f64 {
     return data(instance).load.default_playback_rate;

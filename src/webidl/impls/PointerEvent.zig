@@ -45,11 +45,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://w3c.github.io/pointerevents/#dom-pointerevent-pointerevent
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PointerEventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &PointerEvent.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PointerEventInit)) !void {
+    const ctx = instance.ctx;
     // Its state: the UIEvent, MouseEvent and own attributes are set below
     const state = instance.getState(State);
 
@@ -126,8 +123,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.own.pointerType = if (event_init.pointerType) |pt| try pt.clone(ctx.allocator) else runtime.DOMString.initEmpty();
     state.own.isPrimary = event_init.isPrimary orelse false;
     state.own.persistentDeviceId = event_init.persistentDeviceId orelse 0;
-
-    return instance;
 }
 
 /// Getter for pointerId

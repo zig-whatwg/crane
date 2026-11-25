@@ -137,9 +137,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor: DOM "inner event creation steps" for the Event part, then
 /// each StorageEventInit member (key, oldValue and newValue default to null,
 /// url to "", storageArea to null).
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.StorageEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &StorageEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.StorageEventInit)) !void {
     const dict: dictionaries.StorageEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{} };
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
     const internal = getInternal(instance) orelse return error.InvalidStateError;
@@ -151,7 +149,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         dict.url orelse "",
         dict.storageArea,
     );
-    return instance;
 }
 
 /// A copy: the binding frees what a string getter returns.

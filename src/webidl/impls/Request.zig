@@ -255,7 +255,8 @@ fn relevantSettingsOrigin(ctx: runtime.Context) error{OutOfMemory}!?[]const u8 {
 
 /// Constructor - implements full Request(input, init) constructor algorithm
 /// Spec: https://fetch.spec.whatwg.org/#dom-request
-pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) !void {
+    const ctx = instance.ctx;
     // Get the RequestInit options if passed
     const init_opts: dictionaries.RequestInit = if (init_data.wasPassed())
         init_data.getValue()
@@ -625,20 +626,12 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
         if (fetch_body.isUnusable(bodyOwner(input_request.?).?)) return error.TypeError;
     }
 
-    // Now create the instance with the configured request
-    const instance = try init(ctx.allocator, State, &Request.vtable, ctx);
-    // Note: After this point, instance.deinit will clean up on error
-
     // Replace the default request with our configured one
     const state = instance.getState(State);
     const internal = state.own._internal.?;
     internal.request.deinit(); // Free the default empty request
     internal.request = base_request; // Transfer ownership
     base_request_owned = false;
-    // A step below that throws leaves an object nobody has wrapped: free it,
-    // and the request with it. (The duplex check on a stream body used to
-    // leak its InternalState here.)
-    errdefer runtime.Instance.deinit(instance);
 
     // Step 29: "If init["signal"] exists, then set signal to it" - a present
     // null too, which removes input's signal (RequestInit keeps the member's
@@ -695,8 +688,6 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     if (!has_init_body and input_has_body) {
         try fetch_body.proxyInto(bodyOwner(input_request.?).?, bodyOwner(instance).?);
     }
-
-    return instance;
 }
 
 // === Property Getters ===

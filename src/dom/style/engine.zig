@@ -725,6 +725,23 @@ pub const StyleEngine = struct {
         self.generation +%= 1;
     }
 
+    /// An element's dynamic pseudo-class state changed without a DOM tree
+    /// mutation (Blink Element::PseudoStateChanged / WebKit
+    /// Element::invalidateStyleForSubtree / Gecko Element::UpdateState,
+    /// adapted to Crane's pull-based generation model): form controls
+    /// (checked/indeterminate/selected/value/validity/user-validity/picker),
+    /// custom elements (:defined, :state()), and media playback/mute state.
+    ///
+    /// Fast path: disconnected elements and documents that have never read
+    /// style (`active == null`) pay nothing. Otherwise bumps `generation`
+    /// so cached styles recompute on next read, and wakes the rendering loop
+    /// if the document declares CSS transitions or animations.
+    pub fn notifyDynamicStateChanged(self: *StyleEngine, document: *runtime.Instance) void {
+        if (self.active == null) return;
+        self.generation +%= 1;
+        if (self.declaresAnimations()) @import("../update_the_rendering.zig").requestFrame(document);
+    }
+
     /// The active sheets, rebuilt first if anything they depend on moved.
     fn ensureActive(self: *StyleEngine, document: *runtime.Instance) Error!*Active {
         try self.observeEnvironment(hooks.environmentRevision(document));
@@ -1139,18 +1156,32 @@ fn colorSchemeMetaContent(element: *runtime.Instance) ?[]const u8 {
     return content.value;
 }
 
-/// The document's singleton states, by address and generation.
-fn singletonKey(document: *runtime.Instance) [5]u64 {
+const SingletonState = struct {
+    key: [5]u64,
+    focused: ?*runtime.Instance,
+};
+
+/// The document's singleton states, by address and generation, together with
+/// the designated focused element (if live) so `Resolution.isFocused` checks
+/// focus in O(1) for non-focused elements.
+fn singletonState(document: *runtime.Instance) SingletonState {
     var key: [5]u64 = @splat(0);
+    var focused: ?*runtime.Instance = null;
     if (focused_area.get(document)) |d| if (d.isLive()) {
         key[0] = @intFromPtr(d.element) ^ d.generation;
+        focused = d.element;
     };
     const states = [_]pointer_states.State{ .hovered, .pointed, .activated };
     for (states, 0..) |state, i| {
         if (pointer_states.get(document, state)) |e| key[1 + i] = @intFromPtr(e) ^ runtime.SlabAllocator.generationOf(e);
     }
     if (target_element.get(document)) |e| key[4] = @intFromPtr(e) ^ runtime.SlabAllocator.generationOf(e);
-    return key;
+    return .{ .key = key, .focused = focused };
+}
+
+/// The document's singleton states, by address and generation.
+fn singletonKey(document: *runtime.Instance) [5]u64 {
+    return singletonState(document).key;
 }
 
 /// What resolving one lineage shares.
@@ -1160,6 +1191,9 @@ const Resolution = struct {
     engine: *StyleEngine,
     active: *Active,
     key: Key,
+    /// The document's currently designated focused element (if any), for O(1)
+    /// focus checks on ordinary elements (`isFocused`).
+    focused_element: ?*runtime.Instance = null,
     root_font_size: f64 = 16,
     root_line_height: f64 = 19.2,
     root_vertical: bool = false,
@@ -1205,6 +1239,15 @@ const Resolution = struct {
     /// set only for that read - null on every resolution a page makes, one
     /// test per candidate rule.
     container_probe: ?*ContainerProbe = null,
+
+    /// Whether `element` currently matches `:focus` (including a shadow host
+    /// containing the focused element). O(1) when the document has no focused
+    /// element or `element` is neither the focused element nor a shadow host.
+    fn isFocused(self: *const Resolution, element: *runtime.Instance, node: *const NodeBase) bool {
+        const focused = self.focused_element orelse return false;
+        if (element != focused and !node.is_shadow_host) return false;
+        return @import("../focus_matching.zig").matchesFocus(element);
+    }
 
     /// The element whose rules are being matched, for @container conditions
     /// (sheet.Contents.conditionHoldsFor).
@@ -1381,12 +1424,14 @@ fn resolvedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*const 
             engine.generation +%= 1;
         }
     }
+    const singletons = singletonState(document);
     var res: Resolution = .{
         .allocator = engine.allocator,
         .document = document,
         .engine = engine,
         .active = active,
-        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletonKey(document) },
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletons.key },
+        .focused_element = singletons.focused,
     };
     defer res.deinit();
     // CSS Color Adjustment 1 2.1: "the page color scheme is determined by
@@ -1419,7 +1464,8 @@ fn resolvedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*const 
     // inherits from (CSS Transitions 2 3.3).
     var parent_after_change: ?*const ComputedStyle = null;
     var parent_volatile = false;
-    var parent_serial: u64 = 0;
+    var parent_serial: u32 = 0;
+    var parent_base_serial: u32 = 0;
     var parent_rendered = true;
     // CSS Transitions 2 3.2: this read is one style change event; its
     // transitions share one generation, taken at the first.
@@ -1436,21 +1482,44 @@ fn resolvedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*const 
         // H-R3-ENGINE-KEY: the element's own animation component, and its
         // parent's style serial (an animated parent resolves alone).
         const animated = animation_reader.component(e, null);
+        const is_focused_now = res.isFocused(e, entry.node);
         const must_resolve = parent_volatile or blk: {
             const cached = state.cached orelse break :blk true;
-            break :blk cached.@"volatile" or !cached.key.eql(res.key) or cached.animations != animated or cached.parent_serial != parent_serial;
+            break :blk cached.@"volatile" or !cached.validFor(res.key, is_focused_now) or cached.animations != animated or cached.parent_serial != parent_serial;
         };
         if (must_resolve) {
             var reads: selector_matching.StateReads = .{};
+            const event = styleChangeEvent(state.cached, res.key, is_focused_now, parent_base_serial, parent_volatile);
             const resolved = try resolveOne(&res, e, entry.node, state, null, parent_style, i == lineage.items.len - 1, &reads, .{
-                .event = styleChangeEvent(state.cached, res.key, parent_volatile),
+                .event = event,
                 .parent_rendered = parent_rendered,
                 .parent_after_change = parent_after_change,
                 .generation = &generation,
             });
             if (resolved.transitions_changed) animation_reader = animations.effect_stack.reader(element);
             const component = if (resolved.transitions_changed) animation_reader.component(e, null) else animated;
-            state.setCached(.{ .style = resolved.style, .base = resolved.base, .key = res.key, .@"volatile" = reads.@"volatile" or parent_volatile, .animations = component, .serial = animations.effect_stack.nextStyleSerial(e), .parent_serial = parent_serial, .rendered = resolved.rendered });
+            const serial: u32 = @truncate(animations.effect_stack.nextStyleSerial(e));
+            const base_serial: u32 = if (event != null) serial else if (state.cached) |c| c.base_serial else serial;
+            const deps: element_style.SingletonDeps = .{
+                .any_focus = reads.any_focus,
+                .was_focused = is_focused_now,
+                .any_hover = reads.any_hover,
+                .any_active = reads.any_active,
+                .any_target = reads.any_target,
+            };
+            state.setCached(.{
+                .style = resolved.style,
+                .base = resolved.base,
+                .key = res.key,
+                .@"volatile" = reads.@"volatile" or parent_volatile,
+                .deps = deps,
+                .animations = component,
+                .serial = serial,
+                .base_serial = base_serial,
+                .parent_serial = parent_serial,
+                .parent_base_serial = parent_base_serial,
+                .rendered = resolved.rendered,
+            });
         }
         const cached = state.cached.?;
         if (i == lineage.items.len - 1) {
@@ -1471,6 +1540,7 @@ fn resolvedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*const 
         parent_after_change = cached.base orelse cached.style;
         parent_volatile = cached.@"volatile";
         parent_serial = cached.serial;
+        parent_base_serial = cached.base_serial;
         parent_rendered = cached.rendered;
         // HTML 15.5.16: a drop-down select's shadow tree puts its children
         // - all but a first-child <button>, which the select button slot
@@ -1485,6 +1555,7 @@ fn resolvedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*const 
             parent_after_change = picker.base orelse picker.style;
             parent_volatile = picker.@"volatile";
             parent_serial = picker.serial;
+            parent_base_serial = picker.base_serial;
             parent_rendered = picker.rendered;
         }
     }
@@ -1502,7 +1573,7 @@ fn pseudoStyle(res: *Resolution, element: *runtime.Instance, node: *NodeBase, st
     const own = state.cached.?;
     const pseudo_animated = animation_reader.component(element, p);
     if (state.pseudoCached(p)) |cached| {
-        if (!cached.cached.@"volatile" and !own.@"volatile" and cached.cached.key.eql(res.key) and cached.cached.animations == pseudo_animated and cached.cached.parent_serial == own.serial) return &cached.cached;
+        if (!cached.cached.@"volatile" and !own.@"volatile" and cached.cached.validFor(res.key, false) and cached.cached.animations == pseudo_animated and cached.cached.parent_serial == own.serial) return &cached.cached;
     }
     var reads: selector_matching.StateReads = .{};
     const previous: ?element_style.Cached = if (state.pseudoCached(p)) |cached| cached.cached else null;
@@ -1523,15 +1594,37 @@ fn pseudoStyle(res: *Resolution, element: *runtime.Instance, node: *NodeBase, st
     // still read, but it generates no box, so its CSS animations and
     // transitions end (CSS Animations 2 2.1) as the pseudo-element goes.
     const exists = !view_transition_tree.isViewTransitionPseudoElement(p) or view_transition_tree.originatesPseudoElement(element, p);
+    const event = styleChangeEvent(previous, res.key, false, own.base_serial, own.@"volatile");
     const resolved = try resolveOne(res, element, node, state, p, own.style, false, &reads, .{
-        .event = styleChangeEvent(previous, res.key, own.@"volatile"),
+        .event = event,
         .parent_rendered = own.rendered and exists,
         .parent_after_change = own.base orelse own.style,
         .generation = generation,
     });
     if (resolved.transitions_changed) animation_reader.* = animations.effect_stack.reader(element);
     const component = if (resolved.transitions_changed) animations.effect_stack.component(element, p) else pseudo_animated;
-    try state.setPseudoCached(p, .{ .style = resolved.style, .base = resolved.base, .key = res.key, .@"volatile" = reads.@"volatile" or own.@"volatile", .animations = component, .serial = animations.effect_stack.nextStyleSerial(element), .parent_serial = own.serial, .rendered = resolved.rendered });
+    const serial: u32 = @truncate(animations.effect_stack.nextStyleSerial(element));
+    const base_serial: u32 = if (event != null) serial else if (previous) |prev| prev.base_serial else serial;
+    const deps: element_style.SingletonDeps = .{
+        .any_focus = reads.any_focus,
+        .was_focused = false,
+        .any_hover = reads.any_hover,
+        .any_active = reads.any_active,
+        .any_target = reads.any_target,
+    };
+    try state.setPseudoCached(p, .{
+        .style = resolved.style,
+        .base = resolved.base,
+        .key = res.key,
+        .@"volatile" = reads.@"volatile" or own.@"volatile",
+        .deps = deps,
+        .animations = component,
+        .serial = serial,
+        .base_serial = base_serial,
+        .parent_serial = own.serial,
+        .parent_base_serial = own.base_serial,
+        .rendered = resolved.rendered,
+    });
     return &state.pseudoCached(p).?.cached;
 }
 
@@ -1555,12 +1648,14 @@ pub fn authorDeclares(element: *runtime.Instance, names: []const []const u8) Err
     engine.enterResolution();
     defer engine.resolving = false;
     const active = try engine.ensureActive(document);
+    const singletons = singletonState(document);
     var res: Resolution = .{
         .allocator = engine.allocator,
         .document = document,
         .engine = engine,
         .active = active,
-        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletonKey(document) },
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletons.key },
+        .focused_element = singletons.focused,
     };
     defer res.deinit();
     var reads: selector_matching.StateReads = .{};
@@ -1682,11 +1777,12 @@ const StyleChange = struct {
 };
 
 /// Whether resolving again a style cached as `cached` is a style change
-/// event (CSS Transitions 1 section 3): its inputs moved - the key, or a
-/// volatile style's per-element state - rather than only its animations.
-fn styleChangeEvent(cached: ?element_style.Cached, key: Key, parent_volatile: bool) ?StyleChange.Event {
+/// event (CSS Transitions 1 section 3): its inputs moved - the key, this
+/// element's own focus, a parent's non-animation style change, or a volatile
+/// style's per-element state - rather than only its animations.
+fn styleChangeEvent(cached: ?element_style.Cached, key: Key, is_focused_now: bool, parent_base_serial: u32, parent_volatile: bool) ?StyleChange.Event {
     const c = cached orelse return .{ .before = null };
-    if (!c.key.eql(key) or c.@"volatile" or parent_volatile) return .{ .before = c.beforeChange() };
+    if (!c.validFor(key, is_focused_now) or c.parent_base_serial != parent_base_serial or c.@"volatile" or parent_volatile) return .{ .before = c.beforeChange() };
     return null;
 }
 
@@ -2314,12 +2410,14 @@ pub fn queriesContainer(element: *runtime.Instance, container: *runtime.Instance
     defer engine.resolving = false;
     const active = engine.ensureActive(document) catch return false;
     var probe: ContainerProbe = .{ .container = container };
+    const singletons = singletonState(document);
     var res: Resolution = .{
         .allocator = engine.allocator,
         .document = document,
         .engine = engine,
         .active = active,
-        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletonKey(document) },
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletons.key },
+        .focused_element = singletons.focused,
         .container_probe = &probe,
     };
     defer res.deinit();
@@ -2652,21 +2750,31 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
     // pays only the `is_html` test here.
     const svg_eligible = pseudo == null and !is_html and if (ns) |n| std.mem.eql(u8, n, svg_namespace) else false;
     var font_attributes: font_hints.Attributes = .{};
+    var has_href = false;
     var it = data.attributeIterator();
     while (it.next()) |entry| {
-        if (font_eligible and entry.namespace_uri == null) font_attributes.take(entry.local_name, entry.value);
-        if (background_eligible and entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, "background")) background = entry.value;
+        if (entry.namespace_uri == null) {
+            if (font_eligible) font_attributes.take(entry.local_name, entry.value);
+            if (background_eligible and std.mem.eql(u8, entry.local_name, "background")) background = entry.value;
+            if (std.mem.eql(u8, entry.local_name, "href")) has_href = true;
+        }
         if (entry.namespace_uri != null or name_count == names_storage.len) continue;
         const n = entry.local_name;
         if (n.len > 48) continue;
         names_storage[name_count] = std.ascii.lowerString(name_buffers[name_count][0..n.len], n);
         name_count += 1;
     }
+    const is_root = pseudo == null and node.parent_node != null and node.parent_node.?.node_type == NodeBase.DOCUMENT_NODE;
+    const is_link = pseudo == null and has_href and ((is_html and (std.mem.eql(u8, local, "a") or std.mem.eql(u8, local, "area"))) or
+        (!is_html and ns != null and std.mem.eql(u8, ns.?, mathml_namespace) and std.mem.eql(u8, local, "a")));
     const keys: sheet_mod.ElementKeys = .{
         .id = data.idValue(),
         .class_name = data.classValue(),
         .local_name_lower = local_lower,
         .attribute_names = names_storage[0..name_count],
+        .is_focused = pseudo == null and res.isFocused(element, node),
+        .is_root = is_root,
+        .is_link = is_link,
     };
 
     var matcher = selector_matching.StyleMatcher.init(element, reads) orelse return;
@@ -3217,6 +3325,16 @@ pub fn styleAttributeChanged(element: *runtime.Instance, local_name: []const u8,
     engine.noteAnimationDeclaration(document);
 }
 
+/// Notify the style engine that `element`'s dynamic pseudo-class state
+/// changed without a DOM tree mutation (see StyleEngine.notifyDynamicStateChanged).
+pub fn dynamicStateChanged(element: *runtime.Instance) void {
+    const node = instance_bridge.getNodeBase(element) orelse return;
+    if (!node.is_connected) return;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    const engine = hooks.engineOf(document) orelse return;
+    engine.notifyDynamicStateChanged(document);
+}
+
 /// HTML update the rendering step 16.2.1, "recalculate styles", for a
 /// document that declares transitions or animations: every element's style resolved (each
 /// resolution whose inputs moved is its style change event), and the cached
@@ -3226,6 +3344,12 @@ pub fn recalculateStyles(document: *runtime.Instance) void {
     const engine = hooks.engineOf(document) orelse return;
     if (!engine.declaresAnimations()) return;
     const rare = engine.rare orelse return;
+    // Pull pulled revisions before comparing AnimationGate.Inputs so top-layer
+    // (:modal, :popover-open, :fullscreen), environment, and :focus-visible
+    // changes always trigger step-16 transitions even with no volatile styles.
+    engine.observeEnvironment(hooks.environmentRevision(document)) catch {};
+    engine.observeTopLayer(@import("../top_layer.zig").revisionOf(document)) catch {};
+    engine.observeFocusVisible(@import("../focus_matching.zig").focusVisibleRevision(document)) catch {};
     const inputs: AnimationGate.Inputs = .{
         .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletonKey(document) },
         .sheets_version = engine.sheets_version,
@@ -3448,7 +3572,11 @@ fn renderedInFlatTree(element: *runtime.Instance, comptime accepts_contents: boo
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
     const view = interfaces.Document.get_defaultView(document) catch null;
     if (view == null) return false;
+    // Resolve the flat-tree lineage ONCE; every ancestor's cached style is
+    // guaranteed current immediately after this call, avoiding an O(depth^2)
+    // loop of redundant resolvedStyle calls.
     const style = (try resolvedStyle(element, null)) orelse return false;
+    if (style.display().box == .none) return false;
     if (!accepts_contents and style.display().box == .contents) return false;
     // Inherited computed interactivity is checked on the target only. An
     // explicit auto can restore CSS interaction, but not HTML inertness.
@@ -3457,17 +3585,21 @@ fn renderedInFlatTree(element: *runtime.Instance, comptime accepts_contents: boo
     if (check_interactivity and style.keyword(.interactivity) == .inert) return false;
     var current: *NodeBase = node;
     while (true) {
-        const e = instanceOf(current) orelse return false;
-        const s = (try resolvedStyle(e, null)) orelse return false;
-        if (s.display().box == .none) return false;
-        // CSS Contain 2 section 4: skipped contents produce no boxes, but
-        // the containing element keeps its own box. Reuse this style read.
-        if (current != node and @import("content_visibility.zig").contentsSkipped(e, s)) return false;
         var slotted = false;
         switch (flatParent(current, &slotted)) {
             .root => return true,
             .none => return false,
-            .element => |p| current = p,
+            .element => |p| {
+                current = p;
+                const e = instanceOf(current) orelse return false;
+                const st = element_style.existingOf(e) orelse return false;
+                const c = st.cached orelse return false;
+                const s = c.style;
+                if (s.display().box == .none) return false;
+                // CSS Contain 2 section 4: skipped contents produce no boxes,
+                // but the containing element keeps its own box.
+                if (@import("content_visibility.zig").contentsSkipped(e, s)) return false;
+            },
         }
     }
 }
