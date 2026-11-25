@@ -772,3 +772,69 @@ test "streams QueuingStrategySize converts return inside callback associated rea
         },
     }
 }
+
+test "convertFromJS: BasePropertyIndexedKeyframe and BaseKeyframe end-to-end via KeyframeEffect" {
+    const page = try Page.open();
+    defer page.close();
+    const a = testing.allocator;
+
+    const kf_check = try Page.makeCallback(
+        page.realm,
+        \\() => {
+        \\  const el = null;
+        \\  // 1. BasePropertyIndexedKeyframe: offset sequence<double?> with null, composite list, easing list.
+        \\  const e1 = new KeyframeEffect(el, { opacity: ['0', '0.5', '1'], offset: [null, 0.25], composite: ['add', 'replace'], easing: ['ease', 'linear'] });
+        \\  const k1 = e1.getKeyframes();
+        \\  if (k1.length !== 3 || k1[0].offset !== null || k1[1].offset !== 0.25 || k1[2].offset !== null) return 'seq-offset';
+        \\  if (k1[0].composite !== 'add' || k1[1].composite !== 'replace' || k1[2].composite !== 'add') return 'seq-composite';
+        \\  if (k1[0].easing !== 'ease' || k1[1].easing !== 'linear' || k1[2].easing !== 'ease') return 'seq-easing';
+        \\
+        \\  // 2. offset: null vs absent offset (member default []).
+        \\  const e2 = new KeyframeEffect(el, { opacity: ['0', '1'], offset: null });
+        \\  const k2 = e2.getKeyframes();
+        \\  if (k2.length !== 2 || k2[0].offset !== null || k2[1].offset !== null) return 'null-offset';
+        \\  const e3 = new KeyframeEffect(el, { opacity: ['0', '1'] });
+        \\  const k3 = e3.getKeyframes();
+        \\  if (k3.length !== 2 || k3[0].offset !== null || k3[1].offset !== null) return 'absent-offset';
+        \\
+        \\  // 3. BasePropertyIndexedKeyframe restricted double?: offset: [NaN] and offset: Infinity throw TypeError.
+        \\  try { new KeyframeEffect(el, { opacity: ['0', '1'], offset: [NaN] }); return 'nan-no-throw'; }
+        \\  catch (e) { if (!(e instanceof TypeError)) return 'nan-not-te'; }
+        \\  try { new KeyframeEffect(el, { opacity: ['0', '1'], offset: Infinity }); return 'inf-no-throw'; }
+        \\  catch (e) { if (!(e instanceof TypeError)) return 'inf-not-te'; }
+        \\
+        \\  // 4. BasePropertyIndexedKeyframe lexicographic getter order: composite, easing, offset.
+        \\  const order = [];
+        \\  new KeyframeEffect(el, {
+        \\    get offset() { order.push('offset'); return [0, 1]; },
+        \\    get easing() { order.push('easing'); return 'linear'; },
+        \\    get composite() { order.push('composite'); return 'auto'; },
+        \\    opacity: ['0', '1'],
+        \\  });
+        \\  if (order.join(',') !== 'composite,easing,offset') return 'order:' + order.join(',');
+        \\
+        \\  // 5. BaseKeyframe sequence form: composite, easing, offset + NaN TypeError + composite: null TypeError.
+        \\  const e4 = new KeyframeEffect(el, [{ opacity: '0', offset: 0, composite: 'add' }, { opacity: '1' }]);
+        \\  const k4 = e4.getKeyframes();
+        \\  if (k4.length !== 2 || k4[0].offset !== 0 || k4[0].composite !== 'add' || k4[1].offset !== null) return 'base-kf';
+        \\  try { new KeyframeEffect(el, [{ opacity: '0', offset: NaN }]); return 'base-nan-no-throw'; }
+        \\  catch (e) { if (!(e instanceof TypeError)) return 'base-nan-not-te'; }
+        \\  try { new KeyframeEffect(el, [{ opacity: '0', composite: null }]); return 'base-null-comp-no-throw'; }
+        \\  catch (e) { if (!(e instanceof TypeError)) return 'base-null-comp-not-te'; }
+        \\  return 'ok';
+        \\}
+    ,
+        page.realm,
+    );
+    defer kf_check.release();
+    switch (try protocol.invokeCallbackFunctionAs(runtime.DOMString, .{}, page.realm, &kf_check, .undefined, .{}, .rethrow, a)) {
+        .normal => |h| {
+            defer h.release(a);
+            try testing.expectEqualStrings("ok", h.value.asSlice());
+        },
+        .throw => |t| {
+            t.release();
+            return error.UnexpectedThrow;
+        },
+    }
+}

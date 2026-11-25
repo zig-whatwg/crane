@@ -153,7 +153,8 @@ test "the callback-interface list is exactly every callback interface operation 
 }
 
 test "prose dictionary conversions list names generated dictionaries and only shrinks" {
-    try testing.expectEqual(@as(usize, 2), prose_list.len);
+    // 2 -> 0 (BasePropertyIndexedKeyframe, BaseKeyframe via engine.convertFromJS).
+    try testing.expectEqual(@as(usize, 0), prose_list.len);
     for (prose_list) |entry| {
         const path = try std.fmt.allocPrint(testing.allocator, "src/webidl/dictionaries/{s}.zig", .{entry[0]});
         defer testing.allocator.free(path);
