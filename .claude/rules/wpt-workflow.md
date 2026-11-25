@@ -213,6 +213,49 @@ teardown, the engine adapter or the event loop also runs a bug-finding sweep
 of the same directories** and reports its gate and its differences from the
 production run. It never reports bug-finding pass counts as results.
 
+### A lane's A/B: `wpt_ab`
+
+**Every lane runs its targeted or full A/B with `wpt_ab`** (`tests/wpt_runner/ab.zig`, lane
+tool1-ab, 2026-11-25), the one committed A/B runner. The per-lane `ab.sh` / `abfull.sh` copies are
+retired. It is the tip's frozen `zig-out/bin/wpt_ab` (`zig build wpt-ab-exe`, frozen beside the
+runners), queued as an `ab` window from the lane's mirror:
+
+```bash
+crane-pool.sh queue server1 <mirror> ab --est <min> \
+  '<bins>/tip-<sha>/zig-out/bin/wpt_ab --tip=<bins>/tip-<sha> --tip-commit=<sha> \
+     --base=<bins>/base-<sha> --base-commit=<sha> --wpt-root=$PWD/tests/wpt --measure=$HOME/crane-measure.sh \
+     --out=<bins>/ab-<sha> --dirs=<prefix,...> --crane-tests=<crane/...> --label=<lane> --stop-file=<bins>/STOP'
+```
+
+- **Sides:** two frozen dirs, `--base`/`--tip`. Each holds its runners and a SHA256SUMS over them,
+  in `<dir>/zig-out/bin` or flat, plus `worklist.txt`, `wpt_build_differences.txt` and a
+  `BUILD_INFO` naming its commit. Alternatively the base is a frozen generation
+  (`--base-generation=~/crane-frozen/main-<sha>`): its full run is read for the listed files, only
+  the tip runs, the tip retries failures as the generation did, and the tree defaults to the
+  generation's.
+- **The list:** `--dirs` (the tip's worklist under those prefixes) or `--full` (the whole
+  worklist, run as a `crane-measure.sh sweep`), plus `--files`, `--crane-tests` and `--extra-dirs`
+  (test files outside the worklist).
+- **An empty list is refused at every step.** A runner given no file runs every test of the tree:
+  hard1-usp's url/ window ran the whole tree as "timers" for 70 minutes. The `timers` step takes
+  the html/webappapis/timers/ files of the WHOLE worklist and skips, with a line, when there are
+  none.
+- **Steps** (`--steps`, default `ab,bug,rerun,timers,verify`):
+  - `ab`: both sides over the list, then:
+    - each side's records counted against the list (a record per listed file, none twice, none
+      unlisted; otherwise INCOMPLETE, exit 4, no verdict);
+    - each side's OK/ERROR/TIMEOUT/CRASH, blocking files and passed subtests from the records;
+    - every file and subtest that changed;
+    - `changed.txt`.
+  - `bug`: the tip's bug-finding runner and `wpt_build_compare`.
+  - `rerun`: the changed files `--reruns` times on each side.
+  - `timers`: `--timers` times on each side, crashes counted.
+  - `verify` (and `verifybase`): `--repeat=10 --verify` over the Crane tests and the changed files.
+- **Exit:** 0 clean; 1 a finding (a file that lost subtests, a newly blocking file or new crash, the
+  bug-finding gate, an unstable verify), each named in the report, the ruling the integrator's;
+  2 an input check; 3 STOP; 4 incomplete. Every START/END line is 12-hour US Eastern from the
+  clock.
+
 ### The runner's build modes
 
 **The production runner's modes are the release console's** (above):
