@@ -2318,6 +2318,136 @@ pub inline fn callUserObjectOperation(realm: Context, callback: *const CallbackI
     return impl.callUserObjectOperation(realm, callback, operation, this_arg, args, behavior);
 }
 
+/// Extra WebIDL return/conversion metadata that a Zig type `R` cannot carry on
+/// its own: the generated interface type when `R` is `*runtime.Instance` (or
+/// optional/sequence of it), whether a floating-point return is restricted
+/// (`double`/`float` vs `unrestricted`), or whether a `[]const u8` return is a
+/// `ByteString` rather than a `USVString`.
+pub const ReturnOptions = struct {
+    interface: ?type = null,
+    restricted_float: bool = false,
+    byte_string: bool = false,
+};
+
+/// A converted IDL value from a callback invocation or prose conversion, kept
+/// together with the owned JavaScript value that roots any borrowed references
+/// inside `value` (an `*Instance` wrapper, a dictionary's `any` handles, etc.)
+/// until the caller releases it with `release(allocator)` / `releaseReturned`.
+pub fn Held(comptime R: type) type {
+    return struct {
+        value: R,
+        js: Owned,
+
+        pub fn release(self: @This(), allocator: std.mem.Allocator) void {
+            releaseReturned(R, allocator, self);
+        }
+    };
+}
+
+/// Outcome of a typed callback invocation, construction, or prose conversion:
+/// either a normal converted value (`Held(R)`, OWNED) or a thrown exception
+/// (`Owned`, OWNED).
+pub fn Returned(comptime R: type) type {
+    return union(enum) {
+        normal: Held(R),
+        throw: Owned,
+    };
+}
+
+/// WebIDL "invoke a callback function" (3.12) with typed WebIDL arguments
+/// (step 10, tuple of IDL values, `webidl.Opt(T)` missing/trailing truncation,
+/// or trailing `[]const JSValue` variadic tail) and typed return conversion to
+/// `R` (step 13, inside the callback's prepared realm and incumbent scope
+/// before step 14 clean-up). `callback` is BORROWED; the returned `Returned(R)`
+/// is OWNED.
+pub inline fn invokeCallbackFunctionAs(
+    comptime R: type,
+    comptime return_options: ReturnOptions,
+    realm: Context,
+    callback: *const CallbackFunction,
+    this_arg: CallbackThis,
+    args: anytype,
+    behavior: ExceptionBehavior,
+    allocator: std.mem.Allocator,
+) Error!Returned(R) {
+    runtime.native_holds.assertNone(realm.agent, "invokeCallbackFunctionAs");
+    return impl.invokeCallbackFunctionAs(R, return_options, realm, callback, this_arg, args, behavior, allocator);
+}
+
+/// WebIDL "invoke a callback function" (3.12) for a callback whose return type
+/// is `Promise<T>`: step 10 typed arguments; step 13 converts a normal result
+/// to a NEW promise via WebIDL 3.2.24 (`NewPromiseCapability(%Promise%)` +
+/// `Resolve(V)` in F's associated realm); step 14.7-14.9 converts an abrupt
+/// completion into a promise rejected with the thrown value in F's associated
+/// realm. Never returns a JS throw; the returned promise `Owned` is OWNED.
+pub inline fn invokeCallbackFunctionToPromise(
+    realm: Context,
+    callback: *const CallbackFunction,
+    this_arg: CallbackThis,
+    args: anytype,
+) Error!Owned {
+    runtime.native_holds.assertNone(realm.agent, "invokeCallbackFunctionToPromise");
+    return impl.invokeCallbackFunctionToPromise(realm, callback, this_arg, args);
+}
+
+/// WebIDL "construct a callback function" (3.12) with typed arguments (step 9)
+/// and typed return conversion to `R` (step 12, inside the callback's prepared
+/// realm and incumbent scope before step 13 clean-up). Always returns `.throw`
+/// on abrupt completion or non-constructor (step 3); `Held(R).js` keeps a
+/// constructed platform object's wrapper alive across GC until released.
+pub inline fn constructCallbackFunctionAs(
+    comptime R: type,
+    comptime return_options: ReturnOptions,
+    realm: Context,
+    callback: *const CallbackFunction,
+    args: anytype,
+    allocator: std.mem.Allocator,
+) Error!Returned(R) {
+    runtime.native_holds.assertNone(realm.agent, "constructCallbackFunctionAs");
+    return impl.constructCallbackFunctionAs(R, return_options, realm, callback, args, allocator);
+}
+
+/// WebIDL "call a user object's operation" (3.11) with typed arguments
+/// (step 11) and typed return conversion to `R` (step 14, inside the
+/// callback's prepared realm and incumbent scope before step 15 clean-up).
+pub inline fn callUserObjectOperationAs(
+    comptime R: type,
+    comptime return_options: ReturnOptions,
+    realm: Context,
+    callback: *const CallbackInterface,
+    operation: []const u8,
+    this_arg: CallbackThis,
+    args: anytype,
+    behavior: ExceptionBehavior,
+    allocator: std.mem.Allocator,
+) Error!Returned(R) {
+    runtime.native_holds.assertNone(realm.agent, "callUserObjectOperationAs");
+    return impl.callUserObjectOperationAs(R, return_options, realm, callback, operation, this_arg, args, behavior, allocator);
+}
+
+/// Convert a JavaScript `value` to an IDL value of Zig type `T` in `realm`
+/// using the binding's WebIDL conversions (e.g. a dictionary conversion called
+/// from spec prose such as Web Animations' `BasePropertyIndexedKeyframe` /
+/// `BaseKeyframe`). Any exception thrown by getters or conversion rules is
+/// caught and returned as `.throw`; otherwise `.normal` holds the converted
+/// value and its owning JS handle.
+pub inline fn convertFromJS(
+    comptime T: type,
+    comptime options: ReturnOptions,
+    realm: Context,
+    value: JSValue,
+    allocator: std.mem.Allocator,
+) Error!Returned(T) {
+    runtime.native_holds.assertNone(realm.agent, "convertFromJS");
+    return impl.convertFromJS(T, options, realm, value, allocator);
+}
+
+/// Release what a `Held(R)` owns: the converted value's allocations/handles
+/// (allocated with `allocator`) and the underlying `js` handle.
+pub inline fn releaseReturned(comptime R: type, allocator: std.mem.Allocator, held: Held(R)) void {
+    impl.releaseReturned(R, allocator, held);
+}
+
 /// ECMAScript IsCallable(`value`).
 pub inline fn isCallable(realm: Context, value: JSValue) bool {
     return impl.isCallable(realm, value);
@@ -3623,7 +3753,7 @@ comptime {
         // (an impl's Zig state) links none. That adapter's own tests compile
         // it whole (tests/v8, "every protocol operation's V8 function
         // compiles").
-        if (@import("builtin").is_test and !impl.links_engine) _ = &@field(impl, decl_name);
+        if (@import("builtin").is_test and !impl.links_engine and !expected.is_generic) _ = &@field(impl, decl_name);
     }
 }
 
@@ -3648,7 +3778,9 @@ fn conforms(comptime operation: []const u8, comptime expected: std.builtin.Type.
         .@"fn" => |f| f,
         else => @compileError(adapter ++ ": `" ++ operation ++ "` is not a function"),
     };
-    var same = actual.return_type == expected.return_type and actual.param_types.len == expected.param_types.len and !actual.is_generic;
+    var same = actual.is_generic == expected.is_generic and
+        actual.param_types.len == expected.param_types.len and
+        (expected.is_generic or actual.return_type == expected.return_type);
     if (same) {
         for (actual.param_types, expected.param_types) |a, e| {
             if (a != e) same = false;
@@ -3660,6 +3792,6 @@ fn conforms(comptime operation: []const u8, comptime expected: std.builtin.Type.
 
 fn signature(comptime f: std.builtin.Type.Fn) []const u8 {
     var text: []const u8 = "fn (";
-    for (f.param_types, 0..) |p, i| text = text ++ (if (i == 0) "" else ", ") ++ @typeName(p.?);
-    return text ++ ") " ++ @typeName(f.return_type.?);
+    for (f.param_types, 0..) |p, i| text = text ++ (if (i == 0) "" else ", ") ++ (if (p) |t| @typeName(t) else "anytype/comptime");
+    return text ++ ") " ++ (if (f.return_type) |r| @typeName(r) else "<generic>");
 }

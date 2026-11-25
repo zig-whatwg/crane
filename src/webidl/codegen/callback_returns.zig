@@ -100,3 +100,30 @@ pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u
     // ModelContext.registerTool / executeTool are not implemented.
     .{ "ToolExecuteCallback", "Promise<any>", .not_invoked },
 };
+
+/// Callback interface operations whose return value is not `undefined`/`any`
+/// and is still converted by hand in an impl (WebIDL 3.11 step 14).
+/// (interface, operation, Zig return type, how converted today).
+/// Batch B6 generates typed call helpers on callback interfaces and shrinks
+/// this list to zero.
+pub const callback_interface_returns_converted_by_impl = [_]struct { []const u8, []const u8, []const u8, Conversion }{
+    // impls/node_filter.zig acceptNode (engine.toUint16 after callUserObjectOperation).
+    .{ "NodeFilter", "acceptNode", "u16", .hand },
+    // dom/xpath / impls/XPathEvaluatorBase.zig (converts lookupNamespaceURI return by hand).
+    .{ "XPathNSResolver", "lookupNamespaceURI", "?runtime.DOMString", .hand },
+};
+
+/// WebIDL dictionary conversions called from spec prose (not a binding
+/// argument or callback return) that are still read by hand instead of
+/// `engine.convertFromJS`.
+/// (dictionary, location). Batch B6 moves them onto `engine.convertFromJS`
+/// and shrinks this list to zero.
+pub const prose_dictionary_conversions_by_impl = [_]struct { []const u8, []const u8 }{
+    // Web Animations "process a keyframes argument": converts the non-iterable
+    // object form to BasePropertyIndexedKeyframe (with offset's sequence<double?>
+    // typed once B6 regenerates).
+    .{ "BasePropertyIndexedKeyframe", "src/dom/animations/keyframes.zig" },
+    // Web Animations "process a keyframes argument": converts each element of
+    // the sequence form to BaseKeyframe.
+    .{ "BaseKeyframe", "src/dom/animations/keyframes.zig" },
+};

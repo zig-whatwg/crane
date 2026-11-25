@@ -101,3 +101,69 @@ test "the callback returns an impl still converts only shrink" {
     try testing.expectEqual(@as(usize, 12), by_kind[@backingInt(Conversion.promise_wrap)]);
     try testing.expectEqual(@as(usize, 9), by_kind[@backingInt(Conversion.not_invoked)]);
 }
+
+const iface_list = codegen.callback_returns.callback_interface_returns_converted_by_impl;
+const prose_list = codegen.callback_returns.prose_dictionary_conversions_by_impl;
+
+fn listedIfaceOp(iface: []const u8, op: []const u8) ?usize {
+    for (iface_list, 0..) |entry, i| {
+        if (std.mem.eql(u8, entry[0], iface) and std.mem.eql(u8, entry[1], op)) return i;
+    }
+    return null;
+}
+
+test "the callback-interface list is exactly every callback interface operation with a typed return" {
+    const root = try read("src/webidl/interfaces/root.zig");
+    defer testing.allocator.free(root);
+    var seen: usize = 0;
+    var callback_interfaces: usize = 0;
+    var lines = std.mem.splitScalar(u8, root, '\n');
+    while (lines.next()) |line| {
+        if (!std.mem.startsWith(u8, line, "pub const ")) continue;
+        const rest = line["pub const ".len..];
+        const end = std.mem.indexOf(u8, rest, " = @import(\"") orelse continue;
+        const name = rest[0..end];
+        const path = try std.fmt.allocPrint(testing.allocator, "src/webidl/interfaces/{s}.zig", .{name});
+        defer testing.allocator.free(path);
+        const source = try read(path);
+        defer testing.allocator.free(source);
+        if (std.mem.indexOf(u8, source, "pub const is_callback_interface = true;") == null) continue;
+        callback_interfaces += 1;
+
+        var src_lines = std.mem.splitScalar(u8, source, '\n');
+        while (src_lines.next()) |src_line| {
+            const trimmed = std.mem.trimStart(u8, src_line, " ");
+            if (!std.mem.startsWith(u8, trimmed, "pub fn call_")) continue;
+            const after_call = trimmed["pub fn call_".len..];
+            const paren = std.mem.indexOfScalar(u8, after_call, '(') orelse continue;
+            const op_name = after_call[0..paren];
+            const err_marker = std.mem.indexOf(u8, after_call, "anyerror!") orelse continue;
+            const ret_start = after_call[err_marker + "anyerror!".len ..];
+            const brace = std.mem.indexOf(u8, ret_start, " {") orelse continue;
+            const ret_type = ret_start[0..brace];
+            const converts = !std.mem.eql(u8, ret_type, "void") and !std.mem.eql(u8, ret_type, "runtime.JSValue");
+            if (listedIfaceOp(name, op_name)) |idx| {
+                seen += 1;
+                try testing.expect(converts);
+                try testing.expectEqualStrings(ret_type, iface_list[idx][2]);
+            } else if (converts) {
+                std.debug.print("callback interface {s}.{s} returns {s} and is not in callback_interface_returns_converted_by_impl\n", .{ name, op_name, ret_type });
+                return error.TestUnexpectedResult;
+            }
+        }
+    }
+    try testing.expectEqual(@as(usize, 3), callback_interfaces);
+    try testing.expectEqual(iface_list.len, seen);
+    try testing.expectEqual(@as(usize, 2), iface_list.len);
+}
+
+test "prose dictionary conversions list names generated dictionaries and only shrinks" {
+    try testing.expectEqual(@as(usize, 2), prose_list.len);
+    for (prose_list) |entry| {
+        const path = try std.fmt.allocPrint(testing.allocator, "src/webidl/dictionaries/{s}.zig", .{entry[0]});
+        defer testing.allocator.free(path);
+        const source = try read(path);
+        defer testing.allocator.free(source);
+        try testing.expect(std.mem.indexOf(u8, source, "pub const webidl_dictionary = true;") != null);
+    }
+}

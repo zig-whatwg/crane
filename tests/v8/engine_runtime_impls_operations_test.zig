@@ -438,7 +438,9 @@ test "every protocol operation's V8 function compiles" {
         for (@typeInfo(protocol).@"struct".decl_names) |decl_name| {
             const T = @TypeOf(@field(protocol, decl_name));
             if (@typeInfo(T) != .@"fn") continue;
-            if (@typeInfo(T).@"fn".attrs.@"callconv" != .@"inline") continue;
+            const fn_info = @typeInfo(T).@"fn";
+            if (fn_info.attrs.@"callconv" != .@"inline") continue;
+            if (fn_info.is_generic) continue;
             _ = &@field(v8.protocol, decl_name);
         }
     }

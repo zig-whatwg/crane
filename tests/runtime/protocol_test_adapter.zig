@@ -356,6 +356,24 @@ pub fn constructCallbackFunction(_: Context, _: *const engine.CallbackFunction, 
 pub fn callUserObjectOperation(_: Context, _: *const engine.CallbackInterface, _: []const u8, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
     return error.NotSupported;
 }
+pub fn invokeCallbackFunctionAs(comptime R: type, comptime _: engine.ReturnOptions, _: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: anytype, _: engine.ExceptionBehavior, _: std.mem.Allocator) Error!engine.Returned(R) {
+    return error.NotSupported;
+}
+pub fn invokeCallbackFunctionToPromise(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: anytype) Error!Owned {
+    return error.NotSupported;
+}
+pub fn constructCallbackFunctionAs(comptime R: type, comptime _: engine.ReturnOptions, _: Context, _: *const engine.CallbackFunction, _: anytype, _: std.mem.Allocator) Error!engine.Returned(R) {
+    return error.NotSupported;
+}
+pub fn callUserObjectOperationAs(comptime R: type, comptime _: engine.ReturnOptions, _: Context, _: *const engine.CallbackInterface, _: []const u8, _: engine.CallbackThis, _: anytype, _: engine.ExceptionBehavior, _: std.mem.Allocator) Error!engine.Returned(R) {
+    return error.NotSupported;
+}
+pub fn convertFromJS(comptime T: type, comptime _: engine.ReturnOptions, _: Context, _: JSValue, _: std.mem.Allocator) Error!engine.Returned(T) {
+    return error.NotSupported;
+}
+pub fn releaseReturned(comptime R: type, _: std.mem.Allocator, held: engine.Held(R)) void {
+    held.js.release();
+}
 pub fn isCallable(_: Context, _: JSValue) bool {
     return false;
 }

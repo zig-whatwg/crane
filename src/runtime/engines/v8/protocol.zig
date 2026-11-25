@@ -645,6 +645,30 @@ pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackI
     return protocol_callbacks.callUserObjectOperation(realm, callback, operation, this_arg, args, behavior);
 }
 
+pub fn invokeCallbackFunctionAs(comptime R: type, comptime _: engine.ReturnOptions, _: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: anytype, _: engine.ExceptionBehavior, _: std.mem.Allocator) Error!engine.Returned(R) {
+    return error.NotSupported;
+}
+
+pub fn invokeCallbackFunctionToPromise(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: anytype) Error!Owned {
+    return error.NotSupported;
+}
+
+pub fn constructCallbackFunctionAs(comptime R: type, comptime _: engine.ReturnOptions, _: Context, _: *const engine.CallbackFunction, _: anytype, _: std.mem.Allocator) Error!engine.Returned(R) {
+    return error.NotSupported;
+}
+
+pub fn callUserObjectOperationAs(comptime R: type, comptime _: engine.ReturnOptions, _: Context, _: *const engine.CallbackInterface, _: []const u8, _: engine.CallbackThis, _: anytype, _: engine.ExceptionBehavior, _: std.mem.Allocator) Error!engine.Returned(R) {
+    return error.NotSupported;
+}
+
+pub fn convertFromJS(comptime T: type, comptime _: engine.ReturnOptions, _: Context, _: JSValue, _: std.mem.Allocator) Error!engine.Returned(T) {
+    return error.NotSupported;
+}
+
+pub fn releaseReturned(comptime R: type, _: std.mem.Allocator, held: engine.Held(R)) void {
+    held.js.release();
+}
+
 /// In `realm`'s agent: a realm that cannot be entered reads nothing.
 pub fn isCallable(realm: Context, value: JSValue) bool {
     const entered = enter(realm) catch return false;
