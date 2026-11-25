@@ -3430,6 +3430,11 @@ pub fn build(b: *std.Build) void {
         const platform_tests = b.addTest(.{ .root_module = testing_graph.platform });
         check_storage_tests.dependOn(&platform_tests.step);
         const run_platform_tests = addSuiteRun(b, launch, platform_tests, "src-platform", null);
+        // The bound adapter's own tests and host.zig's (lane core1): each a
+        // module of its own, which no step rooted (the facade's executable
+        // never collects a dependency's tests).
+        test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = testing_graph.platform_adapter }), "src-platform_adapter", null).step);
+        test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = testing_graph.host }), "src-host", null).step);
         test_step.dependOn(&run_platform_tests.step);
 
         const platform_imports = [_]std.Build.Module.Import{
@@ -3570,8 +3575,9 @@ pub fn build(b: *std.Build) void {
             // The kit parts with test blocks of their own, once (they do
             // not depend on the platform they are bound with).
             if (binding.kit_tests) {
-                for ([_]*std.Build.Module{ bound.kit_sfnt, bound.kit_inflate, bound.kit_media_decoding }, [_][]const u8{ "kit_sfnt", "kit_inflate", "kit_media_decoding" }) |module, name| {
-                    const kit_tests = b.addTest(.{ .name = name, .root_module = module });
+                for (bound.kit_tested) |part| {
+                    const name = b.fmt("kit_{s}", .{part.name});
+                    const kit_tests = b.addTest(.{ .name = name, .root_module = part.module });
                     test_step.dependOn(&addSuiteRun(b, launch, kit_tests, name, null).step);
                 }
             }
@@ -6354,6 +6360,8 @@ const CraneModules = struct {
     hr_time: *std.Build.Module,
     websocket: *std.Build.Module,
     platform: *std.Build.Module,
+    /// The bound platform adapter's own module (platform_build.Binding.adapter).
+    platform_adapter: *std.Build.Module,
     html_core: *std.Build.Module,
     html: *std.Build.Module,
     service_worker: *std.Build.Module,
@@ -8033,6 +8041,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .hr_time = hr_time_mod,
         .websocket = websocket_mod,
         .platform = platform_mod,
+        .platform_adapter = platform_binding.adapter,
         .platform_options = platform_options_mod,
         .c_time = platform_binding.c_time,
         .html_core = html_core_mod,

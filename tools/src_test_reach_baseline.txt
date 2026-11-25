@@ -2,8 +2,3 @@
 # count of unrun blocks and why. Only goes down: `zig build check-src-tests -j2 -- --update`
 # after wiring or deleting some refuses a new file or a rise. A new line's reason is the
 # integrator's to review.
-src/platform/adapters/testing/seeded_random.zig	1	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
-src/platform/host.zig	1	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
-src/platform/kit/image_encoding/png.zig	1	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
-src/platform/kit/image_encoding/root.zig	1	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)
-src/platform/kit/posix/devtools_transport.zig	1	lane core1: the platform block is wired once bp1 P4 merges (the integrator's order, 2026-11-24)

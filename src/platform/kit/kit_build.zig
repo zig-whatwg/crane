@@ -260,6 +260,10 @@ pub const Modules = struct {
     kit_sfnt: *std.Build.Module,
     kit_inflate: *std.Build.Module,
     kit_media_decoding: *std.Build.Module,
+    /// The kit parts whose own test blocks the platform tests run, each the
+    /// root of a test executable of its own (lane core1: posix and
+    /// image_encoding had tests no step collected).
+    tested: [tested_parts.len]Tested,
     /// <time.h> translated (`cImport`), which kit/posix imports as `c_time`;
     /// tests/platform takes the same module (one per header set per graph).
     c_time: *std.Build.Module,
@@ -270,6 +274,12 @@ pub const Modules = struct {
 /// libraries this binding's graph built, prepared for the target's C
 /// (`prepare`). Moved whole from the root build's platformBinding (build
 /// migration batch P3).
+/// A kit part a test executable roots at: its name and its module.
+pub const Tested = struct { name: []const u8, module: *std.Build.Module };
+
+/// The kit parts with test blocks of their own (`Modules.tested`).
+const tested_parts = [_][]const u8{ "sfnt", "inflate", "media_decoding", "posix", "image_encoding" };
+
 pub fn modules(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?PrepareC, request: ModulesRequest) Modules {
     // The kit: one module per part, each importing the facade for its types;
     // any platform, built-in or third-party, may import any of them.
@@ -372,7 +382,14 @@ pub fn modules(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?Prepar
         kit_modules[3].linkSystemLibrary("curl", .{});
         kit_modules[3].addImport("curl_c", cImport(b, "curl_c", target, prepare, .{ .includes = kit_curl_includes, .system_libs = &.{"curl"} }));
     }
-    return .{ .kit_curl_share = kit_curl_share, .kit_sfnt = kit_modules[10], .kit_inflate = kit_modules[9], .kit_media_decoding = kit_media_decoding, .c_time = c_time };
+    var tested: [tested_parts.len]Tested = undefined;
+    inline for (tested_parts, 0..) |name, t| {
+        const at = comptime for (kit_parts, 0..) |part, i| {
+            if (std.mem.eql(u8, part, name)) break i;
+        } else unreachable;
+        tested[t] = .{ .name = name, .module = kit_modules[at] };
+    }
+    return .{ .kit_curl_share = kit_curl_share, .kit_sfnt = kit_modules[10], .kit_inflate = kit_modules[9], .kit_media_decoding = kit_media_decoding, .tested = tested, .c_time = c_time };
 }
 
 /// TRANSITIONAL (design question 7): what two Crane modules outside the
