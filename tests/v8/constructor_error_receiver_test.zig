@@ -357,6 +357,27 @@ test "a TextDecoder constructor whose label names no encoding frees what it made
     );
 }
 
+// Lane hard1-b: the bug-finding sweep of allocator hardening batch B named one
+// more (url/urlsearchparams-constructor.any.js, one file per child: 4 live
+// URLSearchParams, lifecycle flags 0, at its Browser's end): the same shape.
+
+test "a URLSearchParams constructor whose sequence holds a pair of the wrong size frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // URL "initialize" step 1: an inner sequence whose size is not 2 is a
+    // TypeError, thrown after "this" was made.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new URLSearchParams([['a']]); } catch (e) { if (e instanceof TypeError) n++; }
+        \\    try { new URLSearchParams([['a', 'b', 'c']]); } catch (e) { if (e instanceof TypeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
 test "a WebSocket constructor whose url or protocols it rejects frees what it made" {
     const page = try Page.open();
     defer page.close();
