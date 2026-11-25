@@ -275,7 +275,7 @@ pub fn showFilePicker(browser: *BrowserPlatform, requester: *const Requester, op
     deliver(reply, &platform.PickedFiles{ .ptr = &[_]platform.PickedFile{}, .len = 0 });
 }
 
-pub fn readPickedFile(browser: *BrowserPlatform, file: platform.FileToken, offset: u64, length: u32, reply: Reply(Bytes)) void {
+pub fn readPickedFile(browser: *BrowserPlatform, file: platform.FileToken, offset: u64, length: u32, reply: Reply(platform.PickedFileRead)) void {
     _ = .{ browser, file, offset, length };
     drop(reply);
 }

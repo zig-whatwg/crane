@@ -24,6 +24,7 @@ const Got = struct {
     count: usize = 0,
     bytes: [64]u8 = undefined,
     bytes_len: usize = 0,
+    read_status: platform.PickedFileReadStatus = .ok,
 
     const File = struct {
         token: platform.FileToken,
@@ -63,7 +64,7 @@ const Got = struct {
         return .{ .context = self, .deliver = &deliverFiles, .drop = &drop };
     }
 
-    fn data(self: *Got) platform.Reply(platform.Bytes) {
+    fn data(self: *Got) platform.Reply(platform.PickedFileRead) {
         return .{ .context = self, .deliver = &deliverBytes, .drop = &drop };
     }
 
@@ -79,10 +80,11 @@ const Got = struct {
         for (value.ptr[0..value.len]) |*picked| self.keep(picked);
     }
 
-    fn deliverBytes(context: *anyopaque, value: *const platform.Bytes) callconv(.c) void {
+    fn deliverBytes(context: *anyopaque, value: *const platform.PickedFileRead) callconv(.c) void {
         const self: *Got = @ptrCast(@alignCast(context));
         self.delivered = true;
-        const bytes = value.slice();
+        self.read_status = value.status;
+        const bytes = value.bytes.slice();
         @memcpy(self.bytes[0..bytes.len], bytes);
         self.bytes_len = bytes.len;
     }
@@ -124,18 +126,28 @@ test "userFile answers the file's name, size and time; reads are positional; a f
 
     var part: Got = .{};
     platform.readPickedFile(browser, picked.token, 6, 32, part.data());
+    try testing.expectEqual(platform.PickedFileReadStatus.ok, part.read_status);
     try testing.expectEqualStrings("file", part.bytes[0..part.bytes_len]);
 
-    // Blink's snapshot rule: a file modified since it was chosen fails the read.
+    // Blink's snapshot rule: a file modified since it was chosen answers not_readable.
     try tmp.dir.writeFile(testing.io, .{ .sub_path = "note.txt", .data = "a longer replacement" });
     var changed: Got = .{};
     platform.readPickedFile(browser, picked.token, 0, 32, changed.data());
-    try testing.expect(changed.dropped);
+    try testing.expect(changed.delivered);
+    try testing.expectEqual(platform.PickedFileReadStatus.not_readable, changed.read_status);
+
+    // A file deleted since it was chosen answers not_found.
+    try tmp.dir.deleteFile(testing.io, "note.txt");
+    var missing_read: Got = .{};
+    platform.readPickedFile(browser, picked.token, 0, 32, missing_read.data());
+    try testing.expect(missing_read.delivered);
+    try testing.expectEqual(platform.PickedFileReadStatus.not_found, missing_read.read_status);
 
     platform.releasePickedFile(browser, picked.token);
     var gone: Got = .{};
     platform.readPickedFile(browser, picked.token, 0, 4, gone.data());
-    try testing.expect(gone.dropped);
+    try testing.expect(gone.delivered);
+    try testing.expectEqual(platform.PickedFileReadStatus.not_readable, gone.read_status);
 }
 
 test "a path naming no regular file drops, and tokens never read nor released are let go at the Browser's end" {
