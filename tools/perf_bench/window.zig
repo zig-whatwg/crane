@@ -311,17 +311,19 @@ pub fn checkConsole(arena: Allocator, io: Io, dir: []const u8, commit: []const u
     if (!mentionsCommit(info, commit)) return bad(arena, "{s}/BUILD_INFO does not name commit {s}: {s}", .{ dir, commit, std.mem.trim(u8, info, "\n") });
     const v8 = v8Of(info) orelse return bad(arena, "{s}/BUILD_INFO names no v8=<version>", .{dir});
     const repl_path = try std.fs.path.join(arena, &.{ dir, "repl" });
-    if (!(fileContains(io, repl_path, v8) catch false)) return bad(arena, "{s} does not hold the string {s}: not that V8", .{ repl_path, v8 });
+    if (!(fileContains(arena, io, repl_path, v8) catch false)) return bad(arena, "{s} does not hold the string {s}: not that V8", .{ repl_path, v8 });
     return .{ .ok = .{ .dir = dir, .commit = commit, .repl_sha256 = repl_sha, .optimize = optimize, .target_cpu = target_cpu, .v8 = v8, .build_info = std.mem.trim(u8, info, " \t\r\n") } };
 }
 
 /// Whether the file at `path` holds `needle` (read in pieces that overlap
-/// by the needle's length).
-pub fn fileContains(io: Io, path: []const u8, needle: []const u8) !bool {
+/// by the needle's length; the piece from `gpa`, never the stack:
+/// tools/lint_stack_arrays.zig).
+pub fn fileContains(gpa: Allocator, io: Io, path: []const u8, needle: []const u8) !bool {
     if (needle.len == 0) return true;
     var file = try Io.Dir.cwd().openFile(io, path, .{});
     defer file.close(io);
-    var buf: [256 * 1024]u8 = undefined;
+    const buf = try gpa.alloc(u8, 256 * 1024);
+    defer gpa.free(buf);
     var rbuf: [4096]u8 = undefined;
     var reader = file.reader(io, &rbuf);
     var kept: usize = 0;
@@ -898,8 +900,8 @@ test "a file holds a string across the reader's pieces" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const path = try tmp.dir.realPathFileAlloc(io, "f", arena.allocator());
-    try testing.expect(try fileContains(io, path, "15.7.112.43"));
-    try testing.expect(!try fileContains(io, path, "13.1.203"));
+    try testing.expect(try fileContains(testing.allocator, io, path, "15.7.112.43"));
+    try testing.expect(!try fileContains(testing.allocator, io, path, "13.1.203"));
 }
 
 test "the mirror's tree.head: the tip's commit, or measured only with a reason" {
