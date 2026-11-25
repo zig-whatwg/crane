@@ -2369,7 +2369,7 @@ pub const Engine = struct {
     }
 
     fn reportBucket(self: *Engine, p: *const Partition, b: *Bucket, context: anytype, comptime report: fn (@TypeOf(context), LeakLine) void) void {
-        const general = isGeneralBucket(p.id, (@intFromPtr(b) - @intFromPtr(self.buckets(p.id).ptr)) / @sizeOf(Bucket));
+        const general_memory = isGeneralBucket(p.id, (@intFromPtr(b) - @intFromPtr(self.buckets(p.id).ptr)) / @sizeOf(Bucket));
         // Group by site: a few distinct ones per bucket at most.
         var sites: [16]usize = undefined;
         var counts: [16]usize = undefined;
@@ -2413,10 +2413,10 @@ pub const Engine = struct {
                 .count = count,
                 .type_name = if (typed) @as(*const Site, @ptrFromInt(site)).name else null,
                 .return_address = if (typed) 0 else site & ~(site_return_tag | site_general_tag),
-                .general = general,
+                .general = general_memory,
             });
         }
-        if (unsited > 0) report(context, .{ .partition = p.id, .block_bytes = b.block_bytes, .count = unsited, .type_name = null, .return_address = 0, .general = general });
+        if (unsited > 0) report(context, .{ .partition = p.id, .block_bytes = b.block_bytes, .count = unsited, .type_name = null, .return_address = 0, .general = general_memory });
     }
 
     /// Instance slots issued over the heap's life, and alive now.
