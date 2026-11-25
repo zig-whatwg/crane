@@ -105,7 +105,7 @@ test "dom.blob_bytes: a div is no Blob - no bytes and no data, its state unread"
     const div = try page.div();
     try withPoisonFor(interfaces.Blob.State, div, {}, struct {
         fn check(_: void, el: *runtime.Instance) anyerror!void {
-            try testing.expect(dom.blob_bytes.bytesOf(el) == null);
+            try testing.expect((try dom.blob_bytes.materialize(el, testing.allocator)) == null);
             try testing.expect(dom.blob_bytes.dataOf(el) == null);
         }
     }.check);

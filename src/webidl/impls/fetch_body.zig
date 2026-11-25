@@ -108,11 +108,39 @@ fn resolveBlobURL(store: *anyopaque, allocator: std.mem.Allocator, url: []const 
         .top_level_self_fetch => .top_level_self_fetch,
     }) orelse return null;
     // The store hands out a reference of our own: a revoke on another thread
-    // cannot free the bytes while they are copied.
+    // cannot free the data while it is materialized.
     defer data.deinit();
-    const bytes = try allocator.dupe(u8, data.bytes);
+    const bytes = data.materialize(allocator) catch |err| return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.NotFoundError, error.NotReadableError => null,
+    };
     errdefer allocator.free(bytes);
     return .{ .bytes = bytes, .content_type = try allocator.dupe(u8, data.mime_type) };
+}
+
+fn retainBlobLazy(ctx: *anyopaque) void {
+    const data: *@import("file").BlobData = @ptrCast(@alignCast(ctx));
+    _ = data.retain();
+}
+
+fn releaseBlobLazy(ctx: *anyopaque) void {
+    const data: *@import("file").BlobData = @ptrCast(@alignCast(ctx));
+    data.deinit();
+}
+
+fn readBlobLazy(ctx: *anyopaque, allocator: std.mem.Allocator) fetch.internal.Body.LazySource.ReadError![]u8 {
+    const data: *@import("file").BlobData = @ptrCast(@alignCast(ctx));
+    return data.materialize(allocator);
+}
+
+const blob_lazy_ops: fetch.internal.Body.LazySource.Ops = .{
+    .retain = &retainBlobLazy,
+    .release = &releaseBlobLazy,
+    .read = &readBlobLazy,
+};
+
+fn blobLazySource(data: *@import("file").BlobData) fetch.internal.Body.LazySource {
+    return .{ .ctx = data.retain(), .ops = &blob_lazy_ops };
 }
 
 /// Fetch "extract a body" from `object`, with `keepalive` (default false).
@@ -132,10 +160,19 @@ pub fn extract(allocator: std.mem.Allocator, object: typedefs.BodyInit, keepaliv
         },
         .xmlhttp_request_body_init => |inner| switch (inner) {
             // Blob: source is object, length its size, type its type if not
-            // empty.
+            // empty. File-backed Blobs stay lazy until the body is read.
             .blob => |blob| {
-                const bytes = blob_bytes.bytesOf(blob) orelse &.{};
-                result.body = try fetch.internal.Body.fromBytes(allocator, bytes);
+                if (blob_bytes.dataOf(blob)) |data| {
+                    if (data.memoryBytes()) |bytes| {
+                        result.body = try fetch.internal.Body.fromBytes(allocator, bytes);
+                    } else {
+                        const lazy = blobLazySource(data);
+                        errdefer lazy.release();
+                        result.body = try fetch.internal.Body.fromLazy(allocator, .{ .blob = blob }, lazy, data.size());
+                    }
+                } else {
+                    result.body = try fetch.internal.Body.fromBytes(allocator, &.{});
+                }
                 var blob_type = interfaces.Blob.get_type(blob) catch return error.OutOfMemory;
                 defer blob_type.deinit(blob.ctx.allocator);
                 const type_bytes = blob_type.asSlice();
@@ -173,13 +210,21 @@ pub fn extract(allocator: std.mem.Allocator, object: typedefs.BodyInit, keepaliv
 
 /// HTML multipart form submission carries its selected encoding. Fetch's
 /// BodyInit extraction calls this with UTF-8; file bytes are never transcoded.
+/// When any entry is file-backed, returns a lazy Body so files are read only
+/// when the body is consumed or transmitted.
 pub fn extractFormData(allocator: std.mem.Allocator, form: *runtime.Instance, enc: *const encoding.Encoding) Error!Extracted {
     var result: Extracted = .{ .allocator = allocator };
     errdefer result.deinit();
     const boundary = multipartBoundary();
-    const encoded = try encodeMultipart(allocator, form, &boundary, enc);
-    defer allocator.free(encoded);
-    result.body = try fetch.internal.Body.fromBytes(allocator, encoded);
+    if (formHasFileBackedEntry(form)) {
+        const lazy_form = try encodeMultipartLazy(allocator, form, &boundary, enc);
+        errdefer lazy_form.source.release();
+        result.body = try fetch.internal.Body.fromLazy(allocator, .{ .form_data = form }, lazy_form.source, lazy_form.total_size);
+    } else {
+        const encoded = try encodeMultipart(allocator, form, &boundary, enc);
+        defer allocator.free(encoded);
+        result.body = try fetch.internal.Body.fromBytes(allocator, encoded);
+    }
     result.content_type = try std.fmt.allocPrint(allocator, "multipart/form-data; boundary={s}", .{&boundary});
     return result;
 }
@@ -235,19 +280,23 @@ pub const Owner = struct {
 pub fn bodyStream(o: Owner) !?*runtime.Instance {
     if (o.stream.*) |stream| return stream;
     const body = o.body orelse return null;
-    const pipe = if (body.pipe) |p| p else blk: {
-        const source = try fetch.internal.PipeSource.create(body.allocator);
-        const p = source.branch() catch |err| {
+    const stream = if (body.lazy) |lazy| blk: {
+        break :blk try LazyStream.create(o.instance.ctx, lazy);
+    } else blk: {
+        const pipe = if (body.pipe) |p| p else pipe_blk: {
+            const source = try fetch.internal.PipeSource.create(body.allocator);
+            const p = source.branch() catch |err| {
+                source.finish();
+                return err;
+            };
+            source.push(body.data.items);
             source.finish();
-            return err;
+            break :pipe_blk p;
         };
-        source.push(body.data.items);
-        source.finish();
-        break :blk p;
+        body.pipe = null;
+        break :blk try PipeStream.create(o.instance.ctx, pipe);
     };
-    body.pipe = null;
 
-    const stream = try PipeStream.create(o.instance.ctx, pipe);
     o.stream.* = stream;
     o.pin.hold(o.instance, stream);
     if (o.kind.made) |made| made(o.instance, stream);
@@ -1013,6 +1062,116 @@ const FullRead = struct {
     }
 };
 
+/// Underlying byte source for a lazily materialized body (file-backed Blob or
+/// FormData containing file-backed Files). Materializes on first pull; read
+/// failures error the stream with the matching DOMException.
+const LazyStream = struct {
+    allocator: std.mem.Allocator,
+    lazy: ?fetch.internal.Body.LazySource,
+    bytes: ?[]u8 = null,
+    position: usize = 0,
+    done: bool = false,
+    detached: bool = false,
+    busy: u32 = 0,
+
+    const chunk_size: usize = 64 * 1024;
+    const vtable = srd.Source.VTable{ .start = start, .pull = pull, .cancel = cancel, .deinit = deinitSource };
+
+    fn create(ctx: runtime.Context, lazy: fetch.internal.Body.LazySource) !*runtime.Instance {
+        const realm = try js.Realm.ofContext(ctx);
+        const allocator = ctx.allocator;
+        const self = try allocator.create(LazyStream);
+        self.* = .{ .allocator = allocator, .lazy = lazy.retain() };
+        self.busy += 1;
+        const stream = srd.createReadableByteStream(realm, ctx, .{ .ctx = self, .vtable = &vtable });
+        self.busy -= 1;
+        if (stream) |st| return st else |err| {
+            self.detached = true;
+            self.freeIfDone();
+            return err;
+        }
+    }
+
+    fn start(_: ?*anyopaque, realm: js.Realm, _: *runtime.Instance) js.Error!js.Completion {
+        return .{ .normal = try realm.undefinedValue() };
+    }
+
+    fn pull(ctx: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance) js.Error!js.Value {
+        const self: *LazyStream = @ptrCast(@alignCast(ctx.?));
+        self.busy += 1;
+        defer {
+            self.busy -= 1;
+            self.freeIfDone();
+        }
+        if (self.done) return realm.promiseResolvedWithUndefined();
+
+        if (self.bytes == null) {
+            const lazy = self.lazy orelse {
+                self.done = true;
+                try srd.byteControllerClose(realm, controller);
+                return realm.promiseResolvedWithUndefined();
+            };
+            self.lazy = null;
+            defer lazy.release();
+            self.bytes = lazy.read(self.allocator) catch |err| {
+                self.done = true;
+                if (err == error.OutOfMemory) return error.OutOfMemory;
+                const name: []const u8 = if (err == error.NotFoundError) "NotFoundError" else "NotReadableError";
+                const msg: []const u8 = if (err == error.NotFoundError)
+                    "A requested file or directory could not be found at the time an operation was processed."
+                else
+                    "The requested file could not be read.";
+                const dom_err = engine.createDOMException(realm.ctx, name, msg) catch return error.V8Failure;
+                defer dom_err.release();
+                const reason = realm.fromRuntime(dom_err.value) catch return error.V8Failure;
+                defer js.dispose(reason);
+                srd.byteControllerError(realm, controller, reason);
+                return realm.promiseResolvedWithUndefined();
+            };
+        }
+
+        const bytes = self.bytes.?;
+        if (self.position < bytes.len) {
+            const chunk = bytes[self.position..][0..@min(chunk_size, bytes.len - self.position)];
+            self.position += chunk.len;
+            const buffer = js.allocateBufferIn(realm, chunk.len) orelse return error.V8Failure;
+            defer js.dispose(buffer);
+            if (js.bufferBytes(buffer)) |dest| @memcpy(dest[0..chunk.len], chunk);
+            const view = try js.newView(.uint8, buffer, 0, chunk.len);
+            defer js.dispose(view);
+            try srd.byteControllerEnqueue(realm, controller, view);
+        }
+        if (!self.detached and self.position >= bytes.len) {
+            self.done = true;
+            try srd.byteControllerClose(realm, controller);
+        }
+        return realm.promiseResolvedWithUndefined();
+    }
+
+    fn cancel(ctx: ?*anyopaque, realm: js.Realm, _: *runtime.Instance, _: js.Value) js.Error!js.Value {
+        const self: *LazyStream = @ptrCast(@alignCast(ctx.?));
+        self.done = true;
+        if (self.lazy) |lazy| {
+            self.lazy = null;
+            lazy.release();
+        }
+        return realm.promiseResolvedWithUndefined();
+    }
+
+    fn deinitSource(ctx: ?*anyopaque, _: std.mem.Allocator) void {
+        const self: *LazyStream = @ptrCast(@alignCast(ctx.?));
+        self.detached = true;
+        self.freeIfDone();
+    }
+
+    fn freeIfDone(self: *LazyStream) void {
+        if (!self.detached or self.busy > 0) return;
+        if (self.lazy) |lazy| lazy.release();
+        if (self.bytes) |b| self.allocator.free(b);
+        self.allocator.destroy(self);
+    }
+};
+
 /// The underlying source of a body's stream: the body's pipe.
 ///
 /// Fetch's HTTP-network fetch sets the stream up with byte reading support
@@ -1338,8 +1497,161 @@ fn multipartBoundary() [boundary_len]u8 {
     return out;
 }
 
+fn formHasFileBackedEntry(form: *runtime.Instance) bool {
+    const entries = interfaces.FormData.getEntriesForIterable(form) orelse return false;
+    for (entries) |entry| {
+        if (entry.value == .file) {
+            if (blob_bytes.dataOf(entry.value.file)) |data| {
+                if (!data.isMemoryOnly()) return true;
+            }
+        }
+    }
+    return false;
+}
+
+const MultipartPart = union(enum) {
+    bytes: []u8,
+    blob: *@import("file").BlobData,
+};
+
+const LazyMultipart = struct {
+    allocator: std.mem.Allocator,
+    ref_count: std.atomic.Value(u32) = .init(1),
+    parts: []MultipartPart,
+    total_size: u64,
+
+    const ops: fetch.internal.Body.LazySource.Ops = .{
+        .retain = &retain,
+        .release = &release,
+        .read = &read,
+    };
+
+    fn retain(ctx: *anyopaque) void {
+        const self: *LazyMultipart = @ptrCast(@alignCast(ctx));
+        _ = self.ref_count.fetchAdd(1, .monotonic);
+    }
+
+    fn release(ctx: *anyopaque) void {
+        const self: *LazyMultipart = @ptrCast(@alignCast(ctx));
+        const previous = self.ref_count.fetchSub(1, .release);
+        std.debug.assert(previous > 0);
+        if (previous != 1) return;
+        _ = self.ref_count.load(.acquire);
+        for (self.parts) |part| switch (part) {
+            .bytes => |b| self.allocator.free(b),
+            .blob => |blob| blob.deinit(),
+        };
+        self.allocator.free(self.parts);
+        self.allocator.destroy(self);
+    }
+
+    fn read(ctx: *anyopaque, allocator: std.mem.Allocator) fetch.internal.Body.LazySource.ReadError![]u8 {
+        const self: *LazyMultipart = @ptrCast(@alignCast(ctx));
+        const total = std.math.cast(usize, self.total_size) orelse return error.OutOfMemory;
+        const out = try allocator.alloc(u8, total);
+        errdefer allocator.free(out);
+        var cursor: usize = 0;
+        for (self.parts) |part| switch (part) {
+            .bytes => |b| {
+                @memcpy(out[cursor..][0..b.len], b);
+                cursor += b.len;
+            },
+            .blob => |blob| {
+                var bytes = try blob.readBytes(allocator);
+                defer bytes.deinit();
+                @memcpy(out[cursor..][0..bytes.slice.len], bytes.slice);
+                cursor += bytes.slice.len;
+            },
+        };
+        return out;
+    }
+};
+
+fn encodeMultipartLazy(allocator: std.mem.Allocator, form: *runtime.Instance, boundary: []const u8, enc: *const encoding.Encoding) Error!struct { source: fetch.internal.Body.LazySource, total_size: u64 } {
+    var parts: std.ArrayListUnmanaged(MultipartPart) = .empty;
+    errdefer {
+        for (parts.items) |part| switch (part) {
+            .bytes => |b| allocator.free(b),
+            .blob => |blob| blob.deinit(),
+        };
+        parts.deinit(allocator);
+    }
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    defer buf.deinit(allocator);
+    var total_size: u64 = 0;
+
+    const entries = interfaces.FormData.getEntriesForIterable(form) orelse &.{};
+    for (entries) |entry| {
+        try buf.appendSlice(allocator, "--");
+        try buf.appendSlice(allocator, boundary);
+        try buf.appendSlice(allocator, "\r\nContent-Disposition: form-data; name=\"");
+        try appendMultipartText(allocator, &buf, entry.name, enc, true, true);
+        try buf.append(allocator, '"');
+        switch (entry.value) {
+            .usvstring => |value| {
+                try buf.appendSlice(allocator, "\r\n\r\n");
+                try appendMultipartText(allocator, &buf, value, enc, true, false);
+            },
+            .file => |blob| {
+                try buf.appendSlice(allocator, "; filename=\"");
+                if (blob.stateAs(interfaces.File.State) != null) {
+                    var name = interfaces.File.get_name(blob) catch return error.OutOfMemory;
+                    defer name.deinit(blob.ctx.allocator);
+                    try appendMultipartText(allocator, &buf, name.asSlice(), enc, false, true);
+                } else {
+                    try buf.appendSlice(allocator, "blob");
+                }
+                try buf.appendSlice(allocator, "\"\r\nContent-Type: ");
+                var blob_type = interfaces.Blob.get_type(blob) catch return error.OutOfMemory;
+                defer blob_type.deinit(blob.ctx.allocator);
+                const type_bytes = blob_type.asSlice();
+                try buf.appendSlice(allocator, if (type_bytes.len > 0) type_bytes else "application/octet-stream");
+                try buf.appendSlice(allocator, "\r\n\r\n");
+                if (blob_bytes.dataOf(blob)) |data| {
+                    if (data.memoryBytes()) |mem| {
+                        try buf.appendSlice(allocator, mem);
+                    } else {
+                        if (buf.items.len > 0) {
+                            const flushed = try buf.toOwnedSlice(allocator);
+                            errdefer allocator.free(flushed);
+                            total_size += flushed.len;
+                            try parts.append(allocator, .{ .bytes = flushed });
+                        }
+                        try parts.ensureUnusedCapacity(allocator, 1);
+                        parts.appendAssumeCapacity(.{ .blob = data.retain() });
+                        total_size += data.size();
+                    }
+                }
+            },
+        }
+        try buf.appendSlice(allocator, "\r\n");
+    }
+    try buf.appendSlice(allocator, "--");
+    try buf.appendSlice(allocator, boundary);
+    try buf.appendSlice(allocator, "--\r\n");
+    if (buf.items.len > 0) {
+        const flushed = try buf.toOwnedSlice(allocator);
+        errdefer allocator.free(flushed);
+        total_size += flushed.len;
+        try parts.append(allocator, .{ .bytes = flushed });
+    }
+
+    const owned_parts = try parts.toOwnedSlice(allocator);
+    errdefer {
+        for (owned_parts) |part| switch (part) {
+            .bytes => |b| allocator.free(b),
+            .blob => |blob| blob.deinit(),
+        };
+        allocator.free(owned_parts);
+    }
+    const self = try allocator.create(LazyMultipart);
+    self.* = .{ .allocator = allocator, .parts = owned_parts, .total_size = total_size };
+    return .{ .source = .{ .ctx = self, .ops = &LazyMultipart.ops }, .total_size = total_size };
+}
+
 /// The multipart/form-data encoding algorithm over `form`'s entry list, with
-/// the selected encoding. Owned (HTML 4.10.22.8).
+/// the selected encoding. Owned (HTML 4.10.22.8). Only called when all file
+/// entries are in memory (`!formHasFileBackedEntry`).
 fn encodeMultipart(allocator: std.mem.Allocator, form: *runtime.Instance, boundary: []const u8, enc: *const encoding.Encoding) Error![]u8 {
     var out: std.ArrayListUnmanaged(u8) = .empty;
     errdefer out.deinit(allocator);
@@ -1378,7 +1690,9 @@ fn encodeMultipart(allocator: std.mem.Allocator, form: *runtime.Instance, bounda
                 const type_bytes = blob_type.asSlice();
                 try out.appendSlice(allocator, if (type_bytes.len > 0) type_bytes else "application/octet-stream");
                 try out.appendSlice(allocator, "\r\n\r\n");
-                try out.appendSlice(allocator, blob_bytes.bytesOf(blob) orelse &.{});
+                if (blob_bytes.dataOf(blob)) |data| {
+                    if (data.memoryBytes()) |mem| try out.appendSlice(allocator, mem);
+                }
             },
         }
         try out.appendSlice(allocator, "\r\n");

@@ -40,6 +40,11 @@ pub const BodySource = union(enum) {
     form_data: *anyopaque,
 };
 
+/// A lazily materialized body source (a file-backed Blob or a multipart
+/// FormData containing file-backed Files). Retained across `Body.clone()` and
+/// released on `Body.deinit()` with zero disk I/O until the body is read.
+pub const LazySource = Body.LazySource;
+
 /// A body with type tuple.
 /// Per spec: "A body with type is a tuple that consists of a body and a type (a header value or null)."
 pub const BodyWithType = struct {
@@ -97,7 +102,42 @@ pub const Body = struct {
     /// first cancels it - the writer stops. Never cloned.
     upload_relay: ?*BodyRelay = null,
 
+    /// A body backed by a lazy file source (Blob or FormData with file-backed
+    /// entries). Materialized when the body's stream or upload reads it.
+    lazy: ?BodyLazySource = null,
+
     const Self = @This();
+    pub const LazySource = BodyLazySource;
+
+    pub const BodyLazySource = struct {
+        ctx: *anyopaque,
+        ops: *const Ops,
+
+        pub const ReadError = error{
+            NotFoundError,
+            NotReadableError,
+            OutOfMemory,
+        };
+
+        pub const Ops = struct {
+            retain: *const fn (ctx: *anyopaque) void,
+            release: *const fn (ctx: *anyopaque) void,
+            read: *const fn (ctx: *anyopaque, allocator: Allocator) ReadError![]u8,
+        };
+
+        pub fn retain(self: BodyLazySource) BodyLazySource {
+            self.ops.retain(self.ctx);
+            return self;
+        }
+
+        pub fn release(self: BodyLazySource) void {
+            self.ops.release(self.ctx);
+        }
+
+        pub fn read(self: BodyLazySource, allocator: Allocator) ReadError![]u8 {
+            return self.ops.read(self.ctx, allocator);
+        }
+    };
 
     /// Error set for body operations.
     pub const BodyError = error{
@@ -167,6 +207,22 @@ pub const Body = struct {
         return body;
     }
 
+    /// A body whose bytes are materialized lazily from `lazy` (takes
+    /// ownership of `lazy` on success).
+    pub fn fromLazy(allocator: Allocator, source: BodySource, lazy: BodyLazySource, length: ?u64) !*Self {
+        const body = try allocator.create(Self);
+        body.* = .{
+            .allocator = allocator,
+            .data = .empty,
+            .source = source,
+            .length = length,
+            .used = false,
+            .disturbed = false,
+            .lazy = lazy,
+        };
+        return body;
+    }
+
     /// A body whose bytes arrive through `pipe`, which it takes.
     pub fn fromPipe(allocator: Allocator, pipe: *BodyPipe) !*Self {
         const body = try allocator.create(Self);
@@ -202,6 +258,7 @@ pub const Body = struct {
     /// Deinitialize the body, freeing all resources.
     pub fn deinit(self: *Self) void {
         if (self.pipe) |pipe| pipe.release();
+        if (self.lazy) |lazy| lazy.release();
         if (self.upload_relay) |relay| {
             relay.cancel();
             relay.release();
@@ -233,9 +290,13 @@ pub const Body = struct {
             .disturbed = false,
             // A body still arriving is teed: the clone reads its own copy.
             .pipe = if (self.pipe) |pipe| try pipe.tee() else null,
+            .lazy = if (self.lazy) |lazy| lazy.retain() else null,
         };
 
-        errdefer if (new_body.pipe) |pipe| pipe.release();
+        errdefer {
+            if (new_body.pipe) |pipe| pipe.release();
+            if (new_body.lazy) |lazy| lazy.release();
+        }
 
         // Clone the data
         try new_body.data.appendSlice(allocator, self.data.items);

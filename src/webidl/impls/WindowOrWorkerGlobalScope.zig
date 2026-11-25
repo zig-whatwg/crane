@@ -291,12 +291,16 @@ fn createImageBitmap(global: *runtime.Instance, image: typedefs.ImageBitmapSourc
         },
         .blob => |blob| blk: {
             // 6, Blob: 1. read image's data; 2. sniff it with its type as
-            //    the official type; 3. not a supported image, or no
-            //    dimensions: an InvalidStateError - in a task.
-            const bytes = dom.blob_bytes.bytesOf(blob) orelse &.{};
+            //    the official type; 3. not a supported image, unreadable file,
+            //    or no dimensions: an InvalidStateError - in a task.
+            var materialized = dom.blob_bytes.materialize(blob, allocator) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.NotFoundError, error.NotReadableError => return settleInTask(global, null),
+            } orelse return settleInTask(global, null);
+            defer materialized.deinit();
             var blob_type = try interfaces.Blob.get_type(blob);
             defer blob_type.deinit(allocator);
-            var decoded = dom.image_bitmaps.decodeBlob(allocator, bytes, blob_type.asSlice()) orelse
+            var decoded = dom.image_bitmaps.decodeBlob(allocator, materialized.slice, blob_type.asSlice()) orelse
                 return settleInTask(global, null);
             defer decoded.deinit();
             // 4. "Set imageBitmap's bitmap data to imageData, cropped to the

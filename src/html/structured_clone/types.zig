@@ -356,13 +356,16 @@ pub const SerializedValue = struct {
                 @constCast(&o.properties).deinit();
             },
             .blob => |b| {
-                self.allocator.free(b.data);
-                self.allocator.free(b.content_type);
+                if (b.file_ref) |ref| ref.release();
+                if (b.data.len > 0) self.allocator.free(b.data);
+                if (b.content_type.len > 0) self.allocator.free(b.content_type);
             },
             .file => |f| {
-                self.allocator.free(f.data);
-                self.allocator.free(f.name);
-                self.allocator.free(f.content_type);
+                if (f.file_ref) |ref| ref.release();
+                if (f.data.len > 0) self.allocator.free(f.data);
+                if (f.name.len > 0) self.allocator.free(f.name);
+                if (f.content_type.len > 0) self.allocator.free(f.content_type);
+                if (f.webkit_relative_path.len > 0) self.allocator.free(f.webkit_relative_path);
             },
             .file_list => |fl| {
                 for (fl.files.toSlice()) |file| {
@@ -488,18 +491,42 @@ pub const PropertyEntry = struct {
     value: *const SerializedValue,
 };
 
+/// Reference-counted handle to a file-backed Blob source plus its snapshot
+/// metadata. Structured clone retains this handle without reading bytes from
+/// disk at clone time (Blink V8ScriptValueSerializer WriteFile keeps the path
+/// + snapshot).
+pub const FileRef = struct {
+    ctx: *anyopaque,
+    retain_fn: *const fn (*anyopaque) void,
+    release_fn: *const fn (*anyopaque) void,
+    snapshot_size: u64 = 0,
+    snapshot_modified_ns: i64 = 0,
+
+    pub fn retain(self: FileRef) FileRef {
+        self.retain_fn(self.ctx);
+        return self;
+    }
+
+    pub fn release(self: FileRef) void {
+        self.release_fn(self.ctx);
+    }
+};
+
 /// Blob serialization data
 pub const BlobData = struct {
-    data: []const u8,
-    content_type: []const u8,
+    data: []const u8 = "",
+    content_type: []const u8 = "",
+    file_ref: ?FileRef = null,
 };
 
 /// File serialization data
 pub const FileData = struct {
-    data: []const u8,
-    name: []const u8,
-    content_type: []const u8,
-    last_modified: i64, // Milliseconds since epoch
+    data: []const u8 = "",
+    name: []const u8 = "",
+    content_type: []const u8 = "",
+    last_modified: i64 = 0, // Milliseconds since epoch
+    webkit_relative_path: []const u8 = "",
+    file_ref: ?FileRef = null,
 };
 
 /// FileList serialization data
