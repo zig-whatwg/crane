@@ -345,3 +345,43 @@ test "agents on two threads, each through its own cache, free each other's block
     };
     try testing.expectEqual(@as(usize, 0), engine.leakReport({}, Count.line));
 }
+
+test "M1: a freed general large run gives its pages back at once, past one empty run its bucket keeps" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+    const size = 64 * 1024;
+    inline for (.{ heap.PartitionId.bytes, heap.PartitionId.objects }) |pid| {
+        const alignment: usize = if (pid == .bytes) 1 else 8;
+        var blocks: [3][*]u8 = undefined;
+        for (&blocks) |*block| block.* = try engine.allocGeneral(pid, size, alignment, @returnAddress());
+        const before = engine.stats();
+        for (blocks) |block| engine.freeGeneral(block, size, alignment);
+        const after = engine.stats();
+        const b = if (pid == .bytes) before.bytes else before.objects;
+        const a = if (pid == .bytes) after.bytes else after.objects;
+        // One empty run stays committed for the next block of its length;
+        // the other two are decommitted at their free (libc gives a large
+        // block back at once too: main's malloc, the pair's base).
+        try testing.expectEqual(b.spans_decommitted + 2, a.spans_decommitted);
+        // The kept run is the next one issued: nothing is recommitted.
+        const again = try engine.allocGeneral(pid, size, alignment, @returnAddress());
+        const now = engine.stats();
+        try testing.expectEqual(a.spans_decommitted, (if (pid == .bytes) now.bytes else now.objects).spans_decommitted);
+        engine.freeGeneral(again, size, alignment);
+    }
+}
+
+test "M2: general blocks take the eighths classes - 16-byte steps to 512 B, then eight per doubling - not the State blocks' 258" {
+    // Fewer classes, fewer partly filled spans per Browser: what each
+    // general class in use keeps committed (the pair's fixed-cost rows).
+    try testing.expectEqual(@as(usize, 72), heap.classes.GeneralClasses.count);
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+    const before = engine.stats().bytes.live_bytes;
+    const text = try engine.allocGeneral(.bytes, 600, 1, @returnAddress());
+    defer engine.freeGeneral(text, 600, 1);
+    // 600 B is in (512, 1024]: the class past it is 640 B (512 + 2 x 64).
+    try testing.expectEqual(before + 640, engine.stats().bytes.live_bytes);
+}
