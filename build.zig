@@ -290,6 +290,10 @@ const TestLaunch = struct {
     /// `zig build test-verify`: the changed test files and their step
     /// (`TestVerify`).
     verify: *TestVerify,
+    /// What the configure reads of the checkout (`ConfigureInputs`), shared
+    /// with `TestSelection`: runtime input directory walks record each listed
+    /// directory here so Zig's configure cache stays valid (`check-configure-cache`).
+    inputs: *ConfigureInputs,
     /// -Dtest-filter=PATTERN, repeatable: run-time test selection. Each is
     /// passed to every suite's launcher as `--filter=` (a test runs when any
     /// pattern matches its whole name, `*` any run of characters;
@@ -365,7 +369,6 @@ const codegen_slow = [_][]const u8{
 /// lane tsanfix1, with the integrator's ruling).
 const html_tsan_skip = [_]DeclaredTest{
     .{ .name = "detplat1_virtual_time_test.test.virtual clock: a timer-heavy page runs far faster than real time (measured)", .reason = "the subject is real time: it measures how much faster than real time a virtual clock runs a timer-heavy page, and ThreadSanitizer's slowdown is that measurement" },
-    .{ .name = "fk2_idle_period_spin_test.test.every idle period that starts runs an idle callback (no empty periods spinning)", .reason = "the subject is real time: an idle period's callbacks run only before its real-time deadline, and under ThreadSanitizer's slowdown the task that runs them can start after it - an empty period the spec allows; its scenario needs a fetch in flight, which stops a virtual clock (event_loop.fastForwardToNextWakeUp)" },
     .{ .name = "rep2_worker_async_start_test.test.a worker starts while its owner's script still runs: its script is fetched in parallel", .reason = "the subject is real time: a worker must fetch and start its script inside its owner's 600 ms busy loop, at least 100 ms before it returns, and ThreadSanitizer's slowdown of a worker isolate's start is that measurement" },
 };
 
@@ -489,9 +492,112 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     run.addArg(b.fmt("--out=tmp/test-launch/{s}{s}.jsonl", .{ name, variant }));
     run.addArg(b.fmt("--timings=tmp/test-launch/{s}.jsonl", .{name}));
     run.setCwd(b.path("."));
+    addSuiteRuntimeInputs(b, run, launch, config_name orelse name, groups);
     // A fresh seed every run must run every time.
     if (std.mem.eql(u8, launch.seed, "random")) run.has_side_effects = true;
     return run;
+}
+
+/// Whether `name` (or any joined member in `groups`, under -Dtest-binaries=engine)
+/// is the suite for `dir_path` (e.g. "tests/devtools").
+fn suiteIncludesDir(name: []const u8, groups: []const SuiteGroup, dir_path: []const u8) bool {
+    if (test_suites.isSuiteOf(name, dir_path)) return true;
+    for (groups) |g| if (test_suites.isMemberOf(g.prefix, dir_path)) return true;
+    return false;
+}
+
+/// Declare every checked-in file under `dir_path` as a Run-step input so an
+/// edit to a fixture, spec or generated file invalidates the suite's cached
+/// test pass, while tracking every listed directory in `ConfigureInputs` so
+/// `check-configure-cache` stays green and an added/removed file reconfigures.
+fn addRunInputTree(b: *std.Build, run: *std.Build.Step.Run, inputs: *ConfigureInputs, dir_path: []const u8) void {
+    const allocator = b.allocator;
+    const io = b.graph.io;
+    var dir = b.root.root_dir.handle.openDir(io, dir_path, .{ .iterate = true }) catch |err| switch (err) {
+        error.FileNotFound => {
+            inputs.absent(b, dir_path);
+            return;
+        },
+        else => std.debug.panic("build.zig: cannot open runtime input directory {s}: {s}", .{ dir_path, @errorName(err) }),
+    };
+    defer dir.close(io);
+
+    inputs.directory(b, dir_path);
+    var files: std.ArrayList([]const u8) = .empty;
+    var walker = dir.walk(allocator) catch @panic("OOM");
+    defer walker.deinit();
+    while (walker.next(io) catch |err| std.debug.panic("build.zig: cannot walk {s}: {s}", .{ dir_path, @errorName(err) })) |entry| {
+        const rel = b.fmt("{s}/{s}", .{ dir_path, entry.path });
+        switch (entry.kind) {
+            .directory => inputs.directory(b, rel),
+            .file => {
+                const base = std.fs.path.basename(entry.path);
+                if (std.mem.startsWith(u8, base, ".") or std.mem.endsWith(u8, base, ".tmp")) continue;
+                files.append(allocator, rel) catch @panic("OOM");
+            },
+            else => {},
+        }
+    }
+    std.mem.sort([]const u8, files.items, {}, struct {
+        fn lessThan(_: void, a: []const u8, c: []const u8) bool {
+            return std.mem.lessThan(u8, a, c);
+        }
+    }.lessThan);
+    for (files.items) |file| run.addFileInput(b.path(file));
+}
+
+/// Checked-in repository files and trees that a test suite opens at run time
+/// (`readFileAlloc` / `openFile` / `openDir`), so changing any of them re-runs
+/// the suite instead of answering from Zig's cached Run step (lane a11y1 found
+/// the gap on tests/wpt_0_1_worklist.txt; lane hygiene1 audited every suite).
+/// Upstream submodule fixtures under tests/wpt/ are intentionally omitted:
+/// worktrees leave that submodule uninitialized, and tests reading it skip
+/// when absent.
+fn addSuiteRuntimeInputs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaunch, suite_name: []const u8, groups: []const SuiteGroup) void {
+    // tests/wpt_runner harness modules: config.zig reads the worklist,
+    // build_compare.zig reads the build-differences table, webdriver_keys.zig
+    // reads the cached WebDriver spec.
+    if (std.mem.startsWith(u8, suite_name, "wpt_runner-")) {
+        run.addFileInput(b.path("tests/wpt_0_1_worklist.txt"));
+        run.addFileInput(b.path("tools/wpt_build_differences.txt"));
+        run.addFileInput(b.path("specs/w3c/webdriver2.md"));
+    }
+    // Recorded Chrome traces in tests/devtools/fixtures/.
+    if (suiteIncludesDir(suite_name, groups, "tests/devtools")) {
+        addRunInputTree(b, run, launch.inputs, "tests/devtools/fixtures");
+    }
+    // PEM trust-store fixtures in tests/fetch/fixtures/trust_store/ (the
+    // content_coding fixtures are @embedFile'd and already tracked by compile).
+    if (suiteIncludesDir(suite_name, groups, "tests/fetch")) {
+        addRunInputTree(b, run, launch.inputs, "tests/fetch/fixtures/trust_store");
+    }
+    // BMP image fixtures read by fx1_image_mime_support_test and protocol_conformance_test.
+    if (suiteIncludesDir(suite_name, groups, "tests/platform") or std.mem.startsWith(u8, suite_name, "platform_protocol_")) {
+        addRunInputTree(b, run, launch.inputs, "tests/platform/fixtures");
+    }
+    // Codegen tests read tests/codegen/fixtures/, specs/idl/, specs/supplementary/,
+    // and the generated WebIDL interfaces, mixins and callbacks.
+    if (suiteIncludesDir(suite_name, groups, "tests/codegen")) {
+        addRunInputTree(b, run, launch.inputs, "tests/codegen/fixtures");
+        addRunInputTree(b, run, launch.inputs, "specs/idl");
+        addRunInputTree(b, run, launch.inputs, "specs/supplementary");
+        addRunInputTree(b, run, launch.inputs, "src/webidl/interfaces");
+        addRunInputTree(b, run, launch.inputs, "src/webidl/mixins");
+        addRunInputTree(b, run, launch.inputs, "src/webidl/callbacks");
+    }
+    // tests/infra includes repo-wide source checks (test_allocators_test scans
+    // src/ and tests/; adapter script-compile check scans the engine adapter):
+    // run every time, as the repo-wide lints do, rather than caching across edits.
+    if (suiteIncludesDir(suite_name, groups, "tests/infra")) {
+        run.has_side_effects = true;
+    }
+    // Engine adapter's test directory: test_process_test walks every source
+    // file in the directory, including files not yet imported by a test root.
+    if (launch.engine.facts.tests) |tests| {
+        if (suiteIncludesDir(suite_name, groups, tests.dir)) {
+            addRunInputTree(b, run, launch.inputs, tests.dir);
+        }
+    }
 }
 
 /// tools/src_test_reach.zig: the src/ test blocks no test step runs (lane
@@ -2448,11 +2554,17 @@ pub fn build(b: *std.Build) void {
                 break :test_runs list;
             },
             .verify = testVerifySelection(b, build_probe),
+            .inputs = inputs: {
+                const tracked = b.allocator.create(ConfigureInputs) catch @panic("OOM");
+                tracked.* = .{};
+                break :inputs tracked;
+            },
             .filters = b.option([]const []const u8, "test-filter", "Run only the tests this pattern matches (repeatable: any of them): the whole test name, `*` any run of characters - names start with the file's stem, so 'mutation_test*' is a file and '*removes*' any name holding 'removes'. Selected at run time: nothing recompiles, and a suite with no match runs nothing") orelse &.{},
         };
         break :launch l;
     };
     test_selection.launch = launch;
+    test_selection.inputs = launch.inputs;
     const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default: a test-file change rebuilds one directory) or engine (ONE executable for the directories that link the engine: for cold full gates)") orelse .dirs;
     if (test_binaries == .engine and test_selection.file == null) {
         const one = b.allocator.create(OneBinary) catch @panic("OOM");
@@ -2464,8 +2576,6 @@ pub fn build(b: *std.Build) void {
         list.* = .empty;
         break :suite_dirs list;
     };
-    test_selection.inputs = b.allocator.create(ConfigureInputs) catch @panic("OOM");
-    test_selection.inputs.* = .{};
 
     // The Crane test runner's many-Browsers neighbour (tests/test_runner/
     // neighbour.zig): its thread and handshake, std only, tested with a fake
@@ -4450,9 +4560,6 @@ pub fn build(b: *std.Build) void {
             // tests/wpt/MANIFEST.json by relative path (and skips itself when
             // the WPT checkout is absent), so it must run from the repo root.
             run_harness_tests.setCwd(b.path("."));
-            // config.zig's allowlist test reads the generated worklist at run time, and every suite that
-            // imports config.zig runs it: a worklist change re-runs them, never a cached pass (lane a11y1).
-            run_harness_tests.addFileInput(b.path("tests/wpt_0_1_worklist.txt"));
             test_step.dependOn(&run_harness_tests.step);
         }
     }
