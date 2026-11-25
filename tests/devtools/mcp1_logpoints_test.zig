@@ -56,10 +56,130 @@ const duplicates_page =
     \\
 ;
 
+/// tools/mcp_diff/fixtures/lp-sm/*: source map fixtures.
+const sm_page =
+    \\<!doctype html>
+    \\<title>Source map logpoints</title>
+    \\<script src="bundle.js"></script>
+    \\<script src="inline-map.js"></script>
+    \\<script src="same-url.js"></script>
+    \\<script src="indexed.js"></script>
+    \\<script src="chunk1.js"></script>
+    \\<script src="chunk2.js"></script>
+    \\<script src="broken-map.js"></script>
+    \\
+;
+
+const sm_bundle_js =
+    \\function doubleAdd(a, b) { const total = a + b; return total * 2; }
+    \\window.calcRun = n => { const out = doubleAdd(n, 3); return out; };
+    \\//# sourceMappingURL=bundle.js.map
+    \\
+;
+
+const sm_bundle_map =
+    \\{"version":3,"sources":["src/calc.ts"],"sourcesContent":["// calc.ts comment\nexport function doubleAdd(a: number, b: number): number {\n  const total = a + b;\n  return total * 2;\n}\n\nwindow.calcRun = (n: number) => {\n  const out = doubleAdd(n, 3);\n  return out;\n};\n"],"names":[],"mappings":"AACA,2BACE,qBACA;AAGF,wBACE,6BACA"}
+    \\
+;
+
+const sm_inline_js =
+    \\window.inlineMapped = v => { const res = v + 10; return res; };
+    \\//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInNyYy9pbmxpbmUudHMiXSwic291cmNlc0NvbnRlbnQiOlsiLy8gaDFcbi8vIGgyXG53aW5kb3cuaW5saW5lTWFwcGVkID0gKHY6IG51bWJlcikgPT4ge1xuICBjb25zdCByZXMgPSB2ICsgMTA7XG4gIHJldHVybiByZXM7XG59O1xuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBQUVBLDZCQUNFLG9CQUNBIn0=
+    \\
+;
+
+const sm_same_url_js =
+    \\window.viteFn = x => {
+    \\  const y = x * 5;
+    \\  return y;
+    \\};
+    \\//# sourceMappingURL=same-url.js.map
+    \\
+;
+
+const sm_same_url_map =
+    \\{"version":3,"sources":["same-url.js"],"sourcesContent":["// line 1\n// line 2\n// line 3\nwindow.viteFn = (x: number) => {\n  const y = x * 5;\n  return y;\n};\n"],"names":[],"mappings":"AAGA;EACE;EACA"}
+    \\
+;
+
+const sm_indexed_js =
+    \\window.secA = a => { const r = a + 1; return r; };
+    \\window.secB = b => { const r = b + 2; return r; };
+    \\//# sourceMappingURL=indexed.js.map
+    \\
+;
+
+const sm_indexed_map =
+    \\)]}'
+    \\{"version":3,"sections":[{"offset":{"line":0,"column":0},"map":{"version":3,"sourceRoot":"webpack:///app/","sources":["sec-a.ts"],"names":[],"mappings":"AACA,qBACE,iBACA"}},{"offset":{"line":1,"column":0},"map":{"version":3,"sourceRoot":"webpack:///app/","sources":["sec-b.ts"],"names":[],"mappings":"AAEA,qBACE,iBACA"}}]}
+    \\
+;
+
+const sm_chunk1_js =
+    \\window.c1 = v => { const t = v + 1; return t; };
+    \\//# sourceMappingURL=chunk1.js.map
+    \\
+;
+
+const sm_chunk1_map =
+    \\{"version":3,"sources":["shared.ts"],"sourcesContent":["// shared\nexport function tag(v) {\n  return v;\n}\n"],"names":[],"mappings":"AACA,mBAAE,iBACA"}
+    \\
+;
+
+const sm_chunk2_js =
+    \\// pad
+    \\window.c2 = v => { const t = v + 2; return t; };
+    \\//# sourceMappingURL=chunk2.js.map
+    \\
+;
+
+const sm_chunk2_map =
+    \\{"version":3,"sources":["shared.ts"],"sourcesContent":["// shared\nexport function tag(v) {\n  return v;\n}\n"],"names":[],"mappings":";AACA,mBAAE,iBACA"}
+    \\
+;
+
+const sm_broken_js =
+    \\window.brokenMapFn = v => { const z = v * 2; return z; };
+    \\//# sourceMappingURL=does-not-exist.js.map
+    \\
+;
+
+const sm_rebuild_html =
+    \\<!doctype html>
+    \\<title>Rebuild</title>
+    \\<script src="rebuild.js"></script>
+    \\
+;
+
+const sm_rebuild_v1_js =
+    \\window.rebuilt = n => { const out = n + 1; return out; };
+    \\//# sourceMappingURL=rebuild.js.map
+    \\
+;
+
+const sm_rebuild_v1_map =
+    \\{"version":3,"sources":["src/rebuild.ts"],"sourcesContent":["// v1\n"],"names":[],"mappings":"AAAA,wBACE,mBACA"}
+    \\
+;
+
+const sm_rebuild_v2_js =
+    \\// rebuilt line 1
+    \\// rebuilt line 2
+    \\window.rebuilt = n => { const out = n + 10; return out; };
+    \\//# sourceMappingURL=rebuild.js.map
+    \\
+;
+
+const sm_rebuild_v2_map =
+    \\{"version":3,"sources":["src/rebuild.ts"],"sourcesContent":["// v2\n"],"names":[],"mappings":";;AAAA,wBACE,oBACA"}
+    \\
+;
+
 const Site = struct {
     listener: LoopbackListener,
     thread: ?std.Thread = null,
     active: std.atomic.Value(u32) = .init(0),
+    rebuild_version: std.atomic.Value(u32) = .init(1),
 
     fn start(self: *Site) !void {
         self.* = .{ .listener = try LoopbackListener.open(.{}) };
@@ -88,10 +208,10 @@ const Site = struct {
     fn answerAndClose(self: *Site, stream: std.Io.net.Stream) void {
         defer _ = self.active.fetchSub(1, .acq_rel);
         defer stream.close(std.testing.io);
-        answer(stream) catch {};
+        self.answer(stream) catch {};
     }
 
-    fn answer(stream: std.Io.net.Stream) !void {
+    fn answer(self: *Site, stream: std.Io.net.Stream) !void {
         var input: [8192]u8 = undefined;
         var reader = stream.reader(std.testing.io, &input);
         while (std.mem.indexOf(u8, reader.interface.buffered(), "\r\n\r\n") == null) try reader.interface.fillMore();
@@ -100,6 +220,7 @@ const Site = struct {
         var parts = std.mem.tokenizeScalar(u8, head[0..line_end], ' ');
         _ = parts.next();
         const path = parts.next() orelse return;
+        const v2 = self.rebuild_version.load(.acquire) == 2;
         const body: []const u8, const content_type: []const u8 = if (std.mem.eql(u8, path, "/logpoints.html"))
             .{ page, "text/html" }
         else if (std.mem.eql(u8, path, "/logpoints.js"))
@@ -112,6 +233,38 @@ const Site = struct {
             .{ "window.b = () => 2;\n", "text/javascript" }
         else if (std.mem.eql(u8, path, "/title.html"))
             .{ "<!doctype html><title>Fixture title</title><p>hello</p>\n", "text/html" }
+        else if (std.mem.eql(u8, path, "/lp-sm/page.html"))
+            .{ sm_page, "text/html" }
+        else if (std.mem.eql(u8, path, "/lp-sm/bundle.js"))
+            .{ sm_bundle_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-sm/bundle.js.map"))
+            .{ sm_bundle_map, "application/json" }
+        else if (std.mem.eql(u8, path, "/lp-sm/inline-map.js"))
+            .{ sm_inline_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-sm/same-url.js"))
+            .{ sm_same_url_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-sm/same-url.js.map"))
+            .{ sm_same_url_map, "application/json" }
+        else if (std.mem.eql(u8, path, "/lp-sm/indexed.js"))
+            .{ sm_indexed_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-sm/indexed.js.map"))
+            .{ sm_indexed_map, "application/json" }
+        else if (std.mem.eql(u8, path, "/lp-sm/chunk1.js"))
+            .{ sm_chunk1_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-sm/chunk1.js.map"))
+            .{ sm_chunk1_map, "application/json" }
+        else if (std.mem.eql(u8, path, "/lp-sm/chunk2.js"))
+            .{ sm_chunk2_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-sm/chunk2.js.map"))
+            .{ sm_chunk2_map, "application/json" }
+        else if (std.mem.eql(u8, path, "/lp-sm/broken-map.js"))
+            .{ sm_broken_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-sm/rebuild.html"))
+            .{ sm_rebuild_html, "text/html" }
+        else if (std.mem.eql(u8, path, "/lp-sm/rebuild.js"))
+            .{ if (v2) sm_rebuild_v2_js else sm_rebuild_v1_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-sm/rebuild.js.map"))
+            .{ if (v2) sm_rebuild_v2_map else sm_rebuild_v1_map, "application/json" }
         else
             .{ "", "text/plain" };
         var output: [1024]u8 = undefined;
@@ -132,6 +285,7 @@ const Step = struct {
 };
 
 const logged = "Logged output appears in list_console_messages once a line executes; objects show as [object Object] there, get_console_message shows them as JSON.";
+const source_mapped_note = "Source-mapped locations are re-resolved automatically when a matching source map loads again (for example after a reload with a regenerated bundle). Note: on the first page load after a rebuild, code that runs during the load itself is not logged yet; if a load-time logpoint stays silent right after a rebuild, reload once more before concluding that the line does not run.";
 
 /// tools/mcp_diff case "logpoints: script URLs": Chrome 157's answers.
 const chrome_157 = [_]Step{
@@ -176,6 +330,52 @@ const chrome_157_lookups = [_]Step{
     .{ .tool = "set_logpoints", .args = "{\"pageId\":1,\"logpoints\":[\"lp-a/same.js:1 'a'\"]}", .is_error = true, .answer = "Error: No parsed script or original source file matches \"lp-a/same.js\". The url must match the URL of a script as served to the browser or an original source file from a source map, exactly or as a path suffix." },
 };
 
+/// tools/mcp_diff case "logpoints: source maps": Chrome 157's answers (chat.local, 2026-11-25).
+const chrome_157_source_maps = [_]Step{
+    .{ .tool = "navigate_page", .args = "{\"pageId\":1,\"url\":\"{fixture}/lp-sm/page.html\"}", .answer = "Successfully navigated to {fixture}/lp-sm/page.html.\n## Pages\n1: Source map logpoints ({fixture}/lp-sm/page.html) [selected]" },
+    .{
+        .tool = "set_logpoints",
+        .args = "{\"pageId\":1,\"logpoints\":[\"src/calc.ts:4 'total', total\",\"bundle.js:2:54 'out', out\"]}",
+        .answer = "2 logpoint(s) set on the page:\n- {fixture}/lp-sm/src/calc.ts:4:3 logging `'total', total` [bound via source map at {fixture}/lp-sm/bundle.js:1:49]\n- {fixture}/lp-sm/src/calc.ts:9:3 logging `'out', out` [bound via source map at {fixture}/lp-sm/bundle.js:2:54]\n" ++ source_mapped_note ++ "\n" ++ logged,
+    },
+    .{ .tool = "evaluate_script", .args = "{\"pageId\":1,\"function\":\"() => window.calcRun(4)\"}", .answer = "Script ran on page and returned:\n```json\n14\n```" },
+    .{ .tool = "list_console_messages", .args = "{\"pageId\":1}", .answer = "## Console messages\nShowing 1-2 of 2 (Page 1 of 1).\nmsgid=1 [log] total 7 (2 args)\nmsgid=2 [log] out 14 (2 args)" },
+    .{
+        .tool = "set_logpoints",
+        .args = "{\"pageId\":1,\"logpoints\":[\"src/calc.ts:4 'first', total\",\"bundle.js:1:49 'second', total\"]}",
+        .answer = "1 logpoint(s) set on the page:\n- {fixture}/lp-sm/src/calc.ts:4:3 logging `'second', total` [bound via source map at {fixture}/lp-sm/bundle.js:1:49]\n" ++ source_mapped_note ++ "\n" ++ logged,
+    },
+    .{
+        .tool = "set_logpoints",
+        .args = "{\"pageId\":1,\"logpoints\":[\"src/calc.ts:4 'kept', total\",\"src/calc.ts:1 'comment'\"]}",
+        .is_error = true,
+        .answer = "1 logpoint(s) set on the page:\n- {fixture}/lp-sm/src/calc.ts:4:3 logging `'kept', total` [bound via source map at {fixture}/lp-sm/bundle.js:1:49]\nError: No executable code at {fixture}/lp-sm/src/calc.ts:1 (for example a comment, type annotation or empty line, or a line not mapped to the generated script). Pick lines containing executable code. The other logpoints were applied.",
+    },
+    .{ .tool = "navigate_page", .args = "{\"pageId\":1,\"type\":\"reload\"}", .answer = "Successfully reloaded the page.\n## Pages\n1: Source map logpoints ({fixture}/lp-sm/page.html) [selected]" },
+    .{ .tool = "evaluate_script", .args = "{\"pageId\":1,\"function\":\"() => window.calcRun(6)\"}", .answer = "Script ran on page and returned:\n```json\n18\n```" },
+    .{ .tool = "list_console_messages", .args = "{\"pageId\":1}", .answer = "## Console messages\nShowing 1-1 of 1 (Page 1 of 1).\nmsgid=3 [log] kept 9 (2 args)" },
+    .{ .tool = "set_logpoints", .args = "{\"pageId\":1,\"logpoints\":[]}", .answer = "No logpoints are set on the page." },
+};
+
+/// tools/mcp_diff case "logpoints: inline, same-url, indexed, and shared maps":
+/// Chrome 157's answers (chat.local, 2026-11-25).
+const chrome_157_source_maps_variants = [_]Step{
+    .{ .tool = "navigate_page", .args = "{\"pageId\":1,\"url\":\"{fixture}/lp-sm/page.html\"}", .answer = "Successfully navigated to {fixture}/lp-sm/page.html.\n## Pages\n1: Source map logpoints ({fixture}/lp-sm/page.html) [selected]" },
+    .{
+        .tool = "set_logpoints",
+        .args = "{\"pageId\":1,\"logpoints\":[\"src/inline.ts:5 'res', res\",\"same-url.js:6 'y', y\",\"sec-a.ts:4 'a', r\",\"sec-b.ts:5 'b', r\",\"shared.ts:3 't', t\",\"broken-map.js:1:46 'z', z\"]}",
+        .answer = "6 logpoint(s) set on the page:\n- {fixture}/lp-sm/src/inline.ts:5:3 logging `'res', res` [bound via source map at {fixture}/lp-sm/inline-map.js:1:50]\n- {fixture}/lp-sm/same-url.js:6:3 logging `'y', y` [bound via source map at {fixture}/lp-sm/same-url.js:3:3]\n- webpack:///app/sec-a.ts:4:3 logging `'a', r` [bound via source map at {fixture}/lp-sm/indexed.js:1:39]\n- webpack:///app/sec-b.ts:5:3 logging `'b', r` [bound via source map at {fixture}/lp-sm/indexed.js:2:39]\n- {fixture}/lp-sm/shared.ts:3:3 logging `'t', t` [bound via source map at {fixture}/lp-sm/chunk1.js:1:37, {fixture}/lp-sm/chunk2.js:2:37]\n- {fixture}/lp-sm/broken-map.js:1:46 logging `'z', z` [bound]\n" ++ source_mapped_note ++ "\n" ++ logged,
+    },
+    .{ .tool = "evaluate_script", .args = "{\"pageId\":1,\"function\":\"() => [window.inlineMapped(5), window.viteFn(3), window.secA(10), window.secB(20), window.c1(7), window.c2(8), window.brokenMapFn(9)]\"}", .answer = "Script ran on page and returned:\n```json\n[15,15,11,22,8,10,18]\n```" },
+    .{ .tool = "list_console_messages", .args = "{\"pageId\":1}", .answer = "## Console messages\nShowing 1-7 of 7 (Page 1 of 1).\nmsgid=1 [log] res 15 (2 args)\nmsgid=2 [log] y 15 (2 args)\nmsgid=3 [log] a 11 (2 args)\nmsgid=4 [log] b 22 (2 args)\nmsgid=5 [log] t 8 (2 args)\nmsgid=6 [log] t 10 (2 args)\nmsgid=7 [log] z 18 (2 args)" },
+    .{
+        .tool = "set_logpoints",
+        .args = "{\"pageId\":1,\"logpoints\":[\"same-url.js:1 'unmapped-same-url'\"]}",
+        .answer = "1 logpoint(s) set on the page:\n- {fixture}/lp-sm/same-url.js:1 logging `'unmapped-same-url'` [bound via source map at {fixture}/lp-sm/same-url.js:1:1]\n" ++ source_mapped_note ++ "\n" ++ logged,
+    },
+    .{ .tool = "set_logpoints", .args = "{\"pageId\":1,\"logpoints\":[]}", .answer = "No logpoints are set on the page." },
+};
+
 fn run(steps: []const Step) !void {
     var site: Site = undefined;
     try site.start();
@@ -206,4 +406,51 @@ test "set_logpoints: script URLs and an inline script, as Chrome 157's server an
 
 test "set_logpoints: an ambiguous suffix, the same-file-name hint, a document with no script, a navigation; no pause" {
     try run(&chrome_157_lookups);
+}
+
+test "set_logpoints: external source maps, generated-to-original normalization, unmapped lines, reload" {
+    try run(&chrome_157_source_maps);
+}
+
+test "set_logpoints: inline data:, same-url, indexed XSSI, shared multi-bundle, and 404 maps" {
+    try run(&chrome_157_source_maps_variants);
+}
+
+test "set_logpoints: rebuilt bundle across reload re-resolves source-mapped logpoint" {
+    var site: Site = undefined;
+    try site.start();
+    defer site.stop();
+    var h: Harness = .{};
+    try h.start();
+    defer h.stop();
+    const a = h.arena.allocator();
+    const origin = try std.fmt.allocPrint(a, "http://127.0.0.1:{d}", .{site.listener.port()});
+
+    const nav_args = try std.fmt.allocPrint(a, "{{\"pageId\":1,\"url\":\"{s}/lp-sm/rebuild.html\"}}", .{origin});
+    _ = try h.tool("navigate_page", nav_args);
+    const set_r1 = try h.tool("set_logpoints", "{\"pageId\":1,\"logpoints\":[\"src/rebuild.ts:3 'out', out\"]}");
+    const exp_r1 = try std.fmt.allocPrint(
+        a,
+        "1 logpoint(s) set on the page:\n- {s}/lp-sm/src/rebuild.ts:3:3 logging `'out', out` [bound via source map at {s}/lp-sm/rebuild.js:1:44]\n" ++ source_mapped_note ++ "\n" ++ logged,
+        .{ origin, origin },
+    );
+    try testing.expectEqualStrings(exp_r1, set_r1.text);
+    _ = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => window.rebuilt(5)\"}");
+    const msg1 = try h.tool("list_console_messages", "{\"pageId\":1}");
+    try testing.expectEqualStrings("## Console messages\nShowing 1-1 of 1 (Page 1 of 1).\nmsgid=1 [log] out 6 (2 args)", msg1.text);
+
+    // Swap the served bundle and source map to v2 (shifted down 2 lines, +1 column) and reload.
+    site.rebuild_version.store(2, .release);
+    _ = try h.tool("navigate_page", "{\"pageId\":1,\"type\":\"reload\"}");
+    _ = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => window.rebuilt(5)\"}");
+    const msg2 = try h.tool("list_console_messages", "{\"pageId\":1}");
+    try testing.expectEqualStrings("## Console messages\nShowing 1-1 of 1 (Page 1 of 1).\nmsgid=2 [log] out 15 (2 args)", msg2.text);
+
+    const set_r2 = try h.tool("set_logpoints", "{\"pageId\":1,\"logpoints\":[\"src/rebuild.ts:3 'out', out\"]}");
+    const exp_r2 = try std.fmt.allocPrint(
+        a,
+        "1 logpoint(s) set on the page:\n- {s}/lp-sm/src/rebuild.ts:3:3 logging `'out', out` [bound via source map at {s}/lp-sm/rebuild.js:3:45]\n" ++ source_mapped_note ++ "\n" ++ logged,
+        .{ origin, origin },
+    );
+    try testing.expectEqualStrings(exp_r2, set_r2.text);
 }
