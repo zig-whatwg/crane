@@ -483,6 +483,35 @@ MallocLargeCache=0 MallocMaxMagazines=1 perf_bench run --suite=... --root=tests/
 perf_bench cost --default=<D> --memory=<M> [--bar=1.03]
 ```
 
+**A lane runs the pair with `perf_bench window`** (lane tool1, 2026-11-24), the one committed
+window runner (`tools/perf_bench/window.zig`); the per-lane `costwin.sh` copies are retired. It
+is the tip console's own `perf_bench`, queued as a timed window from the lane's mirror:
+
+```bash
+crane-pool.sh queue chat.local <mirror> cost --est <min> \
+  '<bins>/tip-<sha>/perf_bench window --tip=<bins>/tip-<sha> --tip-commit=<sha> \
+     --base=<bins>/main-<sha> --base-commit=<sha> --out=<bins>/costpair-<sha> \
+     --tree-head=.<lane>/tree.head --stop-file=<bins>/STOP-chat.local'
+```
+
+Each console dir is a frozen release console (repl, repl.modes, whatwg_snapshot.bin, SHA256SUMS
+over them, and BUILD_INFO naming its commit and `v8=<version>`). Before anything is measured the
+window refuses, with exit 2 and the reason: an `--out` that exists (an earlier run's records
+would be read as this window's; `--out-exists=move-aside` renames it with a stamp), a console
+that does not match its SHA256SUMS, is not the ReleaseSafe release build for `apple_m1`, or
+whose BUILD_INFO does not name the commit given, two sides that are one binary, a mirror whose
+`tree.head` is not the tip (`--tree-differs=<reason>` measures anyway and prints the reason), a
+host other than chat.local (`--any-host`: a mechanism run, never a figure), and a `perf_bench
+check` that fails. It writes the pins itself, then runs D (the default pass, `--runs=7`), M (the
+memory pass: `MallocLargeCache=0 MallocMaxMagazines=1`, `--collected`, `--memory-runs=9`) and C
+(`perf_bench cost`), each pass after a quiet-host gate. After each pass it counts the journal's
+records against runs x workloads x consoles, one per engine, workload and run, and prints the
+count on the pass's END line. A pass that is not whole, or that `perf_bench run` ended early, gets
+no verdict. Every START and END line has its time from the clock in 12-hour US Eastern. Exit: 0
+within the bar, 1 over it, 2 an input check, 3 a STOP file, 4 a pass incomplete, 5 the host never
+went quiet; `crane-pool.sh queue-wait` returns it. `--dry-run` makes every check, including the
+check launches, and keeps nothing.
+
 **A broken console fails fast** (perf1-guard, 2026-11-24: on 2026-11-23 a release console whose
 every script threw made every workload of two windows time out, for 7 h and for 5 h). `perf_bench
 check` launches `workloads/overhead.html` once in every pinned engine and fails, naming the

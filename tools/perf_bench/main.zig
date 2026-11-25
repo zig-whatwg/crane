@@ -22,6 +22,19 @@
 //!       is cleared by common levels within the bar or by the collected figure
 //!       (AGENTS.md's rule; cost.zig; docs/performance.md, "A lane's cost
 //!       pair"). Exit 1 when a row is over the bar and not cleared
+//!   perf_bench window --tip=<console dir> --tip-commit=<sha>
+//!                  (--base=<console dir> --base-commit=<sha> | --alone)
+//!                  --out=<dir> [--out-exists=refuse|move-aside]
+//!                  [--tree-head=<file> [--tree-differs=<reason>]]
+//!                  [--steps=D,M,C] [--runs=7] [--memory-runs=9] [--round=10]
+//!                  [--suite=...] [--root=...] [--only=<text>] [--stop-file=<f> ...]
+//!                  [--load-max=3] [--quiet-wait-s=3600] [--max-timeouts=3]
+//!                  [--check-timeout-s=60] [--any-host] [--dry-run]
+//!       a lane's cost window, whole: the consoles and the mirror checked,
+//!       perf_bench check, the default pass, the memory pass and the cost
+//!       verdict, each pass's records counted first (window.zig). Exit 0
+//!       within the bar, 1 over it, 2 an input check, 3 STOP, 4 a pass
+//!       incomplete (no verdict), 5 the host never went quiet
 //!   perf_bench check --suite=... --root=... --pin=<file> ...
 //!                  [--check-timeout-s=<n>] [--stop-file=<f>]
 //!       the run's input checks alone (window scripts run them first): the
@@ -68,9 +81,10 @@ pub const report = @import("report.zig");
 pub const card = @import("card.zig");
 pub const chart = @import("chart.zig");
 pub const cost = @import("cost.zig");
+pub const window = @import("window.zig");
 
 const usage =
-    \\usage: perf_bench run|check|check-suite|gc-bench|validate|report|cost|serve [options]
+    \\usage: perf_bench run|check|check-suite|gc-bench|validate|report|cost|window|serve [options]
     \\       (docs/performance.md; tools/perf_bench/main.zig lists every option)
     \\
 ;
@@ -172,6 +186,41 @@ pub fn main(init: std.process.Init) !void {
             std.debug.print("{s}", .{w.buffered()});
             std.process.exit(outcome.exitCode());
         }
+    } else if (std.mem.eql(u8, cmd, "window")) {
+        const steps = window.parseSteps(arena, args.get("steps") orelse "D,M,C") catch |err| fail("--steps: {t} (D, M and C, comma-separated)", .{err});
+        const out_exists = args.get("out-exists") orelse "refuse";
+        const move_aside = if (std.mem.eql(u8, out_exists, "move-aside")) true else if (std.mem.eql(u8, out_exists, "refuse")) false else fail("--out-exists={s}: refuse or move-aside", .{out_exists});
+        const alone = args.get("alone") != null;
+        if (alone and args.get("base") != null) fail("--alone and --base: one or the other", .{});
+        if (!alone and args.get("base") == null) fail("--base=<console dir> --base-commit=<sha> is required (or --alone: the tip by itself, no verdict)", .{});
+        const load_text = args.get("load-max") orelse "3";
+        const opts: window.Options = .{
+            .tip = args.need("tip"),
+            .tip_commit = args.need("tip-commit"),
+            .base = args.get("base"),
+            .base_commit = args.get("base-commit"),
+            .out = args.need("out"),
+            .move_aside = move_aside,
+            .tree_head = args.get("tree-head"),
+            .tree_differs = args.get("tree-differs"),
+            .steps = steps,
+            .runs = args.int(u32, "runs", 7),
+            .memory_runs = args.int(u32, "memory-runs", 9),
+            .round = args.int(u32, "round", 10),
+            .suite_path = args.get("suite") orelse "tests/perf/suite.json",
+            .root = args.get("root") orelse "tests/perf",
+            .only = args.get("only"),
+            .stop_files = try args.all(arena, "stop-file"),
+            .load_max = std.fmt.parseFloat(f64, load_text) catch fail("--load-max={s} is not a number", .{load_text}),
+            .quiet_wait_s = args.int(u32, "quiet-wait-s", 3600),
+            .max_timeouts = args.int(u32, "max-timeouts", 3),
+            .check_timeout_s = args.int(u32, "check-timeout-s", runner.check_page.timeout_s),
+            .any_host = args.get("any-host") != null,
+            .dry_run = args.get("dry-run") != null,
+        };
+        const s = try loadSuite(arena, io, opts.suite_path, opts.root);
+        const code = try window.run(init.gpa, arena, io, opts, s, init.environ_map);
+        std.process.exit(@backingInt(code));
     } else if (std.mem.eql(u8, cmd, "gc-bench")) {
         try runGcBench(init.gpa, arena, io, &args);
     } else if (std.mem.eql(u8, cmd, "validate")) {
@@ -711,4 +760,5 @@ test {
     _ = card;
     _ = chart;
     _ = cost;
+    _ = window;
 }
