@@ -7,8 +7,8 @@
 //! - Upstream files reproduced (algorithm, not copied verbatim):
 //!   - `front_end/core/sdk/SourceMap.ts`: `parseSourceMap`, `SourceMapEntry`,
 //!     `SourceMap` (`#parseSources`, `#parseMap`, `#computeReverseMappings`,
-//!     `findEntry`, `findEntryExact`, `sourceLineMapping`, `findReverseEntries`,
-//!     `compatibleForURL`, `TokenIterator` Base64 VLQ decoder)
+//!     `findEntry`, `findEntryExact`, `findEntryRanges`, `sourceLineMapping`,
+//!     `findReverseEntries`, `compatibleForURL`, `TokenIterator` Base64 VLQ decoder)
 //!   - `front_end/core/sdk/SourceMapRangeMappings.ts`: `decodeRangeMappings`,
 //!     `interpolateOriginalPosition`
 //!   - `front_end/core/common/ParsedURL.ts`: `ParsedURL.completeURL`,
@@ -44,6 +44,19 @@ pub const SourceInfo = struct {
     /// Indices into `SourceMap.mappings`, sorted by
     /// `(source_line, source_column, line, column)`.
     reverse_mappings: []usize = &.{},
+};
+
+pub const TextRange = struct {
+    start_line: i64,
+    start_column: i64,
+    end_line: i64,
+    end_column: i64,
+};
+
+pub const EntryRanges = struct {
+    range: TextRange,
+    source_range: TextRange,
+    source_url: []const u8,
 };
 
 pub const SourceMap = struct {
@@ -118,6 +131,57 @@ pub const SourceMap = struct {
         const entry = self.findEntry(line, column) orelse return null;
         if (entry.line == line and entry.column == column) return entry;
         return null;
+    }
+
+    /// SourceMap.findEntryRanges: returns the generated range and corresponding
+    /// original source range covering `(line, column)`, used by
+    /// `NamesResolver.resolveSourceName` when `entry.name` is absent.
+    pub fn findEntryRanges(self: *const SourceMap, line: i64, column: i64) ?EntryRanges {
+        const max_pos: i64 = (1 << 31) - 1;
+        const end_index = upperBoundEntry(self.mappings, line, column);
+        if (end_index == 0) return null;
+        const start_index = end_index - 1;
+        const start_entry = self.mappings[start_index];
+        const source_url = start_entry.source_url orelse return null;
+        const end_line: i64 = if (end_index < self.mappings.len) self.mappings[end_index].line else max_pos;
+        const end_column: i64 = if (end_index < self.mappings.len) self.mappings[end_index].column else max_pos;
+        const range: TextRange = .{
+            .start_line = start_entry.line,
+            .start_column = start_entry.column,
+            .end_line = end_line,
+            .end_column = end_column,
+        };
+        if (start_entry.is_range_mapping) {
+            const source_end = if (end_index < self.mappings.len)
+                interpolateOriginalPosition(start_entry, end_line, end_column)
+            else
+                LineCol{ .line = end_line, .column = end_column };
+            return .{
+                .range = range,
+                .source_range = .{
+                    .start_line = start_entry.source_line,
+                    .start_column = start_entry.source_column,
+                    .end_line = source_end.line,
+                    .end_column = source_end.column,
+                },
+                .source_url = source_url,
+            };
+        }
+        const rev = self.reversedMappings(source_url);
+        const end_rev = upperBoundReversePos(self.mappings, rev, start_entry.source_line, start_entry.source_column);
+        if (end_rev == 0) return null;
+        const end_src_line: i64 = if (end_rev < rev.len) self.mappings[rev[end_rev]].source_line else max_pos;
+        const end_src_col: i64 = if (end_rev < rev.len) self.mappings[rev[end_rev]].source_column else max_pos;
+        return .{
+            .range = range,
+            .source_range = .{
+                .start_line = start_entry.source_line,
+                .start_column = start_entry.source_column,
+                .end_line = end_src_line,
+                .end_column = end_src_col,
+            },
+            .source_url = source_url,
+        };
     }
 
     fn reversedMappings(self: *const SourceMap, source_url: []const u8) []const usize {
@@ -489,7 +553,9 @@ fn decodeRangeMappings(tmp: Allocator, encoded: []const u8) Error![][]usize {
     return lines.items;
 }
 
-fn interpolateOriginalPosition(entry: Entry, line: i64, column: i64) struct { line: i64, column: i64 } {
+const LineCol = struct { line: i64, column: i64 };
+
+fn interpolateOriginalPosition(entry: Entry, line: i64, column: i64) LineCol {
     const line_offset = line - entry.line;
     return .{
         .line = entry.source_line + line_offset,
@@ -965,6 +1031,24 @@ test "parse, findEntry, sourceLineMapping, findReverseEntries, XSSI, sections, r
     try t.expectEqual(@as(i64, 2), interp.source_line);
     try t.expectEqual(@as(i64, 5), interp.source_column);
     try t.expect(interp.is_range_mapping);
+
+    // findEntryRanges for names-free token extraction.
+    const nn_sm = try parse(t.allocator, "http://h/lp-min/nonames.js", "http://h/lp-min/nonames.js.map",
+        \\{"version":3,"sources":["src/nonames.ts"],"sourcesContent":["export function calcTax(subtotal: number) {\n  const tax = subtotal * 2;\n  return tax;\n}\n"],"names":[],"mappings":"AAAA,oBACE,MAAM,CAAG,CAAG,CAAQ,GACpB,OAAO,CAAG"}
+    );
+    defer nn_sm.deinit();
+    const r_y = nn_sm.findEntryRanges(0, 26).?;
+    try t.expectEqual(@as(i64, 0), r_y.range.start_line);
+    try t.expectEqual(@as(i64, 26), r_y.range.start_column);
+    try t.expectEqual(@as(i64, 27), r_y.range.end_column);
+    try t.expectEqual(@as(i64, 1), r_y.source_range.start_line);
+    try t.expectEqual(@as(i64, 8), r_y.source_range.start_column);
+    try t.expectEqual(@as(i64, 11), r_y.source_range.end_column);
+    const r_x = nn_sm.findEntryRanges(0, 28).?;
+    try t.expectEqual(@as(i64, 28), r_x.range.start_column);
+    try t.expectEqual(@as(i64, 29), r_x.range.end_column);
+    try t.expectEqual(@as(i64, 14), r_x.source_range.start_column);
+    try t.expectEqual(@as(i64, 22), r_x.source_range.end_column);
 
     // Invalid JSON rejected cleanly.
     try t.expectError(error.InvalidSourceMap, parse(t.allocator, "http://h/a.js", "http://h/a.js.map", "{bad"));

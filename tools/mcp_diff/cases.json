@@ -1632,6 +1632,51 @@
           }
         }
       ]
+    },
+    {
+      "name": "logpoints: minified variable names",
+      "about": "set_logpoints substituting original variable names in minified scripts: params and locals via V3 names, object shorthand expansion, non-shorthand keys and member properties untouched, template literals, arrow-param shadowing, closures with inner shadowing, destructuring and try/catch bindings, and findEntryRanges fallback without a names array.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/lp-min/page.html"
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "src/cart.ts:3 'amt', finalAmount, cartTotal, discount, JSON.stringify({finalAmount, cartTotal: cartTotal + 1}), `t=${finalAmount}`, [1].map(finalAmount => finalAmount + discount)[0]",
+              "src/closure.ts:6 'closure', outerBase, factor, step, result",
+              "src/syntax.ts:10 'caught', total, price, item.price, err.message",
+              "src/nonames.ts:3 'tax', tax, subtotal"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [window.minCheckout(100, 15), window.minClosure(100)(7), window.minSyntax({price: 10, label: 'hat'}), window.minNoNames(25)]"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": []
+          }
+        }
+      ]
     }
   ],
   "expected": [

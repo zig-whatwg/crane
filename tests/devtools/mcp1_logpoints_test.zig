@@ -193,6 +193,61 @@ const sm_slow_map =
     \\
 ;
 
+/// tools/mcp_diff/fixtures/lp-min/*: minified variable-name fixtures.
+const min_page =
+    \\<!doctype html>
+    \\<title>Minified logpoints</title>
+    \\<script src="min.js"></script>
+    \\<script src="closure.js"></script>
+    \\<script src="syntax.js"></script>
+    \\<script src="nonames.js"></script>
+    \\
+;
+
+const min_cart_js =
+    \\function checkout(a,b){const c=a-b;return c}window.minCheckout=checkout;
+    \\//# sourceMappingURL=min.js.map
+    \\
+;
+
+const min_cart_map =
+    \\{"version":3,"sources":["src/cart.ts"],"sourcesContent":["export function checkout(cartTotal: number, discount: number): number {\n  const finalAmount = cartTotal - discount;\n  return finalAmount;\n}\n"],"names":["cartTotal","discount","finalAmount"],"mappings":"AAAA,kBAAyBA,EAAmBC,GAC1C,MAAMC,EAAcF,EAAYC,EAChC,OAAOC"}
+    \\
+;
+
+const min_closure_js =
+    \\function makeAdder(e){const t=10;return function(n){const r=n*2;const o=e+r;return o}}window.minClosure=makeAdder;
+    \\//# sourceMappingURL=closure.js.map
+    \\
+;
+
+const min_closure_map =
+    \\{"version":3,"sources":["src/closure.ts"],"sourcesContent":["export function makeAdder(outerBase: number) {\n  const factor = 10;\n  return function inner(step: number) {\n    const factor = step * 2;\n    const result = outerBase + factor;\n    return result;\n  };\n}\n"],"names":["outerBase","factor","step","result"],"mappings":"AAAA,mBAA0BA,GACxB,MAAMC,KACN,gBAAsBC,GACpB,MAAMD,EAASC,IACf,MAAMC,EAASH,EAAYC,EAC3B,OAAOE"}
+    \\
+;
+
+const min_syntax_js =
+    \\function inspectItem(t){const{price:e,label:n}=t;let r=0;for(let o=0;o<2;o++){r+=e}try{throw new Error(n)}catch(i){return r+":"+i.message}}window.minSyntax=inspectItem;
+    \\//# sourceMappingURL=syntax.js.map
+    \\
+;
+
+const min_syntax_map =
+    \\{"version":3,"sources":["src/syntax.ts"],"sourcesContent":["export function inspectItem(item: { price: number; label: string }) {\n  const { price, label } = item;\n  let total = 0;\n  for (let idx = 0; idx < 2; idx++) {\n    total += price;\n  }\n  try {\n    throw new Error(label);\n  } catch (err) {\n    return total + ':' + err.message;\n  }\n}\n"],"names":["item","price","label","total","idx","err"],"mappings":"AAAA,qBAA4BA,GAC1B,YAAQC,QAAOC,GAAUF,EACzB,IAAIG,IACJ,QAASC,aACPD,GAASF,EAEX,oBACkBC,GAChB,MAAOG,GACP,OAAOF,MAAcE"}
+    \\
+;
+
+const min_nonames_js =
+    \\function calcTax(x){const y=x*2;return y}window.minNoNames=calcTax;
+    \\//# sourceMappingURL=nonames.js.map
+    \\
+;
+
+const min_nonames_map =
+    \\{"version":3,"sources":["src/nonames.ts"],"sourcesContent":["export function calcTax(subtotal: number) {\n  const tax = subtotal * 2;\n  return tax;\n}\n"],"names":[],"mappings":"AAAA,oBACE,MAAM,CAAG,CAAG,CAAQ,GACpB,OAAO,CAAG"}
+    \\
+;
+
 const Site = struct {
     listener: LoopbackListener,
     thread: ?std.Thread = null,
@@ -294,7 +349,26 @@ const Site = struct {
                 std.Io.sleep(std.testing.io, .fromMilliseconds(5), .awake) catch {};
             }
             break :blk .{ sm_slow_map, "application/json" };
-        } else .{ "", "text/plain" };
+        } else if (std.mem.eql(u8, path, "/lp-min/page.html"))
+            .{ min_page, "text/html" }
+        else if (std.mem.eql(u8, path, "/lp-min/min.js"))
+            .{ min_cart_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-min/min.js.map"))
+            .{ min_cart_map, "application/json" }
+        else if (std.mem.eql(u8, path, "/lp-min/closure.js"))
+            .{ min_closure_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-min/closure.js.map"))
+            .{ min_closure_map, "application/json" }
+        else if (std.mem.eql(u8, path, "/lp-min/syntax.js"))
+            .{ min_syntax_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-min/syntax.js.map"))
+            .{ min_syntax_map, "application/json" }
+        else if (std.mem.eql(u8, path, "/lp-min/nonames.js"))
+            .{ min_nonames_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-min/nonames.js.map"))
+            .{ min_nonames_map, "application/json" }
+        else
+            .{ "", "text/plain" };
         var output: [1024]u8 = undefined;
         var writer = stream.writer(std.testing.io, &output);
         const status = if (body.len == 0) "404 Not Found" else "200 OK";
@@ -525,4 +599,34 @@ test "set_logpoints: slow source map times out with Chrome's messages, continues
         .{ origin, origin },
     );
     try testing.expectEqualStrings(exp_retry, r_retry.text);
+}
+
+/// tools/mcp_diff case "logpoints: minified variable names".
+const chrome_157_minified = [_]Step{
+    .{ .tool = "navigate_page", .args = "{\"pageId\":1,\"url\":\"{fixture}/lp-min/page.html\"}", .answer = "Successfully navigated to {fixture}/lp-min/page.html.\n## Pages\n1: Minified logpoints ({fixture}/lp-min/page.html) [selected]" },
+    .{
+        .tool = "set_logpoints",
+        .args = "{\"pageId\":1,\"logpoints\":[\"src/cart.ts:3 'amt', finalAmount, cartTotal, discount, JSON.stringify({finalAmount, cartTotal: cartTotal + 1}), `t=${finalAmount}`, [1].map(finalAmount => finalAmount + discount)[0]\",\"src/closure.ts:6 'closure', outerBase, factor, step, result\",\"src/syntax.ts:10 'caught', total, price, item.price, err.message\",\"src/nonames.ts:3 'tax', tax, subtotal\"]}",
+        .answer = "4 logpoint(s) set on the page:\n" ++
+            "- {fixture}/lp-min/src/cart.ts:3:3 logging `'amt', finalAmount, cartTotal, discount, JSON.stringify({finalAmount, cartTotal: cartTotal + 1}), `t=${finalAmount}`, [1].map(finalAmount => finalAmount + discount)[0]` [bound via source map at {fixture}/lp-min/min.js:1:36]\n" ++
+            "- {fixture}/lp-min/src/closure.ts:6:5 logging `'closure', outerBase, factor, step, result` [bound via source map at {fixture}/lp-min/closure.js:1:77]\n" ++
+            "- {fixture}/lp-min/src/syntax.ts:10:5 logging `'caught', total, price, item.price, err.message` [bound via source map at {fixture}/lp-min/syntax.js:1:116]\n" ++
+            "- {fixture}/lp-min/src/nonames.ts:3:3 logging `'tax', tax, subtotal` [bound via source map at {fixture}/lp-min/nonames.js:1:33]\n" ++
+            source_mapped_note ++ "\n" ++ logged,
+    },
+    .{ .tool = "evaluate_script", .args = "{\"pageId\":1,\"function\":\"() => [window.minCheckout(100, 15), window.minClosure(100)(7), window.minSyntax({price: 10, label: 'hat'}), window.minNoNames(25)]\"}", .answer = "Script ran on page and returned:\n```json\n[85,114,\"20:hat\",50]\n```" },
+    .{
+        .tool = "list_console_messages",
+        .args = "{\"pageId\":1}",
+        .answer = "## Console messages\nShowing 1-4 of 4 (Page 1 of 1).\n" ++
+            "msgid=1 [log] amt 85 100 15 {\"finalAmount\":85,\"cartTotal\":101} t=85 16 (7 args)\n" ++
+            "msgid=2 [log] closure 100 14 7 114 (5 args)\n" ++
+            "msgid=3 [log] caught 20 10 10 hat (5 args)\n" ++
+            "msgid=4 [log] tax 50 25 (3 args)",
+    },
+    .{ .tool = "set_logpoints", .args = "{\"pageId\":1,\"logpoints\":[]}", .answer = "No logpoints are set on the page." },
+};
+
+test "set_logpoints: minified variable names via scope analysis, closures, destructuring, and findEntryRanges" {
+    try run(&chrome_157_minified);
 }
