@@ -45,6 +45,7 @@ const Recorder = struct {
         \\<!doctype html><title>headers</title>
     ;
     const worker = "fetch('/from-worker').then(() => postMessage('done'), () => postMessage('failed'));";
+    const shared_worker = "onconnect = e => e.ports[0].postMessage('done');";
 
     fn start(allocator: Allocator) !*Recorder {
         const self = try allocator.create(Recorder);
@@ -164,8 +165,9 @@ const Recorder = struct {
         }
         const is_page = std.mem.eql(u8, path, "/page.html");
         const is_worker = std.mem.eql(u8, path, "/worker.js");
-        const body: []const u8 = if (is_page) page else if (is_worker) worker else "ok";
-        const content_type: []const u8 = if (is_page) "text/html" else if (is_worker) "text/javascript" else "text/plain";
+        const is_shared = std.mem.eql(u8, path, "/shared.js");
+        const body: []const u8 = if (is_page) page else if (is_worker) worker else if (is_shared) shared_worker else "ok";
+        const content_type: []const u8 = if (is_page) "text/html" else if (is_worker or is_shared) "text/javascript" else "text/plain";
         // CORS open to the asking origin, x-test allowed: what reaches the
         // server is then decided by the browser alone.
         try out.print("HTTP/1.1 200 OK\r\nContent-Type: {s}\r\nContent-Length: {d}\r\nAccess-Control-Allow-Origin: {s}\r\nAccess-Control-Allow-Headers: x-test\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", .{ content_type, body.len, if (std.mem.eql(u8, origin, "-")) "*" else origin });
@@ -232,10 +234,15 @@ const Probe = struct {
 
     /// Network.setUserAgentOverride: "" on success, else "<code> <message>".
     fn setUserAgent(self: *Probe, user_agent: []const u8) ![]const u8 {
-        const params = try std.fmt.allocPrint(self.arena, "{{\"userAgent\":{f}}}", .{std.json.fmt(user_agent, .{})});
-        const answer = self.rec.at(try self.rec.awaitResponse(try self.rec.send("Network.setUserAgentOverride", params, self.session)));
+        return self.command("Network.setUserAgentOverride", try std.fmt.allocPrint(self.arena, "{{\"userAgent\":{f}}}", .{std.json.fmt(user_agent, .{})}));
+    }
+
+    /// Any command on the page session: "<method>" on success, else
+    /// "<method>: <code> <message>".
+    fn command(self: *Probe, method: []const u8, params: []const u8) ![]const u8 {
+        const answer = self.rec.at(try self.rec.awaitResponse(try self.rec.send(method, params, self.session)));
         const e = cdp.at(answer, "error") orelse return "";
-        return std.fmt.allocPrint(self.arena, "{d} {s}", .{ (cdp.at(e, "code") orelse std.json.Value{ .integer = 0 }).integer, cdp.stringAt(e, "message") orelse "" });
+        return std.fmt.allocPrint(self.arena, "{s}: {d} {s}", .{ method, (cdp.at(e, "code") orelse std.json.Value{ .integer = 0 }).integer, cdp.stringAt(e, "message") orelse "" });
     }
 
     fn navigate(self: *Probe, name: []const u8, url: []const u8) ![]const u8 {
@@ -298,12 +305,15 @@ fn check(allocator: Allocator, arena: Allocator, client: *cdp.Client, server: *R
     const page_url = try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/page.html", .{p});
     const worker = "new Promise(r => { const w = new Worker('/worker.js'); w.onmessage = e => r(e.data); })";
     const frame = "new Promise(r => { const f = document.createElement('iframe'); f.onload = () => r(1); f.src = '/frame.html'; document.body.appendChild(f); })";
+    // A shared worker of its own name each time, so its script is fetched.
+    const shared = "new Promise(r => {{ const w = new SharedWorker('/shared.js', '{s}'); w.port.onmessage = e => r(e.data); }})";
     try record.append(arena, try probe.setHeaders("{\"X-Test\":\"one\"}"));
     try record.append(arena, try probe.navigate("navigate", page_url));
     try record.append(arena, try probe.requests("same-origin", "fetch('/same').then(r => r.status)"));
     try record.append(arena, try probe.requests("cross-origin", try std.fmt.allocPrint(arena, "fetch('http://localhost:{d}/cross').then(r => r.status, e => 'failed')", .{p})));
     try record.append(arena, try probe.requests("worker", worker));
     try record.append(arena, try probe.requests("frame", frame));
+    try record.append(arena, try probe.requests("shared worker", try std.fmt.allocPrint(arena, shared, .{"headers"})));
     try record.append(arena, try probe.cancelledFrame("cancelled frame"));
     try record.append(arena, try probe.navigateFailing("reset", try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/reset", .{p})));
     try record.append(arena, try probe.navigate("redirect", try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/redirect", .{p})));
@@ -319,6 +329,17 @@ fn check(allocator: Allocator, arena: Allocator, client: *cdp.Client, server: *R
     try record.append(arena, try probe.navigate("ua navigate", page_url));
     try record.append(arena, try probe.requests("ua worker", worker));
     try record.append(arena, try probe.requests("ua frame", frame));
+    try record.append(arena, try probe.requests("ua shared worker", try std.fmt.allocPrint(arena, shared, .{"ua"})));
+    // The headers apply while the session's Network domain is enabled;
+    // Network.disable drops them, and a set while disabled waits for enable.
+    try record.append(arena, try probe.setHeaders("{\"X-Test\":\"two\"}"));
+    try record.append(arena, try probe.requests("enabled", "fetch('/enabled').then(r => r.status)"));
+    try record.append(arena, try probe.command("Network.disable", "{}"));
+    try record.append(arena, try probe.requests("disabled", "fetch('/disabled').then(r => r.status)"));
+    try record.append(arena, try probe.setHeaders("{\"X-Test\":\"three\"}"));
+    try record.append(arena, try probe.requests("set while disabled", "fetch('/while-disabled').then(r => r.status)"));
+    try record.append(arena, try probe.command("Network.enable", "{}"));
+    try record.append(arena, try probe.requests("enabled again", "fetch('/enabled-again').then(r => r.status)"));
 
     const all = try std.mem.join(arena, "\n", record.items);
     if (verbose()) std.debug.print("mcp1_extra_headers: ALL\n{s}\n", .{all});
@@ -337,6 +358,7 @@ const chrome_157 = [_][]const u8{
     "cross-origin: GET localhost/cross x-test=one acrh=- referer=/ | OPTIONS localhost/cross x-test=- acrh=x-test referer=/",
     "worker: GET 127.0.0.1/from-worker x-test=- acrh=- referer=/worker.js | GET 127.0.0.1/worker.js x-test=one acrh=- referer=/page.html",
     "frame: GET 127.0.0.1/frame.html x-test=one acrh=- referer=/page.html",
+    "shared worker: GET 127.0.0.1/shared.js x-test=one acrh=- referer=/page.html",
     "cancelled frame: GET 127.0.0.1/slow x-test=one acrh=- referer=/page.html",
     "reset: GET 127.0.0.1/reset x-test=one acrh=- referer=- failed=true",
     "redirect: GET 127.0.0.1/page.html x-test=one acrh=- referer=- | GET 127.0.0.1/redirect x-test=one acrh=- referer=-",
@@ -351,6 +373,15 @@ const chrome_157 = [_][]const u8{
     "ua navigate: GET 127.0.0.1/page.html x-test=- acrh=- referer=- ua=Probe/1",
     "ua worker: GET 127.0.0.1/from-worker x-test=- acrh=- referer=/worker.js ua=Probe/1 | GET 127.0.0.1/worker.js x-test=- acrh=- referer=/page.html ua=Probe/1",
     "ua frame: GET 127.0.0.1/frame.html x-test=- acrh=- referer=/page.html ua=Probe/1",
+    "ua shared worker: GET 127.0.0.1/shared.js x-test=- acrh=- referer=/page.html ua=Probe/1",
+    "",
+    "enabled: GET 127.0.0.1/enabled x-test=two acrh=- referer=/page.html ua=Probe/1",
+    "",
+    "disabled: GET 127.0.0.1/disabled x-test=- acrh=- referer=/page.html ua=Probe/1",
+    "",
+    "set while disabled: GET 127.0.0.1/while-disabled x-test=- acrh=- referer=/page.html ua=Probe/1",
+    "",
+    "enabled again: GET 127.0.0.1/enabled-again x-test=three acrh=- referer=/page.html ua=Probe/1",
 };
 
 test "Network.setExtraHTTPHeaders: which requests carry the headers and where - before CORS, as Chrome's" {
