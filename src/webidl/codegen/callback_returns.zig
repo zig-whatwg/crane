@@ -40,14 +40,10 @@ pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u
 /// Callback interface operations whose return value is not `undefined`/`any`
 /// and is still converted by hand in an impl (WebIDL 3.11 step 14).
 /// (interface, operation, Zig return type, how converted today).
-/// Batch B6 generates typed call helpers on callback interfaces and shrinks
-/// this list to zero.
-pub const callback_interface_returns_converted_by_impl = [_]struct { []const u8, []const u8, []const u8, Conversion }{
-    // impls/node_filter.zig acceptNode (engine.toUint16 after callUserObjectOperation).
-    .{ "NodeFilter", "acceptNode", "u16", .hand },
-    // dom/xpath / impls/XPathEvaluatorBase.zig (converts lookupNamespaceURI return by hand).
-    .{ "XPathNSResolver", "lookupNamespaceURI", "?runtime.DOMString", .hand },
-};
+/// Batch B6 drove this list to zero: NodeFilter.acceptNode and
+/// XPathNSResolver.lookupNamespaceURI invoke through their generated
+/// `invoke_<op>` helpers.
+pub const callback_interface_returns_converted_by_impl = [_]struct { []const u8, []const u8, []const u8, Conversion }{};
 
 /// WebIDL dictionary conversions called from spec prose (not a binding
 /// argument or callback return) that are still read by hand instead of

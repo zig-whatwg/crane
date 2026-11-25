@@ -93,12 +93,14 @@ test "the callback returns an impl still converts only shrink" {
     try testing.expectEqual(@as(usize, 0), list.len);
 }
 
-const iface_list = codegen.callback_returns.callback_interface_returns_converted_by_impl;
-const prose_list = codegen.callback_returns.prose_dictionary_conversions_by_impl;
+const IfaceEntry = struct { []const u8, []const u8, []const u8, codegen.callback_returns.Conversion };
+const ProseEntry = struct { []const u8, []const u8 };
+const iface_list: []const IfaceEntry = &codegen.callback_returns.callback_interface_returns_converted_by_impl;
+const prose_list: []const ProseEntry = &codegen.callback_returns.prose_dictionary_conversions_by_impl;
 
-fn listedIfaceOp(iface: []const u8, op: []const u8) ?usize {
-    for (iface_list, 0..) |entry, i| {
-        if (std.mem.eql(u8, entry[0], iface) and std.mem.eql(u8, entry[1], op)) return i;
+fn listedIfaceOp(iface: []const u8, op: []const u8) ?IfaceEntry {
+    for (iface_list) |entry| {
+        if (std.mem.eql(u8, entry[0], iface) and std.mem.eql(u8, entry[1], op)) return entry;
     }
     return null;
 }
@@ -133,19 +135,21 @@ test "the callback-interface list is exactly every callback interface operation 
             const brace = std.mem.indexOf(u8, ret_start, " {") orelse continue;
             const ret_type = ret_start[0..brace];
             const converts = !std.mem.eql(u8, ret_type, "void") and !std.mem.eql(u8, ret_type, "runtime.JSValue");
-            if (listedIfaceOp(name, op_name)) |idx| {
+            // Every callback interface operation now emits a typed `pub fn invoke_<op>(`.
+            const invoke_decl = try std.fmt.allocPrint(testing.allocator, "pub fn invoke_{s}(", .{op_name});
+            defer testing.allocator.free(invoke_decl);
+            try testing.expect(std.mem.indexOf(u8, source, invoke_decl) != null);
+            if (listedIfaceOp(name, op_name)) |entry| {
                 seen += 1;
                 try testing.expect(converts);
-                try testing.expectEqualStrings(ret_type, iface_list[idx][2]);
-            } else if (converts) {
-                std.debug.print("callback interface {s}.{s} returns {s} and is not in callback_interface_returns_converted_by_impl\n", .{ name, op_name, ret_type });
-                return error.TestUnexpectedResult;
+                try testing.expectEqualStrings(ret_type, entry[2]);
             }
         }
     }
     try testing.expectEqual(@as(usize, 3), callback_interfaces);
     try testing.expectEqual(iface_list.len, seen);
-    try testing.expectEqual(@as(usize, 2), iface_list.len);
+    // 2 -> 0 (NodeFilter.acceptNode, XPathNSResolver.lookupNamespaceURI).
+    try testing.expectEqual(@as(usize, 0), iface_list.len);
 }
 
 test "prose dictionary conversions list names generated dictionaries and only shrinks" {

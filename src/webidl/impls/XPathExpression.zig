@@ -412,40 +412,30 @@ const Parser = struct {
     fn resolve(p: *Parser, prefix: []const u8) anyerror![]const u8 {
         const callback = p.resolver orelse return error.NamespaceError;
         const realm = engine.currentRealm() orelse p.realm;
-        // Browser behavior: report callback exceptions, then raise NamespaceError.
+        // Browser behavior: report callback exceptions (including return
+        // conversion throws, WebIDL 3.11 step 14), then raise NamespaceError.
         // wpt domxpath/resolver-callback-interface.html; WebKit XPathParser.
-        const completion = try engine.callUserObjectOperation(realm, &callback, "lookupNamespaceURI", .undefined, &.{.{ .string = .{ .data = prefix, .owned = false } }}, .{ .report = .{ .report = reportException, .host = realm } });
-        const returned = switch (completion) {
-            inline else => |value| value,
+        const completion = try interfaces.XPathNSResolver.invoke_lookupNamespaceURI(
+            realm,
+            &callback,
+            .undefined,
+            runtime.DOMString.initInterned(prefix),
+            .{ .report = .{ .report = reportException, .host = realm } },
+            p.allocator,
+        );
+        const held = switch (completion) {
+            .normal => |normal| normal,
+            .throw => |thrown| {
+                thrown.release();
+                return error.NamespaceError;
+            },
         };
-        defer returned.release();
-        switch (engine.typeOf(realm, returned.value)) {
-            .null, .undefined => return error.NamespaceError,
-            else => {},
-        }
-        var conversion = StringConversion{ .realm = realm, .value = returned.value, .allocator = p.allocator };
-        if (try engine.completionOf(realm, StringConversion.run, &conversion)) |exception| {
-            defer exception.release();
-            const info = try engine.extractErrorInformation(realm, exception.value, realm.allocator);
-            defer realm.allocator.free(info.message);
-            defer realm.allocator.free(info.filename);
-            reportException(realm, &info);
-            return error.NamespaceError;
-        }
-        return conversion.result.?;
+        defer held.release(p.allocator);
+        const text = held.value orelse return error.NamespaceError;
+        return try p.allocator.dupe(u8, text.asSlice());
     }
 };
 
-const StringConversion = struct {
-    realm: runtime.Context,
-    value: runtime.JSValue,
-    allocator: Allocator,
-    result: ?[]u8 = null,
-    fn run(data: ?*anyopaque) engine.Error!void {
-        const self: *StringConversion = @ptrCast(@alignCast(data.?));
-        self.result = try engine.convertToDOMString(self.realm, self.value, self.allocator);
-    }
-};
 fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
     const fallback: runtime.Context = @ptrCast(@alignCast(host orelse return));
     const realm = info.realm orelse fallback;
