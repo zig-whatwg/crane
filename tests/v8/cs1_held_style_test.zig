@@ -150,40 +150,44 @@ fn isVolatile(element: *runtime.Instance) bool {
     return cached.@"volatile";
 }
 
-fn volatileControl() !void {
+fn controlStateChangeReplacesCache() !void {
     const page = try Page.open("<style>:checked { outline: 1px solid }</style><input id=i type=checkbox style='color: rgb(1, 2, 3)'>");
     defer page.close();
     const input = try page.byId("i");
     const first = (try dom.style.computedStyle(input, null)) orelse return error.NoStyle;
     defer first.release();
-    try testing.expect(isVolatile(input));
-    // The second read resolves the control again and replaces its cache.
+    // Lane stylevol1: controls are non-volatile; a dynamic state mutation
+    // invalidates the cache and the next read replaces it.
+    try testing.expect(!isVolatile(input));
+    try interfaces.HTMLInputElement.set_checked(input, true);
     const second = (try dom.style.computedStyle(input, null)) orelse return error.NoStyle;
     defer second.release();
     try testing.expect(second.style != first.style);
     try expectColor(first.style, "rgb(1, 2, 3)");
 }
 
-test "a volatile control's style read first is still readable after a second read of the control" {
-    try runIsolated(volatileControl);
+test "a control's style read first is still readable after a dynamic state change and second read" {
+    try runIsolated(controlStateChangeReplacesCache);
 }
 
-fn volatileAncestor() !void {
+fn ancestorStateChangeReplacesCache() !void {
     const page = try Page.open("<style>:checked { outline: 1px solid }</style><select id=s style='color: rgb(4, 5, 6)'><option id=o>x</option></select>");
     defer page.close();
     const select = try page.byId("s");
     const option = try page.byId("o");
     const first = (try dom.style.computedStyle(select, null)) orelse return error.NoStyle;
     defer first.release();
-    try testing.expect(isVolatile(select));
-    // A read of a descendant resolves every volatile ancestor again.
+    try testing.expect(!isVolatile(select));
+    // A dynamic state mutation on a descendant invalidates the document's
+    // styles; resolving the descendant then replaces the ancestor's cache.
+    try interfaces.HTMLOptionElement.set_selected(option, true);
     try dom.style.engine.resolveStyle(option, null);
     try testing.expect(dom.style.element_style.existingOf(select).?.cached.?.style != first.style);
     try expectColor(first.style, "rgb(4, 5, 6)");
 }
 
-test "a volatile select's style read first is still readable after a read of its option (lineage)" {
-    try runIsolated(volatileAncestor);
+test "a select's style read first is still readable after an option state change and lineage read" {
+    try runIsolated(ancestorStateChangeReplacesCache);
 }
 
 fn mutationThenRead() !void {
@@ -208,29 +212,31 @@ test "a plain element's style read first is still readable after a mutation and 
 }
 
 fn placeholderRead() !void {
-    // font_loading.selectControl's shape: the control's style, then its
-    // ::placeholder's, then the control's again.
-    const page = try Page.open("<style>:checked { outline: 1px solid }</style><input id=p placeholder=hint style='color: rgb(10, 11, 12)'>");
+    // font_loading.selectControl's shape: the control's style, then a dynamic
+    // state change and a read of its ::placeholder, then the control's first
+    // style stays readable.
+    const page = try Page.open("<style>:placeholder-shown { outline: 1px solid }</style><input id=p placeholder=hint style='color: rgb(10, 11, 12)'>");
     defer page.close();
     const input = try page.byId("p");
     const first = (try dom.style.computedStyle(input, null)) orelse return error.NoStyle;
     defer first.release();
-    try testing.expect(isVolatile(input));
+    try testing.expect(!isVolatile(input));
+    try interfaces.HTMLInputElement.set_value(input, runtime.DOMString.initInterned("typed"));
     const hint = (try dom.style.computedStyle(input, "placeholder")) orelse return error.NoStyle;
     defer hint.release();
     try testing.expect(dom.style.element_style.existingOf(input).?.cached.?.style != first.style);
     try expectColor(first.style, "rgb(10, 11, 12)");
 }
 
-test "a control's style read first is still readable after a read of its ::placeholder" {
+test "a control's style read first is still readable after a value change and read of its ::placeholder" {
     try runIsolated(placeholderRead);
 }
 
 fn formWithoutAuthorRules() !void {
-    // No author sheet: the UA sheet's universal `:autofill` rule
-    // (src/dom/style/html.css) is evaluated on every element, and makes a
-    // formish element's style - a form's - volatile, and with it every
-    // style below it.
+    // Lane stylevol1: with the UA sheet alone, :autofill is bucketed apart
+    // and dynamic states invalidate on change rather than marking forms
+    // volatile, so styles inside a form stay cached across repeated reads
+    // and a held style still survives cache replacement after a mutation.
     const page = try Page.open("<form id=f><p id=q style='color: rgb(13, 14, 15)'>x</p></form><p id=out>y</p>");
     defer page.close();
     const form = try page.byId("f");
@@ -238,17 +244,21 @@ fn formWithoutAuthorRules() !void {
     const out = try page.byId("out");
     const first = (try dom.style.computedStyle(q, null)) orelse return error.NoStyle;
     defer first.release();
-    try testing.expect(isVolatile(form));
-    try testing.expect(isVolatile(q));
+    try testing.expect(!isVolatile(form));
+    try testing.expect(!isVolatile(q));
     try dom.style.engine.resolveStyle(out, null);
     try testing.expect(!isVolatile(out));
+    const same = (try dom.style.computedStyle(q, null)) orelse return error.NoStyle;
+    defer same.release();
+    try testing.expect(same.style == first.style);
+    try interfaces.Element.call_setAttribute(out, runtime.DOMString.initInterned("data-x"), .{ .domstring = runtime.DOMString.initInterned("1") });
     const second = (try dom.style.computedStyle(q, null)) orelse return error.NoStyle;
     defer second.release();
     try testing.expect(second.style != first.style);
     try expectColor(first.style, "rgb(13, 14, 15)");
 }
 
-test "with the UA sheet alone, a style inside a form is volatile, and one read first is still readable after a second read" {
+test "with the UA sheet alone, a style inside a form stays cached across reads and survives cache replacement" {
     try runIsolated(formWithoutAuthorRules);
 }
 
