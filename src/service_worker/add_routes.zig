@@ -46,8 +46,12 @@ pub fn patternMatches(realm: runtime.Context, pattern: *anyopaque, url: []const 
     return urlpattern.matcher.testMatch(realm.allocator, realm, p, url, null) catch false;
 }
 
-/// addRoutes(rules) for the InstallEvent `event`, `rules` its argument.
-pub fn addRoutes(event: *runtime.Instance, rules_value: runtime.JSValue) !runtime.JSValue {
+/// addRoutes(rules) for the InstallEvent `event`; `rules_value` is its
+/// argument as the binding converted it, the generated `(RouterRule or
+/// sequence<RouterRule>)` union - WebIDL's conversion (every getter and
+/// iterator of the rules, their dictionaries' members in lexicographic
+/// order) is done before any step here.
+pub fn addRoutes(event: *runtime.Instance, rules_value: anytype) !runtime.JSValue {
     const realm = engine.currentRealm() orelse event.ctx;
     // 2. serviceWorker: the current global object's service worker.
     const environment = realm_mod.environmentOf(realm, true) orelse return error.InvalidStateError;
@@ -55,12 +59,14 @@ pub fn addRoutes(event: *runtime.Instance, rules_value: runtime.JSValue) !runtim
     const manager = environment.manager;
     const allocator = manager.allocator;
     var converter: Converter = .{ .realm = realm, .allocator = allocator, .base_url = environment.creation_url };
-    // 1. A RouterRule dictionary becomes « rules ».
+    // 1. A RouterRule dictionary becomes « rules ». Copied into the
+    // manager's allocator: the binding's value is borrowed for the call and
+    // the rules cross to the job thread.
     const rules = try converter.rules(rules_value);
     var owned = true;
     errdefer if (owned) router.freeRules(allocator, rules, pattern_ops);
     // 3. Each rule: its condition verified (3.1; its URL patterns were
-    // parsed as they were converted), and a fetch-event or race source only
+    // parsed as the rules were copied), and a fetch-event or race source only
     // for a worker that handles fetch (3.2).
     const handles_fetch = manager.workerHandlesFetch(environment.service_worker_id);
     for (rules) |*rule| {
@@ -152,8 +158,10 @@ const Lifetime = struct {
     }
 };
 
-/// WebIDL's conversions for addRoutes()'s argument: `(RouterRule or
-/// sequence<RouterRule>)`, its dictionaries' members in lexicographic order.
+/// The converted `(RouterRule or sequence<RouterRule>)` as the router's own
+/// rules, owned by the manager's allocator. The binding did WebIDL's
+/// conversions; what is left is copying, and Verify Router Condition's URL
+/// pattern parse (steps 2.2-2.3), which needs the service worker's script url.
 const Converter = struct {
     realm: runtime.Context,
     /// The manager's: what the rules are made with.
@@ -161,221 +169,88 @@ const Converter = struct {
     /// Parse URL Pattern's baseURL: the service worker's script url.
     base_url: []const u8,
 
-    /// The union: an Object with @@iterator is the sequence; anything else
-    /// the dictionary (undefined and null included - a required member then
-    /// throws). OWNED, each rule and the slice.
-    fn rules(self: *Converter, value: runtime.JSValue) ![]router.Rule {
+    /// OWNED, each rule and the slice.
+    fn rules(self: *Converter, value: anytype) ![]router.Rule {
+        const given: []const @FieldType(@TypeOf(value), "router_rule") = switch (value) {
+            .router_rule => |*one| one[0..1],
+            .router_rule_sequence => |many| many,
+        };
         var list: std.ArrayListUnmanaged(router.Rule) = .empty;
         errdefer {
             for (list.items) |*made| made.deinit(self.allocator, pattern_ops);
             list.deinit(self.allocator);
         }
-        if (engine.typeOf(self.realm, value) == .object) {
-            var collector: Collector = .{ .converter = self, .list = &list };
-            const iterable = engine.iterate(self.realm, value, Collector.each, &collector) catch |err| {
-                if (collector.failed) |failed| return failed;
-                return err;
-            };
-            if (iterable) return list.toOwnedSlice(self.allocator);
-        }
-        try list.append(self.allocator, try self.rule(value));
+        try list.ensureTotalCapacityPrecise(self.allocator, given.len);
+        for (given) |item| list.appendAssumeCapacity(try self.rule(item));
         return list.toOwnedSlice(self.allocator);
     }
 
-    const Collector = struct {
-        converter: *Converter,
-        list: *std.ArrayListUnmanaged(router.Rule),
-        failed: ?anyerror = null,
-
-        fn each(data: ?*anyopaque, item: runtime.JSValue) engine.Error!void {
-            const self: *Collector = @ptrCast(@alignCast(data.?));
-            const made = self.converter.rule(item) catch |err| {
-                self.failed = err;
-                return engineError(err);
-            };
-            self.list.append(self.converter.allocator, made) catch |err| {
-                var dropped = made;
-                dropped.deinit(self.converter.allocator, pattern_ops);
-                self.failed = err;
-                return error.OutOfMemory;
-            };
-        }
-    };
-
     /// RouterRule: required condition, required source.
-    fn rule(self: *Converter, value: runtime.JSValue) anyerror!router.Rule {
-        try self.requireDictionary(value);
-        var made = try self.conditionMember(value, "condition") orelse return error.TypeError;
+    fn rule(self: *Converter, value: anytype) anyerror!router.Rule {
+        var made = try self.condition(value.condition);
         errdefer made.deinit(self.allocator, pattern_ops);
-        const source = try self.sourceMember(value) orelse return error.TypeError;
-        return .{ .condition = made, .source = source };
+        return .{ .condition = made, .source = try self.source(value.source) };
     }
 
-    /// A dictionary's value: undefined, null or an Object.
-    fn requireDictionary(self: *Converter, value: runtime.JSValue) !void {
-        switch (engine.typeOf(self.realm, value)) {
-            .undefined, .null, .object => {},
-            else => return error.TypeError,
-        }
-    }
-
-    /// Get(value, name), null when value is undefined or null (a dictionary
-    /// converted from them has no members) or the member is undefined.
-    fn member(self: *Converter, value: runtime.JSValue, name: []const u8) !?engine.Owned {
-        switch (engine.typeOf(self.realm, value)) {
-            .undefined, .null => return null,
-            else => {},
-        }
-        const got = try engine.getProperty(self.realm, value, name);
-        if (engine.typeOf(self.realm, got.value) == .undefined) {
-            got.release();
-            return null;
-        }
-        return got;
-    }
-
-    fn conditionMember(self: *Converter, value: runtime.JSValue, name: []const u8) anyerror!?router.Condition {
-        const got = try self.member(value, name) orelse return null;
-        defer got.release();
-        return try self.condition(got.value);
-    }
-
-    /// RouterCondition, members in lexicographic order: not, or,
-    /// requestDestination, requestMethod, requestMode, runningStatus,
-    /// urlPattern.
-    fn condition(self: *Converter, value: runtime.JSValue) anyerror!router.Condition {
-        try self.requireDictionary(value);
+    /// RouterCondition.
+    fn condition(self: *Converter, value: anytype) anyerror!router.Condition {
         var out: router.Condition = .{};
         errdefer out.deinit(self.allocator, pattern_ops);
-        if (try self.member(value, "not")) |got| {
-            defer got.release();
+        if (value.not) |inner_value| {
             const inner = try self.allocator.create(router.Condition);
-            inner.* = self.condition(got.value) catch |err| {
+            inner.* = self.condition(inner_value.*) catch |err| {
                 self.allocator.destroy(inner);
                 return err;
             };
             out.not = inner;
         }
-        if (try self.member(value, "or")) |got| {
-            defer got.release();
-            out.any_of = try self.conditionSequence(got.value);
+        if (value.@"or") |items| {
+            var list: std.ArrayListUnmanaged(router.Condition) = .empty;
+            errdefer {
+                for (list.items) |*c| c.deinit(self.allocator, pattern_ops);
+                list.deinit(self.allocator);
+            }
+            try list.ensureTotalCapacityPrecise(self.allocator, items.len);
+            for (items) |item| list.appendAssumeCapacity(try self.condition(item));
+            out.any_of = try list.toOwnedSlice(self.allocator);
         }
-        if (try self.member(value, "requestDestination")) |got| {
-            defer got.release();
-            out.destination = try self.enumString(got.value, &enums.RequestDestination.idl_values);
-        }
-        if (try self.member(value, "requestMethod")) |got| {
-            defer got.release();
-            out.method = try self.byteString(got.value);
-        }
-        if (try self.member(value, "requestMode")) |got| {
-            defer got.release();
-            const mode = try self.enumString(got.value, &enums.RequestMode.idl_values);
-            defer self.allocator.free(mode);
-            out.mode = modeOf(mode);
-        }
-        if (try self.member(value, "runningStatus")) |got| {
-            defer got.release();
-            const status = try self.enumString(got.value, &enums.RunningStatus.idl_values);
-            defer self.allocator.free(status);
-            out.running_status = if (std.mem.eql(u8, status, "running")) .running else .not_running;
-        }
-        if (try self.member(value, "urlPattern")) |got| {
-            defer got.release();
-            out.url_pattern = try self.urlPattern(got.value);
-        }
+        // As the IDL spells it ("" included).
+        if (value.requestDestination) |destination| out.destination = try self.allocator.dupe(u8, enums.RequestDestination.idl_values[@backingInt(destination)]);
+        if (value.requestMethod) |method| out.method = try self.allocator.dupe(u8, method);
+        if (value.requestMode) |mode| out.mode = switch (mode) {
+            ._navigate_ => .navigate,
+            ._same_origin_ => .same_origin,
+            ._no_cors_ => .no_cors,
+            ._cors_ => .cors,
+        };
+        if (value.runningStatus) |status| out.running_status = switch (status) {
+            ._running_ => .running,
+            ._not_running_ => .not_running,
+        };
+        if (value.urlPattern) |pattern| out.url_pattern = try self.urlPattern(pattern);
         return out;
     }
 
-    fn conditionSequence(self: *Converter, value: runtime.JSValue) anyerror![]router.Condition {
-        if (engine.typeOf(self.realm, value) != .object) return error.TypeError;
-        var list: std.ArrayListUnmanaged(router.Condition) = .empty;
-        errdefer {
-            for (list.items) |*c| c.deinit(self.allocator, pattern_ops);
-            list.deinit(self.allocator);
-        }
-        const Each = struct {
-            converter: *Converter,
-            list: *std.ArrayListUnmanaged(router.Condition),
-            failed: ?anyerror = null,
-
-            fn each(data: ?*anyopaque, item: runtime.JSValue) engine.Error!void {
-                const self_each: *@This() = @ptrCast(@alignCast(data.?));
-                const made = self_each.converter.condition(item) catch |err| {
-                    self_each.failed = err;
-                    return engineError(err);
-                };
-                self_each.list.append(self_each.converter.allocator, made) catch |err| {
-                    var dropped = made;
-                    dropped.deinit(self_each.converter.allocator, pattern_ops);
-                    self_each.failed = err;
-                    return error.OutOfMemory;
-                };
-            }
-        };
-        var collector: Each = .{ .converter = self, .list = &list };
-        const iterable = engine.iterate(self.realm, value, Each.each, &collector) catch |err| {
-            if (collector.failed) |failed| return failed;
-            return err;
-        };
-        if (!iterable) return error.TypeError;
-        return list.toOwnedSlice(self.allocator);
-    }
-
-    /// An enumeration value: one of `values`, or a TypeError. OWNED.
-    fn enumString(self: *Converter, value: runtime.JSValue, values: []const []const u8) ![]u8 {
-        const text = try engine.convertToDOMString(self.realm, value, self.allocator);
-        errdefer self.allocator.free(text);
-        for (values) |v| if (std.mem.eql(u8, v, text)) return text;
-        return error.TypeError;
-    }
-
-    /// A ByteString: a code point above U+00FF is a TypeError. OWNED (as
-    /// text, as every Crane ByteString).
-    fn byteString(self: *Converter, value: runtime.JSValue) ![]u8 {
-        const text = try engine.convertToDOMString(self.realm, value, self.allocator);
-        errdefer self.allocator.free(text);
-        const view = std.unicode.Utf8View.init(text) catch return error.TypeError;
-        var it = view.iterator();
-        while (it.nextCodepoint()) |cp| if (cp > 0xFF) return error.TypeError;
-        return text;
-    }
-
-    fn modeOf(name: []const u8) router.RequestMode {
-        if (std.mem.eql(u8, name, "navigate")) return .navigate;
-        if (std.mem.eql(u8, name, "same-origin")) return .same_origin;
-        if (std.mem.eql(u8, name, "no-cors")) return .no_cors;
-        return .cors;
-    }
-
-    /// RouterSource = (RouterSourceDict or RouterSourceEnum): an Object (or
-    /// null/undefined) is the dictionary - {cacheName} a cache source with
-    /// that name, {} one with none; anything else the enumeration.
-    fn sourceMember(self: *Converter, value: runtime.JSValue) !?router.Source {
-        const got = try self.member(value, "source") orelse return null;
-        defer got.release();
-        switch (engine.typeOf(self.realm, got.value)) {
-            .object, .null => {
-                const name = try self.member(got.value, "cacheName") orelse return .{ .cache = null };
-                defer name.release();
-                return .{ .cache = try engine.convertToDOMString(self.realm, name.value, self.allocator) };
+    /// RouterSource = (RouterSourceDict or RouterSourceEnum): {cacheName} a
+    /// cache source with that name, {} one with none; else the enumeration.
+    fn source(self: *Converter, value: anytype) !router.Source {
+        return switch (value) {
+            .router_source_dict => |dictionary| .{ .cache = if (dictionary.cacheName) |name| try self.allocator.dupe(u8, name.asSlice()) else null },
+            .router_source_enum => |named| switch (named) {
+                ._cache_ => .{ .cache = null },
+                ._fetch_event_ => .fetch_event,
+                ._network_ => .network,
+                ._race_network_and_fetch_handler_ => .race_network_and_fetch_handler,
             },
-            else => {},
-        }
-        const text = try self.enumString(got.value, &enums.RouterSourceEnum.idl_values);
-        defer self.allocator.free(text);
-        if (std.mem.eql(u8, text, "cache")) return .{ .cache = null };
-        if (std.mem.eql(u8, text, "fetch-event")) return .fetch_event;
-        if (std.mem.eql(u8, text, "network")) return .network;
-        return .race_network_and_fetch_handler;
+        };
     }
 
-    /// urlPattern (URLPatternCompatible), then Verify Router Condition steps
+    /// urlPattern (URLPatternCompatible): Verify Router Condition steps
     /// 2.2-2.3: Parse URL Pattern - "build a URL pattern from a Web IDL
     /// value" given the script url - a throw, or regexp groups, a TypeError
     /// (Verify returns false: addRoutes() rejects). OWNED through
     /// `pattern_ops`.
-    fn urlPattern(self: *Converter, value: runtime.JSValue) !*anyopaque {
+    fn urlPattern(self: *Converter, value: anytype) !*anyopaque {
         var pattern = try self.parseUrlPattern(value);
         errdefer pattern.deinit(self.allocator);
         // 2.3. Regexp groups are prohibited.
@@ -385,69 +260,37 @@ const Converter = struct {
         return @ptrCast(boxed);
     }
 
-    fn parseUrlPattern(self: *Converter, value: runtime.JSValue) !urlpattern.URLPattern {
-        // 1. A URLPattern object: its associated URL pattern (a copy the
-        // rule keeps).
-        if (engine.typeOf(self.realm, value) == .object) {
-            if (engine.convertToPlatformObject(self.realm, value)) |object| {
-                if (dom.url_patterns.patternOf(object)) |associated| {
-                    const p: *const urlpattern.URLPattern = @ptrCast(@alignCast(associated));
-                    return p.clone(self.allocator);
-                }
-            }
-        }
-        // 2. A URLPatternInit (an Object, or null/undefined): its baseURL
-        // the script url when it has none; created with null base.
-        switch (engine.typeOf(self.realm, value)) {
-            .object, .null, .undefined => {
-                var strings: std.ArrayListUnmanaged([]u8) = .empty;
-                defer {
-                    for (strings.items) |s| self.allocator.free(s);
-                    strings.deinit(self.allocator);
-                }
-                var init: urlpattern.URLPatternInit = .{};
-                // Members in lexicographic order: baseURL, hash, hostname,
-                // password, pathname, port, protocol, search, username.
-                init.base_url = try self.usvMember(value, "baseURL", &strings);
-                init.hash = try self.usvMember(value, "hash", &strings);
-                init.hostname = try self.usvMember(value, "hostname", &strings);
-                init.password = try self.usvMember(value, "password", &strings);
-                init.pathname = try self.usvMember(value, "pathname", &strings);
-                init.port = try self.usvMember(value, "port", &strings);
-                init.protocol = try self.usvMember(value, "protocol", &strings);
-                init.search = try self.usvMember(value, "search", &strings);
-                init.username = try self.usvMember(value, "username", &strings);
-                if (init.base_url == null) init.base_url = self.base_url;
+    fn parseUrlPattern(self: *Converter, value: anytype) !urlpattern.URLPattern {
+        switch (value) {
+            // 1. A URLPattern object: its associated URL pattern (a copy the
+            // rule keeps).
+            .urlpattern => |object| {
+                const associated = dom.url_patterns.patternOf(object) orelse return error.TypeError;
+                const p: *const urlpattern.URLPattern = @ptrCast(@alignCast(associated));
+                return p.clone(self.allocator);
+            },
+            // 2. A URLPatternInit: its baseURL the script url when it has
+            // none; created with null base. Its strings are the binding's,
+            // borrowed for the call; the pattern copies what it keeps.
+            .urlpattern_init => |dictionary| {
+                const init: urlpattern.URLPatternInit = .{
+                    .base_url = dictionary.baseURL orelse self.base_url,
+                    .hash = dictionary.hash,
+                    .hostname = dictionary.hostname,
+                    .password = dictionary.password,
+                    .pathname = dictionary.pathname,
+                    .port = dictionary.port,
+                    .protocol = dictionary.protocol,
+                    .search = dictionary.search,
+                    .username = dictionary.username,
+                };
                 return urlpattern.URLPattern.createWithBase(self.allocator, self.realm, .{ .init = init }, null, .{}) catch |err| patternError(err);
             },
-            else => {},
+            // 3. A USVString: created with the script url as its base.
+            .usvstring => |text| return urlpattern.URLPattern.createWithBase(self.allocator, self.realm, .{ .string = text }, self.base_url, .{}) catch |err| patternError(err),
         }
-        // 3. A USVString: created with the script url as its base.
-        const text = try engine.convertToUSVString(self.realm, value, self.allocator);
-        defer self.allocator.free(text);
-        return urlpattern.URLPattern.createWithBase(self.allocator, self.realm, .{ .string = text }, self.base_url, .{}) catch |err| patternError(err);
-    }
-
-    fn usvMember(self: *Converter, value: runtime.JSValue, name: []const u8, strings: *std.ArrayListUnmanaged([]u8)) !?[]const u8 {
-        const got = try self.member(value, name) orelse return null;
-        defer got.release();
-        const text = try engine.convertToUSVString(self.realm, got.value, self.allocator);
-        strings.append(self.allocator, text) catch |err| {
-            self.allocator.free(text);
-            return err;
-        };
-        return text;
     }
 };
-
-/// An error of a conversion inside an iteration, as the iteration's steps
-/// may return it: an engine error as it is, anything else a TypeError.
-fn engineError(err: anyerror) engine.Error {
-    inline for (@typeInfo(engine.Error).error_set.error_names.?) |e_name| {
-        if (err == @field(anyerror, e_name)) return @field(engine.Error, e_name);
-    }
-    return error.TypeError;
-}
 
 /// Parse URL Pattern threw: Verify Router Condition returns false, and
 /// addRoutes() rejects with a TypeError.

@@ -12,7 +12,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const CanvasFillStrokeStyles = interfaces.CanvasFillStrokeStyles;
-const engine = @import("engine");
 const dom = @import("dom");
 
 pub const State = CanvasFillStrokeStyles.State;
@@ -52,60 +51,76 @@ fn stateOf(instance: *runtime.Instance) !*dom.canvas_2d.Context2D {
     return dom.canvas_2d.stateOf(instance) orelse error.InvalidStateError;
 }
 
+/// `(DOMString or CanvasGradient or CanvasPattern)`: the type of both
+/// attributes, converted by the binding (WebIDL 3.2.25).
+const StyleValue = typedefs.DOMStringOrCanvasGradientOrCanvasPattern;
+
 /// The getter steps of fillStyle and strokeStyle: "If this's fill (stroke)
 /// style is a CSS color, then return the serialization of that color with
 /// HTML-compatible serialization requested. Return this's fill (stroke)
 /// style."
-fn styleValue(instance: *runtime.Instance, style: dom.canvas_2d.Style) !runtime.JSValue {
+fn styleValue(instance: *runtime.Instance, style: dom.canvas_2d.Style) !StyleValue {
     switch (style) {
         .color => |color| {
             const text = try dom.canvas_2d.serializeColor(instance.ctx.allocator, color);
-            // The binding takes the string.
-            return .{ .string = .{ .data = text, .owned = true } };
+            // The binding takes the string (an owned DOMString a union
+            // returns is freed once its value is made).
+            return .{ .domstring = runtime.DOMString.initOwned(text) };
         },
     }
 }
 
-/// The setter steps of fillStyle and strokeStyle, given the value converted
-/// to (DOMString or CanvasGradient or CanvasPattern): a string is parsed as
-/// a CSS color - "If parsedValue is failure, then return" - and set. A
-/// CanvasGradient or CanvasPattern would be set as it is; none can exist
-/// yet (their factories are not implemented), so every value converts to
-/// its string (WebIDL union conversion step 11: ToString, which may throw).
-fn setStyle(instance: *runtime.Instance, slot: *dom.canvas_2d.Style, value: runtime.JSValue) !void {
-    const realm = engine.currentRealm() orelse instance.ctx;
-    const allocator = instance.ctx.allocator;
-    const text = try engine.convertToDOMString(realm, value, allocator);
-    defer allocator.free(text);
-    // 1.1-1.2. Parse the value (with the canvas element as context; see
-    //          dom.canvas_2d.parseColor for currentcolor).
-    const parsed = dom.canvas_2d.parseColor(text) orelse return; // 1.3.
-    // 1.4.
-    slot.* = .{ .color = parsed };
+/// The setter steps of fillStyle and strokeStyle, given the value the
+/// binding converted to (DOMString or CanvasGradient or CanvasPattern):
+/// anything that is no CanvasGradient or CanvasPattern is its string
+/// (ToString, which may throw - a Symbol's TypeError - before this runs; an
+/// object's toString is called, and null, a number or an Element are strings
+/// that parse as no colour: Chrome 157, Firefox 159 and Safari 27 alike,
+/// probe tmp/probes/bind1-nullmember/report-g3.txt, 2026-11-24). A string
+/// is parsed as a CSS color - "If parsedValue is failure, then return" -
+/// and set.
+fn setStyle(slot: *dom.canvas_2d.Style, value: StyleValue) void {
+    switch (value) {
+        .domstring => |text| {
+            // 1.1-1.2. Parse the value (with the canvas element as context;
+            //          see dom.canvas_2d.parseColor for currentcolor).
+            const parsed = dom.canvas_2d.parseColor(text.asSlice()) orelse return; // 1.3.
+            // 1.4.
+            slot.* = .{ .color = parsed };
+        },
+        // 2-3. "Set this's fill (stroke) style to the given value." TODO:
+        // neither object can exist yet - createLinearGradient,
+        // createRadialGradient and createConicGradient are not implemented
+        // and createPattern returns null (canvas pixels are 0.2 work) - so
+        // dom.canvas_2d.Style has no arm to keep one in, and the style is
+        // left as it is. The arms take a gradient or a pattern with those
+        // factories.
+        .canvas_gradient, .canvas_pattern => {},
+    }
 }
 
 /// Getter for strokeStyle (HTML 4.12.5.1.10).
-pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!StyleValue {
     const state = try stateOf(instance);
     return styleValue(instance, state.drawing.stroke_style);
 }
 
 /// Getter for fillStyle (HTML 4.12.5.1.10).
-pub fn get_fillStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn get_fillStyle(instance: *runtime.Instance) anyerror!StyleValue {
     const state = try stateOf(instance);
     return styleValue(instance, state.drawing.fill_style);
 }
 
 /// Setter for strokeStyle (HTML 4.12.5.1.10).
-pub fn set_strokeStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_strokeStyle(instance: *runtime.Instance, value: StyleValue) anyerror!void {
     const state = try stateOf(instance);
-    try setStyle(instance, &state.drawing.stroke_style, value);
+    setStyle(&state.drawing.stroke_style, value);
 }
 
 /// Setter for fillStyle (HTML 4.12.5.1.10).
-pub fn set_fillStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_fillStyle(instance: *runtime.Instance, value: StyleValue) anyerror!void {
     const state = try stateOf(instance);
-    try setStyle(instance, &state.drawing.fill_style, value);
+    setStyle(&state.drawing.fill_style, value);
 }
 
 /// Operation: createLinearGradient

@@ -58,3 +58,17 @@ dictionary WithSequence {
 dictionary WithRecord {
   record<DOMString, (DOMString or sequence<DOMString>)> map;
 };
+
+// Two unions apart only in their sequence's element nullability are two
+// unions, as Web Animations' BasePropertyIndexedKeyframe.offset and
+// IntersectionObserverInit.threshold are; and one whose member is nullable
+// is the other's union at a nullable position.
+dictionary ElementsNullable {
+  (double? or sequence<double?>) offset = [];
+};
+dictionary ElementsPlain {
+  (double or sequence<double>) threshold = 0;
+};
+dictionary MemberNullable {
+  (double? or sequence<double>) value;
+};

@@ -4763,48 +4763,6 @@ fn isAnyMember(member: types.DictionaryMember) bool {
     return !member.required and t.unionTypes == null and t.generic == null and t.sequence == null and t.record == null and std.mem.eql(u8, t.type, "any");
 }
 
-/// A dictionary's inline union members that the dictionary types
-/// `runtime.JSValue` (writeTypeSimple's fallback for an inline union), for
-/// the dictionary converter:
-///
-///     pub const jsvalue_union_members = .{ "sanitizer" };
-///
-/// WebIDL 3.2.18: a member is present unless its value is undefined, and a
-/// present member converts by its type - for a union, 3.2.25: null is the
-/// dictionary arm's defaults, "null" for a string arm, and so on. The impl
-/// converts these JSValues itself, so the converter must hand it a present
-/// null as `.null`; as an optional (`?runtime.JSValue`) null read as "not
-/// present" and the member's default applied (SetHTMLOptions
-/// `{sanitizer: null}` took the default preset). A union that includes a
-/// nullable type is not listed: its present null is the value null, which
-/// Zig's null already says (it is in `nullable_members`). Written inside the
-/// dictionary's struct; nothing when it has none.
-pub fn writeJsvalueUnionMembers(w: anytype, members: []const types.DictionaryMember, model: ?*const ir.IR) !void {
-    var any = false;
-    for (members) |member| {
-        if (isJsvalueUnionMember(member, model)) any = true;
-    }
-    if (!any) return;
-    try w.writeAll("\n    /// Inline union members typed runtime.JSValue: one present with the\n");
-    try w.writeAll("    /// value null converts to `.null`, for the impl to convert by the union.\n");
-    try w.writeAll("    pub const jsvalue_union_members = .{");
-    var first = true;
-    for (members) |member| {
-        if (!isJsvalueUnionMember(member, model)) continue;
-        try w.print("{s}\"{s}\"", .{ if (first) " " else ", ", member.name });
-        first = false;
-    }
-    try w.writeAll(" };\n");
-}
-
-/// Whether an optional dictionary member is an inline union (the dictionary
-/// types it runtime.JSValue) that includes no nullable type.
-pub fn isJsvalueUnionMember(member: types.DictionaryMember, model: ?*const ir.IR) bool {
-    if (member.required) return false;
-    if (member.idlType.unionTypes == null) return false;
-    return !isNullableIDLType(member.idlType, model, 0);
-}
-
 /// A dictionary's optional members that have an IDL default value, each with
 /// its default, for converting the dictionary to an ECMAScript value:
 ///

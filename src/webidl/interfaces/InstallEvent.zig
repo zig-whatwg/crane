@@ -14,8 +14,8 @@ const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
 const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const RouterRuleOrSequenceOfRouterRule = @import("typedefs").RouterRuleOrSequenceOfRouterRule;
 const EventInit = @import("dictionaries").EventInit;
-const RouterRule = @import("dictionaries").RouterRule;
 const DOMString = @import("typedefs").DOMString;
 
 pub const InstallEvent = struct {
@@ -177,7 +177,7 @@ pub const InstallEvent = struct {
         return try InstallEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
-    pub fn call_addRoutes(instance: *runtime.Instance, rules: runtime.JSValue) anyerror!runtime.JSValue {
+    pub fn call_addRoutes(instance: *runtime.Instance, rules: RouterRuleOrSequenceOfRouterRule) anyerror!runtime.JSValue {
         return try InstallEventImpl.call_addRoutes(instance, rules);
     }
 

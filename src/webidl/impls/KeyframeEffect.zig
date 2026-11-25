@@ -34,9 +34,9 @@ fn modelOf(instance: *runtime.Instance) !*animations.model.Effect {
 /// KeyframeEffect(source).
 pub fn call_constructor(ctx: runtime.Context, args: interfaces.KeyframeEffect.ConstructorArgs) !*runtime.Instance {
     switch (args) {
-        .Element_object_union => |given| {
-            // The options argument converts before the steps run.
-            var converted = try animations.options.effectOptions(ctx, if (given.options.was_passed) given.options.value else null, ctx.allocator, false);
+        .Element_object_UnrestrictedDoubleOrKeyframeEffectOptions => |given| {
+            // The binding converted the options argument before the steps.
+            var converted = try animations.options.effectOptions(if (given.options.was_passed) given.options.value else null, ctx.allocator);
             defer converted.deinit(ctx.allocator);
             const instance = try KeyframeEffect.init(ctx.allocator, ctx);
             errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));

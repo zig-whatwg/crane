@@ -11,14 +11,14 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Sensor = @import("interfaces").Sensor;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const GyroscopeSensorOptions = @import("dictionaries").GyroscopeSensorOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const GyroscopeSensorOptions = @import("dictionaries").GyroscopeSensorOptions;
 const DOMString = @import("typedefs").DOMString;
 const Event = @import("interfaces").Event;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const EventHandler = @import("typedefs").EventHandler;
 const Observable = @import("interfaces").Observable;
 

@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
+const UnrestrictedDoubleOrKeyframeAnimationOptions = @import("typedefs").UnrestrictedDoubleOrKeyframeAnimationOptions;
 const Animation = @import("interfaces").Animation;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
-const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 
 const impl = @import("impls").Animatable;
 
@@ -29,7 +29,7 @@ pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAn
     return try AnimatableImpl.call_getAnimations(instance, options);
 }
 
-pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(UnrestrictedDoubleOrKeyframeAnimationOptions)) anyerror!*runtime.Instance {
     return try AnimatableImpl.call_animate(instance, keyframes, options);
 }
 

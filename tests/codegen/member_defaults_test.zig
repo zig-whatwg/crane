@@ -7,10 +7,10 @@
 //! Sanitizer.get()'s `namespace: null` (`DOMString? _namespace = null`) and an
 //! unset `bubbles` (`= false`) were written as nothing.
 //!
-//! And it lists its inline union members typed runtime.JSValue whose union is
-//! not nullable (`jsvalue_union_members`): a present null is a value of the
-//! union for the impl to convert (to its dictionary arm, say), never "not
-//! present" - SetHTMLOptions `{sanitizer: null}` took the default preset.
+//! (It also listed, until lane bind1's batch B ended, the inline union members
+//! typed runtime.JSValue for an impl to convert - `jsvalue_union_members`. No
+//! member is typed so any more: every union is named and the binding converts
+//! it, a present null included.)
 
 const std = @import("std");
 const codegen = @import("codegen");
@@ -95,15 +95,6 @@ test "a string default is its token's text, as a Zig string literal" {
     try testing.expect(std.mem.indexOf(u8, out, ".{ \"text\", .{ .string = \"a\\\\b\" } },") != null);
 }
 
-test "only a non-nullable inline union member is a JSValue union member" {
-    const out = try written(writer.writeJsvalueUnionMembers, &members);
-    defer testing.allocator.free(out);
-    try testing.expect(std.mem.indexOf(u8, out, "pub const jsvalue_union_members = .{ \"sanitizer\" };") != null);
-    const none = try written(writer.writeJsvalueUnionMembers, members[0..12]);
-    defer testing.allocator.free(none);
-    try testing.expectEqualStrings("", none);
-}
-
 test "the parser keeps `{}` and `[]` apart from null, and a generated dictionary lists them" {
     // WebIDL 2.5.4 (DefaultValue): `{}` and `[]` are default values of their
     // own - an empty dictionary and an empty sequence - not null:
@@ -135,6 +126,7 @@ test "the parser keeps `{}` and `[]` apart from null, and a generated dictionary
     try testing.expect(std.mem.indexOf(u8, out, ".{ \"namespace\", .null },") != null);
     // A string default is its text, without the IDL token's quotes.
     try testing.expect(std.mem.indexOf(u8, out, ".{ \"fill\", .{ .string = \"auto\" } },") != null);
-    try testing.expect(std.mem.indexOf(u8, out, "pub const jsvalue_union_members = .{\"sanitizer\"};") != null or
-        std.mem.indexOf(u8, out, "pub const jsvalue_union_members = .{ \"sanitizer\" };") != null);
+    // No member is listed as a runtime.JSValue union: lane bind1's batch B
+    // names every union, and the impls that converted one by hand are gone.
+    try testing.expect(std.mem.indexOf(u8, out, "jsvalue_union_members") == null);
 }
