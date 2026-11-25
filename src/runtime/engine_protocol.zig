@@ -1392,6 +1392,7 @@ pub inline fn hasPendingEngineWork(agent: *Agent) bool {
 
 /// Run the engine's own posted tasks for the agent; whether any ran.
 pub inline fn runEngineTasks(agent: *Agent) bool {
+    runtime.native_holds.assertNone(agent, "runEngineTasks");
     return impl.runEngineTasks(agent);
 }
 
@@ -2018,6 +2019,7 @@ pub inline fn inspectorStackTrace(agent: *Agent, max_frames: u32, allocator: std
 /// referrer an `import()` from it names), BORROWED for as long as the script
 /// can run - pending `import()`s included; null for none.
 pub inline fn runClassicScript(realm: Context, source: ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: Reporter) Error!void {
+    runtime.native_holds.assertNone(realm.agent, "runClassicScript");
     return impl.runClassicScript(realm, source, url, host_defined, reporter);
 }
 
@@ -2033,6 +2035,7 @@ pub const ClassicScriptOptions = struct {
 /// for HostPromiseRejectionTracker. The reporter handles runtime errors as
 /// for runClassicScript; the existing convenience operation defaults false.
 pub inline fn runClassicScriptWithOptions(realm: Context, source: ScriptSource, url: []const u8, options: ClassicScriptOptions, reporter: Reporter) Error!void {
+    runtime.native_holds.assertNone(realm.agent, "runClassicScriptWithOptions");
     return impl.runClassicScriptWithOptions(realm, source, url, options, reporter);
 }
 
@@ -2051,6 +2054,7 @@ pub inline fn runClassicScriptWithOptions(realm: Context, source: ScriptSource, 
 ///   the host throws the NetworkError.
 /// `host_defined` is as runClassicScript's.
 pub inline fn runClassicScriptRethrowingErrors(realm: Context, source: ScriptSource, url: []const u8, host_defined: ?*anyopaque, muted_errors: bool) Error!void {
+    runtime.native_holds.assertNone(realm.agent, "runClassicScriptRethrowingErrors");
     return impl.runClassicScriptRethrowingErrors(realm, source, url, host_defined, muted_errors);
 }
 
@@ -2058,6 +2062,7 @@ pub inline fn runClassicScriptRethrowingErrors(realm: Context, source: ScriptSou
 /// WebDriver, the REPL) and HTML "evaluate a javascript: URL". What it throws
 /// is reported, and the call fails with ExceptionReported. OWNED.
 pub inline fn evaluateClassicScript(realm: Context, source: ScriptSource, url: []const u8, host_defined: ?*anyopaque, reporter: Reporter) Error!Owned {
+    runtime.native_holds.assertNone(realm.agent, "evaluateClassicScript");
     return impl.evaluateClassicScript(realm, source, url, host_defined, reporter);
 }
 
@@ -2065,6 +2070,7 @@ pub inline fn evaluateClassicScript(realm: Context, source: ScriptSource, url: [
 /// ToString'd: OWNED, allocated with `allocator`. What the script or ToString
 /// throws is reported, and the call fails.
 pub inline fn evaluateClassicScriptToString(realm: Context, source: ScriptSource, url: []const u8, host_defined: ?*anyopaque, allocator: std.mem.Allocator, reporter: Reporter) Error![]u8 {
+    runtime.native_holds.assertNone(realm.agent, "evaluateClassicScriptToString");
     return impl.evaluateClassicScriptToString(realm, source, url, host_defined, allocator, reporter);
 }
 
@@ -2108,6 +2114,7 @@ pub const ReplInput = enum {
 /// `error` event), as nothing does for Chrome's console.
 pub inline fn evaluateReplScript(realm: Context, source: []const u8, steps: *const PromiseReactionSteps, data: ?*anyopaque) Error!ReplInput {
     comptime gate(.repl_mode, "evaluateReplScript");
+    runtime.native_holds.assertNone(realm.agent, "evaluateReplScript");
     return impl.evaluateReplScript(realm, source, steps, data);
 }
 
@@ -2119,6 +2126,7 @@ pub inline fn compileEventHandler(realm: Context, source: *const EventHandlerSou
 
 /// HTML "prepare to run script" (8.1.4.3). OWNED: `cleanUpAfterRunningScript`.
 pub inline fn prepareToRunScript(realm: Context) Error!ScriptScope {
+    runtime.native_holds.assertNone(realm.agent, "prepareToRunScript");
     return impl.prepareToRunScript(realm);
 }
 
@@ -2145,6 +2153,7 @@ pub inline fn runTaskInRealm(realm: Context, steps: RealmSteps, data: ?*anyopaqu
 /// realm queued each microtask. Where the engine lacks
 /// `microtask_checkpoint_control` it drains on its own, and this does nothing.
 pub inline fn performMicrotaskCheckpoint(agent: *Agent) Error!void {
+    runtime.native_holds.assertNone(agent, "performMicrotaskCheckpoint");
     return impl.performMicrotaskCheckpoint(agent);
 }
 
@@ -2219,6 +2228,7 @@ pub inline fn linkModule(realm: Context, record: *ModuleRecord, resolve: Resolve
 /// Evaluate().
 pub inline fn evaluateModule(realm: Context, record: *ModuleRecord) Error!ModuleEvaluation {
     comptime gate(.module_scripts, "evaluateModule");
+    runtime.native_holds.assertNone(realm.agent, "evaluateModule");
     return impl.evaluateModule(realm, record);
 }
 
@@ -2251,6 +2261,7 @@ pub inline fn releaseModuleRecord(record: *ModuleRecord) void {
 /// invoke step 8 skips such a listener; Blink (IsCallbackFunctionRunnable) and
 /// Gecko (CallbackObject::CallSetup) refuse every such callback.
 pub inline fn invokeCallbackFunction(realm: Context, callback: *const CallbackFunction, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
+    runtime.native_holds.assertNone(realm.agent, "invokeCallbackFunction");
     return impl.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
 }
 
@@ -2261,6 +2272,7 @@ pub const CallbackReturnType = enum { any, nullable_dom_string };
 /// WebIDL invoke step 13, including return conversion. A conversion throw
 /// follows `behavior` with the original throw site's error information.
 pub inline fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const CallbackFunction, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior, return_type: CallbackReturnType) Error!Completion {
+    runtime.native_holds.assertNone(realm.agent, "invokeCallbackFunctionWithReturnType");
     return impl.invokeCallbackFunctionWithReturnType(realm, callback, this_arg, args, behavior, return_type);
 }
 
@@ -2292,6 +2304,7 @@ pub inline fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *co
 /// A callback of a Window whose associated Document is not fully active is
 /// not run, as for invokeCallbackFunction: OperationFailed.
 pub inline fn constructCallbackFunction(realm: Context, callback: *const CallbackFunction, args: []const JSValue) Error!Completion {
+    runtime.native_holds.assertNone(realm.agent, "constructCallbackFunction");
     return impl.constructCallbackFunction(realm, callback, args);
 }
 
@@ -2301,6 +2314,7 @@ pub inline fn constructCallbackFunction(realm: Context, callback: *const Callbac
 /// callback of a Window whose associated Document is not fully active is not
 /// run, as for invokeCallbackFunction: OperationFailed.
 pub inline fn callUserObjectOperation(realm: Context, callback: *const CallbackInterface, operation: []const u8, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior) Error!Completion {
+    runtime.native_holds.assertNone(realm.agent, "callUserObjectOperation");
     return impl.callUserObjectOperation(realm, callback, operation, this_arg, args, behavior);
 }
 

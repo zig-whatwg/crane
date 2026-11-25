@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Style: computed style reads, inside and outside a form</title>
+<script src="../harness.js"></script>
+<style>
+.card { color: rgb(20, 30, 40); margin: 2px; }
+.card .row { padding: 1px; }
+.card .cell { font-weight: bold; }
+.field { border: 1px solid rgb(200, 200, 200); }
+input:invalid { outline: 1px solid red; }
+</style>
+<body>
+<div id="plain"></div>
+<form id="form"></form>
+<script>
+// Two trees of the same shape, each 16 cards of nested rows and cells 8 deep: one in a plain
+// div, one in a form. A style inside a form is the volatile case in Crane (resolved again on
+// every read: the UA sheet's :autofill makes a form's and its content's styles depend on
+// per-element state), and its controls are what focus and innerText walk.
+(function () {
+  function card(i, control) {
+    let html = '<div class="card" id="c' + i + '">';
+    for (let d = 0; d < 6; d++) html += '<div class="row">';
+    html += '<span class="cell" id="' + (control ? 'f' : 'p') + i + '">Cell ' + i + '</span>';
+    if (control) html += '<label>Name ' + i + ' <input class="field" id="i' + i + '" required value="v' + i + '"></label>';
+    for (let d = 0; d < 6; d++) html += '</div>';
+    return html + '</div>';
+  }
+  let plain = '', form = '';
+  for (let i = 0; i < 16; i++) { plain += card(i, false); form += card(i, true); }
+  document.getElementById('plain').innerHTML = plain;
+  document.getElementById('form').innerHTML = form;
+})();
+perf.add('style.computed-read', {
+  ops: 20000,
+  setup() { this.cells = Array.from(document.querySelectorAll('#plain .cell')); },
+  run(n) { const cells = this.cells; let k = 0; for (let i = 0; i < n; i++) k += getComputedStyle(cells[i % cells.length]).getPropertyValue('color').length; this.sink = k; },
+});
+perf.add('style.computed-read-form', {
+  ops: 5000,
+  setup() { this.cells = Array.from(document.querySelectorAll('#form .cell')); },
+  run(n) { const cells = this.cells; let k = 0; for (let i = 0; i < n; i++) k += getComputedStyle(cells[i % cells.length]).getPropertyValue('color').length; this.sink = k; },
+});
+perf.add('style.inner-text', {
+  ops: 200,
+  setup() { this.form = document.getElementById('form'); },
+  run(n) { let k = 0; for (let i = 0; i < n; i++) k += this.form.innerText.length; this.sink = k; },
+});
+perf.add('style.focus-loop', {
+  ops: 5000,
+  setup() { this.inputs = Array.from(document.querySelectorAll('#form input')); },
+  run(n) { const inputs = this.inputs; for (let i = 0; i < n; i++) inputs[i % inputs.length].focus(); this.sink = document.activeElement === null ? 0 : 1; },
+  teardown() { if (document.activeElement) document.activeElement.blur(); },
+});
+</script>

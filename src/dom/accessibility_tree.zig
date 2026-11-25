@@ -657,7 +657,9 @@ pub const Tree = struct {
         if (control.stateAs(interfaces.HTMLInputElement.State) == null) return null;
         // A laid-out control whose visibility is visible.
         if (!try hasBox(control)) return null;
-        const computed = (try style.computedStyle(control, null)) orelse return null;
+        const computed_hold = (try style.computedStyle(control, null)) orelse return null;
+        defer computed_hold.release();
+        const computed = computed_hold.style;
         if (computed.keyword(.visibility) != .visible) return null;
         var kind = try interfaces.HTMLInputElement.get_type(control);
         defer kind.deinit(control.ctx.allocator);
@@ -870,7 +872,9 @@ pub const Tree = struct {
     fn roleFromLayout(self: *Tree, dom: *Instance, has_layout: bool) !Role {
         _ = self;
         if (!has_layout) return .GenericContainer;
-        const computed = (try style.computedStyle(dom, null)) orelse return .GenericContainer;
+        const computed_hold = (try style.computedStyle(dom, null)) orelse return .GenericContainer;
+        defer computed_hold.release();
+        const computed = computed_hold.style;
         const display = computed.display();
         if (display.list_item) return .ListItem;
         if (display.inner == .table and display.box == .normal) return .LayoutTable;
@@ -1090,7 +1094,9 @@ pub const Tree = struct {
     ///   presentational - its text ignored for a summary, kept otherwise.
     fn addPseudoChild(self: *Tree, owner: Index, element: *Instance, kind: PseudoKind, inherited: Inherited) !void {
         _ = inherited;
-        const computed = (try style.computedStyle(element, kind.name())) orelse return;
+        const computed_hold = (try style.computedStyle(element, kind.name())) orelse return;
+        defer computed_hold.release();
+        const computed = computed_hold.style;
         if (computed.display().box == .none) return;
         const hidden = computed.keyword(.visibility) == .hidden or computed.keyword(.visibility) == .collapse;
         const source: Source = .{ .pseudo = .{ .element = element, .kind = kind } };
@@ -2739,7 +2745,9 @@ fn rendered(element: *Instance) !bool {
 }
 
 fn isDisplayContents(element: *Instance) !bool {
-    const computed = (try style.computedStyle(element, null)) orelse return false;
+    const computed_hold = (try style.computedStyle(element, null)) orelse return false;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     return computed.display().box == .contents;
 }
 
@@ -2751,7 +2759,9 @@ fn rendersChildren(element: *Instance) bool {
 }
 
 fn preservesWhiteSpace(element: *Instance) bool {
-    const computed = (style.computedStyle(element, null) catch return false) orelse return false;
+    const computed_hold = (style.computedStyle(element, null) catch return false) orelse return false;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     return switch (computed.keyword(.white_space_collapse)) {
         .preserve, .break_spaces, .preserve_spaces => true,
         else => false,
@@ -2759,12 +2769,16 @@ fn preservesWhiteSpace(element: *Instance) bool {
 }
 
 fn preservesNewlines(element: *Instance) bool {
-    const computed = (style.computedStyle(element, null) catch return false) orelse return false;
+    const computed_hold = (style.computedStyle(element, null) catch return false) orelse return false;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     return computed.keyword(.white_space_collapse) == .preserve_breaks;
 }
 
 fn isInlineLevel(element: *Instance) bool {
-    const computed = (style.computedStyle(element, null) catch return false) orelse return false;
+    const computed_hold = (style.computedStyle(element, null) catch return false) orelse return false;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     const display = computed.display();
     if (display.box == .none) return false;
     if (display.box == .contents) return true;
@@ -2772,7 +2786,9 @@ fn isInlineLevel(element: *Instance) bool {
 }
 
 fn isPositioned(element: *Instance) !bool {
-    const computed = (try style.computedStyle(element, null)) orelse return false;
+    const computed_hold = (try style.computedStyle(element, null)) orelse return false;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     return computed.keyword(.position) != .static;
 }
 
@@ -2802,7 +2818,9 @@ fn whitespaceNeedsLayoutOnce(tree: *Tree, text: *Instance, parent_element: *Inst
 }
 
 fn canHaveWhitespaceChildren(element: *Instance) bool {
-    const computed = (style.computedStyle(element, null) catch return true) orelse return true;
+    const computed_hold = (style.computedStyle(element, null) catch return true) orelse return true;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     const display = computed.display();
     if (display.box == .internal) switch (display.internal) {
         .table_row_group, .table_header_group, .table_footer_group, .table_row, .table_column_group, .table_column => return false,
@@ -2813,7 +2831,9 @@ fn canHaveWhitespaceChildren(element: *Instance) bool {
 }
 
 fn preservesBreaks(element: *Instance) bool {
-    const computed = (style.computedStyle(element, null) catch return false) orelse return false;
+    const computed_hold = (style.computedStyle(element, null) catch return false) orelse return false;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     return switch (computed.keyword(.white_space_collapse)) {
         .preserve, .preserve_breaks, .break_spaces => true,
         else => false,
@@ -2864,7 +2884,9 @@ fn previousInFlow(tree: *Tree, n: *Instance) ?*Instance {
 }
 
 fn outOfFlow(element: *Instance) bool {
-    const computed = (style.computedStyle(element, null) catch return false) orelse return false;
+    const computed_hold = (style.computedStyle(element, null) catch return false) orelse return false;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     const position = computed.keyword(.position);
     if (position == .absolute or position == .fixed) return true;
     return computed.keyword(.float) != .none;
@@ -2951,7 +2973,9 @@ fn spaceSeparated(n: *Instance, is_after: bool, counter: usize) bool {
 
 /// A LayoutInline: display inline, not replaced and not atomic.
 fn isLayoutInline(element: *Instance) bool {
-    const computed = (style.computedStyle(element, null) catch return false) orelse return false;
+    const computed_hold = (style.computedStyle(element, null) catch return false) orelse return false;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     const display = computed.display();
     if (display.box != .normal or display.outer != .inline_ or display.inner != .flow) return false;
     return rendersChildren(element);
@@ -2966,7 +2990,9 @@ fn hiddenViaStyle(element: *Instance, has_layout: bool) !bool {
     // read of the element (engine.zig computedStyle), and a volatile one
     // (a formish element matched against a per-element state) is resolved
     // anew - the first one freed - on every read.
-    const computed = (try style.computedStyle(element, null)) orelse return true;
+    const computed_hold = (try style.computedStyle(element, null)) orelse return true;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     const visible = computed.keyword(.visibility) == .visible;
     if (has_layout) return !visible;
     const contents = computed.display().box == .contents;
@@ -2977,7 +3003,9 @@ fn hiddenViaStyle(element: *Instance, has_layout: bool) !bool {
 /// A block flow whose children are inline-level (LayoutBlockFlow
 /// ChildrenInline() with a first child).
 fn parentsInlineChildren(element: *Instance) !bool {
-    const computed = (try style.computedStyle(element, null)) orelse return false;
+    const computed_hold = (try style.computedStyle(element, null)) orelse return false;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     const display = computed.display();
     // A LayoutBlockFlow: a block or inline-block container, a list item, a
     // table cell or caption - not an inline box (LayoutInline).
@@ -3019,7 +3047,8 @@ fn isLineBreakingObject(element: *Instance, role: Role) bool {
     if (role == .None) return false;
     if (isHtml(element) and eq(localName(element), "br")) return true;
     if (style.computedStyle(element, null) catch null) |computed| {
-        const display = computed.display();
+        defer computed.release();
+        const display = computed.style.display();
         switch (display.box) {
             .internal => return true,
             .normal => if (display.outer == .block or display.inner != .flow or display.list_item) return true,
@@ -3370,13 +3399,17 @@ fn canHaveChildren(element: *Instance) bool {
 /// the list style's marker - a glyph and a space for the symbolic styles,
 /// the item's ordinal and ". " for the numeric ones.
 fn markerText(arena: Allocator, element: *Instance, out: *std.ArrayListUnmanaged(u8)) !void {
-    const computed = (try style.computedStyle(element, "marker")) orelse return;
+    const computed_hold = (try style.computedStyle(element, "marker")) orelse return;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     const value = computed.get(.content);
     if (value == .content) {
         try value.content.appendAccessible(out, arena);
         return;
     }
-    const own = (try style.computedStyle(element, null)) orelse return;
+    const own_hold = (try style.computedStyle(element, null)) orelse return;
+    defer own_hold.release();
+    const own = own_hold.style;
     const kind = own.get(.list_style_type);
     var buffer: [32]u8 = undefined;
     const name: []const u8 = switch (kind) {

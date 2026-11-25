@@ -31,13 +31,13 @@ fn revision() !void {
     const document = page.browser.current_context.?.document_instance.?;
     const engine = dom.style.hooks.engineOf(document).?;
     const target = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("env-target"))).?;
-    _ = (try dom.style.computedStyle(target, null)).?;
+    try dom.style.engine.resolveStyle(target, null);
     const generation = engine.generation;
     try testing.expectEqual(generation, cachedGeneration(target));
     // No provider: revision 0 never invalidates, and a read keeps the cache.
     try engine.observeEnvironment(0);
     try testing.expectEqual(generation, engine.generation);
-    _ = (try dom.style.computedStyle(target, null)).?;
+    try dom.style.engine.resolveStyle(target, null);
     try testing.expectEqual(generation, cachedGeneration(target));
     // A moved revision invalidates once; the same revision again does not.
     try engine.observeEnvironment(7);
@@ -47,7 +47,7 @@ fn revision() !void {
     // The next read recomputes under the current generation. (It pulls the
     // hook's revision, 0 here with no provider installed, which moved again
     // from 7: one more invalidation, as a provider going away would cause.)
-    _ = (try dom.style.computedStyle(target, null)).?;
+    try dom.style.engine.resolveStyle(target, null);
     try testing.expectEqual(engine.generation, cachedGeneration(target));
     try testing.expect(cachedGeneration(target) != generation);
 }
@@ -66,9 +66,9 @@ fn changed() !void {
     const document = page.browser.current_context.?.document_instance.?;
     const engine = dom.style.hooks.engineOf(document).?;
     const target = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("env-changed"))).?;
-    _ = (try dom.style.computedStyle(target, null)).?;
+    try dom.style.engine.resolveStyle(target, null);
     const generation = cachedGeneration(target);
     engine.environmentChanged();
-    _ = (try dom.style.computedStyle(target, null)).?;
+    try dom.style.engine.resolveStyle(target, null);
     try testing.expectEqual(generation +% 1, cachedGeneration(target));
 }
