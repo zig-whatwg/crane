@@ -483,6 +483,14 @@ MallocLargeCache=0 MallocMaxMagazines=1 perf_bench run --suite=... --root=tests/
 perf_bench cost --default=<D> --memory=<M> [--bar=1.03]
 ```
 
+**A broken console fails fast** (perf1-guard, 2026-11-24: on 2026-11-23 a release console whose
+every script threw made every workload of two windows time out, for 7 h and for 5 h). `perf_bench
+check` launches `workloads/overhead.html` once in every pinned engine and fails, naming the
+engine and printing its output's last lines, when one gives no result within
+`--check-timeout-s` (60 s). `perf_bench run` stops when `--max-timeouts` launches of one engine
+in a row (3; 0: never) end in a timeout or a crash: its `STOPPED:` line names the engine, the
+timeouts and crashes, and the last launch, and it exits 4. A STOP file ending it early exits 3.
+
 **The memory pass is always run with `--collected`** (the integrator, 2026-11-17), so that
 clearing (b) below is available for every row: a row whose launches form no two tight groups -
 one stray launch far above a level is enough (lane impls8's window: one launch at 67.7 MB above a

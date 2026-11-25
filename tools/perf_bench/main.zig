@@ -5,12 +5,15 @@
 //!                  --round=<n> --runs=<n> --pin=<file> [--pin=<file> ...]
 //!                  [--profiles=<dir>] [--stop-file=<f>] [--only=<text>]
 //!                  [--iterations=<n>] [--warmup=<n>] [--settle-ms=<n>] [--port=<n>]
-//!                  [--collected]
+//!                  [--collected] [--max-timeouts=<n>]
 //!       every engine pinned on every page of the suite, <runs> times, in
 //!       alternating order; the journal is <out>/journal.jsonl. --collected
 //!       (a memory-only pass of a lane's cost pair, never a round): each
 //!       timed workload's footprint is read once more after a full
-//!       collection the page asks for
+//!       collection the page asks for. The run stops when <n> launches of
+//!       one engine in a row (default 3; 0: never) ended in a timeout or a
+//!       crash. Exit 0: every launch made; 3: a STOP file ended it; 4: the
+//!       guard did (its STOPPED line says which engine and why)
 //!   perf_bench cost --default=<dir> [--memory=<dir>] [--bar=<ratio>]
 //!       a lane's cost pair (crane against crane_base) read against the 3%
 //!       bar: time, CPU and instructions from the default pass's journals,
@@ -20,9 +23,12 @@
 //!       (AGENTS.md's rule; cost.zig; docs/performance.md, "A lane's cost
 //!       pair"). Exit 1 when a row is over the bar and not cleared
 //!   perf_bench check --suite=... --root=... --pin=<file> ...
+//!                  [--check-timeout-s=<n>] [--stop-file=<f>]
 //!       the run's input checks alone (window scripts run them first): the
 //!       suite against its pages, each pin readable, each binary there and
-//!       matching its SHA-256
+//!       matching its SHA-256; then each pinned engine launched once on
+//!       workloads/overhead.html, which must give a result within <n> s
+//!       (default 60) - exit 2 naming each engine that gave none
 //!   perf_bench check-suite --suite=... --root=...
 //!       the suite against its pages (zig build test runs it)
 //!   perf_bench gc-bench --gc-bench=<binary> --pin=<a Crane pin> --out=<dir>
@@ -131,7 +137,8 @@ pub fn main(init: std.process.Init) !void {
         const s = try loadSuite(arena, io, args.need("suite"), args.need("root"));
         std.debug.print("perf_bench: suite OK: {d} pages, {d} workloads\n", .{ s.pages.len, countWorkloads(s) });
     } else if (std.mem.eql(u8, cmd, "check")) {
-        _ = try checkInputs(arena, io, &args);
+        const inputs = try checkInputs(arena, io, &args);
+        try checkLaunches(init.gpa, arena, io, &args, inputs, init.environ_map);
         std.debug.print("perf_bench: inputs OK\n", .{});
     } else if (std.mem.eql(u8, cmd, "run")) {
         const inputs = try checkInputs(arena, io, &args);
@@ -146,15 +153,25 @@ pub fn main(init: std.process.Init) !void {
             .pins = inputs.pins,
             .host = try hostInfo(arena, io),
             .environ = init.environ_map,
-            .stop_file = args.get("stop-file"),
+            .stop_files = try args.all(arena, "stop-file"),
             .only = args.get("only"),
             .iterations = args.int(u32, "iterations", 10),
             .warmup = args.int(u32, "warmup", 3),
             .settle_ms = args.int(u32, "settle-ms", 500),
             .port = args.int(u16, "port", 0),
             .collected = args.get("collected") != null,
+            .max_failed_in_a_row = args.int(u32, "max-timeouts", 3),
         });
-        try r.run();
+        const outcome = try r.run();
+        // How the run ended, in its exit status: a window script cannot
+        // read a journal a STOP file or the guard cut short as a whole one.
+        if (outcome != .complete) {
+            var buf: [1024]u8 = undefined;
+            var w: Io.Writer = .fixed(&buf);
+            outcome.line(&w) catch {};
+            std.debug.print("{s}", .{w.buffered()});
+            std.process.exit(outcome.exitCode());
+        }
     } else if (std.mem.eql(u8, cmd, "gc-bench")) {
         try runGcBench(init.gpa, arena, io, &args);
     } else if (std.mem.eql(u8, cmd, "validate")) {
@@ -250,6 +267,90 @@ fn checkInputs(arena: Allocator, io: Io, args: *const Args) !Inputs {
     };
     std.debug.print("perf_bench: {d} engines pinned\n", .{pins.items.len});
     return .{ .suite = s, .pins = pins.items };
+}
+
+/// `perf_bench check`'s launches (perf1-guard, 2026-11-24): the check
+/// page once in every pinned engine, in a scratch directory deleted after;
+/// exits 2 naming each engine with no result for it. Pins alone say nothing
+/// of a console whose every script throws (2026-11-23: every workload of
+/// two windows timed out, 7 h and 5 h).
+fn checkLaunches(gpa: Allocator, arena: Allocator, io: Io, args: *const Args, inputs: Inputs, environ: *const std.process.Environ.Map) !void {
+    const root = args.need("root");
+    const reader: PageReader = .{ .io = io, .root = root };
+    if (reader.read(arena, runner.check_page.page) == null) fail("{s}/{s}: the check page is missing", .{ root, runner.check_page.page });
+    const tmp_root = environ.get("TMPDIR") orelse "/tmp";
+    const stamp = Io.Clock.real.now(io).nanoseconds;
+    const dir = try std.fmt.allocPrint(arena, "{s}/perf_bench-check-{d}-{d}", .{ std.mem.trimEnd(u8, tmp_root, "/"), std.c.getpid(), stamp });
+    defer Io.Dir.cwd().deleteTree(io, dir) catch {};
+    const timeout_s = args.int(u32, "check-timeout-s", runner.check_page.timeout_s);
+    var page = runner.check_page;
+    page.timeout_s = timeout_s;
+    const pages = try arena.dupe(suite.Page, &.{page});
+    std.debug.print("perf_bench: check: {s} once in each of {d} engines (no result in {d} s fails)\n", .{ page.page, inputs.pins.len, timeout_s });
+    var r = runner.Runner.init(gpa, io, .{
+        .suite = .{ .format = inputs.suite.format, .pages = pages },
+        .root = root,
+        .out_dir = dir,
+        .profile_root = try std.fmt.allocPrint(arena, "{s}/profiles", .{dir}),
+        .round = 0,
+        .runs = 1,
+        .pins = inputs.pins,
+        .host = try hostInfo(arena, io),
+        .environ = environ,
+        .stop_files = try args.all(arena, "stop-file"),
+        .iterations = 1,
+        .warmup = 0,
+        .settle_ms = 100,
+        .max_failed_in_a_row = 0,
+    });
+    const outcome = try r.run();
+    if (outcome == .stopped) {
+        std.debug.print("perf_bench: check: stopped by a STOP file\n", .{});
+        std.process.exit(3);
+    }
+    const journal_path = try std.fmt.allocPrint(arena, "{s}/journal.jsonl", .{dir});
+    const bytes = Io.Dir.cwd().readFileAlloc(io, journal_path, arena, .limited(16 << 20)) catch |err| fail("check: {s}: {t}", .{ journal_path, err });
+    var failure: journal.Failure = .{};
+    const records = journal.parseJournal(arena, bytes, &failure) catch |err| fail("check: {s}:{d}: {t}", .{ journal_path, failure.line, err });
+    const problems = try runner.checkProblems(arena, records, inputs.pins);
+    for (problems) |p| std.debug.print("perf_bench: check FAILED: {s}\n", .{p});
+    if (problems.len > 0) {
+        // Each failing engine's own output (its log's last lines), for the
+        // first look, before the scratch directory goes.
+        for (inputs.pins) |pin| {
+            const named = for (problems) |p| {
+                if (std.mem.startsWith(u8, p, @tagName(pin.name)) and p.len > @tagName(pin.name).len and p[@tagName(pin.name).len] == ':') break true;
+            } else false;
+            if (!named) continue;
+            const log_path = try std.fmt.allocPrint(arena, "{s}/logs/{s}.0.0.log", .{ dir, @tagName(pin.name) });
+            const log = Io.Dir.cwd().readFileAlloc(io, log_path, arena, .limited(16 << 20)) catch "";
+            std.debug.print("perf_bench: check: {s}'s output, its last lines:\n{s}\n", .{ @tagName(pin.name), lastLines(log, 20) });
+        }
+        fail("{d} of {d} engines gave no result for {s}: not a window's input", .{ problems.len, inputs.pins.len, runner.check_page.workloads[0] });
+    }
+    std.debug.print("perf_bench: check: every engine answered {s}\n", .{runner.check_page.workloads[0]});
+}
+
+/// The last `n` lines of `text` (all of it when it has fewer).
+pub fn lastLines(text: []const u8, n: usize) []const u8 {
+    const t = std.mem.trimEnd(u8, text, "\n");
+    var seen: usize = 0;
+    var i = t.len;
+    while (i > 0) {
+        i -= 1;
+        if (t[i] == '\n') {
+            seen += 1;
+            if (seen == n) return t[i + 1 ..];
+        }
+    }
+    return t;
+}
+
+test "the last lines of a log" {
+    try std.testing.expectEqualStrings("c\nd", lastLines("a\nb\nc\nd\n", 2));
+    try std.testing.expectEqualStrings("a\nb", lastLines("a\nb", 5));
+    try std.testing.expectEqualStrings("", lastLines("", 3));
+    try std.testing.expectEqualStrings("d", lastLines("a\nb\nc\nd", 1));
 }
 
 /// A command's first line of output, trimmed; "" when it fails.
