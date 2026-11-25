@@ -28,12 +28,48 @@ pub const State = struct {
     max_post_data_size: u64 = 0,
     /// The kept bodies, while Network is enabled; null before.
     resources: ?NetworkResources = null,
+    /// Network.setExtraHTTPHeaders' set (Chrome's NetworkHandler
+    /// extra_headers_), kept while Network is disabled too: the tab's
+    /// requests carry it only while Network is enabled (`applyHeaders`).
+    /// OWNED (session.allocator).
+    extra_headers: []host_overrides.ExtraHeader = &.{},
 };
 
 fn clear(session: *PageSession) void {
     const state = &session.states.Network;
     if (state.resources) |*r| r.deinit();
+    dropHeaders(session);
+    freeHeaders(session);
     state.* = .{};
+}
+
+/// The session's extra headers onto its tab, which every request of its
+/// documents then carries: Chrome applies a session's headers only while
+/// its Network domain is enabled (devtools_instrumentation.cc
+/// ApplyNetworkRequestOverrides skips a NetworkHandler that is not
+/// enabled; Blink's InspectorNetworkAgent::PrepareRequest is reached only
+/// through an enabled agent).
+fn applyHeaders(session: *PageSession) !void {
+    const bc = frames.navigable(session, session.tab) orelse return;
+    try bc.host_overrides.setExtraHeaders(bc.allocator, @intFromPtr(session), session.states.Network.extra_headers);
+}
+
+/// The tab's extra headers, when they are this session's, off it.
+fn dropHeaders(session: *PageSession) void {
+    const bc = frames.navigable(session, session.tab) orelse return;
+    if (bc.host_overrides.extra_headers_owner != @intFromPtr(session)) return;
+    // An empty set allocates nothing: it cannot fail.
+    bc.host_overrides.setExtraHeaders(bc.allocator, @intFromPtr(session), &.{}) catch {};
+}
+
+fn freeHeaders(session: *PageSession) void {
+    const state = &session.states.Network;
+    for (state.extra_headers) |header| {
+        session.allocator.free(header.name);
+        session.allocator.free(header.value);
+    }
+    if (state.extra_headers.len > 0) session.allocator.free(state.extra_headers);
+    state.extra_headers = &.{};
 }
 
 /// Blink's InspectorNetworkAgent::enable: the buffer limits (defaults
@@ -47,9 +83,13 @@ pub fn enable(session: *PageSession, params: N.enable.Params) !N.enable.Result {
     state.resources.?.setLimits(total, one);
     state.max_post_data_size = if (params.maxPostDataSize) |v| @intCast(@max(v, 0)) else 0;
     state.enabled = true;
+    // Headers set while disabled apply from now on.
+    if (state.extra_headers.len > 0) try applyHeaders(session);
     return .{};
 }
 
+/// Chrome's NetworkHandler::Disable: the agent off and its extra headers
+/// cleared (`extra_headers_.clear()`).
 pub fn disable(session: *PageSession, _: N.disable.Params) !N.disable.Result {
     clear(session);
     return .{};
@@ -152,11 +192,11 @@ pub fn emulateNetworkConditionsByRule(session: *PageSession, params: N.emulateNe
 /// value, string expected"), each name a token (net::HttpUtil::
 /// IsValidHeaderName: "Invalid header name"), each value free of NUL, CR
 /// and LF (IsValidHeaderValue: "Invalid header value"); then they replace
-/// the tab's extra headers - none clears them - which every request of its
-/// documents carries (fetch_job's start, before CORS; Blink's
-/// InspectorNetworkAgent::PrepareRequest).
+/// the session's set - none clears it - which, while Network is enabled,
+/// every request of its tab's documents carries (fetch_job's start, before
+/// CORS; Blink's InspectorNetworkAgent::PrepareRequest).
 pub fn setExtraHTTPHeaders(session: *PageSession, params: N.setExtraHTTPHeaders.Params) !N.setExtraHTTPHeaders.Result {
-    const bc = frames.navigable(session, session.tab) orelse return session.fail("Target is not a page");
+    if (frames.navigable(session, session.tab) == null) return session.fail("Target is not a page");
     if (params.headers != .object) return session.failWithCode(.invalid_params, "Invalid parameters");
     const arena = session.arena.?;
     var list: std.ArrayList(host_overrides.ExtraHeader) = .empty;
@@ -168,7 +208,24 @@ pub fn setExtraHTTPHeaders(session: *PageSession, params: N.setExtraHTTPHeaders.
         if (!validHeaderValue(value.string)) return session.failWithCode(.invalid_params, "Invalid header value");
         try list.append(arena, .{ .name = entry.key_ptr.*, .value = value.string });
     }
-    try bc.host_overrides.setExtraHeaders(bc.allocator, @intFromPtr(session), list.items);
+    // The session's copy, replacing the one it had.
+    const allocator = session.allocator;
+    const copy = try allocator.alloc(host_overrides.ExtraHeader, list.items.len);
+    @memset(copy, .{ .name = "", .value = "" });
+    errdefer {
+        for (copy) |header| {
+            allocator.free(header.name);
+            allocator.free(header.value);
+        }
+        allocator.free(copy);
+    }
+    for (list.items, copy) |from, *to| {
+        to.name = try allocator.dupe(u8, from.name);
+        to.value = try allocator.dupe(u8, from.value);
+    }
+    freeHeaders(session);
+    session.states.Network.extra_headers = copy;
+    if (session.states.Network.enabled) try applyHeaders(session);
     return .{};
 }
 

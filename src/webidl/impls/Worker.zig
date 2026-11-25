@@ -401,6 +401,9 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         .csp_violation_reporter = dom.csp_violations.reporterForRealm(ctx),
         .reserved_client = reserved_client,
         .service_worker = dom.service_worker_clients.routeOfReserved(reserved_client),
+        // The outside settings' user agent override, which the request
+        // copies: the worker's thread fetches it.
+        .user_agent_override = html.user_agent_override.ofRealm(ctx),
     };
     var start: worker_host.WorkerStart = .{
         .source = "",
