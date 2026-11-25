@@ -77,14 +77,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor: DOM "inner event creation steps", then formData.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.FormDataEventInit) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &FormDataEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: dictionaries.FormDataEventInit) !void {
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(eventInitDict.base));
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.form_data = eventInitDict.formData;
     internal.form_data_edge.hold(instance, eventInitDict.formData);
-    return instance;
 }
 
 /// Getter for formData

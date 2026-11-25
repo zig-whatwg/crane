@@ -151,6 +151,11 @@ pub fn releaseOwned(child: *Instance) void {
 /// .unsupported) cannot tell the two apart; the object is left to whatever
 /// owns it, as releaseOwned leaves its storage. Makes no engine call.
 pub fn releaseFailedConstruction(instance: *Instance) void {
+    // A node is not this function's: it holds its creator's reference (the
+    // DOM's refcount7), which only Node's own teardown ends - a node
+    // constructor stays a factory and frees through
+    // dom.node_creation.releaseIfUnwrapped.
+    std.debug.assert(instance.vtable.counted == null);
     const instance_lifecycle = @import("instance_lifecycle.zig");
     const tracked = @import("engine").capabilities.wrap_tracking != .unsupported;
     if (!instance_lifecycle.provablyUnwrapped(tracked, instance)) return;

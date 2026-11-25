@@ -275,10 +275,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor implementation
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try HTMLIFrameElement.init(ctx.allocator, ctx);
-    errdefer HTMLIFrameElement.deinit(instance);
-    return instance;
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
 }
 
 // ============================================================================

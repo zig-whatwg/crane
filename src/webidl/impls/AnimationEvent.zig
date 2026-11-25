@@ -70,9 +70,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor: DOM "inner event creation steps" with the dictionary's
 /// EventInit part, then each AnimationEventInit member initializing the attribute
 /// of its name (animationName and pseudoElement "", elapsedTime 0 by default).
-pub fn call_constructor(ctx: runtime.Context, @"type": typedefs.CSSOMString, animationEventInitDict: webidl.Opt(dictionaries.AnimationEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &AnimationEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": typedefs.CSSOMString, animationEventInitDict: webidl.Opt(dictionaries.AnimationEventInit)) !void {
+    const ctx = instance.ctx;
     const dict: dictionaries.AnimationEventInit = if (animationEventInitDict.was_passed) animationEventInitDict.value else .{ .base = .{} };
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
     const state = instance.getState(State);
@@ -87,7 +86,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": typedefs.CSSOMString, ani
         @import("engine").traceChild(instance, animation, animation_slot);
         state.own.animation = animation;
     }
-    return instance;
 }
 
 /// Getter for animationName. A view of the event's own copy.

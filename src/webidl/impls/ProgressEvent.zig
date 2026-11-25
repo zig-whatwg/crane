@@ -81,17 +81,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Note: ProgressEvent inherits from Event. We must initialize both inherited
 /// Event fields AND ProgressEvent's own fields.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ProgressEventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &ProgressEvent.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ProgressEventInit)) !void {
+    const ctx = instance.ctx;
     // Get state
     const state = instance.getState(State);
 
     // Create internal state for ProgressEvent-specific properties
+    // Published below with no step between that can fail: from there the
+    // destructor frees it (a destroy on the failure path too freed it twice).
     const internal = try ctx.allocator.create(InternalState);
-    errdefer ctx.allocator.destroy(internal);
 
     // Get values from eventInitDict if passed
     const length_computable = if (eventInitDict.wasPassed()) eventInitDict.value.lengthComputable orelse false else false;
@@ -136,8 +134,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // Without it dispatchEvent throws InvalidStateError, so the event can be
     // constructed but never dispatched. Same thing MouseEvent does by hand.
     try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
-
-    return instance;
 }
 
 /// Getter for lengthComputable

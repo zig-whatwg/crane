@@ -7,13 +7,10 @@
 # part of `zig build test`, fails on a new one and on an entry that no longer
 # holds; after converting some, `zig build lint-constructors -- --update`. Never
 # raise it by hand.
-destructor AbortController deinit(instance)
 destructor AbsoluteOrientationSensor deinit(instance)
 destructor Accelerometer deinit(instance)
 destructor AmbientLightSensor deinit(instance)
 destructor AnalyserNode deinit(instance)
-destructor AnimationEvent deinit(instance)
-destructor AnimationPlaybackEvent AnimationPlaybackEvent.deinit(instance)
 destructor AnimationTrigger deinit(instance)
 destructor AudioBuffer deinit(instance)
 destructor AudioBufferSourceNode deinit(instance)
@@ -21,22 +18,14 @@ destructor AudioContext deinit(instance)
 destructor AudioData deinit(instance)
 destructor AudioDecoder deinit(instance)
 destructor AudioEncoder deinit(instance)
-destructor AudioProcessingEvent deinit(instance)
 destructor AudioWorkletNode deinit(instance)
-destructor AutofillEvent AutofillEvent.deinit(instance)
-destructor BackgroundFetchEvent deinit(instance)
-destructor BackgroundFetchUpdateUIEvent deinit(instance)
 destructor BarcodeDetector deinit(instance)
-destructor BeforeInstallPromptEvent deinit(instance)
 destructor BiquadFilterNode deinit(instance)
-destructor BlobEvent deinit(instance)
-destructor BluetoothAdvertisingEvent deinit(instance)
 destructor BluetoothDataFilter deinit(instance)
 destructor BluetoothLEScanFilter deinit(instance)
 destructor BluetoothManufacturerDataFilter deinit(instance)
 destructor BluetoothServiceDataFilter deinit(instance)
 destructor BroadcastChannel deinit(instance)
-destructor BufferedChangeEvent deinit(instance)
 destructor ByteLengthQueuingStrategy deinit(instance)
 destructor CSSColor deinit(instance)
 destructor CSSHSL deinit(instance)
@@ -51,175 +40,54 @@ destructor CSSParserDeclaration deinit(instance)
 destructor CSSParserFunction deinit(instance)
 destructor CSSParserQualifiedRule deinit(instance)
 destructor CSSRGB deinit(instance)
-destructor CanMakePaymentEvent deinit(instance)
-destructor CaptureActionEvent deinit(instance)
 destructor CaptureController deinit(instance)
-destructor CapturedMouseEvent deinit(instance)
 destructor ChannelMergerNode deinit(instance)
 destructor ChannelSplitterNode deinit(instance)
-destructor CharacterBoundsUpdateEvent deinit(instance)
-destructor ClipboardChangeEvent deinit(instance)
 destructor ClipboardItem deinit(instance)
-destructor CloseEvent deinit(instance)
-destructor Comment Comment.deinit(instance)
-destructor CompositionEvent deinit(instance)
 destructor ConstantSourceNode deinit(instance)
-destructor ContentIndexEvent deinit(instance)
-destructor ContentVisibilityAutoStateChangeEvent deinit(instance)
 destructor ConvolverNode deinit(instance)
-destructor CookieChangeEvent CookieChangeEvent.deinit(instance)
 destructor CountQueuingStrategy deinit(instance)
-destructor CustomElementRegistry deinit(instance)
-destructor CustomEvent deinit(instance)
-destructor DOMParser deinit(instance)
 destructor DelayNode deinit(instance)
-destructor DeviceChangeEvent deinit(instance)
-destructor DeviceMotionEvent deinit(instance)
-destructor DeviceOrientationEvent deinit(instance)
-destructor Document Document.deinit(instance)
-destructor DocumentFragment DocumentFragment.deinit(instance)
-destructor DocumentPictureInPictureEvent deinit(instance)
 destructor DynamicsCompressorNode deinit(instance)
-destructor EditContext deinit(instance)
 destructor EncodedAudioChunk deinit(instance)
 destructor EncodedVideoChunk deinit(instance)
-destructor ErrorEvent deinit(instance)
-destructor Event deinit(instance)
-destructor EventTarget EventTarget.deinit(instance)
 destructor Exception deinit(instance)
-destructor ExtendableCookieChangeEvent ExtendableCookieChangeEvent.deinit(instance)
-destructor ExtendableEvent ExtendableEvent.deinit(instance)
 destructor EyeDropper deinit(instance)
 destructor FaceDetector deinit(instance)
 destructor FederatedCredential deinit(instance)
 destructor FencedFrameConfig deinit(instance)
-destructor FetchEvent FetchEvent.deinit(instance)
 destructor FileReader FileReader.deinit(instance)
 destructor FileReaderSync deinit(instance)
-destructor FocusEvent deinit(instance)
-destructor FormDataEvent deinit(instance)
 destructor FragmentResult deinit(instance)
 destructor GPUInternalError deinit(instance)
 destructor GPUOutOfMemoryError deinit(instance)
 destructor GPUPipelineError deinit(instance)
-destructor GPUUncapturedErrorEvent deinit(instance)
 destructor GPUValidationError deinit(instance)
 destructor GainNode deinit(instance)
 destructor Global deinit(instance)
 destructor GravitySensor deinit(instance)
 destructor GroupEffect deinit(instance)
 destructor Gyroscope deinit(instance)
-destructor HIDConnectionEvent deinit(instance)
-destructor HIDInputReportEvent deinit(instance)
-destructor HTMLAnchorElement HTMLAnchorElement.deinit(instance)
-destructor HTMLAreaElement HTMLAreaElement.deinit(instance)
-destructor HTMLAudioElement deinit(instance)
-destructor HTMLBRElement HTMLBRElement.deinit(instance)
-destructor HTMLBaseElement HTMLBaseElement.deinit(instance)
-destructor HTMLBodyElement HTMLBodyElement.deinit(instance)
-destructor HTMLButtonElement deinit(instance)
-destructor HTMLCameraElement HTMLCameraElement.deinit(instance)
-destructor HTMLCanvasElement HTMLCanvasElement.deinit(instance)
-destructor HTMLDListElement HTMLDListElement.deinit(instance)
-destructor HTMLDataElement HTMLDataElement.deinit(instance)
-destructor HTMLDataListElement HTMLDataListElement.deinit(instance)
-destructor HTMLDetailsElement HTMLDetailsElement.deinit(instance)
-destructor HTMLDirectoryElement HTMLDirectoryElement.deinit(instance)
-destructor HTMLDivElement HTMLDivElement.deinit(instance)
-destructor HTMLElement HTMLElement.deinit(instance)
-destructor HTMLEmbedElement deinit(instance)
-destructor HTMLFencedFrameElement HTMLFencedFrameElement.deinit(instance)
-destructor HTMLFieldSetElement deinit(instance)
-destructor HTMLFontElement HTMLFontElement.deinit(instance)
-destructor HTMLFormElement HTMLFormElement.deinit(instance)
-destructor HTMLFrameElement deinit(instance)
-destructor HTMLFrameSetElement HTMLFrameSetElement.deinit(instance)
-destructor HTMLGeolocationElement HTMLGeolocationElement.deinit(instance)
-destructor HTMLHRElement HTMLHRElement.deinit(instance)
-destructor HTMLHeadElement HTMLHeadElement.deinit(instance)
-destructor HTMLHeadingElement HTMLHeadingElement.deinit(instance)
-destructor HTMLHtmlElement HTMLHtmlElement.deinit(instance)
-destructor HTMLIFrameElement HTMLIFrameElement.deinit(instance)
-destructor HTMLImageElement HTMLImageElement.deinit(instance)
-destructor HTMLInputElement deinit(instance)
-destructor HTMLInstallElement HTMLInstallElement.deinit(instance)
-destructor HTMLLIElement HTMLLIElement.deinit(instance)
-destructor HTMLLabelElement deinit(instance)
-destructor HTMLLegendElement HTMLLegendElement.deinit(instance)
-destructor HTMLLinkElement deinit(instance)
-destructor HTMLMapElement HTMLMapElement.deinit(instance)
-destructor HTMLMarqueeElement HTMLMarqueeElement.deinit(instance)
-destructor HTMLMenuElement HTMLMenuElement.deinit(instance)
-destructor HTMLMetaElement HTMLMetaElement.deinit(instance)
-destructor HTMLMeterElement HTMLMeterElement.deinit(instance)
-destructor HTMLMicrophoneElement HTMLMicrophoneElement.deinit(instance)
-destructor HTMLModElement HTMLModElement.deinit(instance)
-destructor HTMLOListElement HTMLOListElement.deinit(instance)
-destructor HTMLObjectElement deinit(instance)
-destructor HTMLOptGroupElement HTMLOptGroupElement.deinit(instance)
-destructor HTMLOptionElement HTMLOptionElement.deinit(instance)
-destructor HTMLOutputElement deinit(instance)
-destructor HTMLParagraphElement HTMLParagraphElement.deinit(instance)
-destructor HTMLParamElement HTMLParamElement.deinit(instance)
-destructor HTMLPictureElement HTMLPictureElement.deinit(instance)
-destructor HTMLPortalElement HTMLPortalElement.deinit(instance)
-destructor HTMLPreElement HTMLPreElement.deinit(instance)
-destructor HTMLProgressElement HTMLProgressElement.deinit(instance)
-destructor HTMLQuoteElement HTMLQuoteElement.deinit(instance)
-destructor HTMLScriptElement HTMLScriptElement.deinit(instance)
-destructor HTMLSelectElement deinit(instance)
-destructor HTMLSelectedContentElement HTMLSelectedContentElement.deinit(instance)
-destructor HTMLSlotElement deinit(instance)
-destructor HTMLSpanElement HTMLSpanElement.deinit(instance)
-destructor HTMLStyleElement deinit(instance)
-destructor HTMLTableCaptionElement HTMLTableCaptionElement.deinit(instance)
-destructor HTMLTableCellElement deinit(instance)
-destructor HTMLTableColElement HTMLTableColElement.deinit(instance)
-destructor HTMLTableElement deinit(instance)
-destructor HTMLTableRowElement deinit(instance)
-destructor HTMLTableSectionElement deinit(instance)
-destructor HTMLTemplateElement deinit(instance)
-destructor HTMLTextAreaElement deinit(instance)
-destructor HTMLTimeElement HTMLTimeElement.deinit(instance)
-destructor HTMLTitleElement HTMLTitleElement.deinit(instance)
-destructor HTMLUListElement HTMLUListElement.deinit(instance)
-destructor HTMLUserMediaElement HTMLUserMediaElement.deinit(instance)
-destructor HTMLVideoElement deinit(instance)
 destructor HandwritingStroke deinit(instance)
-destructor HashChangeEvent deinit(instance)
-destructor Highlight Highlight.deinit(instance)
 destructor IIRFilterNode deinit(instance)
 destructor IdentityCredentialError deinit(instance)
 destructor IdleDetector deinit(instance)
 destructor ImageCapture deinit(instance)
 destructor ImageDecoder deinit(instance)
-destructor InputDeviceCapabilities deinit(instance)
-destructor InputEvent deinit(instance)
-destructor InstallEvent InstallEvent.deinit(instance)
-destructor InstallResultEvent InstallResultEvent.deinit(instance)
 destructor Instance deinit(instance)
-destructor IntersectionObserver deinit(instance)
 destructor JsonLdProcessor deinit(instance)
-destructor KeyFrameRequestEvent deinit(instance)
-destructor KeyboardEvent deinit(instance)
 destructor LinearAccelerationSensor deinit(instance)
-destructor MIDIConnectionEvent deinit(instance)
-destructor MIDIMessageEvent deinit(instance)
 destructor MLGraphBuilder deinit(instance)
 destructor Magnetometer deinit(instance)
 destructor ManagedMediaSource deinit(instance)
 destructor MediaElementAudioSourceNode deinit(instance)
-destructor MediaEncryptedEvent deinit(instance)
-destructor MediaKeyMessageEvent deinit(instance)
 destructor MediaMetadata deinit(instance)
-destructor MediaQueryListEvent deinit(instance)
 destructor MediaRecorder deinit(instance)
 destructor MediaSource deinit(instance)
 destructor MediaStream deinit(instance)
 destructor MediaStreamAudioDestinationNode deinit(instance)
 destructor MediaStreamAudioSourceNode deinit(instance)
 destructor MediaStreamTrackAudioSourceNode deinit(instance)
-destructor MediaStreamTrackEvent deinit(instance)
 destructor MediaStreamTrackHandle MediaStreamTrackHandle.deinit(instance)
 destructor MediaStreamTrackProcessor deinit(instance)
 destructor Memory deinit(instance)
@@ -227,114 +95,58 @@ destructor MessageChannel MessagePortInterface.deinit(port1_instance)
 destructor MessageChannel MessagePortInterface.deinit(port2_instance)
 destructor MessageChannel deinit(instance)
 destructor Module deinit(instance)
-destructor MutationObserver deinit(instance)
 destructor NDEFMessage deinit(instance)
 destructor NDEFReader deinit(instance)
-destructor NDEFReadingEvent deinit(instance)
 destructor NDEFRecord deinit(instance)
-destructor NavigateEvent deinit(instance)
-destructor NavigationCurrentEntryChangeEvent deinit(instance)
-destructor NavigationEvent deinit(instance)
-destructor NotificationEvent deinit(instance)
 destructor Observable deinit(instance)
-destructor OfflineAudioCompletionEvent deinit(instance)
 destructor OfflineAudioContext deinit(instance)
 destructor OffscreenCanvas OffscreenCanvas.deinit(instance)
 destructor OscillatorNode deinit(instance)
 destructor OverconstrainedError deinit(instance)
-destructor PageRevealEvent deinit(instance)
-destructor PageSwapEvent deinit(instance)
-destructor PageTransitionEvent deinit(instance)
 destructor PannerNode deinit(instance)
 destructor PasswordCredential deinit(instance)
 destructor Path2D deinit(instance)
-destructor PaymentMethodChangeEvent deinit(instance)
 destructor PaymentRequest deinit(instance)
-destructor PaymentRequestEvent deinit(instance)
-destructor PaymentRequestUpdateEvent deinit(instance)
-destructor PeriodicSyncEvent deinit(instance)
 destructor PeriodicWave deinit(instance)
-destructor PictureInPictureEvent deinit(instance)
-destructor PointerEvent deinit(instance)
 destructor PointerTimeline deinit(instance)
-destructor PopStateEvent deinit(instance)
-destructor PortalActivateEvent deinit(instance)
-destructor PresentationConnectionAvailableEvent deinit(instance)
-destructor PresentationConnectionCloseEvent deinit(instance)
 destructor PresentationRequest deinit(instance)
 destructor PressureObserver deinit(instance)
-destructor ProcessingInstruction ProcessingInstruction.deinit(instance)
 destructor Profiler deinit(instance)
-destructor ProgressEvent deinit(instance)
-destructor PromiseRejectionEvent deinit(instance)
 destructor ProximitySensor deinit(instance)
-destructor PushEvent deinit(instance)
-destructor PushSubscriptionChangeEvent deinit(instance)
-destructor RTCDTMFToneChangeEvent deinit(instance)
-destructor RTCDataChannelEvent deinit(instance)
 destructor RTCEncodedAudioFrame deinit(instance)
 destructor RTCEncodedVideoFrame deinit(instance)
 destructor RTCError deinit(instance)
-destructor RTCErrorEvent deinit(instance)
 destructor RTCIceCandidate deinit(instance)
 destructor RTCIceTransport deinit(instance)
 destructor RTCIdentityAssertion deinit(instance)
 destructor RTCPeerConnection deinit(instance)
-destructor RTCPeerConnectionIceErrorEvent deinit(instance)
-destructor RTCPeerConnectionIceEvent deinit(instance)
 destructor RTCRtpSFrameDecryptor RTCRtpSFrameDecryptor.deinit(instance)
 destructor RTCRtpSFrameEncryptor RTCRtpSFrameEncryptor.deinit(instance)
 destructor RTCRtpScriptTransform deinit(instance)
 destructor RTCSessionDescription deinit(instance)
-destructor RTCTrackEvent deinit(instance)
-destructor Range deinit(instance)
 destructor RdfDataset deinit(instance)
 destructor RdfGraph deinit(instance)
 destructor RdfLiteral deinit(instance)
 destructor RdfTriple deinit(instance)
 destructor RelativeOrientationSensor deinit(instance)
 destructor RemoteDocument deinit(instance)
-destructor ResizeObserver deinit(instance)
 destructor SFrameDecryptorStream SFrameDecryptorStream.deinit(instance)
 destructor SFrameEncryptorStream SFrameEncryptorStream.deinit(instance)
-destructor SFrameTransformErrorEvent deinit(instance)
 destructor ScrollTimeline deinit(instance)
-destructor SecurityPolicyViolationEvent deinit(instance)
-destructor SensorErrorEvent deinit(instance)
 destructor SequenceEffect deinit(instance)
 destructor ShadowAnimation deinit(instance)
-destructor SnapEvent deinit(instance)
 destructor SpeechGrammarList deinit(instance)
 destructor SpeechRecognition deinit(instance)
-destructor SpeechRecognitionErrorEvent deinit(instance)
-destructor SpeechRecognitionEvent deinit(instance)
 destructor SpeechRecognitionPhrase deinit(instance)
-destructor SpeechSynthesisErrorEvent deinit(instance)
-destructor SpeechSynthesisEvent deinit(instance)
 destructor SpeechSynthesisUtterance deinit(instance)
-destructor StaticRange deinit(instance)
 destructor StereoPannerNode deinit(instance)
-destructor StorageEvent deinit(instance)
-destructor SubmitEvent deinit(instance)
-destructor SyncEvent deinit(instance)
 destructor Table deinit(instance)
 destructor Tag deinit(instance)
 destructor TaskController deinit(instance)
-destructor TaskPriorityChangeEvent deinit(instance)
-destructor Text Text.deinit(instance)
 destructor TextDetector deinit(instance)
 destructor TextEncoder deinit(instance)
-destructor TextFormat deinit(instance)
-destructor TextFormatUpdateEvent deinit(instance)
-destructor TextUpdateEvent deinit(instance)
-destructor ToggleEvent deinit(instance)
-destructor Touch deinit(instance)
-destructor TouchEvent deinit(instance)
-destructor TransitionEvent deinit(instance)
-destructor UIEvent deinit(instance)
 destructor USBAlternateInterface deinit(instance)
 destructor USBConfiguration deinit(instance)
-destructor USBConnectionEvent deinit(instance)
 destructor USBEndpoint deinit(instance)
 destructor USBInTransferResult deinit(instance)
 destructor USBInterface deinit(instance)
@@ -344,7 +156,6 @@ destructor USBIsochronousOutTransferPacket deinit(instance)
 destructor USBIsochronousOutTransferResult deinit(instance)
 destructor USBOutTransferResult deinit(instance)
 destructor UncalibratedMagnetometer deinit(instance)
-destructor ValueEvent deinit(instance)
 destructor VideoColorSpace deinit(instance)
 destructor VideoDecoder deinit(instance)
 destructor VideoEncoder deinit(instance)
@@ -352,34 +163,21 @@ destructor VideoFrame deinit(instance)
 destructor VideoTrackGenerator deinit(instance)
 destructor ViewTimeline deinit(instance)
 destructor WaveShaperNode deinit(instance)
-destructor WebGLContextEvent deinit(instance)
 destructor WebTransport deinit(instance)
 destructor WebTransportError deinit(instance)
-destructor WheelEvent deinit(instance)
-destructor WindowControlsOverlayGeometryChangeEvent deinit(instance)
 destructor WorkletAnimation deinit(instance)
 destructor XMLHttpRequest XMLHttpRequest.deinit(instance)
-destructor XMLSerializer deinit(instance)
 destructor XRGPUBinding XRGPUBinding.deinit(instance)
-destructor XRInputSourceEvent deinit(instance)
-destructor XRInputSourcesChangeEvent deinit(instance)
-destructor XRLayerEvent deinit(instance)
 destructor XRMediaBinding deinit(instance)
 destructor XRRay deinit(instance)
-destructor XRReferenceSpaceEvent deinit(instance)
 destructor XRRigidTransform deinit(instance)
-destructor XRSessionEvent deinit(instance)
-destructor XRVisibilityMaskChangeEvent deinit(instance)
 destructor XRWebGLBinding deinit(instance)
 destructor XRWebGLLayer deinit(instance)
-factory AbortController
 factory AbsoluteOrientationSensor
 factory Accelerometer
 factory AmbientLightSensor
 factory AnalyserNode
 factory Animation
-factory AnimationEvent
-factory AnimationPlaybackEvent
 factory AnimationTrigger
 factory AudioBuffer
 factory AudioBufferSourceNode
@@ -387,24 +185,16 @@ factory AudioContext
 factory AudioData
 factory AudioDecoder
 factory AudioEncoder
-factory AudioProcessingEvent
 factory AudioWorkletNode
 factory AudioWorkletProcessor
-factory AutofillEvent
-factory BackgroundFetchEvent
-factory BackgroundFetchUpdateUIEvent
 factory BarcodeDetector
-factory BeforeInstallPromptEvent
 factory BiquadFilterNode
 factory Blob
-factory BlobEvent
-factory BluetoothAdvertisingEvent
 factory BluetoothDataFilter
 factory BluetoothLEScanFilter
 factory BluetoothManufacturerDataFilter
 factory BluetoothServiceDataFilter
 factory BroadcastChannel
-factory BufferedChangeEvent
 factory ByteLengthQueuingStrategy
 factory CSSColor
 factory CSSHSL
@@ -440,81 +230,48 @@ factory CSSTranslate
 factory CSSUnitValue
 factory CSSUnparsedValue
 factory CSSVariableReferenceValue
-factory CanMakePaymentEvent
-factory CaptureActionEvent
 factory CaptureController
-factory CapturedMouseEvent
 factory ChannelMergerNode
 factory ChannelSplitterNode
-factory CharacterBoundsUpdateEvent
-factory ClipboardChangeEvent
 factory ClipboardEvent
 factory ClipboardItem
-factory CloseEvent
-factory CloseWatcher
-factory CommandEvent
 factory Comment
-factory CompositionEvent
 factory CompressionStream
 factory ConstantSourceNode
-factory ContentIndexEvent
-factory ContentVisibilityAutoStateChangeEvent
 factory ConvolverNode
-factory CookieChangeEvent
 factory CountQueuingStrategy
-factory CustomElementRegistry
-factory CustomEvent
-factory DOMException
 factory DOMMatrix
 factory DOMMatrixReadOnly
-factory DOMParser
 factory DOMPoint
 factory DOMPointReadOnly
 factory DOMQuad
 factory DOMRect
 factory DOMRectReadOnly
 factory DataCue
-factory DataTransfer
 factory DecompressionStream
 factory DelayNode
-factory DeviceChangeEvent
-factory DeviceMotionEvent
-factory DeviceOrientationEvent
 factory Document
 factory DocumentFragment
-factory DocumentPictureInPictureEvent
 factory DocumentTimeline
 factory DragEvent
 factory DynamicsCompressorNode
-factory EditContext
 factory EncodedAudioChunk
 factory EncodedVideoChunk
-factory ErrorEvent
-factory Event
 factory EventSource
-factory EventTarget
 factory Exception
-factory ExtendableCookieChangeEvent
-factory ExtendableEvent
-factory ExtendableMessageEvent
 factory EyeDropper
 factory FaceDetector
 factory FederatedCredential
 factory FencedFrameConfig
-factory FetchEvent
 factory File
 factory FileReader
 factory FileReaderSync
-factory FocusEvent
 factory FontFace
-factory FontFaceSetLoadEvent
 factory FormData
-factory FormDataEvent
 factory FragmentResult
 factory GPUInternalError
 factory GPUOutOfMemoryError
 factory GPUPipelineError
-factory GPUUncapturedErrorEvent
 factory GPUValidationError
 factory GainNode
 factory GamepadEvent
@@ -522,125 +279,30 @@ factory Global
 factory GravitySensor
 factory GroupEffect
 factory Gyroscope
-factory HIDConnectionEvent
-factory HIDInputReportEvent
-factory HTMLAnchorElement
-factory HTMLAreaElement
-factory HTMLAudioElement
-factory HTMLBRElement
-factory HTMLBaseElement
-factory HTMLBodyElement
-factory HTMLButtonElement
-factory HTMLCameraElement
-factory HTMLCanvasElement
-factory HTMLDListElement
-factory HTMLDataElement
-factory HTMLDataListElement
-factory HTMLDetailsElement
-factory HTMLDialogElement
-factory HTMLDirectoryElement
-factory HTMLDivElement
-factory HTMLElement
-factory HTMLEmbedElement
-factory HTMLFencedFrameElement
-factory HTMLFieldSetElement
-factory HTMLFontElement
-factory HTMLFormElement
-factory HTMLFrameElement
-factory HTMLFrameSetElement
-factory HTMLGeolocationElement
-factory HTMLHRElement
-factory HTMLHeadElement
-factory HTMLHeadingElement
-factory HTMLHtmlElement
-factory HTMLIFrameElement
-factory HTMLImageElement
-factory HTMLInputElement
-factory HTMLInstallElement
-factory HTMLLIElement
-factory HTMLLabelElement
-factory HTMLLegendElement
-factory HTMLLinkElement
-factory HTMLMapElement
-factory HTMLMarqueeElement
-factory HTMLMenuElement
-factory HTMLMetaElement
-factory HTMLMeterElement
-factory HTMLMicrophoneElement
-factory HTMLModElement
-factory HTMLOListElement
-factory HTMLObjectElement
-factory HTMLOptGroupElement
-factory HTMLOptionElement
-factory HTMLOutputElement
-factory HTMLParagraphElement
-factory HTMLParamElement
-factory HTMLPictureElement
-factory HTMLPortalElement
-factory HTMLPreElement
-factory HTMLProgressElement
-factory HTMLQuoteElement
-factory HTMLScriptElement
-factory HTMLSelectElement
-factory HTMLSelectedContentElement
-factory HTMLSlotElement
-factory HTMLSourceElement
-factory HTMLSpanElement
-factory HTMLStyleElement
-factory HTMLTableCaptionElement
-factory HTMLTableCellElement
-factory HTMLTableColElement
-factory HTMLTableElement
-factory HTMLTableRowElement
-factory HTMLTableSectionElement
-factory HTMLTemplateElement
-factory HTMLTextAreaElement
-factory HTMLTimeElement
-factory HTMLTitleElement
-factory HTMLTrackElement
-factory HTMLUListElement
-factory HTMLUserMediaElement
-factory HTMLVideoElement
 factory HandwritingStroke
-factory HashChangeEvent
 factory Headers
-factory Highlight
-factory IDBVersionChangeEvent
 factory IIRFilterNode
 factory IdentityCredentialError
 factory IdleDetector
 factory ImageCapture
 factory ImageData
 factory ImageDecoder
-factory InputDeviceCapabilities
-factory InputEvent
-factory InstallEvent
-factory InstallResultEvent
 factory Instance
-factory IntersectionObserver
 factory IntersectionObserverEntry
 factory JsonLdProcessor
-factory KeyFrameRequestEvent
-factory KeyboardEvent
 factory KeyframeEffect
 factory LinearAccelerationSensor
-factory MIDIConnectionEvent
-factory MIDIMessageEvent
 factory MLGraphBuilder
 factory Magnetometer
 factory ManagedMediaSource
 factory MediaElementAudioSourceNode
-factory MediaEncryptedEvent
-factory MediaKeyMessageEvent
 factory MediaMetadata
-factory MediaQueryListEvent
 factory MediaRecorder
 factory MediaSource
 factory MediaStream
 factory MediaStreamAudioDestinationNode
 factory MediaStreamAudioSourceNode
 factory MediaStreamTrackAudioSourceNode
-factory MediaStreamTrackEvent
 factory MediaStreamTrackHandle
 factory MediaStreamTrackProcessor
 factory Memory
@@ -648,72 +310,41 @@ factory MessageChannel
 factory MessageEvent
 factory Module
 factory MouseEvent
-factory MutationObserver
 factory NDEFMessage
 factory NDEFReader
-factory NDEFReadingEvent
 factory NDEFRecord
-factory NavigateEvent
-factory NavigationCurrentEntryChangeEvent
-factory NavigationEvent
 factory Notification
-factory NotificationEvent
 factory Observable
-factory OfflineAudioCompletionEvent
 factory OfflineAudioContext
 factory OffscreenCanvas
 factory Origin
 factory OscillatorNode
 factory OverconstrainedError
-factory PageRevealEvent
-factory PageSwapEvent
-factory PageTransitionEvent
 factory PannerNode
 factory PasswordCredential
 factory Path2D
-factory PaymentMethodChangeEvent
 factory PaymentRequest
-factory PaymentRequestEvent
-factory PaymentRequestUpdateEvent
 factory PerformanceMark
 factory PerformanceObserver
-factory PeriodicSyncEvent
 factory PeriodicWave
-factory PictureInPictureEvent
-factory PointerEvent
 factory PointerTimeline
-factory PopStateEvent
-factory PortalActivateEvent
-factory PresentationConnectionAvailableEvent
-factory PresentationConnectionCloseEvent
 factory PresentationRequest
 factory PressureObserver
 factory ProcessingInstruction
 factory Profiler
-factory ProgressEvent
-factory PromiseRejectionEvent
 factory ProximitySensor
-factory PushEvent
-factory PushSubscriptionChangeEvent
 factory QuotaExceededError
-factory RTCDTMFToneChangeEvent
-factory RTCDataChannelEvent
 factory RTCEncodedAudioFrame
 factory RTCEncodedVideoFrame
 factory RTCError
-factory RTCErrorEvent
 factory RTCIceCandidate
 factory RTCIceTransport
 factory RTCIdentityAssertion
 factory RTCPeerConnection
-factory RTCPeerConnectionIceErrorEvent
-factory RTCPeerConnectionIceEvent
 factory RTCRtpSFrameDecryptor
 factory RTCRtpSFrameEncryptor
 factory RTCRtpScriptTransform
 factory RTCSessionDescription
-factory RTCTrackEvent
-factory Range
 factory RdfDataset
 factory RdfGraph
 factory RdfLiteral
@@ -723,60 +354,34 @@ factory ReadableStreamBYOBReader
 factory ReadableStreamDefaultReader
 factory RelativeOrientationSensor
 factory RemoteDocument
-factory ReportingObserver
 factory Request
-factory ResizeObserver
 factory Response
 factory SFrameDecryptorStream
 factory SFrameEncryptorStream
-factory SFrameTransformErrorEvent
-factory Sanitizer
 factory ScrollTimeline
-factory SecurityPolicyViolationEvent
-factory SensorErrorEvent
 factory SequenceEffect
 factory ShadowAnimation
 factory SharedWorker
-factory SnapEvent
 factory SpeechGrammarList
 factory SpeechRecognition
-factory SpeechRecognitionErrorEvent
-factory SpeechRecognitionEvent
 factory SpeechRecognitionPhrase
-factory SpeechSynthesisErrorEvent
-factory SpeechSynthesisEvent
 factory SpeechSynthesisUtterance
-factory StaticRange
 factory StereoPannerNode
-factory StorageEvent
-factory SubmitEvent
-factory SyncEvent
 factory Table
 factory Tag
 factory TaskController
-factory TaskPriorityChangeEvent
 factory Text
 factory TextDecoder
 factory TextDecoderStream
 factory TextDetector
 factory TextEncoder
 factory TextEncoderStream
-factory TextFormat
-factory TextFormatUpdateEvent
-factory TextUpdateEvent
-factory ToggleEvent
-factory Touch
-factory TouchEvent
-factory TrackEvent
 factory TransformStream
-factory TransitionEvent
-factory UIEvent
 factory URL
 factory URLPattern
 factory URLSearchParams
 factory USBAlternateInterface
 factory USBConfiguration
-factory USBConnectionEvent
 factory USBEndpoint
 factory USBInTransferResult
 factory USBInterface
@@ -788,7 +393,6 @@ factory USBOutTransferResult
 factory UncalibratedMagnetometer
 factory VTTCue
 factory VTTRegion
-factory ValueEvent
 factory VideoColorSpace
 factory VideoDecoder
 factory VideoEncoder
@@ -796,29 +400,17 @@ factory VideoFrame
 factory VideoTrackGenerator
 factory ViewTimeline
 factory WaveShaperNode
-factory WebGLContextEvent
 factory WebSocket
 factory WebTransport
 factory WebTransportError
-factory WheelEvent
-factory WindowControlsOverlayGeometryChangeEvent
 factory Worker
 factory WorkletAnimation
 factory WritableStream
 factory WritableStreamDefaultWriter
 factory XMLHttpRequest
-factory XMLSerializer
-factory XPathEvaluator
 factory XRGPUBinding
-factory XRInputSourceEvent
-factory XRInputSourcesChangeEvent
-factory XRLayerEvent
 factory XRMediaBinding
 factory XRRay
-factory XRReferenceSpaceEvent
 factory XRRigidTransform
-factory XRSessionEvent
-factory XRVisibilityMaskChangeEvent
 factory XRWebGLBinding
 factory XRWebGLLayer
-factory XSLTProcessor

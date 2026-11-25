@@ -46,8 +46,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     }
     interfaces.HTMLElement.deinit(instance);
 }
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    return init(ctx.allocator, State, &interfaces.HTMLSourceElement.vtable, ctx);
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    // The generated constructor made it (WebIDL 3.7.1 step 1.8): no steps.
+    _ = instance;
 }
 fn sourceURL(instance: *runtime.Instance) ?[]const u8 {
     const data = instance.getState(State).own._internal orelse return null;

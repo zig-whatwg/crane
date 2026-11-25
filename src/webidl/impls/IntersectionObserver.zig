@@ -283,7 +283,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// tmp/probes/bind1-nullmember/report-g3.txt (2026-11-24): a bad margin's
 /// SyntaxError comes before a bad threshold's RangeError, thresholds come
 /// back sorted, and `root` reads back the object given.
-pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionObserverCallback, options: webidl.Opt(dictionaries.IntersectionObserverInit)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, callback: callbacks.IntersectionObserverCallback, options: webidl.Opt(dictionaries.IntersectionObserverInit)) !void {
     const opts = if (options.was_passed) options.value else dictionaries.IntersectionObserverInit{};
 
     // 3. "Attempt to parse a margin from options.rootMargin. If a list is
@@ -308,11 +308,6 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
     // 6. "If any value in thresholds is less than 0.0 or greater than 1.0,
     //    throw a RangeError exception."
     for (given) |value| if (value < 0.0 or value > 1.0) return error.RangeError;
-
-    // 1. "Let this be a new IntersectionObserver object". Made after the
-    //    steps that throw: nothing above is observable through `this`.
-    const instance = try init(ctx.allocator, State, &IntersectionObserver.vtable, ctx);
-    errdefer deinit(instance);
 
     const internal = getInternal(instance);
     internal.self_instance = instance;
@@ -369,9 +364,6 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
         pair.* = .{ .root = root_margin, .scroll = scroll_margin };
         internal.margins = pair;
     }
-
-    // 14. "Return this."
-    return instance;
 }
 
 /// The observer's root while it is alive; null for an implicit root

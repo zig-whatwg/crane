@@ -181,14 +181,9 @@ fn firstBaseHref(document: *runtime.Instance) !?runtime.DOMString {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try HTMLBaseElement.init(ctx.allocator, ctx);
-    errdefer HTMLBaseElement.deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// HTML 4.2.3, href getter steps 1-5. Unlike ordinary URL reflection this

@@ -118,18 +118,17 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// The DataTransfer() constructor: "a newly created DataTransfer object
 /// initialized as follows":
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    const ctx = instance.ctx;
     const allocator = ctx.allocator;
-    const instance = try init(allocator, State, &DataTransfer.vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
     // 1. Set the drag data store's item list to be an empty list.
     // 2. Set the drag data store's mode to read/write mode.
     const store = try drag_data_store.Store.create(allocator, instance, .read_write);
     errdefer store.destroy();
     const items = try drag_data_store.makeItemList(instance, store);
-    errdefer runtime.Instance.deinit(items);
+    errdefer runtime.gc.releaseOwned(items);
     const files = try interfaces.FileList.init(allocator, ctx);
-    errdefer runtime.Instance.deinit(files);
+    errdefer runtime.gc.releaseOwned(files);
     const internal = try allocator.create(InternalState);
     // 3. Set the dropEffect and effectAllowed to "none".
     internal.* = .{ .allocator = allocator, .store = store, .items = items, .files = files, .traced = ctx.hasEngine() };
@@ -141,7 +140,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
         engine.traceChild(instance, files, .{ .name = "files" });
     }
     store.setFiles(files);
-    return instance;
 }
 
 /// Getter for dropEffect: "On getting, it must return its current value."
