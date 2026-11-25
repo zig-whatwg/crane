@@ -91,6 +91,64 @@ pub fn expectedSanitizer(library: []const u8) ?std.zig.SanitizeC {
     return null;
 }
 
+/// -Dsystem-curl: the kit's system-library option, by name, and as a
+/// command-line flag (the root build's check-configure-cache configures with
+/// it).
+const system_library_option = "system-curl";
+pub const system_library_flag = "-D" ++ system_library_option;
+
+/// The import name under which `fetch` reaches the kit's network connection
+/// share (kit/curl/share.zig) until transfers move behind the platform's
+/// port; the tests that reach it import it under the same name.
+pub const network_share_import = "kit_curl_share";
+
+/// One module graph's C libraries, as the kit builds them for it
+/// (`libraries`): each graph's own artifacts, in its mode and C sanitizer
+/// (curl/curl_build.zig copyCLibrary says why they are never shared).
+pub const Libraries = struct {
+    brotli: ?brotli.BrotliLibraries,
+    image_codecs: ?*std.Build.Step.Compile,
+    /// The kit's libcurl and the mbedTLS it links; null with the system
+    /// library (Options.system_library) or when the lazy dependencies are
+    /// not fetched yet.
+    static_libcurl: ?curl.StaticLibcurl,
+
+    /// The TLS library the kit's libcurl links - which WebCrypto and the
+    /// trust store share and the linked-versions test asks - or null.
+    pub fn linkedTls(self: Libraries) ?*std.Build.Step.Compile {
+        return if (self.static_libcurl) |static| static.mbedtls else null;
+    }
+};
+
+/// What `libraries` is asked to build.
+pub const LibrariesRequest = struct {
+    options: Options,
+    /// -Dplatform-without: libcurl links the Brotli decoder unless the
+    /// `brotli` capability is compiled out.
+    without: []const []const u8,
+    /// Also make the step that installs the image codecs for any target
+    /// (`platform-image-codecs`): the shared graph's libraries only.
+    image_codecs_step: bool = false,
+};
+
+/// A graph's C libraries for `target`, in `mode` with `sanitize_c` (null:
+/// Zig's default for the mode), prepared for the target's C: Brotli, the
+/// image codecs and libcurl with its mbedTLS, zlib and nghttp2, in that
+/// order - every call builds artifacts of its own.
+pub fn libraries(b: *std.Build, target: std.Build.ResolvedTarget, mode: std.builtin.OptimizeMode, sanitize_c: ?std.zig.SanitizeC, prepare: ?PrepareC, request: LibrariesRequest) Libraries {
+    const brotli_libraries = brotli.buildBrotli(b, target, mode, sanitize_c, prepare);
+    const codecs = image_codecs.buildImageCodecs(b, target, mode, sanitize_c, prepare);
+    if (request.image_codecs_step) {
+        const image_codecs_step = b.step("platform-image-codecs", "Build the testing JPEG/SVG libraries (also for cross targets)");
+        if (codecs) |library| image_codecs_step.dependOn(&b.addInstallArtifact(library, .{}).step);
+    }
+    const brotli_enabled = for (request.without) |name| {
+        if (std.mem.eql(u8, name, "brotli")) break false;
+    } else true;
+    const static_libcurl: ?curl.StaticLibcurl = if (request.options.system_library) null else curl.buildStaticLibcurl(b, target, mode, request.options.http2, sanitize_c, if (brotli_enabled) brotli_libraries else null, prepare);
+    return .{ .brotli = brotli_libraries, .image_codecs = codecs, .static_libcurl = static_libcurl };
+}
+
 /// The kit's own `-D` options.
 pub const Options = struct {
     /// -Dsystem-curl: link the system's libcurl instead of compiling the
@@ -108,7 +166,7 @@ pub fn declareOptions(b: *std.Build) Options {
     // Use system libcurl for faster development builds (no static compilation)
     const use_system_curl = b.option(
         bool,
-        "system-curl",
+        system_library_option,
         "Use system libcurl instead of static compilation (faster dev builds)",
     ) orelse false;
 
@@ -178,13 +236,11 @@ pub const ModulesRequest = struct {
     impl: *std.Build.Module,
     /// -Dplatform-without: a codec compiled out links nothing.
     without: []const []const u8,
-    /// The C libraries this binding's graph built (null: not built).
-    brotli: ?brotli.BrotliLibraries,
-    image_codecs: ?*std.Build.Step.Compile,
-    libcurl: ?*std.Build.Step.Compile,
-    /// The mbedTLS libcurl links (curl.StaticLibcurl.mbedtls): kit/curl's
-    /// trust store parses certificates with it. Null with a system libcurl.
-    mbedtls: ?*std.Build.Step.Compile,
+    /// The C libraries this binding's graph built (`libraries`). The
+    /// mbedTLS libcurl links (`Libraries.linkedTls`): kit/curl's trust store
+    /// parses certificates with it and hands curl's TLS configuration the
+    /// chain; null with a system libcurl, whose TLS library is its own.
+    libraries: Libraries,
     /// Today's bridges, which kit/posix wraps, and MIME Sniffing's parser,
     /// which kit/media_decoding parses a type with.
     clock: *std.Build.Module,
@@ -240,7 +296,7 @@ pub fn modules(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?Prepar
     // font_decoding brings the Brotli decoder WOFF2 needs whether or not the
     // `brotli` capability is compiled in (decision 20, Q3): kit/sfnt reaches
     // kit/brotli by its own import, which only a font decode calls.
-    if (brotli_enabled or font_decoding_enabled) if (request.brotli) |codec| {
+    if (brotli_enabled or font_decoding_enabled) if (request.libraries.brotli) |codec| {
         kit_modules[7].linkLibrary(codec.decoder);
         kit_modules[7].linkLibrary(codec.encoder);
         kit_modules[7].addImport("brotli_c", cImport(b, "brotli_c", target, prepare, .{ .includes = &.{ "brotli/decode.h", "brotli/encode.h" }, .libs = &.{ codec.decoder, codec.encoder } }));
@@ -248,7 +304,7 @@ pub fn modules(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?Prepar
     // kit/sfnt (decision 20): WOFF through kit/inflate, WOFF2 through
     // kit/brotli - headless's NotSupported when no Brotli library is built.
     kit_modules[10].addImport("kit_inflate", kit_modules[9]);
-    kit_modules[10].addImport("kit_brotli", if (request.brotli != null) kit_modules[7] else kit_modules[1]);
+    kit_modules[10].addImport("kit_brotli", if (request.libraries.brotli != null) kit_modules[7] else kit_modules[1]);
     // kit/image_decoding (D1, the user 2026-11-09): every built-in platform's
     // image decoders - PNG through kit/inflate, JPEG and SVG through
     // kit/image_codecs. Found by name, so a part appended after it keeps it.
@@ -266,7 +322,7 @@ pub fn modules(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?Prepar
     } else unreachable;
     const kit_media_decoding = kit_modules[media_decoding_part];
     kit_media_decoding.addImport("mimesniff", request.mimesniff);
-    if (request.image_codecs) |codecs| {
+    if (request.libraries.image_codecs) |codecs| {
         kit_modules[8].linkLibrary(codecs);
         kit_modules[8].addImport("image_codecs_c", cImport(b, "image_codecs_c", target, prepare, .{ .includes = &.{"image_codecs.h"}, .libs = &.{codecs} }));
     }
@@ -293,9 +349,9 @@ pub fn modules(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?Prepar
     // Its trust store (trust.zig) parses with libcurl's own mbedTLS, when
     // libcurl is the bundled one; a system libcurl keeps its own CA loading.
     const kit_curl_options = b.addOptions();
-    kit_curl_options.addOption(bool, "mbedtls_trust_store", request.mbedtls != null);
+    kit_curl_options.addOption(bool, "mbedtls_trust_store", request.libraries.linkedTls() != null);
     kit_curl_share.addOptions("kit_curl_options", kit_curl_options);
-    if (request.mbedtls) |mbedtls| {
+    if (request.libraries.linkedTls()) |mbedtls| {
         kit_curl_share.linkLibrary(mbedtls);
         kit_curl_share.addImport("mbedtls_c", cImport(b, "mbedtls_trust_c", target, prepare, .{
             .includes = &.{ "mbedtls/x509_crt.h", "mbedtls/ssl.h", "psa/crypto.h" },
@@ -308,7 +364,8 @@ pub fn modules(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?Prepar
     // its own module: fetch's curl_ffi translates curl.h alone, as the two
     // @cImports did.
     const kit_curl_includes: []const []const u8 = &.{ "curl/curl.h", "curl/websockets.h", "curl/header.h" };
-    if (request.libcurl) |libcurl| {
+    if (request.libraries.static_libcurl) |static| {
+        const libcurl = static.libcurl;
         curl.linkStaticLibcurl(kit_modules[3], target, libcurl, prepare);
         kit_modules[3].addImport("curl_c", cImport(b, "curl_c", target, prepare, .{ .includes = kit_curl_includes, .libs = &.{libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
     } else {
@@ -330,13 +387,10 @@ pub fn modules(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?Prepar
 pub const TransitionalLinks = struct {
     fetch: *std.Build.Module,
     webcrypto: *std.Build.Module,
-    /// -Dsystem-curl (Options.system_library).
-    system_library: bool,
-    /// -Dhttp2 (Options.http2).
-    http2: bool,
-    /// The kit's libcurl and the mbedTLS it links, for this graph; null with
-    /// the system libcurl or when the lazy dependencies are not fetched yet.
-    static_libcurl: ?curl.StaticLibcurl,
+    /// The kit's options (-Dsystem-curl, -Dhttp2).
+    options: Options,
+    /// The C libraries the kit built for this graph.
+    libraries: Libraries,
 };
 
 /// fetch's own options module for its network layer (TRANSITIONAL, see
@@ -348,8 +402,8 @@ pub const TransitionalLinks = struct {
 /// the root build adds fetch's imports, in their order.
 pub fn addFetchOptions(b: *std.Build, links: TransitionalLinks) void {
     const curl_options = b.addOptions();
-    curl_options.addOption(bool, "http2", links.http2 and !links.system_library);
-    curl_options.addOption(bool, "mbedtls", curl.tls_backend == .mbedtls and !links.system_library);
+    curl_options.addOption(bool, "http2", links.options.http2 and !links.options.system_library);
+    curl_options.addOption(bool, "mbedtls", curl.tls_backend == .mbedtls and !links.options.system_library);
     links.fetch.addOptions("curl_options", curl_options);
 }
 
@@ -359,16 +413,16 @@ pub fn linkTransitional(b: *std.Build, target: std.Build.ResolvedTarget, prepare
     const fetch_mod = links.fetch;
     const webcrypto_mod = links.webcrypto;
     // Configure libcurl for network requests
-    if (links.system_library) {
+    if (links.options.system_library) {
         // Development: Use system libcurl for faster builds
         fetch_mod.linkSystemLibrary("curl", .{});
         fetch_mod.addImport("curl_c", cImport(b, "curl_c", target, prepare, .{ .includes = &.{"curl/curl.h"}, .system_libs = &.{"curl"} }));
-    } else if (links.static_libcurl) |static| {
+    } else if (links.libraries.static_libcurl) |static| {
         // Production: the statically compiled libcurl with mbedTLS
         curl.linkStaticLibcurl(fetch_mod, target, static.libcurl, prepare);
         fetch_mod.addImport("curl_c", cImport(b, "curl_c", target, prepare, .{ .includes = &.{"curl/curl.h"}, .libs = &.{static.libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
     }
-    const linked_mbedtls: ?*std.Build.Step.Compile = if (links.static_libcurl) |static| static.mbedtls else null;
+    const linked_mbedtls = links.libraries.linkedTls();
 
     // WebCrypto shares curl's exact mbedTLS artifact - build.zig.zon's
     // `.mbedtls`, which buildStaticLibcurl links into libcurl - including its
@@ -382,7 +436,7 @@ pub fn linkTransitional(b: *std.Build, target: std.Build.ResolvedTarget, prepare
         }));
     }
     const webcrypto_options = b.addOptions();
-    webcrypto_options.addOption(bool, "mbedtls", curl.tls_backend == .mbedtls and !links.system_library);
+    webcrypto_options.addOption(bool, "mbedtls", curl.tls_backend == .mbedtls and !links.options.system_library);
     webcrypto_mod.addOptions("options", webcrypto_options);
     if (prepare) |p| p.module(webcrypto_mod);
 }

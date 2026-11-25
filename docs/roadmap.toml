@@ -728,10 +728,14 @@ protocol." build.zig had 519 lines naming an engine and 149 naming an OS (lane b
 inventory); another engine's flags must not exist in a build that does not use it."""
 done_when = """Each protocol has a build side its adapters implement (flags, sources, link \
 inputs, steps); build.zig imports only the two protocol build files; `zig build lint-build` \
-(a ratchet) is at zero for engine names and for platform names; every migration commit but \
+(a ratchet - a plain rule since P4) is at zero for engine names and for platform names; every migration commit but \
 one is proven byte-identical in build output. Design: lane build1, 2026-11-12 (ten batches)."""
 progress = [
   "2026-11-12 - lane build1: the design and inventory; lane v8up b7: the first adapter-declared options (the V8 adapter's engine_build.zig behind src/runtime/engine_build_protocol.zig).",
+  "1efd81aa2 - platform half P1 (lane bp1): Platform from the adapter list (each adapter's ownsTarget; -Dplatform's values and the default from the list), the tests' platform, the conformance rows and the lint's platform words from the adapters; the configure fails on an adapter directory the list lacks; lint-build 42 -> 39 keys, 882 -> 818 occurrences. 385b6a384: check-linux's cross links of kit/sqlite fixed (compile-only twins for a target with no sysroot).",
+  "ecbdfb79a - platform half P2 (lane bp1): the kit's C libraries leave build.zig - src/platform/kit/kit_build.zig with curl/curl_build.zig (libcurl, mbedTLS, zlib, nghttp2), brotli/brotli_build.zig and image_codecs/image_codecs_build.zig, the kit's options and C header translations; LevelDB's leftovers gone; lint-build 39 -> 33 keys, 818 -> 448.",
+  "97f3a3284 - platform half P3 (lane bp1): binding and per-OS links leave build.zig - the adapter that answers for the target's OS (chooseOs) declares its options (-Dios-sdk exists only where darwin answers), its SDK paths, links, dSYM step and stand-ins; platform_build.binding and kit_build.modules; lint-build 33 -> 25 keys, 448 -> 211.",
+  "this merge - platform half P4 (lane bp1): the cross-target checks (check-ios, check-linux) and the object-format fixtures are the adapters' facts, a graph's C libraries one kit value, the platform's options refused under any other adapter's target; build.zig's last names gone, and lint-build a plain rule at zero (no baseline; docs/platform-protocol.md 10.0).",
 ]
 
   [[infra.items]]
@@ -740,7 +744,7 @@ progress = [
 
   [[infra.items]]
   name = "Platform half (batches P1-P4): the adapter list, the kit's C libraries, per-OS links, checks and tests"
-  status = "doing"
+  status = "done"
 
 [[infra]]
 id = "api-subset-build"
