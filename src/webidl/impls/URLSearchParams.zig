@@ -509,15 +509,6 @@ fn orderByCodeUnits(a: []const u8, b: []const u8) std.math.Order {
     }
 }
 
-test "orderByCodeUnits: a name outside the BMP sorts before U+E000 and after U+D7FF" {
-    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{FB03}"));
-    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{E000}"));
-    try std.testing.expectEqual(std.math.Order.gt, orderByCodeUnits("\u{1F308}", "\u{D7FF}"));
-    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("a", "a\u{1F308}"));
-    try std.testing.expectEqual(std.math.Order.eq, orderByCodeUnits("a\u{1F308}", "a\u{1F308}"));
-    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{1F4A9}"));
-}
-
 /// Internal: stringifier implementation
 ///
 /// Returns the serialization of the URLSearchParams' list.

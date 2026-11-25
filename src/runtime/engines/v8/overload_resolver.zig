@@ -268,11 +268,6 @@ fn variantArgumentInterface(comptime interface_arguments: anytype, comptime vari
 // Tests
 // ============================================================================
 
-test "overload resolver compiles" {
-    const testing = std.testing;
-    testing.refAllDecls(@This());
-}
-
 // Zig 0.17 compat: 0.16's StructField/UnionField/EnumField list, rebuilt at comptime from
 // Zig 0.17's struct-of-arrays @typeInfo (a comptime-only element type: calls run at comptime).
 const Zig017Field = struct {

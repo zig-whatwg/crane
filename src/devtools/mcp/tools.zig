@@ -160,6 +160,12 @@ pub fn disabled(name: []const u8) bool {
     return std.mem.indexOf(u8, copied, needle) != null;
 }
 
+// The tool files whose own tests src-devtools runs (lane core1): Zig
+// collects a file's test blocks only when something analyzes its import.
+test {
+    _ = script;
+}
+
 test "disabled: a copied tool off by default, not one offered by default or unknown" {
     try std.testing.expect(disabled("mock_network"));
     try std.testing.expect(disabled("install_extension"));

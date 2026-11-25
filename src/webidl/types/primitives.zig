@@ -314,12 +314,31 @@ pub fn toShortClamped(value: JSValue) i16 {
 }
 
 pub fn toUnsignedShort(value: JSValue) !u16 {
-    var x = value.toNumber();
+    return unsignedShortFromNumber(value.toNumber());
+}
+
+/// ConvertToInt(x, 16, "unsigned") once ToNumber has made `x` a double: NaN,
+/// +-0 and +-infinity are +0; otherwise the integer part of x, modulo 2^16.
+/// An impl that converts a callback's result to unsigned short uses it
+/// (node_filter, whose copy moved here with its test: lane core1).
+pub fn unsignedShortFromNumber(number: f64) u16 {
+    var x = number;
     if (x == 0.0 and std.math.signbit(x)) x = 0.0;
     if (std.math.isNan(x) or x == 0.0 or std.math.isInf(x)) return 0;
     x = integerPart(x);
     x = @mod(x, 65536.0);
     return @intFromFloat(x);
+}
+
+test "ConvertToInt for unsigned short wraps modulo 2^16 and truncates toward zero" {
+    try std.testing.expectEqual(@as(u16, 0), unsignedShortFromNumber(std.math.nan(f64)));
+    try std.testing.expectEqual(@as(u16, 0), unsignedShortFromNumber(std.math.inf(f64)));
+    try std.testing.expectEqual(@as(u16, 0), unsignedShortFromNumber(-0.0));
+    try std.testing.expectEqual(@as(u16, 1), unsignedShortFromNumber(1.9));
+    try std.testing.expectEqual(@as(u16, 65535), unsignedShortFromNumber(-1));
+    try std.testing.expectEqual(@as(u16, 65535), unsignedShortFromNumber(-1.5));
+    try std.testing.expectEqual(@as(u16, 2), unsignedShortFromNumber(65538));
+    try std.testing.expectEqual(@as(u16, 3), unsignedShortFromNumber(3));
 }
 
 pub fn toUnsignedShortEnforceRange(value: JSValue) !u16 {

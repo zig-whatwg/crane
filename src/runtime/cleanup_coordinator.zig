@@ -93,13 +93,6 @@ pub const CleanupPhase = enum(u8) {
     complete = 7,
 };
 
-/// Handler for a specific cleanup phase
-pub const CleanupHandler = struct {
-    phase: CleanupPhase,
-    handler: *const fn (*anyopaque) void,
-    context: *anyopaque,
-};
-
 /// Cleanup Coordinator
 ///
 /// Per-context coordinator for managing cleanup lifecycle.
@@ -117,12 +110,6 @@ pub const CleanupCoordinator = struct {
 
     /// Allocator for internal structures
     allocator: std.mem.Allocator,
-
-    /// Registered cleanup handlers (called in phase order)
-    handlers: std.ArrayListUnmanaged(CleanupHandler) = .empty,
-
-    /// Debug: count of instances cleaned up per phase
-    phase_cleanup_counts: [8]usize = @splat(0),
 
     /// The storage of instances this teardown tore down that no engine
     /// object ever reached (runtime.instance_lifecycle.provablyUnwrapped: a
@@ -152,7 +139,6 @@ pub const CleanupCoordinator = struct {
     /// Deinitialize the coordinator. Storage still deferred is left to the
     /// Browser's slab, which frees it with itself.
     pub fn deinit(self: *Self) void {
-        self.handlers.deinit(self.allocator);
         self.deferred_storage.deinit(self.allocator);
     }
 
@@ -174,23 +160,6 @@ pub const CleanupCoordinator = struct {
             gc_integration.releaseStorage(deferred.instance);
         }
         self.deferred_storage.clearAndFree(self.allocator);
-    }
-
-    /// Register a cleanup handler for a specific phase
-    ///
-    /// Handlers are called in phase order during context teardown.
-    /// Multiple handlers can be registered for the same phase.
-    pub fn registerHandler(
-        self: *Self,
-        phase: CleanupPhase,
-        handler: *const fn (*anyopaque) void,
-        context: *anyopaque,
-    ) !void {
-        try self.handlers.append(self.allocator, .{
-            .phase = phase,
-            .handler = handler,
-            .context = context,
-        });
     }
 
     /// Begin context teardown
@@ -215,10 +184,10 @@ pub const CleanupCoordinator = struct {
         return self.context_teardown_complete;
     }
 
-    /// Execute cleanup for a specific phase
+    /// Enter a cleanup phase
     ///
-    /// Calls all registered handlers for the phase in registration order.
-    /// Tracks the current phase for debugging and validation.
+    /// Tracks the current phase; a phase already passed is skipped.
+    /// context_manager's teardowns run the phases one by one.
     pub fn cleanupPhase(self: *Self, phase: CleanupPhase) void {
         // Validate phase ordering
         if (@backingInt(phase) <= @backingInt(self.current_phase)) {
@@ -228,30 +197,6 @@ pub const CleanupCoordinator = struct {
 
         // Update current phase
         self.current_phase = phase;
-
-        // Call all handlers for this phase
-        for (self.handlers.items) |handler| {
-            if (handler.phase == phase) {
-                handler.handler(handler.context);
-            }
-        }
-    }
-
-    /// Execute all cleanup phases in order
-    ///
-    /// Convenience method that runs all phases sequentially.
-    /// (context_manager's teardowns run the phases one by one.)
-    pub fn executeAllPhases(self: *Self) void {
-        self.beginContextCleanup();
-
-        self.cleanupPhase(.dom_tree);
-        self.cleanupPhase(.wrapper_cache);
-        self.cleanupPhase(.static_registries);
-        self.cleanupPhase(.event_loop);
-        self.cleanupPhase(.realm);
-        self.cleanupPhase(.context_data);
-
-        self.endContextCleanup();
     }
 
     /// End context teardown
@@ -261,48 +206,6 @@ pub const CleanupCoordinator = struct {
         self.current_phase = .complete;
         self.context_teardown_complete = true;
     }
-
-    /// Record a cleanup in the current phase
-    ///
-    /// Used for debugging to track how many instances are cleaned per phase.
-    pub fn recordCleanup(self: *Self) void {
-        const phase_idx = @backingInt(self.current_phase);
-        if (phase_idx < self.phase_cleanup_counts.len) {
-            self.phase_cleanup_counts[phase_idx] += 1;
-        }
-    }
-
-    /// Get cleanup statistics for debugging
-    pub fn getStats(self: *const Self) CleanupStats {
-        var total: usize = 0;
-        for (self.phase_cleanup_counts) |count| {
-            total += count;
-        }
-        return .{
-            .total_cleaned = total,
-            .per_phase = self.phase_cleanup_counts,
-            .current_phase = self.current_phase,
-            .is_complete = self.context_teardown_complete,
-        };
-    }
-
-    /// Reset for testing
-    pub fn reset(self: *Self) void {
-        self.current_phase = .not_started;
-        self.context_teardown_started = false;
-        self.context_teardown_complete = false;
-        self.phase_cleanup_counts = @splat(0);
-        self.handlers.clearRetainingCapacity();
-        self.deferred_storage.clearRetainingCapacity();
-    }
-};
-
-/// Cleanup statistics for debugging
-pub const CleanupStats = struct {
-    total_cleaned: usize,
-    per_phase: [8]usize,
-    current_phase: CleanupPhase,
-    is_complete: bool,
 };
 
 // ============================================================================
@@ -364,108 +267,6 @@ pub fn isContextTearingDown() bool {
 
 const testing = std.testing;
 
-test "CleanupCoordinator - init and deinit" {
-    var coordinator = CleanupCoordinator.init(testing.allocator);
-    defer coordinator.deinit();
-
-    try testing.expect(!coordinator.isContextTearingDown());
-    try testing.expect(!coordinator.isCleanupComplete());
-}
-
-test "CleanupCoordinator - begin/end context cleanup" {
-    var coordinator = CleanupCoordinator.init(testing.allocator);
-    defer coordinator.deinit();
-
-    // Before begin
-    try testing.expect(!coordinator.isContextTearingDown());
-
-    // During cleanup
-    coordinator.beginContextCleanup();
-    try testing.expect(coordinator.isContextTearingDown());
-
-    // After end
-    coordinator.endContextCleanup();
-    try testing.expect(!coordinator.isContextTearingDown());
-    try testing.expect(coordinator.isCleanupComplete());
-}
-
-test "CleanupCoordinator - phase ordering" {
-    var coordinator = CleanupCoordinator.init(testing.allocator);
-    defer coordinator.deinit();
-
-    coordinator.beginContextCleanup();
-
-    // Execute phases in order
-    coordinator.cleanupPhase(.dom_tree);
-    try testing.expect(coordinator.current_phase == .dom_tree);
-
-    coordinator.cleanupPhase(.wrapper_cache);
-    try testing.expect(coordinator.current_phase == .wrapper_cache);
-
-    // Skip back shouldn't change phase
-    coordinator.cleanupPhase(.dom_tree);
-    try testing.expect(coordinator.current_phase == .wrapper_cache);
-
-    coordinator.endContextCleanup();
-}
-
-test "CleanupCoordinator - handler registration and execution" {
-    var coordinator = CleanupCoordinator.init(testing.allocator);
-    defer coordinator.deinit();
-
-    var dom_called = false;
-    var cache_called = false;
-
-    const DomHandler = struct {
-        fn handle(ctx: *anyopaque) void {
-            const flag: *bool = @ptrCast(@alignCast(ctx));
-            flag.* = true;
-        }
-    };
-
-    const CacheHandler = struct {
-        fn handle(ctx: *anyopaque) void {
-            const flag: *bool = @ptrCast(@alignCast(ctx));
-            flag.* = true;
-        }
-    };
-
-    try coordinator.registerHandler(.dom_tree, DomHandler.handle, &dom_called);
-    try coordinator.registerHandler(.wrapper_cache, CacheHandler.handle, &cache_called);
-
-    coordinator.beginContextCleanup();
-
-    // DOM handler should be called
-    coordinator.cleanupPhase(.dom_tree);
-    try testing.expect(dom_called);
-    try testing.expect(!cache_called);
-
-    // Cache handler should be called
-    coordinator.cleanupPhase(.wrapper_cache);
-    try testing.expect(cache_called);
-
-    coordinator.endContextCleanup();
-}
-
-test "CleanupCoordinator - stats tracking" {
-    var coordinator = CleanupCoordinator.init(testing.allocator);
-    defer coordinator.deinit();
-
-    coordinator.beginContextCleanup();
-    coordinator.cleanupPhase(.dom_tree);
-
-    // Record some cleanups
-    coordinator.recordCleanup();
-    coordinator.recordCleanup();
-    coordinator.recordCleanup();
-
-    const stats = coordinator.getStats();
-    try testing.expectEqual(@as(usize, 3), stats.total_cleaned);
-    try testing.expectEqual(@as(usize, 3), stats.per_phase[@backingInt(CleanupPhase.dom_tree)]);
-
-    coordinator.endContextCleanup();
-}
-
 test "CleanupCoordinator - thread-local storage" {
     var coordinator = CleanupCoordinator.init(testing.allocator);
     defer coordinator.deinit();
@@ -492,24 +293,4 @@ test "CleanupCoordinator - thread-local storage" {
     // Clear active coordinator
     setActiveCoordinator(null);
     try testing.expect(getActiveCoordinator() == null);
-}
-
-test "CleanupCoordinator - reset for testing" {
-    var coordinator = CleanupCoordinator.init(testing.allocator);
-    defer coordinator.deinit();
-
-    coordinator.beginContextCleanup();
-    coordinator.cleanupPhase(.dom_tree);
-    coordinator.recordCleanup();
-    coordinator.endContextCleanup();
-
-    try testing.expect(coordinator.isCleanupComplete());
-
-    // Reset should clear everything
-    coordinator.reset();
-
-    try testing.expect(!coordinator.isCleanupComplete());
-    try testing.expect(!coordinator.isContextTearingDown());
-    try testing.expect(coordinator.current_phase == .not_started);
-    try testing.expectEqual(@as(usize, 0), coordinator.getStats().total_cleaned);
 }

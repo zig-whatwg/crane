@@ -603,15 +603,3 @@ pub fn hasNamedPropertySetter(interface_name: []const u8) bool {
     }
     return false;
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "template_registry basic operations" {
-    // This test would require V8 initialization, so we just test the registry logic
-
-    // Verify initial state
-    const template = getTemplate("NonExistent");
-    try std.testing.expectEqual(@as(?*v8.FunctionTemplate, null), template);
-}

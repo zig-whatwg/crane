@@ -591,35 +591,6 @@ fn prefixedAttribute(comptime property: []const u8, comptime lowercase_first: bo
     return result[0..length];
 }
 
-/// CSSOM "CSS property to IDL attribute": each hyphen and the letter after
-/// it become that letter uppercased.
-fn camelCased(allocator: std.mem.Allocator, property: []const u8) ![]u8 {
-    var out: std.ArrayList(u8) = .empty;
-    errdefer out.deinit(allocator);
-    var upper = false;
-    for (property) |c| {
-        if (c == '-') {
-            upper = true;
-            continue;
-        }
-        try out.append(allocator, if (upper) std.ascii.toUpper(c) else c);
-        upper = false;
-    }
-    return out.toOwnedSlice(allocator);
-}
-
-test "attribute names map to CSS properties" {
-    var buffer: [256]u8 = undefined;
-    try std.testing.expectEqualStrings("background-color", propertyNameOf("backgroundColor", &buffer).?);
-    try std.testing.expectEqualStrings("margin-left", propertyNameOf("margin-left", &buffer).?);
-    try std.testing.expectEqualStrings("float", propertyNameOf("cssFloat", &buffer).?);
-    try std.testing.expectEqualStrings("-webkit-user-select", propertyNameOf("webkitUserSelect", &buffer).?);
-    try std.testing.expectEqualStrings("-webkit-user-select", propertyNameOf("WebkitUserSelect", &buffer).?);
-    const camel = try camelCased(std.testing.allocator, "border-top-left-radius");
-    defer std.testing.allocator.free(camel);
-    try std.testing.expectEqualStrings("borderTopLeftRadius", camel);
-}
-
 comptime {
     _ = log;
 }

@@ -278,29 +278,3 @@ pub fn assertUnlocked(isolate: *ffi.Isolate) void {
         }
     }
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "ThreadCheck basic usage" {
-    var checker = ThreadCheck{};
-
-    // First check records thread
-    checker.check();
-    try std.testing.expect(checker.expected_thread != null);
-
-    // Second check should pass (same thread)
-    checker.check();
-
-    // Clear and re-check
-    checker.clear();
-    try std.testing.expect(checker.expected_thread == null);
-}
-
-test "IsolateLock validity" {
-    // Note: Can't fully test without real V8 isolate
-    // Just verify the struct compiles and has expected fields
-    const LockType = IsolateLock;
-    try std.testing.expect(@sizeOf(LockType) > 0);
-}

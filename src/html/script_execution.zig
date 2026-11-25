@@ -67,14 +67,9 @@ const dom = @import("dom");
 // Content Security Policy
 const csp = @import("csp");
 
-// Module graph for async module fetching - accessed via html_core module
+// html_core, reached as a module
 const html_core = @import("html_core");
 const script_encodings = html_core.parser.encoding_sniffing;
-const ModuleGraph = html_core.ModuleGraph;
-const ModuleGraphFetcher = html_core.ModuleGraphFetcher;
-const ModuleNode = html_core.ModuleNode;
-const EventLoop = html_core.EventLoop;
-const TaskSource = html_core.TaskSource;
 
 // A Document's script state - its script lists, currentScript, the
 // ignore-destructive-writes counter, what the model asks of it - and its

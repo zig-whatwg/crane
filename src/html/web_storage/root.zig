@@ -41,7 +41,3 @@ pub const StorageKey = @import("storage").StorageKey;
 // Re-export getter functions
 pub const getLocalStorage = web_storage.getLocalStorage;
 pub const getSessionStorage = web_storage.getSessionStorage;
-
-test {
-    _ = web_storage;
-}

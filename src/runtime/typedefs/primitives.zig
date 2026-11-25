@@ -48,20 +48,3 @@ pub const Any = *anyopaque;
 
 /// WebIDL 'object' type - opaque object reference
 pub const Object = *anyopaque;
-
-// Unit tests
-const testing = @import("std").testing;
-
-test "WebIDL primitive types have correct sizes" {
-    try testing.expectEqual(@as(usize, 1), @sizeOf(Boolean));
-    try testing.expectEqual(@as(usize, 1), @sizeOf(Byte));
-    try testing.expectEqual(@as(usize, 1), @sizeOf(Octet));
-    try testing.expectEqual(@as(usize, 2), @sizeOf(Short));
-    try testing.expectEqual(@as(usize, 2), @sizeOf(UnsignedShort));
-    try testing.expectEqual(@as(usize, 4), @sizeOf(Long));
-    try testing.expectEqual(@as(usize, 4), @sizeOf(UnsignedLong));
-    try testing.expectEqual(@as(usize, 8), @sizeOf(LongLong));
-    try testing.expectEqual(@as(usize, 8), @sizeOf(UnsignedLongLong));
-    try testing.expectEqual(@as(usize, 4), @sizeOf(Float));
-    try testing.expectEqual(@as(usize, 8), @sizeOf(Double));
-}

@@ -29,6 +29,7 @@
 //! builtin over `resolve` (the hosts' HostHooks.importMetaResolve).
 
 const std = @import("std");
+const mimesniff = @import("mimesniff");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
@@ -712,18 +713,10 @@ pub fn isJavaScriptMimeType(content_type: []const u8) bool {
     return isJavaScriptMimeTypeEssence(mimeEssence(content_type, &buf));
 }
 
-/// Spec: https://mimesniff.spec.whatwg.org/#javascript-mime-type
+/// Spec: https://mimesniff.spec.whatwg.org/#javascript-mime-type - its one
+/// list (mimesniff.predicates), never a copy of it (lane core1, B15).
 fn isJavaScriptMimeTypeEssence(essence: []const u8) bool {
-    const types = [_][]const u8{
-        "application/ecmascript",   "application/javascript", "application/x-ecmascript",
-        "application/x-javascript", "text/ecmascript",        "text/javascript",
-        "text/javascript1.0",       "text/javascript1.1",     "text/javascript1.2",
-        "text/javascript1.3",       "text/javascript1.4",     "text/javascript1.5",
-        "text/jscript",             "text/livescript",        "text/x-ecmascript",
-        "text/x-javascript",
-    };
-    for (types) |t| if (std.mem.eql(u8, essence, t)) return true;
-    return false;
+    return mimesniff.predicates.isJavaScriptMimeTypeEssenceMatch(essence);
 }
 
 /// Spec: https://mimesniff.spec.whatwg.org/#json-mime-type

@@ -9,7 +9,9 @@
 //!
 //! - `fetchNavigationResource`: Performs the actual fetch for navigation
 //! - `processNavigationResponse`: Handles the response from navigation fetch
-//! - `isHtmlResponse`: Checks if response is HTML based on Content-Type
+//!
+//! What kind of document a response makes (HTML, XML, ...) is decided by
+//! navigation/document_type.zig's classify.
 
 const std = @import("std");
 const mimesniff = @import("mimesniff");
@@ -53,9 +55,6 @@ pub const NavigationFetchResult = struct {
 
     /// Whether this is a network error (couldn't reach server)
     is_network_error: bool,
-
-    /// Whether cross-origin
-    is_cross_origin: bool,
 
     /// HTML "was created via cross-origin redirects": a hop of the fetch's
     /// redirect chain went to a URL whose origin was not the previous URL's.
@@ -110,7 +109,6 @@ pub const NavigationFetchResult = struct {
             .body = null,
             .ok = false,
             .is_network_error = true,
-            .is_cross_origin = false,
             .headers = null,
         };
     }
@@ -488,7 +486,7 @@ pub fn fetchNavigationResource(
     options: NavigationFetchOptions,
 ) NavigationFetchError!NavigationFetchResult {
     const internal_request = try navigationRequest(allocator, url, options);
-    return fetchRequestNow(allocator, url, internal_request, options);
+    return fetchRequestNow(allocator, url, internal_request);
 }
 
 /// Step 3 of a navigation fetch for `request` - which the caller built with
@@ -502,7 +500,6 @@ pub fn fetchRequestNow(
     allocator: Allocator,
     url: []const u8,
     request: *fetch.internal.InternalRequest,
-    options: NavigationFetchOptions,
 ) NavigationFetchError!NavigationFetchResult {
     var fetch_result = fetch.algorithms.fetch(allocator, request, .{}) catch |err| {
         request.deinit();
@@ -517,7 +514,7 @@ pub fn fetchRequestNow(
 
     const response = fetch_result.response;
     defer response.deinit();
-    return resultFromResponse(allocator, url, response, options);
+    return resultFromResponse(allocator, url, response);
 }
 
 /// Steps 1-2 of a navigation fetch: the request for `url`, with the
@@ -645,7 +642,6 @@ pub fn resultFromResponse(
     allocator: Allocator,
     url: []const u8,
     response: *fetch.internal.InternalResponse,
-    options: NavigationFetchOptions,
 ) NavigationFetchError!NavigationFetchResult {
     var result = NavigationFetchResult.init(allocator);
     errdefer result.deinit();
@@ -688,9 +684,6 @@ pub fn resultFromResponse(
             return NavigationFetchError.OutOfMemory;
         };
     }
-
-    // Determine cross-origin status
-    result.is_cross_origin = isCrossOrigin(options.origin, url);
 
     // "Populate a session history entry": "If locationURL's origin is not
     // the same as currentURL's origin, then set hasCrossOriginRedirects to
@@ -779,17 +772,6 @@ pub fn networkErrorResult(allocator: Allocator, url: []const u8) NavigationFetch
     return result;
 }
 
-/// Check if a response is HTML based on Content-Type
-pub fn isHtmlResponse(content_type: ?[]const u8) bool {
-    const ct = content_type orelse return false;
-
-    // Check for text/html or application/xhtml+xml
-    if (std.mem.startsWith(u8, ct, "text/html")) return true;
-    if (std.mem.startsWith(u8, ct, "application/xhtml+xml")) return true;
-
-    return false;
-}
-
 /// Check if a response is XML based on Content-Type
 pub fn isXmlResponse(content_type: ?[]const u8) bool {
     const ct = content_type orelse return false;
@@ -812,32 +794,6 @@ pub fn shouldNavigationProceed(status: u16) bool {
     return status != 204 and status != 205;
 }
 
-/// Determine if a navigation is cross-origin
-pub fn isCrossOrigin(source_origin: ?[]const u8, target_url: []const u8) bool {
-    const src = source_origin orelse return true; // No origin = cross-origin
-
-    // Extract origin from target URL (scheme + host + port)
-    const target_origin = extractOrigin(target_url) orelse return true;
-
-    return !std.mem.eql(u8, src, target_origin);
-}
-
-/// Extract origin from a URL string (scheme://host:port)
-fn extractOrigin(url: []const u8) ?[]const u8 {
-    // Find scheme separator
-    const scheme_end = std.mem.indexOf(u8, url, "://") orelse return null;
-
-    // Find path start (after host)
-    const after_scheme = url[scheme_end + 3 ..];
-    const path_start = std.mem.indexOf(u8, after_scheme, "/");
-
-    if (path_start) |ps| {
-        return url[0 .. scheme_end + 3 + ps];
-    } else {
-        return url;
-    }
-}
-
 // =============================================================================
 // Tests
 // =============================================================================
@@ -852,66 +808,4 @@ test "fetchNavigationResource - about:blank, through scheme fetch \"about\"" {
     try std.testing.expect(result.ok);
     try std.testing.expect(!result.is_network_error);
     try std.testing.expectEqualStrings("text/html;charset=utf-8", result.content_type.?);
-}
-
-test "fetchNavigationResource - about:srcdoc and every about: URL but about:blank are network errors" {
-    // Fetch "scheme fetch", "about": a path "blank" is an empty response;
-    // anything else - about:srcdoc included - is a network error.
-    const allocator = std.testing.allocator;
-    for ([_][]const u8{ "about:srcdoc", "about:srcdoc?query", "about:srcdoc#x", "about:unknown" }) |url| {
-        var result = try fetchNavigationResource(allocator, url, .{});
-        defer result.deinit();
-        try std.testing.expect(result.is_network_error);
-        try std.testing.expect(!result.ok);
-        try std.testing.expect(result.body == null);
-    }
-    var blank = try fetchNavigationResource(allocator, "about:blank?x#y", .{});
-    defer blank.deinit();
-    try std.testing.expect(!blank.is_network_error);
-    try std.testing.expect(blank.ok);
-}
-
-test "fetchNavigationResource - a data: URL, through scheme fetch \"data\"" {
-    const allocator = std.testing.allocator;
-
-    var result = try fetchNavigationResource(allocator, "data:text/plain,Hello%20World", .{});
-    defer result.deinit();
-
-    try std.testing.expectEqual(@as(u16, 200), result.status);
-    try std.testing.expect(result.ok);
-    try std.testing.expectEqualStrings("text/plain", result.content_type.?);
-    try std.testing.expectEqualStrings("Hello World", result.body.?);
-}
-
-test "fetchNavigationResource - a base64 data: URL" {
-    const allocator = std.testing.allocator;
-
-    // "Hello" in base64 is "SGVsbG8="
-    var result = try fetchNavigationResource(allocator, "data:text/plain;base64,SGVsbG8=", .{});
-    defer result.deinit();
-
-    try std.testing.expectEqual(@as(u16, 200), result.status);
-    try std.testing.expect(result.ok);
-    try std.testing.expectEqualStrings("Hello", result.body.?);
-}
-
-test "isHtmlResponse" {
-    try std.testing.expect(isHtmlResponse("text/html"));
-    try std.testing.expect(isHtmlResponse("text/html; charset=utf-8"));
-    try std.testing.expect(isHtmlResponse("application/xhtml+xml"));
-    try std.testing.expect(!isHtmlResponse("text/plain"));
-    try std.testing.expect(!isHtmlResponse(null));
-}
-
-test "isCrossOrigin" {
-    try std.testing.expect(!isCrossOrigin("https://example.com", "https://example.com/page"));
-    try std.testing.expect(isCrossOrigin("https://example.com", "https://other.com/page"));
-    try std.testing.expect(isCrossOrigin("http://example.com", "https://example.com/page"));
-    try std.testing.expect(isCrossOrigin(null, "https://example.com"));
-}
-
-test "extractOrigin" {
-    try std.testing.expectEqualStrings("https://example.com", extractOrigin("https://example.com/path").?);
-    try std.testing.expectEqualStrings("https://example.com:8080", extractOrigin("https://example.com:8080/path").?);
-    try std.testing.expectEqualStrings("http://localhost", extractOrigin("http://localhost/").?);
 }

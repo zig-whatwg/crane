@@ -10,15 +10,6 @@
 //! - `InternalStateAccessor(T, S)` - Generic accessor for internal state retrieval
 //! - `tombstones.TombstoneGuard` - when to rehash a long-lived address-keyed side table
 //!
-//! ## Note on CollectionMixin
-//!
-//! CollectionMixin is available in `collection.zig` but NOT exported here.
-//! This is intentional: impl files are in a separate Zig module ('impls')
-//! and importing utils from the 'webidl' module would cause module conflicts.
-//!
-//! For impl files that need collection helpers, the utility is still available
-//! in the file but should not be imported via this root.zig.
-//!
 //! ## Usage
 //!
 //! ```zig

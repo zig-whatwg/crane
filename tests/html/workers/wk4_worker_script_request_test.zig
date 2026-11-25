@@ -74,7 +74,7 @@ test "an opaque outside origin is same origin with no URL" {
 const blob_url = "blob:http://web-platform.test:8000/0f0f0f0f-0000-4000-8000-000000000000";
 
 test "a blob: script with its captured entry is the entry's blob, whatever the store says" {
-    var entry = try script_fetch.scriptFromBlob(testing.allocator, blob_url, .classic, "onconnect = () => {};", "text/javascript");
+    var entry = try script_fetch.scriptFromLocalResponse(testing.allocator, blob_url, .classic, "onconnect = () => {};", "text/javascript");
     defer entry.deinit();
     // No store at all: the entry alone answers.
     var fetched = try script_fetch.fetchWorkerScript(testing.allocator, blob_url, .{

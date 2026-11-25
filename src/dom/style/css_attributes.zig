@@ -82,13 +82,14 @@ pub const attributes: []const Attribute = blk: {
 };
 
 test "camel-cased, webkit-cased and dashed attributes" {
-    try std.testing.expectEqualStrings("fontSize", idlAttribute("font-size", false));
-    try std.testing.expectEqualStrings("WebkitTransform", idlAttribute("-webkit-transform", false));
-    try std.testing.expectEqualStrings("webkitTransform", idlAttribute("-webkit-transform", true));
-    try std.testing.expectEqualStrings("color", idlAttribute("color", false));
+    // idlAttribute is comptime-only: the table is built at compile time.
+    try std.testing.expectEqualStrings("fontSize", comptime idlAttribute("font-size", false));
+    try std.testing.expectEqualStrings("WebkitTransform", comptime idlAttribute("-webkit-transform", false));
+    try std.testing.expectEqualStrings("webkitTransform", comptime idlAttribute("-webkit-transform", true));
+    try std.testing.expectEqualStrings("color", comptime idlAttribute("color", false));
     var font_size = false;
     var dashed = false;
-    var color = 0;
+    var color: usize = 0;
     var webkit = false;
     for (attributes) |a| {
         if (std.mem.eql(u8, a.name, "fontSize")) font_size = std.mem.eql(u8, a.property, "font-size");
@@ -98,7 +99,7 @@ test "camel-cased, webkit-cased and dashed attributes" {
     }
     try std.testing.expect(font_size);
     try std.testing.expect(dashed);
-    try std.testing.expectEqual(1, color);
+    try std.testing.expectEqual(@as(usize, 1), color);
     try std.testing.expect(webkit);
     // No property without a dash has a dashed attribute of its own name twice.
     for (attributes, 0..) |a, i| for (attributes[i + 1 ..]) |b| try std.testing.expect(!std.mem.eql(u8, a.name, b.name));

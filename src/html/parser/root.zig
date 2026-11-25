@@ -23,17 +23,11 @@ pub const Attribute = @import("tokens.zig").Attribute;
 
 // Tokenizer states
 pub const State = @import("tokenizer_states.zig").State;
-pub const getStateName = @import("tokenizer_states.zig").getStateName;
-pub const isRcdataState = @import("tokenizer_states.zig").isRcdataState;
-pub const isRawtextState = @import("tokenizer_states.zig").isRawtextState;
-pub const isScriptDataState = @import("tokenizer_states.zig").isScriptDataState;
-pub const isCharacterReferenceState = @import("tokenizer_states.zig").isCharacterReferenceState;
 
 // Parse errors
 pub const ParseError = @import("parse_errors.zig").ParseError;
 pub const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
 pub const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
-pub const ParseErrorCollector = @import("parse_errors.zig").ParseErrorCollector;
 pub const getErrorDescription = @import("parse_errors.zig").getErrorDescription;
 
 // Input stream
@@ -74,7 +68,6 @@ pub const entities = @import("html_entities");
 // Fragment parsing (innerHTML, DOMParser, etc.)
 pub const fragment_parser = @import("fragment_parser.zig");
 pub const parseFragment = fragment_parser.parseFragment;
-pub const parseHTMLFromString = fragment_parser.parseHTMLFromString;
 pub const FragmentParseResult = fragment_parser.FragmentParseResult;
 pub const FragmentParseOptions = fragment_parser.FragmentParseOptions;
 
@@ -83,22 +76,9 @@ pub const tag_name_intern = @import("tag_name_intern.zig");
 pub const internTagName = tag_name_intern.intern;
 pub const internTagNameExact = tag_name_intern.internExact;
 pub const internElementName = tag_name_intern.internElementName;
-pub const isKnownHtmlTag = tag_name_intern.isKnownHtmlTag;
-pub const eqlInternedTag = tag_name_intern.eqlInterned;
-
-// Attribute qualified names every element shares (lane perf3 D1): an
-// attribute with a known name points to its static record.
-pub const attribute_name_intern = @import("attribute_name_intern.zig");
-pub const internAttributeName = attribute_name_intern.intern;
 
 // Document write support (document.write/writeln/open/close)
 pub const document_write = @import("document_write.zig");
-pub const DocumentWriteState = document_write.DocumentWriteState;
-pub const DocumentWriteError = document_write.DocumentWriteError;
-pub const documentOpen = document_write.documentOpen;
-pub const documentWrite = document_write.documentWrite;
-pub const documentWriteln = document_write.documentWriteln;
-pub const documentClose = document_write.documentClose;
 
 test {
     // Run all parser tests
@@ -113,6 +93,5 @@ test {
     _ = @import("fragment_parser.zig");
     _ = @import("document_write.zig");
     _ = @import("tag_name_intern.zig");
-    _ = @import("attribute_name_intern.zig");
     // NOTE: dom_tree_adapter.zig tests are run from html (full.zig) module
 }

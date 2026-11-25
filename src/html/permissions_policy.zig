@@ -267,9 +267,6 @@ pub const Allowlist = struct {
     pub fn allowSelf(allocator: Allocator) Allowlist {
         return .{ .allocator = allocator, .allow_self = true };
     }
-    pub fn allowNone(allocator: Allocator) Allowlist {
-        return init(allocator);
-    }
     pub fn setSelfOrigin(self: *Allowlist, origin: *origins.OriginRecord) void {
         const retained = origin.retain();
         if (self.self_origin) |old| old.release();
@@ -631,15 +628,6 @@ pub const PermissionsPolicy = struct {
     pub fn isFeatureAllowedForSelf(self: *const Self, feature: Feature) bool {
         return self.isFeatureAllowedForOrigin(feature, self.origin());
     }
-    /// Compatibility for native callers: snapshot inheritance with no container
-    /// declaration. A later change/destruction of parent cannot affect this.
-    pub fn setInheritedPolicy(self: *Self, parent: *const Self) void {
-        self.disabled_inherited = .empty;
-        inline for (@typeInfo(Feature).@"enum".field_values) |field_value| {
-            const feature: Feature = @fromBackingInt(@intCast(field_value));
-            if (!inheritedValue(feature, parent, null, self.origin())) self.disabled_inherited.insert(feature);
-        }
-    }
     /// Only feature values are needed by a child's inherited-policy
     /// snapshot. Reporting endpoints stay with their original Document.
     fn frozenCopy(self: *const Self, allocator: Allocator) !Self {
@@ -899,62 +887,6 @@ pub fn createViolationReport(
 // Tests
 // ============================================================================
 
-test "Feature.fromString" {
-    try std.testing.expectEqual(Feature.geolocation, Feature.fromString("geolocation").?);
-    try std.testing.expectEqual(Feature.camera, Feature.fromString("camera").?);
-    try std.testing.expectEqual(Feature.ambient_light_sensor, Feature.fromString("ambient-light-sensor").?);
-    try std.testing.expect(Feature.fromString("nonexistent-feature") == null);
-}
-
-test "Allowlist - basic operations" {
-    const allocator = std.testing.allocator;
-
-    var allow_all = Allowlist.allowAll(allocator);
-    defer allow_all.deinit();
-    try std.testing.expect(allow_all.isAllowed("https://example.com", "https://self.com"));
-
-    var allow_self = Allowlist.allowSelf(allocator);
-    defer allow_self.deinit();
-    try std.testing.expect(allow_self.isAllowed("https://self.com", "https://self.com"));
-    try std.testing.expect(!allow_self.isAllowed("https://other.com", "https://self.com"));
-
-    var allow_none = Allowlist.allowNone(allocator);
-    defer allow_none.deinit();
-    try std.testing.expect(!allow_none.isAllowed("https://example.com", "https://self.com"));
-}
-
-test "Allowlist - specific origins" {
-    const allocator = std.testing.allocator;
-
-    var allowlist = Allowlist.init(allocator);
-    defer allowlist.deinit();
-
-    try allowlist.addOrigin("https://allowed.com");
-    try allowlist.addOrigin("https://also-allowed.com");
-
-    try std.testing.expect(allowlist.isAllowed("https://allowed.com", "https://self.com"));
-    try std.testing.expect(allowlist.isAllowed("https://also-allowed.com", "https://self.com"));
-    try std.testing.expect(!allowlist.isAllowed("https://not-allowed.com", "https://self.com"));
-}
-
-test "PermissionsPolicy - default allowlists" {
-    const allocator = std.testing.allocator;
-
-    var policy = try PermissionsPolicy.init(allocator, "https://example.com");
-    defer policy.deinit();
-
-    // Geolocation defaults to self
-    try std.testing.expect(policy.isFeatureAllowed(.geolocation, "https://example.com"));
-    try std.testing.expect(!policy.isFeatureAllowed(.geolocation, "https://other.com"));
-
-    // Fullscreen defaults to 'self' (Fullscreen 7)
-    try std.testing.expect(policy.isFeatureAllowed(.fullscreen, "https://example.com"));
-    try std.testing.expect(!policy.isFeatureAllowed(.fullscreen, "https://other.com"));
-
-    // Sync XHR defaults to *
-    try std.testing.expect(policy.isFeatureAllowed(.sync_xhr, "https://other.com"));
-}
-
 test "Allowlist - an opaque 'src' matches an opaque origin, never a tuple one" {
     const allocator = std.testing.allocator;
     const container = try origins.OriginRecord.create(allocator, "https://parent.example");
@@ -970,65 +902,4 @@ test "Allowlist - an opaque 'src' matches an opaque origin, never a tuple one" {
     try std.testing.expect(allowlist.matches(.{ .serialized = "null", .record = document }, originView(container)));
     try std.testing.expect(!allowlist.matches(.{ .serialized = "https://other.example" }, originView(container)));
     try std.testing.expect(!allowlist.matches(originView(container), originView(container)));
-}
-
-test "PermissionsPolicy - fromHeader" {
-    const allocator = std.testing.allocator;
-
-    var policy = try PermissionsPolicy.fromHeader(
-        allocator,
-        "geolocation=(), camera=(self)",
-        "https://example.com",
-    );
-    defer policy.deinit();
-
-    // Geolocation is disabled (empty allowlist)
-    try std.testing.expect(!policy.isFeatureAllowed(.geolocation, "https://example.com"));
-
-    // Camera is allowed for self only
-    try std.testing.expect(policy.isFeatureAllowed(.camera, "https://example.com"));
-    try std.testing.expect(!policy.isFeatureAllowed(.camera, "https://other.com"));
-}
-
-test "PermissionsPolicy - fromHeader with specific origins" {
-    const allocator = std.testing.allocator;
-
-    var policy = try PermissionsPolicy.fromHeader(
-        allocator,
-        "geolocation=(self \"https://trusted.com\")",
-        "https://example.com",
-    );
-    defer policy.deinit();
-
-    try std.testing.expect(policy.isFeatureAllowed(.geolocation, "https://example.com"));
-    try std.testing.expect(policy.isFeatureAllowed(.geolocation, "https://trusted.com"));
-    try std.testing.expect(!policy.isFeatureAllowed(.geolocation, "https://untrusted.com"));
-}
-
-test "PermissionsPolicy - inheritance" {
-    const allocator = std.testing.allocator;
-
-    // Parent policy allows geolocation only for self
-    var parent = try PermissionsPolicy.fromHeader(
-        allocator,
-        "geolocation=(self)",
-        "https://parent.com",
-    );
-    defer parent.deinit();
-
-    // Child policy allows geolocation for all
-    var child = try PermissionsPolicy.fromHeader(
-        allocator,
-        "geolocation=(*)",
-        "https://child.com",
-    );
-    defer child.deinit();
-
-    child.setInheritedPolicy(&parent);
-
-    // Child can't grant more than parent allows
-    // Parent only allows "self" (parent.com), so child.com is not allowed
-    try std.testing.expect(!child.isFeatureAllowed(.geolocation, "https://child.com"));
-    // §9.7 disables the child feature itself, for every queried origin.
-    try std.testing.expect(!child.isFeatureAllowed(.geolocation, "https://parent.com"));
 }

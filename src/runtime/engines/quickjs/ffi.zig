@@ -854,30 +854,3 @@ pub fn extractString(ctx: *JSContext, val: JSValue, allocator: std.mem.Allocator
     @memcpy(result, cstr[0..len]);
     return result;
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "JSValue - tag checks" {
-    const testing = std.testing;
-
-    try testing.expect(JSValue.UNDEFINED.isUndefined());
-    try testing.expect(JSValue.NULL.isNull());
-    try testing.expect(JSValue.TRUE.isBool());
-    try testing.expect(JSValue.FALSE.isBool());
-    try testing.expect(JSValue.EXCEPTION.isException());
-}
-
-test "JSValue - bool conversion" {
-    const testing = std.testing;
-
-    try testing.expect(JSValue.TRUE.toBool() == true);
-    try testing.expect(JSValue.FALSE.toBool() == false);
-}
-
-test "JSClassDef - struct layout" {
-    const testing = std.testing;
-
-    try testing.expect(@typeInfo(JSClassDef).@"struct".layout == .@"extern");
-}

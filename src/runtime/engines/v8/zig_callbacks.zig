@@ -620,36 +620,6 @@ fn noopCallback() void {
 
 const testing = std.testing;
 
-test "zig_callbacks module compiles" {
-    testing.refAllDecls(@This());
-}
-
-test "createZigCallback - function signature check" {
-    // Just verify the function signature compiles
-    // Runtime tests require V8 integration
-    if (true) return error.SkipZigTest;
-
-    // TODO: When V8 is available:
-    // 1. Create isolate and context
-    // 2. Define a simple Zig function
-    // 3. Wrap it with createZigCallback
-    // 4. Verify it returns a V8 Function
-    // 5. Call the function from JavaScript
-    // 6. Verify Zig function was invoked
-}
-
-test "createVoidCallback - simple creation" {
-    // Just verify the function signature compiles
-    // Runtime tests require V8 integration
-    if (true) return error.SkipZigTest;
-
-    // TODO: When V8 is available:
-    // 1. Create isolate and context
-    // 2. Create void callback
-    // 3. Verify it returns a V8 Function
-    // 4. Call it and verify it returns undefined
-}
-
 // Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
 // (comptime-only element types, so every call is evaluated at comptime).
 const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };

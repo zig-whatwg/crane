@@ -607,6 +607,7 @@ INCLUDE = [
     ('fetch/metadata/', 'Sec-Fetch request metadata and redirect behavior'),
     ('fetch/content-encoding/zstd/', 'HTTP Zstandard content decoding'),
     ('fetch/fetch-later/', 'deferred Fetch API; merged Fetch spec, approved by the user 2026-10-22'),
+    ('fetch/data-urls/', 'the data: URL processor and forgiving-base64 (Fetch); all three browsers pass every subtest (wpt.fyi stable, 2026-11-24); approved by the integrator 2026-11-24, lane core1'),
     ('xhr/',           'XMLHttpRequest; today calls simulateFetch, must route to fetch'),
     ('websockets/',    'WebSocket API; WebSocketStream remains deferred below'),
     ('cookiestore/',   "CookieStore; must unify onto curl's cookie engine"),

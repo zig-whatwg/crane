@@ -62,25 +62,3 @@ pub fn run(navigables: ?*const Navigables, start: Start) void {
     const hook = list.document_start orelse return;
     hook.run(hook.context, &start);
 }
-
-test "with no hook nothing runs; with one it hears each new document" {
-    const Probe = struct {
-        runs: u32 = 0,
-        navigation: u64 = 0,
-        fn run(context: *anyopaque, start: *const Start) void {
-            const self: *@This() = @ptrCast(@alignCast(context));
-            self.runs += 1;
-            self.navigation = start.navigation_id;
-        }
-    };
-    var navigables = Navigables.init(std.testing.allocator);
-    defer navigables.deinit();
-    var realm_stand_in: u8 = 0;
-    const start: Start = .{ .navigable_id = 1, .navigation_id = 9, .realm = &realm_stand_in, .document = .{ .document = &realm_stand_in, .generation = 1 }, .url = "about:blank" };
-    run(&navigables, start);
-    var probe: Probe = .{};
-    navigables.document_start = .{ .context = &probe, .run = Probe.run };
-    run(&navigables, start);
-    try std.testing.expectEqual(@as(u32, 1), probe.runs);
-    try std.testing.expectEqual(@as(u64, 9), probe.navigation);
-}

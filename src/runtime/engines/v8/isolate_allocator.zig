@@ -204,35 +204,3 @@ pub fn getOrInitAllocator(
 
 // extern fn v8_Isolate_SetData(isolate: *v8.Isolate, slot: c_int, data: ?*anyopaque) void;
 // extern fn v8_Isolate_GetData(isolate: *v8.Isolate, slot: c_int) ?*anyopaque;
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "IsolateAllocator - init and deinit with arena" {
-    // Note: This test would fail because v8_Isolate_SetData/GetData aren't real
-    // In actual usage, V8 provides these functions
-    // For now, just verify the code compiles
-
-    // Example usage (commented out - requires real V8 isolate):
-    // try initIsolateAllocator(mock_isolate, testing.allocator, true);
-    // defer deinitIsolateAllocator(mock_isolate);
-    // const alloc = getIsolateAllocator(mock_isolate).?;
-    // const memory = try alloc.alloc(u8, 100);
-    // defer alloc.free(memory);
-}
-
-test "IsolateAllocator - init and deinit with GPA" {
-    // Similar to above - would need real V8 isolate
-    // Just verifies compilation
-}
-
-test "IsolateAllocator - getOrInit creates allocator" {
-    // Would test that getOrInitAllocator creates allocator if missing
-    // Requires real V8 isolate
-}
-
-test "IsolateAllocator module compiles" {
-    const testing = std.testing;
-    testing.refAllDecls(@This());
-}

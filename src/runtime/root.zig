@@ -53,7 +53,6 @@ pub const Logger = @import("logger.zig").Logger;
 // Realm and context type infrastructure (WHATWG HTML/WebIDL)
 pub const realm = @import("realm.zig");
 pub const ContextType = realm.ContextType;
-pub const Exposure = realm.Exposure;
 pub const RealmInfo = realm.RealmInfo;
 pub const Realm = realm.Realm;
 pub const Intrinsics = realm.Intrinsics;
@@ -61,9 +60,7 @@ pub const LogLevel = @import("logger.zig").LogLevel;
 
 // Environment Settings Object (WHATWG HTML §8.1.5)
 pub const environment_settings = @import("environment_settings.zig");
-pub const EnvironmentSettingsObject = environment_settings.EnvironmentSettingsObject;
 pub const Origin = environment_settings.Origin;
-pub const PolicyContainer = environment_settings.PolicyContainer;
 pub const ConsoleValue = @import("console_value.zig").ConsoleValue;
 
 // Engine-agnostic JavaScript value type
@@ -174,7 +171,6 @@ pub const onObjectFreed = gc.onObjectFreed;
 pub const cleanup_coordinator = @import("cleanup_coordinator.zig");
 pub const CleanupCoordinator = cleanup_coordinator.CleanupCoordinator;
 pub const CleanupPhase = cleanup_coordinator.CleanupPhase;
-pub const CleanupStats = cleanup_coordinator.CleanupStats;
 pub const isContextTearingDown = cleanup_coordinator.isContextTearingDown;
 
 // Instance lifecycle tracking (RC2 fix - tracks cleanup state per instance)
@@ -240,10 +236,6 @@ pub const SerializableSteps = serialization_record.SerializableSteps;
 
 // Engine Context abstraction - type-safe wrapper for engine_ctx pointers
 // Replaces direct use of engine_ctx: *anyopaque with structured type
-pub const engine_context = @import("engine_context.zig");
-pub const EngineContext = engine_context.EngineContext;
-pub const EngineType = engine_context.EngineType;
-pub const OptionalEngineContext = engine_context.OptionalEngineContext;
 
 // WebIDL binding descriptor types
 pub const binding_types = @import("binding_types.zig");
@@ -322,23 +314,11 @@ pub const ownStateCount = @import("own_state.zig").countSet;
 // Typed callback wrappers for type-safe callback handling
 // Replaces *anyopaque user data with typed alternatives
 pub const typed_callback = @import("typed_callback.zig");
-pub const TypedCallback = typed_callback.TypedCallback;
-pub const TypedTimerCallback = typed_callback.TypedTimerCallback;
-pub const TypedMicrotaskCallback = typed_callback.TypedMicrotaskCallback;
-pub const TypedGCCallback = typed_callback.TypedGCCallback;
-pub const SelfContainedCallback = typed_callback.SelfContainedCallback;
 // Work/completion callbacks for thread pool operations
-pub const TypedWorkCallback = typed_callback.TypedWorkCallback;
-pub const TypedCompletionCallback = typed_callback.TypedCompletionCallback;
 pub const SelfContainedWorkCallback = typed_callback.SelfContainedWorkCallback;
 // Promise callback types
-pub const TypedPromiseFulfillCallback = typed_callback.TypedPromiseFulfillCallback;
-pub const TypedPromiseRejectCallback = typed_callback.TypedPromiseRejectCallback;
-pub const SelfContainedPromiseCallback = typed_callback.SelfContainedPromiseCallback;
 // Context callback (for DOM/parser patterns)
-pub const TypedContextCallback = typed_callback.TypedContextCallback;
 // Legacy interop
-pub const AnyopaqueCallback = typed_callback.AnyopaqueCallback;
 
 // Convenience re-exports
 pub const initRuntime = initializeRuntime;
@@ -504,4 +484,17 @@ test "convenience aliases work" {
     // initRuntime is an alias for initializeRuntime
     try testing.expect(initRuntime == initializeRuntime);
     try testing.expect(deinitRuntime == deinitializeRuntime);
+}
+
+// The files whose own tests src-runtime runs (build.zig; lane core1, the
+// integrator's leave 2026-11-24): Zig collects a file's test blocks only when
+// something analyzes its import.
+test {
+    _ = browser_pause;
+    _ = CEReactions;
+    _ = cleanup_coordinator;
+    _ = lifetime;
+    _ = native_timer;
+    _ = @import("typedefs/DOMString.zig");
+    _ = heap;
 }

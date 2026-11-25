@@ -134,6 +134,12 @@ const Args = struct {
     verify: []const []const u8 = &.{},
     verify_batched: u32 = 10,
     verify_alone: u32 = 5,
+    /// A verify prefix no test of this executable starts with is not a
+    /// failure (`--verify-may-miss`): build.zig hands a src/ module root's
+    /// executable every verify file under its root's directory, and a file
+    /// of another module there has none of its tests - the executable of the
+    /// module that owns the file verifies it.
+    verify_may_miss: bool = false,
     /// Groups that keep their own batching (`--group=PREFIX=B`): one
     /// executable holding several suites' tests (build.zig's one-binary
     /// layout) batches each suite as its own executable was - B tests per
@@ -225,6 +231,8 @@ const Args = struct {
                 a.verify_batched = try std.fmt.parseUnsigned(u32, v, 10);
             } else if (value(arg, "--verify-alone=")) |v| {
                 a.verify_alone = try std.fmt.parseUnsigned(u32, v, 10);
+            } else if (std.mem.eql(u8, arg, "--verify-may-miss")) {
+                a.verify_may_miss = true;
             } else if (value(arg, "--group=")) |v| {
                 try groups.append(arena, try Group.parse(v));
             } else if (value(arg, "--plain=")) |v| {
@@ -257,6 +265,7 @@ const Args = struct {
         // Verify mode is a run of its own, with its own report: never the
         // build runner's protocol.
         if (a.verify.len != 0 and a.listen) return error.VerifyInServerMode;
+        if (a.verify_may_miss and a.verify.len == 0) return error.VerifyMayMissWithoutVerify;
         return a;
     }
 
@@ -375,6 +384,9 @@ const usage =
     \\                    test-verify passes one per changed file, "<file>.test."), each run
     \\                    --verify-batched times in one process and --verify-alone times alone;
     \\                    any run that is not a pass fails (defaults 10 and 5)
+    \\  --verify-may-miss with --verify: a prefix no test of this executable starts with is not a failure
+    \\                    (a src/ module root's executable: build.zig hands it every verify file under its
+    \\                    root's directory, and the module that owns a file verifies it)
     \\  --report-only     print and record every verdict, but answer the build runner `pass` for a
     \\                    failure and exit 0 for one: a variant's report mode (a TEMPORARY suite row)
     \\  --group=PREFIX=B  the tests whose names start with PREFIX are batched B per process (0: all in one),
@@ -459,6 +471,31 @@ test "args: verify mode - prefixes, run counts, and never in server mode" {
     try std.testing.expectEqual(@as(u32, 1), v.verify_batched);
     try std.testing.expectEqual(@as(u32, 0), v.verify_alone);
     try std.testing.expectError(error.VerifyInServerMode, Args.parse(arena, &.{ "x", "--verify=a.", "--listen=-" }));
+}
+
+test "args: --verify-may-miss, for a src/ module root's executable, is off unless asked and needs --verify" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const m = try Args.parse(arena, &.{ "x", "--verify=parser.tokenizer.test.", "--verify-may-miss" });
+    try std.testing.expect(m.verify_may_miss);
+    try std.testing.expect(!(try Args.parse(arena, &.{ "x", "--verify=a.test." })).verify_may_miss);
+    try std.testing.expectError(error.VerifyMayMissWithoutVerify, Args.parse(arena, &.{ "x", "--verify-may-miss" }));
+}
+
+test "verify's exit status: a prefix no test of the executable starts with fails it, unless the prefix may miss" {
+    // A tests/<dir> executable holds every file build.zig names to it: a
+    // prefix with no test there is a file with no test blocks.
+    try std.testing.expectEqual(@as(u8, 1), verifyStatus(.{ .failed = 0, .verified = 0, .unmatched = 1, .may_miss = false }));
+    // A src/ module root's executable is handed every verify file under its
+    // root's directory, and another module's file has none of its tests: the
+    // module that owns the file verifies it (tools/src_test_reach.zig holds
+    // that one does).
+    try std.testing.expectEqual(@as(u8, 0), verifyStatus(.{ .failed = 0, .verified = 0, .unmatched = 2, .may_miss = true }));
+    try std.testing.expectEqual(@as(u8, 0), verifyStatus(.{ .failed = 0, .verified = 3, .unmatched = 1, .may_miss = false }));
+    // A failed verification fails, may miss or not.
+    try std.testing.expectEqual(@as(u8, 1), verifyStatus(.{ .failed = 1, .verified = 3, .unmatched = 0, .may_miss = true }));
+    try std.testing.expectEqual(@as(u8, 1), verifyStatus(.{ .failed = 1, .verified = 3, .unmatched = 0, .may_miss = false }));
 }
 
 test "args: a test declared alone carries its reason, and one without a reason is refused" {
@@ -973,7 +1010,9 @@ fn runVerify(gpa: std.mem.Allocator, io: Io, arena: std.mem.Allocator, out: *Io.
         }
         if (!matched) {
             unmatched += 1;
-            try out.print("test_launcher: {s}: verify: no test of this executable starts with \"{s}\" (a file with no test blocks is not verified)\n", .{ name, prefix });
+            try out.print("test_launcher: {s}: verify: no test of this executable starts with \"{s}\" ({s})\n", .{
+                name, prefix, if (args.verify_may_miss) "another module's file: the executable of the module that owns it verifies it" else "a file with no test blocks is not verified",
+            });
         }
     }
     const options: verify_mod.Options = .{ .batched = args.verify_batched, .alone = args.verify_alone, .jobs = jobs };
@@ -983,6 +1022,7 @@ fn runVerify(gpa: std.mem.Allocator, io: Io, arena: std.mem.Allocator, out: *Io.
         options.batched, options.alone,
     });
     try out.flush();
+    if (tests.items.len == 0) return verifyStatus(.{ .failed = 0, .verified = 0, .unmatched = unmatched, .may_miss = args.verify_may_miss });
     var v = try verify_mod.Verify.init(gpa, io, executor.executor(), tests.items, options);
     defer v.deinit();
     try v.execute();
@@ -1006,7 +1046,27 @@ fn runVerify(gpa: std.mem.Allocator, io: Io, arena: std.mem.Allocator, out: *Io.
         try Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = aw.written() });
         try out.print("  results: {s}\n", .{path});
     }
-    return if (failed != 0 or (tests.items.len == 0 and unmatched != 0)) 1 else 0;
+    return verifyStatus(.{ .failed = failed, .verified = @intCast(tests.items.len), .unmatched = unmatched, .may_miss = args.verify_may_miss });
+}
+
+/// What a verify run counted, for its exit status (`verifyStatus`).
+const VerifyCounts = struct {
+    /// Tests whose verification failed.
+    failed: u32,
+    /// Tests verified.
+    verified: u32,
+    /// Prefixes no test of the executable starts with.
+    unmatched: u32,
+    /// `--verify-may-miss`: an unmatched prefix is another module's file.
+    may_miss: bool,
+};
+
+/// Verify's exit status: 1 when a test's verification failed, or when no
+/// prefix named a test and none may miss (a file with no test blocks).
+fn verifyStatus(c: VerifyCounts) u8 {
+    if (c.failed != 0) return 1;
+    if (c.verified == 0 and c.unmatched != 0 and !c.may_miss) return 1;
+    return 0;
 }
 
 /// The launcher's exit status. In server mode the verdicts reached the build

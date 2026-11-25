@@ -6,7 +6,7 @@
 //! These steps were implemented twice and applied once. `src/browser/Context.zig`
 //! had them at the WINDOW's binding layer, and `src/html/event_loop/timers.zig`
 //! had them again (`MIN_NESTED_DELAY_MS`, `NESTING_LEVEL_THRESHOLD`) in an event
-//! loop nothing spins. The worker binding
+//! loop nothing spun (deleted 2026-11-24, lane core1). The worker binding
 //! (`src/html/worker_v8_context.zig`) had neither, so a nested `setTimeout(f, 0)`
 //! in a worker ran unclamped while the identical code in a window was clamped.
 //!
