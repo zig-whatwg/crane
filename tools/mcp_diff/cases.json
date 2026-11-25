@@ -1415,6 +1415,84 @@
           }
         }
       ]
+    },
+    {
+      "name": "logpoints: lookups, documents, pauses",
+      "about": "set_logpoints' lookups: an ambiguous path suffix, no match with sources of the same file name, a document with no script, a script gone after a navigation; and a debugger statement that does not pause (the DevTools universe skips all pauses).",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/logpoints-dup.html"
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "same.js:1 'x'"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "c/same.js:1 'x'"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "lp-a/same.js:1 'a'"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { debugger; return window.a() + window.b(); }"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "title.html:1 'doc'"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "lp-a/same.js:1 'a'"
+            ]
+          }
+        }
+      ]
     }
   ],
   "expected": [
