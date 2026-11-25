@@ -616,17 +616,6 @@ pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFu
     return protocol_callbacks.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
 }
 
-pub fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior, return_type: engine.CallbackReturnType) Error!engine.Completion {
-    forbidScriptInHold(realm);
-    // A native algorithm calls script: a DOM algorithm on the agent's stack
-    // until the callback returns to it (dom_algorithm.zig, risk 4).
-    const algorithm = dom_algorithm.enterCallback(realm);
-    defer dom_algorithm.leaveCallback(algorithm);
-    return switch (return_type) {
-        inline else => |kind| protocol_callbacks.invokeCallbackFunctionWithReturnType(realm, callback, this_arg, args, behavior, kind),
-    };
-}
-
 pub fn constructCallbackFunction(realm: Context, callback: *const engine.CallbackFunction, args: []const JSValue) Error!engine.Completion {
     forbidScriptInHold(realm);
     // A native algorithm calls script: a DOM algorithm on the agent's stack

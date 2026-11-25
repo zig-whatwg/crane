@@ -4139,8 +4139,6 @@ pub extern fn v8_Value_ToObject(context: *Context, value: *Value) ?*Value;
 /// value that is not an Error carries no position of its own.
 pub extern fn v8_Function_CallCatchingWithSite(context: *Context, function: *Value, recv: ?*Value, argc: c_int, argv: ?[*]const *Value, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
 
-/// ToString's result or thrown value, OWNED, with its original throw site.
-pub extern fn v8_Value_ToStringCatchingWithSite(context: *Context, value: *Value, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
 pub extern fn v8_RunCatchingWithSite(
     isolate: *Isolate,
     context: *Context,

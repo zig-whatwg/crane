@@ -2265,17 +2265,6 @@ pub inline fn invokeCallbackFunction(realm: Context, callback: *const CallbackFu
     return impl.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
 }
 
-/// The WebIDL callback's declared return type. Conversion is part of invoke,
-/// before either the stored incumbent or the callback's relevant realm leaves.
-pub const CallbackReturnType = enum { any, nullable_dom_string };
-
-/// WebIDL invoke step 13, including return conversion. A conversion throw
-/// follows `behavior` with the original throw site's error information.
-pub inline fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const CallbackFunction, this_arg: CallbackThis, args: []const JSValue, behavior: ExceptionBehavior, return_type: CallbackReturnType) Error!Completion {
-    runtime.native_holds.assertNone(realm.agent, "invokeCallbackFunctionWithReturnType");
-    return impl.invokeCallbackFunctionWithReturnType(realm, callback, this_arg, args, behavior, return_type);
-}
-
 /// WebIDL "construct a callback function" (3.12): Construct(F, args) for a
 /// callback function type value used as a constructor - HTML's custom
 /// element constructors ("create an element" step 5.1.4, "upgrade an

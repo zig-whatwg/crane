@@ -345,10 +345,6 @@ pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: 
     return error.NotSupported;
 }
 
-/// Typed callback return conversion runs before callback scope cleanup.
-pub fn invokeCallbackFunctionWithReturnType(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior, _: engine.CallbackReturnType) Error!engine.Completion {
-    return error.NotSupported;
-}
 /// No engine: nothing to construct.
 pub fn constructCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: []const JSValue) Error!engine.Completion {
     return error.NotSupported;

@@ -19144,35 +19144,6 @@ Global<Value>* v8_Function_CallCatchingWithSite(
     return trackHandle(new Global<Value>(isolate, maybe_result.ToLocalChecked()));
 }
 
-/// WebIDL DOMString conversion inside the callback's prepared scopes. The
-/// returned Global (string or thrown value) and copied throw site are owned
-/// by the caller, exactly as in v8_Function_CallCatchingWithSite.
-Global<Value>* v8_Value_ToStringCatchingWithSite(
-    Global<Context>* context, Global<Value>* value, bool* threw,
-    V8ErrorInfo** site
-) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    *threw = true;
-    *site = nullptr;
-    if (!context || !value || value->IsEmpty()) return nullptr;
-    Local<Context> ctx = context->Get(isolate);
-    Context::Scope context_scope(ctx);
-    TryCatch try_catch(isolate);
-    try_catch.SetCaptureMessage(true);
-    Local<String> result;
-    const bool converted = value->Get(isolate)->ToString(ctx).ToLocal(&result);
-    if (try_catch.HasCaught()) {
-        if (!try_catch.CanContinue()) return nullptr;
-        Global<Value>* thrown = trackHandle(new Global<Value>(isolate, try_catch.Exception()));
-        *site = errorInfoAtThrowSite(isolate, ctx, try_catch);
-        return thrown;
-    }
-    if (!converted) return nullptr;
-    *threw = false;
-    return trackHandle(new Global<Value>(isolate, result));
-}
-
 /// Run `body(data)` in `context` under a TryCatch capturing the throw site
 /// (`errorInfoAtThrowSite`). Returns true iff `body` threw a catchable
 /// JavaScript exception; `*exception` (new Global, caller owns) and `*site`

@@ -34,10 +34,6 @@ pub const Conversion = enum {
 
 /// (callback, its IDL return type, how the value is converted today).
 pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u8, Conversion }{
-    // --- A value type ---
-    // impls/EventTarget.zig invokeIdlEventHandler (.nullable_dom_string).
-    .{ "OnBeforeUnloadEventHandlerNonNull", "DOMString?", .protocol_typed },
-
     // --- Promise<undefined> ---
     // impls/Navigation.zig invokeToPromise (engine.promiseResolve: a promise
     // of the realm passes through), from interceptCommitHandlerSteps and
