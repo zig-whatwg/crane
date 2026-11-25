@@ -309,7 +309,9 @@ fn dialogBeforeToggleRetiresRealm() !void {
     const realm = try engine.createWindowRealm(&.{
         .agent_cluster_cross_origin_isolated = true,
         .agent = page.browser.agent.?,
-        .allocator = std.testing.allocator,
+        // The Browser's allocator: its realm's objects are its heap's
+        // (allocator-hardening batch B).
+        .allocator = page.browser.scope.allocator,
         .from_snapshot = false,
         .timer = null,
         .parent = page.browser.getRealm().?,
