@@ -3053,16 +3053,17 @@ fn writeConstructorArgType(
 
 /// Write WebIDL constructor function
 ///
-/// Example output:
+/// Example output (`writeConstructorSteps` writes the body):
 /// ```zig
-/// pub fn call_constructor(allocator: std.mem.Allocator, type_param: runtime.DOMString) !*runtime.Instance {
-///     const instance = try init(allocator);
-///     errdefer deinit(instance);
-///
-///     const state = instance.getState(State);
-///     try EventImpl.construct(state, type_param);
-///
-///     return instance;
+/// pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString) !*runtime.Instance {
+///     if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(EventImpl.call_constructor)), "0") == *runtime.Instance) {
+///         const instance = try init(ctx.allocator, ctx);
+///         errdefer runtime.gc.releaseFailedConstruction(instance);
+///         try EventImpl.call_constructor(instance, @"type");
+///         return instance;
+///     } else {
+///         return try EventImpl.call_constructor(ctx, @"type");
+///     }
 /// }
 /// ```
 pub fn writeConstructor(
@@ -3088,19 +3089,46 @@ pub fn writeConstructor(
     }
 
     try writer.writeAll(") !*runtime.Instance {\n");
-    try writer.writeAll("        // Directly return result from impl.call_constructor\n");
-    try writer.print("        return try {s}.call_constructor(ctx", .{impl_name});
 
-    // Pass arguments to impl constructor
-    // Note: webidl.Opt() parameters are passed directly (not unwrapped)
-    // The impl is responsible for checking .wasPassed() and handling defaults
+    // The arguments, passed on as given: a webidl.Opt() parameter is not
+    // unwrapped - the impl checks .wasPassed() and applies the default.
+    var args_buffer: std.Io.Writer.Allocating = .init(std.heap.page_allocator);
+    defer args_buffer.deinit();
     for (constructor.arguments) |arg| {
-        try writer.writeAll(", ");
-        try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
+        try args_buffer.writer.writeAll(", ");
+        try writeEscapedInterfaceParamName(&args_buffer.writer, arg.name, arg.idlType);
     }
-
-    try writer.writeAll(");\n");
+    try writeConstructorSteps(writer, impl_name, args_buffer.written());
     try writer.writeAll("    }\n\n");
+}
+
+/// The body of a generated `call_constructor`: WebIDL 3.7.1, the interface
+/// object's steps 1.8-1.9. When the impl's constructor steps take the object
+/// (`call_constructor(instance: *runtime.Instance, ...) !void`, the THIS
+/// FORM), the generated constructor makes it with the interface's own
+/// construction chain (`init`), holds it until the steps return, and frees
+/// it whole when they fail (`runtime.gc.releaseFailedConstruction`): the
+/// construction is its only owner until it is returned (lane ctor1). An
+/// impl whose steps take `ctx` makes its own object (the FACTORY form: a
+/// node made with its node document, an object a shared factory makes) and
+/// frees it itself; tools/lint_constructors.zig keeps that list from
+/// growing. `args` is the argument list after the first, each with its
+/// leading ", ".
+fn writeConstructorSteps(writer: anytype, impl_name: []const u8, args: []const u8) !void {
+    try writer.print("        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf({s}.call_constructor)), \"0\") == *runtime.Instance) {{\n", .{impl_name});
+    try writer.writeAll("            // WebIDL 3.7.1 step 1.8: internally create a new object implementing\n");
+    try writer.writeAll("            // the interface. Until it is returned, the construction is its only\n");
+    try writer.writeAll("            // owner: a failed step frees it whole.\n");
+    try writer.writeAll("            const instance = try init(ctx.allocator, ctx);\n");
+    try writer.writeAll("            errdefer runtime.gc.releaseFailedConstruction(instance);\n");
+    try writer.writeAll("            // Step 1.9: perform the constructor steps with object as this.\n");
+    try writer.print("            try {s}.call_constructor(instance{s});\n", .{ impl_name, args });
+    try writer.writeAll("            return instance;\n");
+    try writer.writeAll("        } else {\n");
+    try writer.writeAll("            // A factory: the impl makes the object, and frees it whole when a\n");
+    try writer.writeAll("            // step fails (tools/lint_constructors.zig).\n");
+    try writer.print("            return try {s}.call_constructor(ctx{s});\n", .{ impl_name, args });
+    try writer.writeAll("        }\n");
 }
 
 /// Write overloaded constructor with tagged union dispatch
@@ -3208,8 +3236,8 @@ pub fn writeOverloadedConstructor(
     try writer.writeAll("    /// Note: Uses ctx.allocator internally for all allocations to ensure\n");
     try writer.writeAll("    /// consistency with deinit which uses instance.ctx.allocator\n");
     try writer.writeAll("    pub fn call_constructor(ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {\n");
-    try writer.writeAll("        // Pass args union directly to impl\n");
-    try writer.print("        return try {s}.call_constructor(ctx, args);\n", .{impl_name});
+    // The overload resolution's variant goes to the impl as one union.
+    try writeConstructorSteps(writer, impl_name, ", args");
     try writer.writeAll("    }\n\n");
 }
 
@@ -6876,7 +6904,12 @@ test "writeConstructor generates constructor function" {
     // Note: allocator parameter was removed - constructors now use ctx.allocator
     try testing.expect(std.mem.indexOf(u8, output, "pub fn call_constructor(ctx: runtime.Context") != null);
     try testing.expect(std.mem.indexOf(u8, output, "@\"type\": runtime.DOMString") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "return try EventImpl.call_constructor(ctx") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "return try EventImpl.call_constructor(ctx, @\"type\");") != null);
+    // The this form: the generated constructor makes the object and frees it
+    // whole when the steps fail (lane ctor1).
+    try testing.expect(std.mem.indexOf(u8, output, "const instance = try init(ctx.allocator, ctx);") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "errdefer runtime.gc.releaseFailedConstruction(instance);") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "try EventImpl.call_constructor(instance, @\"type\");") != null);
 }
 
 test "writeConstructor handles no-argument constructor" {
@@ -6894,5 +6927,6 @@ test "writeConstructor handles no-argument constructor" {
     const output = buffer.written();
     // Note: allocator parameter was removed - constructors now use ctx.allocator
     try testing.expect(std.mem.indexOf(u8, output, "pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "return try EventTargetImpl.call_constructor(ctx)") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "return try EventTargetImpl.call_constructor(ctx);") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "try EventTargetImpl.call_constructor(instance);") != null);
 }
