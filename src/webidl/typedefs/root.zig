@@ -207,6 +207,7 @@ pub const RequestInfo = @import("RequestInfo.zig").RequestInfo;
 pub const RequestInfoOrSequenceOfRequestInfo = @import("RequestInfoOrSequenceOfRequestInfo.zig").RequestInfoOrSequenceOfRequestInfo;
 pub const ResponseOrUndefined = @import("ResponseOrUndefined.zig").ResponseOrUndefined;
 pub const RotationMatrixType = @import("RotationMatrixType.zig").RotationMatrixType;
+pub const RouterRuleOrSequenceOfRouterRule = @import("RouterRuleOrSequenceOfRouterRule.zig").RouterRuleOrSequenceOfRouterRule;
 pub const RouterSource = @import("RouterSource.zig").RouterSource;
 pub const SVGMatrix = @import("SVGMatrix.zig").SVGMatrix;
 pub const SVGPoint = @import("SVGPoint.zig").SVGPoint;

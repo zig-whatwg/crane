@@ -183,9 +183,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     // popover
     // sanitizer (html/sanitizer.zig, parser_options.zig)
     // service workers and workers (lane hard1 is in ExtendableMessageEvent)
-    .{ "InstallEvent", "addRoutes", "rules" },
-    .{ "ExtendableMessageEventInit", "source", "" },
-    .{ "SharedWorker", "constructor", "options" },
     // url
     // websocket and xhr
     .{ "WebSocket", "constructor", "protocols" },
