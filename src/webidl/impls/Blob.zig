@@ -177,15 +177,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 2. Process blobParts using "process blob parts" algorithm
 /// 3. Normalize type from options
 /// 4. Return new Blob
-pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSValue), options: webidl.Opt(dictionaries.BlobPropertyBag)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &Blob.vtable, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step frees it whole. Its own deinit is its destructor, not a
-    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    errdefer runtime.gc.releaseOwned(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, blobParts: webidl.Opt(runtime.JSValue), options: webidl.Opt(dictionaries.BlobPropertyBag)) !void {
+    const ctx = instance.ctx;
     // Determine if we have blob parts and what endings mode to use
     const endings_mode: file.algorithms.Endings = blk: {
         if (options.wasPassed()) {
@@ -216,8 +209,6 @@ pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSVa
     const blob_data = try file.BlobData.init(ctx.allocator, bytes, mime_type);
     errdefer blob_data.deinit();
     try setBlobData(instance, ctx.allocator, blob_data);
-
-    return instance;
 }
 
 /// The `endings` member of BlobPropertyBag, as "process blob parts" takes it.

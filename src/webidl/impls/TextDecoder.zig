@@ -137,16 +137,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 3. Set this's encoding to encoding.
 /// 4. If options["fatal"] is true, then set this's error mode to "fatal".
 /// 5. Set this's ignore BOM to options["ignoreBOM"].
-pub fn call_constructor(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.TextDecoderOptions)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &TextDecoder.vtable, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step (the RangeError of steps 1-2) frees it whole. Its own
-    // deinit is its destructor, not a free, and left its slot and State
-    // until the Browser ended (tests/v8/constructor_error_receiver_test.zig;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    errdefer runtime.gc.releaseOwned(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.TextDecoderOptions)) !void {
+    // The generated constructor made `instance` and frees it whole when a
+    // step fails (the RangeError of steps 1-2; lane ctor1).
+    const ctx = instance.ctx;
     const state = instance.getState(State);
 
     // Get label as UTF-8 slice
@@ -191,8 +185,6 @@ pub fn call_constructor(ctx: runtime.Context, label: webidl.Opt(runtime.DOMStrin
 
     // Step 5: Set this's ignore BOM to options["ignoreBOM"]
     state.own.ignoreBOM = opts.ignoreBOM orelse false;
-
-    return instance;
 }
 
 /// Getter for encoding

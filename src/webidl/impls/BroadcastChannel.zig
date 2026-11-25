@@ -219,7 +219,10 @@ pub fn init(
 ) !*runtime.Instance {
     // A BroadcastChannel is an EventTarget: `message` is fired at it.
     const instance = try interfaces.EventTarget.initWithState(allocator, StateType, vtable, ctx);
-    errdefer interfaces.EventTarget.deinit(instance);
+    errdefer {
+        interfaces.EventTarget.deinit(instance);
+        runtime.gc.releaseStorage(instance);
+    }
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator };
     instance.getState(StateType).own._internal = internal;
@@ -248,9 +251,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor: "1. Set this's channel name to name. 2. Set this's closed
 /// flag to false."
-pub fn call_constructor(ctx: runtime.Context, name: runtime.DOMString) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &BroadcastChannel.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, name: runtime.DOMString) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.name = try internal.allocator.dupe(u8, name.asSlice());
     try register(instance);
@@ -260,7 +261,6 @@ pub fn call_constructor(ctx: runtime.Context, name: runtime.DOMString) !*runtime
     // constructor with pending activity takes (Worker, WebSocket).
     engine.keepPlatformObjectAlive(instance);
     internal.kept = true;
-    return instance;
 }
 
 /// End the constructor's keep, once.

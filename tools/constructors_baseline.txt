@@ -25,8 +25,6 @@ destructor BluetoothDataFilter deinit(instance)
 destructor BluetoothLEScanFilter deinit(instance)
 destructor BluetoothManufacturerDataFilter deinit(instance)
 destructor BluetoothServiceDataFilter deinit(instance)
-destructor BroadcastChannel deinit(instance)
-destructor ByteLengthQueuingStrategy deinit(instance)
 destructor CSSColor deinit(instance)
 destructor CSSHSL deinit(instance)
 destructor CSSHWB deinit(instance)
@@ -40,13 +38,10 @@ destructor CSSParserDeclaration deinit(instance)
 destructor CSSParserFunction deinit(instance)
 destructor CSSParserQualifiedRule deinit(instance)
 destructor CSSRGB deinit(instance)
-destructor CaptureController deinit(instance)
 destructor ChannelMergerNode deinit(instance)
 destructor ChannelSplitterNode deinit(instance)
-destructor ClipboardItem deinit(instance)
 destructor ConstantSourceNode deinit(instance)
 destructor ConvolverNode deinit(instance)
-destructor CountQueuingStrategy deinit(instance)
 destructor DelayNode deinit(instance)
 destructor DynamicsCompressorNode deinit(instance)
 destructor EncodedAudioChunk deinit(instance)
@@ -54,10 +49,7 @@ destructor EncodedVideoChunk deinit(instance)
 destructor Exception deinit(instance)
 destructor EyeDropper deinit(instance)
 destructor FaceDetector deinit(instance)
-destructor FederatedCredential deinit(instance)
 destructor FencedFrameConfig deinit(instance)
-destructor FileReader FileReader.deinit(instance)
-destructor FileReaderSync deinit(instance)
 destructor FragmentResult deinit(instance)
 destructor GPUInternalError deinit(instance)
 destructor GPUOutOfMemoryError deinit(instance)
@@ -70,7 +62,6 @@ destructor GroupEffect deinit(instance)
 destructor Gyroscope deinit(instance)
 destructor HandwritingStroke deinit(instance)
 destructor IIRFilterNode deinit(instance)
-destructor IdentityCredentialError deinit(instance)
 destructor IdleDetector deinit(instance)
 destructor ImageCapture deinit(instance)
 destructor ImageDecoder deinit(instance)
@@ -91,9 +82,6 @@ destructor MediaStreamTrackAudioSourceNode deinit(instance)
 destructor MediaStreamTrackHandle MediaStreamTrackHandle.deinit(instance)
 destructor MediaStreamTrackProcessor deinit(instance)
 destructor Memory deinit(instance)
-destructor MessageChannel MessagePortInterface.deinit(port1_instance)
-destructor MessageChannel MessagePortInterface.deinit(port2_instance)
-destructor MessageChannel deinit(instance)
 destructor Module deinit(instance)
 destructor NDEFMessage deinit(instance)
 destructor NDEFReader deinit(instance)
@@ -102,14 +90,10 @@ destructor Observable deinit(instance)
 destructor OfflineAudioContext deinit(instance)
 destructor OffscreenCanvas OffscreenCanvas.deinit(instance)
 destructor OscillatorNode deinit(instance)
-destructor OverconstrainedError deinit(instance)
 destructor PannerNode deinit(instance)
-destructor PasswordCredential deinit(instance)
 destructor Path2D deinit(instance)
-destructor PaymentRequest deinit(instance)
 destructor PeriodicWave deinit(instance)
 destructor PointerTimeline deinit(instance)
-destructor PresentationRequest deinit(instance)
 destructor PressureObserver deinit(instance)
 destructor Profiler deinit(instance)
 destructor ProximitySensor deinit(instance)
@@ -142,9 +126,7 @@ destructor SpeechSynthesisUtterance deinit(instance)
 destructor StereoPannerNode deinit(instance)
 destructor Table deinit(instance)
 destructor Tag deinit(instance)
-destructor TaskController deinit(instance)
 destructor TextDetector deinit(instance)
-destructor TextEncoder deinit(instance)
 destructor USBAlternateInterface deinit(instance)
 destructor USBConfiguration deinit(instance)
 destructor USBEndpoint deinit(instance)
@@ -163,10 +145,7 @@ destructor VideoFrame deinit(instance)
 destructor VideoTrackGenerator deinit(instance)
 destructor ViewTimeline deinit(instance)
 destructor WaveShaperNode deinit(instance)
-destructor WebTransport deinit(instance)
-destructor WebTransportError deinit(instance)
 destructor WorkletAnimation deinit(instance)
-destructor XMLHttpRequest XMLHttpRequest.deinit(instance)
 destructor XRGPUBinding XRGPUBinding.deinit(instance)
 destructor XRMediaBinding deinit(instance)
 destructor XRRay deinit(instance)
@@ -189,13 +168,10 @@ factory AudioWorkletNode
 factory AudioWorkletProcessor
 factory BarcodeDetector
 factory BiquadFilterNode
-factory Blob
 factory BluetoothDataFilter
 factory BluetoothLEScanFilter
 factory BluetoothManufacturerDataFilter
 factory BluetoothServiceDataFilter
-factory BroadcastChannel
-factory ByteLengthQueuingStrategy
 factory CSSColor
 factory CSSHSL
 factory CSSHWB
@@ -230,16 +206,12 @@ factory CSSTranslate
 factory CSSUnitValue
 factory CSSUnparsedValue
 factory CSSVariableReferenceValue
-factory CaptureController
 factory ChannelMergerNode
 factory ChannelSplitterNode
 factory ClipboardEvent
-factory ClipboardItem
 factory Comment
-factory CompressionStream
 factory ConstantSourceNode
 factory ConvolverNode
-factory CountQueuingStrategy
 factory DOMMatrix
 factory DOMMatrixReadOnly
 factory DOMPoint
@@ -248,7 +220,6 @@ factory DOMQuad
 factory DOMRect
 factory DOMRectReadOnly
 factory DataCue
-factory DecompressionStream
 factory DelayNode
 factory Document
 factory DocumentFragment
@@ -257,15 +228,10 @@ factory DragEvent
 factory DynamicsCompressorNode
 factory EncodedAudioChunk
 factory EncodedVideoChunk
-factory EventSource
 factory Exception
 factory EyeDropper
 factory FaceDetector
-factory FederatedCredential
 factory FencedFrameConfig
-factory File
-factory FileReader
-factory FileReaderSync
 factory FontFace
 factory FormData
 factory FragmentResult
@@ -280,9 +246,7 @@ factory GravitySensor
 factory GroupEffect
 factory Gyroscope
 factory HandwritingStroke
-factory Headers
 factory IIRFilterNode
-factory IdentityCredentialError
 factory IdleDetector
 factory ImageCapture
 factory ImageData
@@ -306,34 +270,24 @@ factory MediaStreamTrackAudioSourceNode
 factory MediaStreamTrackHandle
 factory MediaStreamTrackProcessor
 factory Memory
-factory MessageChannel
 factory MessageEvent
 factory Module
 factory MouseEvent
 factory NDEFMessage
 factory NDEFReader
 factory NDEFRecord
-factory Notification
 factory Observable
 factory OfflineAudioContext
 factory OffscreenCanvas
-factory Origin
 factory OscillatorNode
-factory OverconstrainedError
 factory PannerNode
-factory PasswordCredential
 factory Path2D
-factory PaymentRequest
-factory PerformanceMark
-factory PerformanceObserver
 factory PeriodicWave
 factory PointerTimeline
-factory PresentationRequest
 factory PressureObserver
 factory ProcessingInstruction
 factory Profiler
 factory ProximitySensor
-factory QuotaExceededError
 factory RTCEncodedAudioFrame
 factory RTCEncodedVideoFrame
 factory RTCError
@@ -354,14 +308,11 @@ factory ReadableStreamBYOBReader
 factory ReadableStreamDefaultReader
 factory RelativeOrientationSensor
 factory RemoteDocument
-factory Request
-factory Response
 factory SFrameDecryptorStream
 factory SFrameEncryptorStream
 factory ScrollTimeline
 factory SequenceEffect
 factory ShadowAnimation
-factory SharedWorker
 factory SpeechGrammarList
 factory SpeechRecognition
 factory SpeechRecognitionPhrase
@@ -369,17 +320,9 @@ factory SpeechSynthesisUtterance
 factory StereoPannerNode
 factory Table
 factory Tag
-factory TaskController
 factory Text
-factory TextDecoder
-factory TextDecoderStream
 factory TextDetector
-factory TextEncoder
-factory TextEncoderStream
 factory TransformStream
-factory URL
-factory URLPattern
-factory URLSearchParams
 factory USBAlternateInterface
 factory USBConfiguration
 factory USBEndpoint
@@ -400,14 +343,9 @@ factory VideoFrame
 factory VideoTrackGenerator
 factory ViewTimeline
 factory WaveShaperNode
-factory WebSocket
-factory WebTransport
-factory WebTransportError
-factory Worker
 factory WorkletAnimation
 factory WritableStream
 factory WritableStreamDefaultWriter
-factory XMLHttpRequest
 factory XRGPUBinding
 factory XRMediaBinding
 factory XRRay

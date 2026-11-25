@@ -165,7 +165,10 @@ fn initWithEnd(
 ) !*runtime.Instance {
     // A MessagePort is an EventTarget: `message` is fired at it and heard.
     const instance = try interfaces.EventTarget.initWithState(allocator, StateType, vtable, ctx);
-    errdefer interfaces.EventTarget.deinit(instance);
+    errdefer {
+        interfaces.EventTarget.deinit(instance);
+        runtime.gc.releaseStorage(instance);
+    }
 
     const internal_state = try allocator.create(InternalState);
     internal_state.* = .{

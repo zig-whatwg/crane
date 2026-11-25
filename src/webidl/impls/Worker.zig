@@ -258,19 +258,13 @@ fn relevantWindow(instance: *runtime.Instance) ?*runtime.Instance {
 /// Constructor: new Worker(scriptURL, options)
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/workers.html#dom-worker
-pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptURLOrUSVString, options: webidl.Opt(dictionaries.WorkerOptions)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, scriptURL: typedefs.TrustedScriptURLOrUSVString, options: webidl.Opt(dictionaries.WorkerOptions)) !void {
+    const ctx = instance.ctx;
     // 1. "Let compliantScriptURL be the result of invoking the get trusted
     // type compliant string algorithm with TrustedScriptURL, this's relevant
     // global object, scriptURL, "Worker constructor", and "script"."
     const compliant_script_url = try dom.trusted_types.compliantStringForRealm(ctx.allocator, .script_url, ctx, scriptURL, "Worker constructor");
     defer ctx.allocator.free(compliant_script_url);
-
-    const instance = try init(ctx.allocator, State, &Worker.vtable, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step frees it whole. Its own deinit is its destructor, not a
-    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    errdefer runtime.gc.releaseOwned(instance);
 
     // The WorkerOptions dictionary: type ("classic" or "module"),
     // credentials (for a module worker's fetches) and name.
@@ -435,7 +429,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         // through a relay to this realm's global.
         const sink = ctx.task_sink orelse {
             queueStartFailure(instance);
-            return instance;
+            return;
         };
         start.csp_relay = try worker_host.CspRelay.create(ctx.allocator, sink, owner_worker);
         fetch_options.csp_violation_reporter = start.csp_relay.?.reporter();
@@ -443,7 +437,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         start.request = workers.script_fetch.workerScriptRequest(ctx.allocator, worker_url, fetch_options) catch |err| {
             log.debug("the worker's script request could not be made: {}", .{err});
             queueStartFailure(instance);
-            return instance;
+            return;
         };
     } else {
         fetched = workers.fetchWorkerScript(ctx.allocator, worker_url, fetch_options) catch |err| {
@@ -452,7 +446,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
             // fired at the worker, once, and nothing runs.
             log.debug("worker script fetch failed: {}", .{err});
             queueStartFailure(instance);
-            return instance;
+            return;
         };
         start.source = fetched.?.source;
         start.script_url = fetched.?.final_url;
@@ -465,19 +459,18 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         start.policy_container = worker_host.workerPolicyContainer(ctx.allocator, &fetched.?, ctx) catch |err| {
             log.debug("the worker's policy container could not be made: {}", .{err});
             queueStartFailure(instance);
-            return instance;
+            return;
         };
     }
     internal.link = worker_host.startDedicatedWorker(ctx.allocator, &start) catch |err| {
         log.debug("the worker's thread did not start: {}", .{err});
         queueStartFailure(instance);
-        return instance;
+        return;
     };
     // The thread took the implicit port, the reserved client and the
     // request with its relay.
     inside_end = start.inside_end;
     reserved_client = start.service_worker_client;
-    return instance;
 }
 
 // Event handler IDL attributes (HTML § 8.1.8.1): their values live in
