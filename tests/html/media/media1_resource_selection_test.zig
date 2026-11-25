@@ -100,12 +100,19 @@ test "media1: removing a playing media element pauses at stable state without in
         \\document.body.appendChild(v);
         \\globalThis.events = [];
         \\globalThis.rejected = null;
-        \\v.onpause = () => globalThis.events.push('pause');
+        \\v.onpause = () => {
+        \\  globalThis.events.push('pause');
+        \\  if (globalThis.rejected !== null) globalThis.pending = false;
+        \\};
         \\v.ontimeupdate = () => globalThis.events.push('timeupdate');
-        \\globalThis.p = v.play().catch(e => { globalThis.rejected = e.name; });
+        \\globalThis.p = v.play().catch(e => {
+        \\  globalThis.rejected = e.name;
+        \\  if (globalThis.events.includes('pause')) globalThis.pending = false;
+        \\});
         ,
         \\if (v.networkState !== v.NETWORK_EMPTY) globalThis.failed = 'networkState before remove: ' + v.networkState;
         \\if (v.paused) globalThis.failed = 'should not be paused before remove';
+        \\globalThis.pending = true;
         \\v.parentNode.removeChild(v);
         \\if (v.paused) globalThis.failed = 'should not be paused synchronously after remove';
         \\if (v.networkState !== v.NETWORK_EMPTY) globalThis.failed = 'networkState after remove: ' + v.networkState;
@@ -123,11 +130,13 @@ test "media1: moving a media element within the document does not cancel its loa
         \\globalThis.v = document.createElement('video');
         \\document.body.appendChild(v);
         \\globalThis.errorCount = 0;
+        \\globalThis.pending = true;
         \\v.src = 'data:,';
         \\document.body.appendChild(v); // move within document must not cancel load
         \\v.onerror = () => {
         \\  globalThis.errorCount++;
         \\  if (globalThis.errorCount === 1) document.body.removeChild(v);
+        \\  globalThis.pending = false;
         \\};
         ,
         \\if (globalThis.errorCount !== 1) globalThis.failed = 'errorCount: ' + globalThis.errorCount;
@@ -144,8 +153,12 @@ test "media1: removing or moving the active candidate source suppresses its erro
         \\s2.src = 'data:,';
         \\globalThis.s1Errors = 0;
         \\globalThis.s2Errors = 0;
+        \\globalThis.pending = true;
         \\s1.addEventListener('error', () => { globalThis.s1Errors++; });
-        \\s2.addEventListener('error', () => { globalThis.s2Errors++; });
+        \\s2.addEventListener('error', () => {
+        \\  globalThis.s2Errors++;
+        \\  globalThis.pending = false;
+        \\});
         \\v.appendChild(s1);
         \\v.appendChild(s2);
         \\// Wait until s1 is selected (loadstart fires right as s1 fetch starts), then remove s1.
@@ -164,13 +177,19 @@ test "media1: moveBefore of a source within a waiting media element reconsiders 
         \\globalThis.v = document.createElement('video');
         \\globalThis.a = document.createElement('source');
         \\globalThis.b = document.createElement('source');
+        \\globalThis.pending = true;
+        \\b.onerror = () => { globalThis.pending = false; };
         \\v.appendChild(a);
         \\v.appendChild(b);
         \\document.body.appendChild(v);
         ,
         \\if (v.networkState !== v.NETWORK_NO_SOURCE) globalThis.failed = 'networkState before move: ' + v.networkState;
         \\globalThis.aErrors = 0;
-        \\a.onerror = () => { globalThis.aErrors++; };
+        \\globalThis.pending = true;
+        \\a.onerror = () => {
+        \\  globalThis.aErrors++;
+        \\  globalThis.pending = false;
+        \\};
         \\v.moveBefore(a, null);
         ,
         \\if (globalThis.aErrors !== 1) globalThis.failed = 'aErrors after moveBefore: ' + globalThis.aErrors;
@@ -188,6 +207,7 @@ test "media1: MediaSource.isTypeSupported returns false and empty src sets error
         \\document.body.appendChild(audio);
         \\globalThis.events = [];
         \\globalThis.errorAtVolumeChange = undefined;
+        \\globalThis.pending = true;
         \\audio.src = '';
         \\if (audio.error !== null) globalThis.failed = 'initial error should be null';
         \\audio.volume = 0;
@@ -196,6 +216,8 @@ test "media1: MediaSource.isTypeSupported returns false and empty src sets error
         \\  if (globalThis.events.length === 1) {
         \\    globalThis.errorAtVolumeChange = audio.error ? audio.error.code : null;
         \\    audio.volume = 1;
+        \\  } else {
+        \\    globalThis.pending = false;
         \\  }
         \\};
         \\audio.onloadstart = () => globalThis.events.push('loadstart');
@@ -221,7 +243,11 @@ test "media1: setting track.src to the same URL keeps cues; changing it clears c
         \\v.appendChild(trackEl);
         \\document.body.appendChild(v);
         \\globalThis.loads = 0;
-        \\trackEl.onload = () => { globalThis.loads++; };
+        \\globalThis.pending = true;
+        \\trackEl.onload = () => {
+        \\  globalThis.loads++;
+        \\  globalThis.pending = false;
+        \\};
         ,
         \\if (globalThis.loads !== 1) globalThis.failed = 'initial load count: ' + globalThis.loads;
         \\if (trackEl.track.cues.length !== 1) globalThis.failed = 'initial cue count: ' + trackEl.track.cues.length;
@@ -232,6 +258,7 @@ test "media1: setting track.src to the same URL keeps cues; changing it clears c
         \\if (globalThis.loads !== 1) globalThis.failed = 'load count after same-URL set: ' + globalThis.loads;
         \\if (trackEl.track.cues.length !== 1) globalThis.failed = 'cues after same-URL settle: ' + trackEl.track.cues.length;
         \\// Setting src to a different URL immediately empties cues.
+        \\globalThis.pending = true;
         \\trackEl.src = 'data:text/vtt,WEBVTT%0A%0A00:00:00.000%20--%3E%2000:00:02.000%0Abye';
         \\if (trackEl.track.cues.length !== 0) globalThis.failed = 'cues after different-URL set: ' + trackEl.track.cues.length;
         ,
