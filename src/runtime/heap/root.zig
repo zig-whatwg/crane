@@ -625,7 +625,18 @@ pub const AgentCache = struct {
     /// The agent's thread: the one whose calls take the cache unlocked. 0
     /// once detached.
     owner: std.atomic.Value(std.Thread.Id),
-    stacks: [2][cache_class_count]Stack = @splat(@splat(.{})),
+    /// Hot read-only geometry cached from `engine` + `engine.heap` so
+    /// `cacheAlloc` and `cacheFree` never chase `cache -> engine -> heap` on
+    /// the fast path (M4).
+    window_base: usize = 0,
+    reserved_base: usize = 0,
+    reserved_size: usize = 0,
+    bitmaps_base: usize = 0,
+    span_table_base: usize = 0,
+    part_lo: [2]usize = .{ 0, 0 },
+    part_size: [2]usize = .{ 0, 0 },
+    poison: bool = false,
+    record_sites: bool = false,
     /// Owner-thread shadow of `held`: mutated without atomic RMW and mirrored
     /// to `held` via plain monotonic stores for `Engine.stats()` (M4).
     held_local: [2]usize = .{ 0, 0 },
@@ -635,12 +646,11 @@ pub const AgentCache = struct {
     /// Owner-thread cached partition frontiers (objects, bytes): avoids an
     /// `.acquire` load of `p.frontier` on 99.999% of `cacheFree` calls (M4).
     seen_frontier: [2]usize = .{ 0, 0 },
+    /// Per-class stack counts (48 bytes total, 1 cache line) and power-of-2
+    /// stride offset arrays (32 bytes per class, zero multiply to index: M4).
+    counts: [2][cache_class_count]u8 = @splat(@splat(0)),
+    slots: [2][cache_class_count][cache_depth]u32 = undefined,
     next: ?*AgentCache = null,
-
-    pub const Stack = struct {
-        count: u16 = 0,
-        at: [cache_depth]u32 = undefined,
-    };
 
     /// The agent's general allocator: this cache on its thread, the shared
     /// path elsewhere.
@@ -1449,7 +1459,19 @@ pub const Engine = struct {
             const id = try self.poolAlloc(&self.objects, @sizeOf(AgentCache));
             break :made @ptrFromInt(self.heap.window_base + self.objects.pool_base + @as(usize, id) * @sizeOf(Chunk));
         };
-        cache.* = .{ .engine = self, .owner = .init(std.Thread.getCurrentId()) };
+        cache.* = .{
+            .engine = self,
+            .owner = .init(std.Thread.getCurrentId()),
+            .window_base = self.heap.window_base,
+            .reserved_base = self.heap.reserved.base,
+            .reserved_size = self.heap.reserved.size,
+            .bitmaps_base = self.heap.at(layout.bitmaps.offset),
+            .span_table_base = self.heap.at(layout.span_table.offset),
+            .part_lo = .{ self.objects.lo, self.bytes.lo },
+            .part_size = .{ self.objects.hi - self.objects.lo, self.bytes.hi - self.bytes.lo },
+            .poison = self.config.fill == .poison,
+            .record_sites = self.config.record_sites,
+        };
         cache.next = self.caches;
         self.caches = cache;
         return cache;
@@ -1505,10 +1527,11 @@ pub const Engine = struct {
             const p = self.partition(pid);
             std.Io.Threaded.mutexLockUncancelable(&p.mutex);
             defer std.Io.Threaded.mutexUnlock(&p.mutex);
-            for (&cache.stacks[pi], 0..) |*stack, class| {
-                if (stack.count == 0) continue;
-                self.giveBack(p, generalBucket(pid, class, 0), stack.at[0..stack.count]);
-                stack.count = 0;
+            for (0..cache_class_count) |class| {
+                const count = cache.counts[pi][class];
+                if (count == 0) continue;
+                self.giveBack(p, generalBucket(pid, class, 0), cache.slots[pi][class][0..count]);
+                cache.counts[pi][class] = 0;
             }
             cache.held_local[pi] = 0;
             cache.held[pi].store(0, .monotonic);
@@ -1529,110 +1552,139 @@ pub const Engine = struct {
         }
     }
 
-    /// A general class block from `cache`, on its agent's thread: the top of
-    /// its stack for the class, refilled from the spans under the lock when
-    /// empty. Classes past `cache_max_bytes`, large runs and huge blocks take
-    /// the shared path.
-    pub fn cacheAlloc(self: *Engine, cache: *AgentCache, pid: PartitionId, size: usize, alignment: std.mem.Alignment, return_address: usize) Error![*]u8 {
-        const class = generalClassOfAlign(size, alignment) orelse
+    /// A general class block from `cache`, on its agent's thread: comptime
+    /// specialized by partition so the hot `.bytes` path uses constant cache
+    /// offsets and drops all `.objects` verify/quarantine checks (M4).
+    pub inline fn cacheAlloc(self: *Engine, cache: *AgentCache, comptime pid: PartitionId, size: usize, alignment: std.mem.Alignment, return_address: usize) Error![*]u8 {
+        const pi = comptime cacheIndex(pid);
+        const class = generalClassOfAlign(size, alignment) orelse {
+            @branchHint(.cold);
             return self.allocGeneral(pid, size, alignment.toByteUnits(), return_address);
-        if (class >= cache_class_count)
+        };
+        if (class >= cache_class_count) {
+            @branchHint(.cold);
             return self.allocGeneral(pid, size, alignment.toByteUnits(), return_address);
-        const pi = cacheIndex(pid);
-        const stack = &cache.stacks[pi][class];
-        if (stack.count == 0) try self.refill(cache, pid, class);
-        stack.count -= 1;
-        const offset = @as(usize, stack.at[stack.count]) * 16;
+        }
+        var count = cache.counts[pi][class];
+        if (count == 0) {
+            @branchHint(.cold);
+            try self.refill(cache, pid, class);
+            count = cache.counts[pi][class];
+        }
+        count -= 1;
+        cache.counts[pi][class] = count;
+        const offset = @as(usize, cache.slots[pi][class][count]) * 16;
         cache.held_local[pi] -= 1;
         cache.held[pi].store(cache.held_local[pi], .monotonic);
         const index = offset / span_bytes;
         const within = offset & (span_bytes - 1);
         const slot = ((within >> 4) * general_slot_div[class].magic) >> 20;
-        if (!slotClaimCached(self.slotMap(index), slot)) @panic("heap: a cached block left its cache's state (allocator-hardening design 3.3)");
-        const block: [*]u8 = @ptrFromInt(self.heap.window_base + offset);
-        if (pid != .bytes or self.config.fill == .poison) self.verifyFreed(block[0..size], false);
-        if (self.config.record_sites) {
-            const e = self.entry(index);
+        const map: *[map_words]u64 = @ptrFromInt(cache.bitmaps_base + index * (map_words * 8));
+        if (!slotClaimCached(map, slot)) {
+            @branchHint(.cold);
+            @panic("heap: a cached block left its cache's state (allocator-hardening design 3.3)");
+        }
+        const block: [*]u8 = @ptrFromInt(cache.window_base + offset);
+        if (pid != .bytes or cache.poison) self.verifyFreed(block[0..size], false);
+        if (cache.record_sites) {
+            @branchHint(.cold);
+            const e: *SpanEntry = @ptrFromInt(cache.span_table_base + index * @sizeOf(SpanEntry));
             if (e.sites != 0) {
                 const p = self.partition(pid);
-                const sites: [*]usize = @ptrFromInt(self.heap.window_base + p.pool_base + (@as(usize, e.sites) - 1) * @sizeOf(Chunk));
+                const sites: [*]usize = @ptrFromInt(cache.window_base + p.pool_base + (@as(usize, e.sites) - 1) * @sizeOf(Chunk));
                 sites[slot] = return_address | site_return_tag | site_general_tag;
             }
         }
         return block;
     }
 
-    /// Free a general block through `cache`, on its agent's thread:
-    /// validated as `freeGeneral` validates (its partition, a block's start,
-    /// its class, allocated - the last in one atomic step), filled, and onto
-    /// the cache's stack, half of which goes back to the spans when it is
-    /// full. An objects block freed while the window agent runs a task here
-    /// goes directly to `freeIn` under the objects lock (no duplicate checks
-    /// or `getCurrentId` calls); classes past `cache_max_bytes`, large runs
-    /// and huge blocks take the shared path.
-    pub fn cacheFree(self: *Engine, cache: *AgentCache, ptr: [*]u8, size: usize, alignment: std.mem.Alignment, thread: std.Thread.Id) void {
-        const class = generalClassOfAlign(size, alignment) orelse
+    /// Free a general block through `cache`, on its agent's thread: comptime
+    /// specialized by the alignment's expected partition so the hot `.bytes`
+    /// path skips all `.objects` quarantine/fill checks and uses constant
+    /// offsets on `cache` (M4). Cross-partition invalid frees fall back to
+    /// `freeGeneral` for full diagnostics.
+    pub inline fn cacheFree(self: *Engine, cache: *AgentCache, comptime expected: PartitionId, ptr: [*]u8, size: usize, alignment: std.mem.Alignment, thread: std.Thread.Id) void {
+        const pi = comptime cacheIndex(expected);
+        const class = generalClassOfAlign(size, alignment) orelse {
+            @branchHint(.cold);
             return self.freeGeneral(ptr, size, alignment.toByteUnits());
-        if (class >= cache_class_count)
+        };
+        if (class >= cache_class_count) {
+            @branchHint(.cold);
             return self.freeGeneral(ptr, size, alignment.toByteUnits());
+        }
         const address = @intFromPtr(ptr);
-        const offset = self.offsetOf(address) orelse return self.violation(.other_heap, address);
-        // Fast path: check the alignment's expected partition first (one
-        // unsigned range test); fall back to full partition lookup on mismatch
-        // so cross-partition invalid frees still get exact diagnostics.
-        const expected = general.partitionFor(alignment);
-        const ep = self.partition(expected);
-        const pid: PartitionId = if (offset -% ep.lo < ep.hi - ep.lo)
-            expected
-        else
-            self.partitionOfOffset(offset) orelse return self.violation(.invalid_free, address);
-        if (pid == .node) return self.violation(.invalid_free, address);
-        const want = generalBucket(pid, class, 0);
-        if (pid == .objects and self.holds(thread)) {
+        if (address -% cache.reserved_base >= cache.reserved_size) {
+            @branchHint(.cold);
+            return self.violation(.other_heap, address);
+        }
+        const offset = address - cache.window_base;
+        if (offset -% cache.part_lo[pi] >= cache.part_size[pi]) {
+            @branchHint(.cold);
+            return self.freeGeneral(ptr, size, alignment.toByteUnits());
+        }
+        const want = generalBucket(expected, class, 0);
+        if (expected == .objects and self.holds(thread)) {
             std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
             self.freeIn(&self.objects, offset, want, false, size, thread);
             return;
         }
-        const p = self.partition(pid);
-        const pi = cacheIndex(pid);
         if (offset >= cache.seen_frontier[pi]) {
+            @branchHint(.cold);
+            const p = self.partition(expected);
             const f = @atomicLoad(usize, &p.frontier, .acquire);
             cache.seen_frontier[pi] = f;
             if (offset >= f) return self.violation(.invalid_free, address);
         }
         const index = offset / span_bytes;
-        const e = self.entry(index);
-        if (e.state != .active) {
-            return self.violation(if (e.state == .unopened or e.state == .run_tail) .invalid_free else .double_free, address);
-        }
-        if (e.bucket != want) {
+        const e: *SpanEntry = @ptrFromInt(cache.span_table_base + index * @sizeOf(SpanEntry));
+        if (e.state != .active or e.bucket != want) {
             @branchHint(.cold);
-            return self.violation(if (e.bucket >= self.buckets(pid).len or self.buckets(pid)[e.bucket].kind == .instance) .invalid_free else .wrong_size, address);
+            if (e.state != .active) {
+                return self.violation(if (e.state == .unopened or e.state == .run_tail) .invalid_free else .double_free, address);
+            }
+            return self.violation(if (e.bucket >= self.buckets(expected).len or self.buckets(expected)[e.bucket].kind == .instance) .invalid_free else .wrong_size, address);
         }
         const div = general_slot_div[class];
         const within = offset & (span_bytes - 1);
         const slot = ((within >> 4) * div.magic) >> 20;
-        if (slot * div.block_bytes != within) return self.violation(.invalid_free, address);
-        if (!slotSwap(self.slotMap(index), slot, .allocated, .cached)) return self.violation(.double_free, address);
-        if (pid != .bytes or self.config.fill == .poison) @memset(ptr[0..div.block_bytes], self.config.fillByte());
-        const stack = &cache.stacks[pi][class];
-        if (stack.count == cache_depth) {
-            // Full: the older half goes back to its spans.
-            const half = cache_depth / 2;
-            {
-                std.Io.Threaded.mutexLockUncancelable(&p.mutex);
-                defer std.Io.Threaded.mutexUnlock(&p.mutex);
-                self.giveBack(p, want, stack.at[0..half]);
-            }
-            std.mem.copyForwards(u32, stack.at[0 .. cache_depth - half], stack.at[half..cache_depth]);
-            stack.count = cache_depth - half;
-            cache.held_local[pi] -= half;
+        if (slot * div.block_bytes != within) {
+            @branchHint(.cold);
+            return self.violation(.invalid_free, address);
         }
-        stack.at[stack.count] = @intCast(offset / 16);
-        stack.count += 1;
+        const map: *[map_words]u64 = @ptrFromInt(cache.bitmaps_base + index * (map_words * 8));
+        if (!slotSwap(map, slot, .allocated, .cached)) {
+            @branchHint(.cold);
+            return self.violation(.double_free, address);
+        }
+        if (expected != .bytes or cache.poison) @memset(ptr[0..div.block_bytes], self.config.fillByte());
+        var count = cache.counts[pi][class];
+        if (count == cache_depth) {
+            @branchHint(.cold);
+            self.spillCache(cache, expected, want, class);
+            count = cache.counts[pi][class];
+        }
+        cache.slots[pi][class][count] = @intCast(offset / 16);
+        cache.counts[pi][class] = count + 1;
         cache.held_local[pi] += 1;
         cache.held[pi].store(cache.held_local[pi], .monotonic);
+    }
+
+    fn spillCache(self: *Engine, cache: *AgentCache, pid: PartitionId, want: u16, class: usize) void {
+        @branchHint(.cold);
+        const p = self.partition(pid);
+        const pi = cacheIndex(pid);
+        const half = cache_depth / 2;
+        const arr = &cache.slots[pi][class];
+        {
+            std.Io.Threaded.mutexLockUncancelable(&p.mutex);
+            defer std.Io.Threaded.mutexUnlock(&p.mutex);
+            self.giveBack(p, want, arr[0..half]);
+        }
+        std.mem.copyForwards(u32, arr[0 .. cache_depth - half], arr[half..cache_depth]);
+        cache.counts[pi][class] = cache_depth - half;
+        cache.held_local[pi] -= half;
     }
 
     /// Fill `cache`'s stack for `class` of `pid` with up to `want` blocks
@@ -1646,7 +1698,7 @@ pub const Engine = struct {
         const bi = generalBucket(pid, class, 0);
         const b = &self.buckets(pid)[bi];
         const pi = cacheIndex(pid);
-        const stack = &cache.stacks[pi][class];
+        const arr = &cache.slots[pi][class];
         const want: usize = @min(cache_depth / 2, @max(@as(usize, 1), 1024 / general_slot_div[class].block_bytes));
         std.Io.Threaded.mutexLockUncancelable(&p.mutex);
         defer std.Io.Threaded.mutexUnlock(&p.mutex);
@@ -1659,8 +1711,8 @@ pub const Engine = struct {
             got[n] = @intCast(offset / 16);
         }
         // Lowest address on top: the stack pops from the end.
-        for (0..n) |i| stack.at[i] = got[n - 1 - i];
-        stack.count = @intCast(n);
+        for (0..n) |i| arr[i] = got[n - 1 - i];
+        cache.counts[pi][class] = @intCast(n);
         cache.held_local[pi] += n;
         cache.held[pi].store(cache.held_local[pi], .monotonic);
         cache.seen_frontier[pi] = p.frontier;
