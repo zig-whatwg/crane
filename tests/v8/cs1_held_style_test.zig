@@ -171,10 +171,10 @@ test "a control's style read first is still readable after a dynamic state chang
 }
 
 fn ancestorStateChangeReplacesCache() !void {
-    const page = try Page.open("<style>:checked { outline: 1px solid }</style><select id=s style='color: rgb(4, 5, 6)'><option id=o>x</option></select>");
+    const page = try Page.open("<style>:checked { outline: 1px solid }</style><select id=s style='color: rgb(4, 5, 6)'><option id=o1>x</option><option id=o2>y</option></select>");
     defer page.close();
     const select = try page.byId("s");
-    const option = try page.byId("o");
+    const option = try page.byId("o2");
     const first = (try dom.style.computedStyle(select, null)) orelse return error.NoStyle;
     defer first.release();
     try testing.expect(!isVolatile(select));
