@@ -185,8 +185,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     // service workers and workers (lane hard1 is in ExtendableMessageEvent)
     // url
     // websocket and xhr
-    .{ "WebSocket", "constructor", "protocols" },
-    .{ "WebSocket", "send", "data" },
 };
 
 /// Whether position (`member`, `position`) of `owner` - or of a mixin

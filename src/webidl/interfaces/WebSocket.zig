@@ -11,13 +11,13 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
+const BufferSourceOrBlobOrUSVString = @import("typedefs").BufferSourceOrBlobOrUSVString;
+const DOMStringOrSequenceOfDOMString = @import("typedefs").DOMStringOrSequenceOfDOMString;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const Blob = @import("interfaces").Blob;
 const USVString = @import("typedefs").USVString;
 const BinaryType = @import("enums").BinaryType;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
-const BufferSource = @import("typedefs").BufferSource;
 const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
 const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
@@ -263,7 +263,7 @@ pub const WebSocket = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(DOMStringOrSequenceOfDOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try WebSocketImpl.call_constructor(ctx, url, protocols);
     }
@@ -338,7 +338,7 @@ pub const WebSocket = struct {
         try WebSocketImpl.set_binaryType(instance, value);
     }
 
-    pub fn call_send(instance: *runtime.Instance, data: runtime.JSValue) anyerror!void {
+    pub fn call_send(instance: *runtime.Instance, data: BufferSourceOrBlobOrUSVString) anyerror!void {
         return try WebSocketImpl.call_send(instance, data);
     }
 
