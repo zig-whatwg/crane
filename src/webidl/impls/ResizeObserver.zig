@@ -520,7 +520,9 @@ const Padding = struct { top: f64 = 0, right: f64 = 0, bottom: f64 = 0, left: f6
 /// knows - it reads as 0 here until the protocol gives the content box.
 fn paddingOf(target: *runtime.Instance) Padding {
     var padding: Padding = .{};
-    const style = (dom.style.engine.computedStyle(target, null) catch return padding) orelse return padding;
+    const style_hold = (dom.style.engine.computedStyle(target, null) catch return padding) orelse return padding;
+    defer style_hold.release();
+    const style = style_hold.style;
     const allocator = target.ctx.allocator;
     var text: std.ArrayList(u8) = .empty;
     defer text.deinit(allocator);
@@ -537,7 +539,9 @@ fn paddingOf(target: *runtime.Instance) Padding {
 /// Whether the target's writing mode is vertical: its inline axis is the
 /// vertical one.
 fn isVertical(target: *runtime.Instance) bool {
-    const style = (dom.style.engine.computedStyle(target, null) catch return false) orelse return false;
+    const style_hold = (dom.style.engine.computedStyle(target, null) catch return false) orelse return false;
+    defer style_hold.release();
+    const style = style_hold.style;
     return style.keyword(.writing_mode) != .horizontal_tb;
 }
 

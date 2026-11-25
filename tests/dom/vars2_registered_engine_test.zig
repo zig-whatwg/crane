@@ -50,8 +50,9 @@ const Page = struct {
 };
 
 fn expectCustom(element: *runtime.Instance, name: []const u8, expected: ?[]const u8) !void {
-    const style = (try dom.style.computedStyle(element, null)).?;
-    const got = style.customValue(name);
+    const held = (try dom.style.computedStyle(element, null)).?;
+    defer held.release();
+    const got = held.style.customValue(name);
     if (expected) |e| {
         if (got == null) {
             std.debug.print("{s}: expected \"{s}\", got the guaranteed-invalid value\n", .{ name, e });
@@ -99,8 +100,12 @@ test "CSS.registerProperty's registration restyles, and one snapshot serves ever
     try page.engine().registerProperty(page.document, .{ .allocator = allocator }, .{ .name = "--c", .syntax = "<color>", .inherits = true, .initial_value = "black" });
     try expectCustom(page.root, "--c", "rgb(255, 0, 0)");
     try expectCustom(body, "--c", "rgb(255, 0, 0)");
-    const root_style = (try dom.style.computedStyle(page.root, null)).?;
-    const body_style = (try dom.style.computedStyle(body, null)).?;
+    const root_hold = (try dom.style.computedStyle(page.root, null)).?;
+    defer root_hold.release();
+    const root_style = root_hold.style;
+    const body_hold = (try dom.style.computedStyle(body, null)).?;
+    defer body_hold.release();
+    const body_style = body_hold.style;
     try testing.expect(root_style.registered != null);
     try testing.expectEqual(root_style.registered.?, body_style.registered.?);
     try testing.expectEqual(page.engine().rare.?.registered.?, root_style.registered.?);

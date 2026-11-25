@@ -33,7 +33,9 @@ fn candidate(node: *Instance) Candidate {
         return if (editing.isWhitespaceNode(node) catch false) .absent else .editable;
     }
     if (kind != interfaces.Node.get_ELEMENT_NODE()) return .absent;
-    const style = (dom.style.computedStyle(node, null) catch null) orelse return .absent;
+    const style_hold = (dom.style.computedStyle(node, null) catch null) orelse return .absent;
+    defer style_hold.release();
+    const style = style_hold.style;
     const display = style.display();
     if (display.box == .none) return .absent;
     if (display.isBlockLevel() and !(editing.isEditableOrEditingHost(node) catch false)) return .noneditable_block;

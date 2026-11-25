@@ -270,7 +270,9 @@ fn ignoresChildren(element: *runtime.Instance) bool {
 
 fn rootParticipates(element: *runtime.Instance, node: *NodeBase) !bool {
     if (!try dom.style.hasComputedStyle(element)) return false;
-    const computed = (try dom.style.computedStyle(element, null)) orelse return false;
+    const computed_hold = (try dom.style.computedStyle(element, null)) orelse return false;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     const display = computed.display();
     if (display.box == .none) return false;
     // An audio element without controls has no rendered box, even when
@@ -287,7 +289,9 @@ fn rootParticipates(element: *runtime.Instance, node: *NodeBase) !bool {
         // For a contents root, validate the first ancestor that has its own
         // box; isBeingRendered checks the rest of the flat-tree lineage.
         if (display.box == .contents) {
-            const s = (try dom.style.computedStyle(e, null)) orelse return false;
+            const s_hold = (try dom.style.computedStyle(e, null)) orelse return false;
+            defer s_hold.release();
+            const s = s_hold.style;
             if (s.display().box != .contents and !try dom.style.isBeingRendered(e)) return false;
         }
         child = parent;
@@ -310,7 +314,9 @@ const Style = struct {
     selectable: bool,
 
     fn read(element: *runtime.Instance, comptime bounded: bool) !?Style {
-        const style = (try dom.style.computedStyle(element, null)) orelse return null;
+        const style_hold = (try dom.style.computedStyle(element, null)) orelse return null;
+        defer style_hold.release();
+        const style = style_hold.style;
         return .{
             .display = style.display(),
             .visible = style.keyword(.visibility) == .visible,

@@ -565,6 +565,9 @@ pub const EventLoop = struct {
         if (self.in_run_once) return false;
         self.in_run_once = true;
         defer self.in_run_once = false;
+        // Debug: no native frame holds a computed style across a turn
+        // (runtime.native_holds; lane cs1).
+        runtime.native_holds.assertNone(self.agent, "an event-loop turn");
 
         var did_work = false;
 

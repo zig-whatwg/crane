@@ -126,6 +126,7 @@ sufficient — see the regression protocol above.
 - **Never edit generated files** (`src/webidl/{interfaces,typedefs,dictionaries,callbacks,mixins,namespaces,enums}/`, the directories `codegen-check` compares): fix the codegen or the IDL and regenerate with `zig build codegen -- --dest-root src/webidl/`, one invocation over both sources (src/webidl/AGENTS.md, "WebIDL codegen").
 - **Engine:** V8 types and calls live only in `src/runtime/engines/v8/` and `tests/v8/`; everything else calls the `engine` protocol, and a new engine need is a new protocol operation, requested from the integrator; ownership is in the types - a `JSValue` parameter is borrowed, what the caller must release has an owning type (src/runtime/AGENTS.md, "The engine boundary").
 - **Platform:** no new OS access outside `src/platform/` (files, clocks, network, threads, process, getenv, randomness, curl, sqlite, mbedtls); everything platform-specific goes through the `platform` protocol (src/platform/AGENTS.md).
+- **Build:** build.zig names no engine, operating system or platform library: an engine's build needs live in its adapter's `engine_build.zig`, a platform's in its adapter's `platform_build.zig` and the kit's `kit_build.zig`, each behind its build protocol; an adapter's `-D` options exist only where it is the engine or answers for the target's OS; `zig build lint-build` (part of `zig build test`) fails on any such name (docs/platform-protocol.md 10.0).
 - **Global state:** no new `threadlocal` and no new container-level `var`; state has an owner - the process, a Browser, a Tab, an agent or a realm - and a hook is installed once, at process start; a reviewed exception carries its `// process-wide:` or `// per-thread:` line (src/AGENTS.md, "Global state").
 - **DOM lifetime:** an object that keeps a node for script holds it through `src/dom/node_holds.zig` or a traced edge, never a bare pointer; collected trees are freed in slices from the event loop, never inside the collector; no direct `.parent_node =` write outside NodeBase's setter (src/AGENTS.md).
 - **Memory:** `defer` at the allocation, `errdefer` on error paths; every `v8_*` call returning a pointer allocates and the caller owns it - prefer not acquiring it, and prove the callee does not retain it before disposing it; a "safe to dispose" gate is an allowlist whose default is the safe answer; `ArenaAllocator.free` is a no-op (src/AGENTS.md, "Memory").
@@ -159,6 +160,7 @@ because the end is where context runs out and sessions get interrupted.
   build lint-impls`, with no baseline, names it (both part of `zig build test`)
 - V8 outside the V8 adapter in **new** code - `zig build lint-engine` (part of
   `zig build test`) enforces it; see "The engine boundary"
+- An engine, operating-system or platform-library name in build.zig - `zig build lint-build` (part of `zig build test`) enforces it; see "Boundaries"
 - A new `threadlocal` or container-level `var` - `zig build lint-global-state`
   (part of `zig build test`) enforces it; see "Global state"
 - A `get_`/`set_`/`call_` name on a function the generated code does not bind -
