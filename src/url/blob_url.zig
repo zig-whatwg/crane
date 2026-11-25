@@ -47,7 +47,7 @@ pub const BlobURLEntry = struct {
     pub const Operations = struct {
         retain: *const fn (*anyopaque) void,
         release: *const fn (*anyopaque) void,
-        read: *const fn (*anyopaque, std.mem.Allocator) error{OutOfMemory}!Data,
+        read: *const fn (*anyopaque, std.mem.Allocator) error{ OutOfMemory, ReadFailed }!Data,
     };
 
     pub fn create(allocator: std.mem.Allocator, storage_key: []const u8, origin_nonce: ?u128, payload: *anyopaque, operations: Operations) error{OutOfMemory}!*BlobURLEntry {
@@ -83,7 +83,7 @@ pub const BlobURLEntry = struct {
 
     /// File API "obtain a blob object": authorize when obtaining bytes,
     /// not when parsing the URL. Capturing a URL grants no access by itself.
-    pub fn read(self: *const BlobURLEntry, allocator: std.mem.Allocator, access: Access) error{ OutOfMemory, WrongPartition }!Data {
+    pub fn read(self: *const BlobURLEntry, allocator: std.mem.Allocator, access: Access) error{ OutOfMemory, WrongPartition, ReadFailed }!Data {
         switch (access) {
             .environment => |key| {
                 if (!std.mem.eql(u8, key, self.storage_key)) return error.WrongPartition;
