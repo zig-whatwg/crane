@@ -221,8 +221,10 @@ pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
     return internal.height;
 }
 
-/// Getter for data: the same ImageDataArray every time. BORROWED - this
-/// ImageData keeps it.
+/// Getter for data: the same ImageDataArray every time. OWNED - returns a
+/// fresh retainValue hold that the caller (the binding, or a direct Zig caller)
+/// must release with engine.releaseValue; this ImageData keeps its own hold in
+/// `internal.data`.
 pub fn get_data(instance: *runtime.Instance) anyerror!typedefs.ImageDataArray {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const data = internal.data orelse return error.InvalidStateError;

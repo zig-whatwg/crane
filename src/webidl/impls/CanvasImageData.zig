@@ -89,7 +89,11 @@ pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32,
             };
         }
     }
-    const data = switch (try interfaces.ImageData.get_data(image_data)) {
+    const data_union = try interfaces.ImageData.get_data(image_data);
+    defer switch (data_union) {
+        .uint8clamped_array, .float16array => |array| engine.releaseValue(.{ .value = array }),
+    };
+    const data = switch (data_union) {
         .uint8clamped_array => |array| array,
         // An rgba-float16 ImageData cannot be made yet (ImageData.zig).
         .float16array => return error.NotSupportedError,
@@ -177,7 +181,11 @@ pub fn call_putImageData__1(instance: *runtime.Instance, imageData: *runtime.Ins
 fn putPixels(instance: *runtime.Instance, image_data: *runtime.Instance, dx: i32, dy: i32, given_dirty_x: i32, given_dirty_y: i32, given_dirty_width: i32, given_dirty_height: i32) anyerror!void {
     const bitmap = dom.image_sources.outputBitmap(instance) orelse return error.NotImplemented;
     const realm = engine.currentRealm() orelse instance.ctx;
-    const data = switch (try interfaces.ImageData.get_data(image_data)) {
+    const data_union = try interfaces.ImageData.get_data(image_data);
+    defer switch (data_union) {
+        .uint8clamped_array, .float16array => |array| engine.releaseValue(.{ .value = array }),
+    };
+    const data = switch (data_union) {
         .uint8clamped_array => |array| array,
         .float16array => return error.NotSupportedError,
     };
