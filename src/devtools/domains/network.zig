@@ -146,3 +146,46 @@ pub fn emulateNetworkConditionsByRule(session: *PageSession, params: N.emulateNe
     }
     return .{ .ruleIds = ids };
 }
+
+/// Chrome's NetworkHandler::SetExtraHTTPHeaders (network_handler.cc;
+/// reproduced, BSD - algorithm only): each value a string ("Invalid header
+/// value, string expected"), each name a token (net::HttpUtil::
+/// IsValidHeaderName: "Invalid header name"), each value free of NUL, CR
+/// and LF (IsValidHeaderValue: "Invalid header value"); then they replace
+/// the tab's extra headers - none clears them - which every request of its
+/// documents carries (fetch_job's start, before CORS; Blink's
+/// InspectorNetworkAgent::PrepareRequest).
+pub fn setExtraHTTPHeaders(session: *PageSession, params: N.setExtraHTTPHeaders.Params) !N.setExtraHTTPHeaders.Result {
+    const bc = frames.navigable(session, session.tab) orelse return session.fail("Target is not a page");
+    if (params.headers != .object) return session.failWithCode(.invalid_params, "Invalid parameters");
+    const arena = session.arena.?;
+    var list: std.ArrayList(host_overrides.ExtraHeader) = .empty;
+    var it = params.headers.object.iterator();
+    while (it.next()) |entry| {
+        const value = entry.value_ptr.*;
+        if (value != .string) return session.failWithCode(.invalid_params, "Invalid header value, string expected");
+        if (!validHeaderName(entry.key_ptr.*)) return session.failWithCode(.invalid_params, "Invalid header name");
+        if (!validHeaderValue(value.string)) return session.failWithCode(.invalid_params, "Invalid header value");
+        try list.append(arena, .{ .name = entry.key_ptr.*, .value = value.string });
+    }
+    try bc.host_overrides.setExtraHeaders(bc.allocator, @intFromPtr(session), list.items);
+    return .{};
+}
+
+const host_overrides = @import("html").window.host_overrides;
+
+/// net::HttpUtil::IsValidHeaderName: a non-empty RFC 7230 token.
+fn validHeaderName(name: []const u8) bool {
+    if (name.len == 0) return false;
+    for (name) |c| switch (c) {
+        '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~' => {},
+        else => if (!std.ascii.isAlphanumeric(c)) return false,
+    };
+    return true;
+}
+
+/// net::HttpUtil::IsValidHeaderValue: no NUL, CR or LF.
+fn validHeaderValue(value: []const u8) bool {
+    for (value) |c| if (c == 0 or c == '\r' or c == '\n') return false;
+    return true;
+}

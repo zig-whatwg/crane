@@ -30,7 +30,7 @@ fn read(client: *anyopaque) http_fetch.UserAgentOverride {
     if (std.mem.eql(u8, global.vtable.name, "Window")) {
         const bc = @import("dom").browser_state.browsingContextOf(global) orelse return .{};
         const overrides = &bc.getTop().host_overrides;
-        return .{ .user_agent = overrides.user_agent, .accept_language = overrides.accept_language };
+        return .{ .user_agent = overrides.user_agent, .accept_language = overrides.accept_language, .extra_headers = overrides.extra_headers };
     }
     const snapshot = worker_host.userAgentOverrideOfRealm(global.ctx) orelse return .{};
     return .{ .user_agent = snapshot.user_agent, .accept_language = snapshot.accept_language };

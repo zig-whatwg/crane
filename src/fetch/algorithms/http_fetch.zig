@@ -1442,6 +1442,17 @@ fn userAgentOf(request: *const InternalRequest) []const u8 {
 pub const UserAgentOverride = struct {
     user_agent: ?[]const u8 = null,
     accept_language: ?[]const u8 = null,
+    /// The tab's DevTools extra headers (CDP Network.setExtraHTTPHeaders),
+    /// which every request of its documents carries - set by FetchJob.start
+    /// before main fetch, so before CORS (lane mcp1). None for a worker
+    /// client: Chrome's page session does not reach a worker's requests.
+    extra_headers: []const ExtraHeader = &.{},
+};
+
+/// One DevTools extra header.
+pub const ExtraHeader = struct {
+    name: []const u8,
+    value: []const u8,
 };
 
 /// Reads the override of the tab a Window client (`traversable`: the
