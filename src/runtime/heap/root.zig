@@ -378,11 +378,35 @@ comptime {
 }
 
 /// Buckets: node = 3 kinds x K x classes, then the large runs; objects =
-/// classes, the Instance slots, then the large runs; bytes = classes, then
-/// the large runs.
+/// the State blocks' classes, the Instance slots, the State blocks' large
+/// runs, then the GENERAL objects blocks' classes and large runs (batch B:
+/// a freed general block never becomes a State block, nor the reverse); bytes
+/// = classes, then the large runs.
 const node_groups = node_kinds * random_buckets;
 const node_bucket_count = node_groups * Classes.count + max_run_spans;
-const objects_bucket_count = Classes.count + 1 + max_run_spans;
+const objects_state_count = Classes.count + 1 + max_run_spans;
+const objects_bucket_count = objects_state_count + Classes.count + max_run_spans;
+/// The first general objects bucket (batch B).
+const general_objects_base: usize = objects_state_count;
+
+/// The general allocator's bucket of `pid` (objects or bytes) for a block
+/// of `class`, or of a large run of `run` spans (`class` null).
+fn generalBucket(pid: PartitionId, class: ?usize, run: usize) u16 {
+    return switch (pid) {
+        .node => unreachable,
+        .objects => @intCast(if (class) |c| general_objects_base + c else general_objects_base + Classes.count + run - 1),
+        .bytes => if (class) |c| @intCast(c) else largeBucket(.bytes, run),
+    };
+}
+
+/// Whether `pid`'s bucket `index` serves general memory (batch B).
+fn isGeneralBucket(pid: PartitionId, index: usize) bool {
+    return switch (pid) {
+        .node => false,
+        .objects => index >= general_objects_base,
+        .bytes => true,
+    };
+}
 const bytes_bucket_count = Classes.count + max_run_spans;
 const instance_bucket: u16 = Classes.count;
 
@@ -521,7 +545,12 @@ pub const Error = error{OutOfMemory};
 
 pub const Stats = struct {
     node: PartitionStats,
+    /// The objects partition: its span figures, and its State blocks' and
+    /// Instance slots' live and total figures.
     objects: PartitionStats,
+    /// The objects partition's general blocks (batch B): live and total
+    /// figures only - their spans are counted in `objects`.
+    general_objects: PartitionStats = .{},
     bytes: PartitionStats,
     quarantine_blocks: usize,
     quarantine_bytes: usize,
@@ -695,6 +724,9 @@ pub const Engine = struct {
     }
 
     fn bucketShape(pid: PartitionId, index: usize) Bucket {
+        // The objects partition's general buckets: shaped as the bytes
+        // partition's are.
+        if (pid == .objects and index >= general_objects_base) return bucketShape(.bytes, index - general_objects_base);
         const class_end: usize = switch (pid) {
             .node => node_groups * Classes.count,
             .objects, .bytes => Classes.count,
@@ -1173,7 +1205,7 @@ pub const Engine = struct {
         std.Io.Threaded.mutexLockUncancelable(&p.mutex);
         defer std.Io.Threaded.mutexUnlock(&p.mutex);
         if (bytes > max_block_bytes) return self.allocHuge(p, bytes);
-        const bi: u16 = if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(pid, runOf(bytes));
+        const bi = generalBucket(pid, classes.classOf(size, alignment), runOf(bytes));
         return self.allocIn(p, bi, size, null, return_address | site_general_tag);
     }
 
@@ -1194,7 +1226,7 @@ pub const Engine = struct {
         const e = self.entry(offset / span_bytes);
         if (e.bucket == huge_bucket and e.state != .run_tail and e.state != .unopened) return self.freeHuge(p, offset, bytes);
         if (bytes > max_block_bytes) return self.violation(if (e.state == .active) .wrong_size else .invalid_free, address);
-        const want: u16 = if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(pid, runOf(bytes));
+        const want = generalBucket(pid, classes.classOf(size, alignment), runOf(bytes));
         self.freeIn(p, offset, want, false, size, null);
     }
 
@@ -1879,12 +1911,14 @@ pub const Engine = struct {
             .quarantine_total_evicted = self.quarantine.total_evicted,
         };
         sumBuckets(&s.node, &self.node_buckets);
-        sumBuckets(&s.objects, &self.objects_buckets);
+        sumBuckets(&s.objects, self.objects_buckets[0..general_objects_base]);
+        sumBuckets(&s.general_objects, self.objects_buckets[general_objects_base..]);
         sumBuckets(&s.bytes, &self.bytes_buckets);
-        inline for (.{ &s.objects, &s.bytes }) |ps| {
-            ps.live_blocks += ps.huge_blocks;
-            ps.live_bytes += ps.huge_bytes;
-        }
+        // Huge blocks are general memory's.
+        s.general_objects.live_blocks += s.objects.huge_blocks;
+        s.general_objects.live_bytes += s.objects.huge_bytes;
+        s.bytes.live_blocks += s.bytes.huge_blocks;
+        s.bytes.live_bytes += s.bytes.huge_bytes;
         const entries = self.quarantineEntries();
         for (entries[0..self.quarantine.count]) |address| {
             const offset = address - self.heap.window_base;
@@ -2001,6 +2035,7 @@ pub const Engine = struct {
     }
 
     fn reportBucket(self: *Engine, p: *const Partition, b: *Bucket, context: anytype, comptime report: fn (@TypeOf(context), LeakLine) void) void {
+        const general = isGeneralBucket(p.id, (@intFromPtr(b) - @intFromPtr(self.buckets(p.id).ptr)) / @sizeOf(Bucket));
         // Group by site: a few distinct ones per bucket at most.
         var sites: [16]usize = undefined;
         var counts: [16]usize = undefined;
@@ -2044,10 +2079,10 @@ pub const Engine = struct {
                 .count = count,
                 .type_name = if (typed) @as(*const Site, @ptrFromInt(site)).name else null,
                 .return_address = if (typed) 0 else site & ~(site_return_tag | site_general_tag),
-                .general = p.id == .bytes or (!typed and site & site_general_tag != 0),
+                .general = general,
             });
         }
-        if (unsited > 0) report(context, .{ .partition = p.id, .block_bytes = b.block_bytes, .count = unsited, .type_name = null, .return_address = 0, .general = p.id == .bytes });
+        if (unsited > 0) report(context, .{ .partition = p.id, .block_bytes = b.block_bytes, .count = unsited, .type_name = null, .return_address = 0, .general = general });
     }
 
     /// Instance slots issued over the heap's life, and alive now.

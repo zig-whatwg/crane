@@ -56,7 +56,9 @@ fn sweep(rounds: usize) !void {
     defer if (leaked) std.debug.print("the sweep's Browser leaked\n", .{});
     {
         var failing = std.testing.FailingAllocator.init(debug.allocator(), .{});
-        const browser = try Browser.init(failing.allocator(), .{ .snapshot_path = "" });
+        // The failures are injected through the allocator given to Browser.init:
+        // the Browser's general memory is that allocator's (.host), not its heap's.
+        const browser = try Browser.init(failing.allocator(), .{ .snapshot_path = "", .general_memory = .host });
         defer browser.deinit();
         try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
         const page = browser.current_context orelse return error.NoPage;

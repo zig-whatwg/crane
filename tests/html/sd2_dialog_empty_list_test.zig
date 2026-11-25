@@ -154,7 +154,9 @@ const RegistrationFailure = struct {
 
 fn registrationFailureStillSetsWatcher(comptime failure: enum { state, entry }) !void {
     var failing: RegistrationFailure = .{};
-    const browser = try browser_mod.Browser.init(failing.allocator(), .{ .snapshot_path = "" });
+    // The failures are injected through the allocator given to Browser.init:
+    // the Browser's general memory is that allocator's (.host), not its heap's.
+    const browser = try browser_mod.Browser.init(failing.allocator(), .{ .snapshot_path = "", .general_memory = .host });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;

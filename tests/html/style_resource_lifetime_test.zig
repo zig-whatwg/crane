@@ -97,7 +97,7 @@ fn secureXml() !void {
     const setup = try browser.evaluateScript("globalThis.cr1SvgScriptRan=false; customElements.define('cr1-evil',class extends HTMLElement {constructor(){super();globalThis.cr1SvgScriptRan=true;}}); true");
     setup.release();
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const document = try interfaces.XMLDocument.initWith(std.testing.allocator, realm, .{ .ready_state = ._complete_ });
+    const document = try interfaces.XMLDocument.initWith(realm.allocator, realm, .{ .ready_state = ._complete_ });
     const generation = runtime.SlabAllocator.generationOf(document);
     defer document.releaseIfUnwrapped(generation);
     try dom.document_internals.setDocumentType(document, .xml);
@@ -128,7 +128,7 @@ fn strictSvgEncoding() !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const document = try interfaces.XMLDocument.initWith(std.testing.allocator, realm, .{ .ready_state = ._complete_ });
+    const document = try interfaces.XMLDocument.initWith(realm.allocator, realm, .{ .ready_state = ._complete_ });
     const generation = runtime.SlabAllocator.generationOf(document);
     defer document.releaseIfUnwrapped(generation);
     try dom.document_internals.setDocumentType(document, .xml);

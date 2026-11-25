@@ -138,3 +138,19 @@ fn domFamilies() !void {
 test "B1: an attribute value record and a Text node's heap text are in the bytes range, the value table's id slots in the objects range" {
     try helpers.onFreshThread(domFamilies);
 }
+
+test "a Browser's general memory is its heap's by default (.crane); only the embedder option .host leaves it to the host's allocator" {
+    const browser_mod = @import("browser");
+    // The default every production host and both WPT runners take.
+    try testing.expectEqual(browser_mod.GeneralMemory.crane, (browser_mod.BrowserConfig{}).general_memory);
+    const crane = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
+    defer crane.deinit();
+    const heap = crane.scope.heap orelse return error.NoHeap;
+    if (!heap.general_pools) return error.SkipZigTest;
+    try testing.expect(crane.scope.general);
+    try testing.expect(runtime.heap.general.engineOf(crane.scope.allocator) != null);
+    const host = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "", .general_memory = .host });
+    defer host.deinit();
+    try testing.expect(!host.scope.general);
+    try testing.expect(host.scope.allocator.ptr == testing.allocator.ptr);
+}

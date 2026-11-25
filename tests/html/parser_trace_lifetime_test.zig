@@ -64,7 +64,7 @@ fn detachedNodeUntilEOF() !void {
     try testing.expectEqual(@as(usize, 0), parser.adapter.pending.items.len);
     try page.runScript("document.write('still parsed</div>')");
     var text = try interfaces.Node.get_textContent(node);
-    defer if (text) |*value| value.deinit(testing.allocator);
+    defer if (text) |*value| value.deinit(runtime.allocatorOf(node));
     try testing.expectEqualStrings("still parsed", (text orelse return error.NoText).asSlice());
     try page.runScript("document.close()");
     try testing.expect(dom.document_internals.getInternal(document).?.active_parser == null);
@@ -110,7 +110,7 @@ fn unreachableSuspendedCycle() !void {
     const document = engine.convertToPlatformObject(realm, document_owner.?.borrow()) orelse return error.NoDocument;
     const document_generation = runtime.SlabAllocator.generationOf(document);
     var loader = LoaderLifetime{};
-    const parser = try scripted_parser.DocumentParser.createComplete(testing.allocator, realm, document, "<!doctype html><body><div>waiting", .{ .script_loader = loader.descriptor() });
+    const parser = try scripted_parser.DocumentParser.createComplete(realm.allocator, realm, document, "<!doctype html><body><div>waiting", .{ .script_loader = loader.descriptor() });
     var initiating_owner = true;
     defer if (initiating_owner) parser.release();
     try testing.expect(dom.document_lifecycle.associateParser(document, parser));
@@ -167,7 +167,7 @@ fn suspendedParserDetachesWhileAForeignHoldKeepsTheTree() !void {
     const document = engine.convertToPlatformObject(realm, document_owner.?.borrow()) orelse return error.NoDocument;
     const document_generation = runtime.SlabAllocator.generationOf(document);
     var loader = LoaderLifetime{};
-    const parser = try scripted_parser.DocumentParser.createComplete(testing.allocator, realm, document, "<!doctype html><body><div>waiting", .{ .script_loader = loader.descriptor() });
+    const parser = try scripted_parser.DocumentParser.createComplete(realm.allocator, realm, document, "<!doctype html><body><div>waiting", .{ .script_loader = loader.descriptor() });
     try testing.expect(dom.document_lifecycle.associateParser(document, parser));
     parser.input_stream.complete = false;
     parser.input_stream.processInserted();
@@ -293,7 +293,7 @@ const AbortReentry = struct {
         try testing.expect(dom.document_internals.getInternal(self.document).?.active_parser == self.parser);
         const base = dom.instance_bridge.getNodeBase(self.document) orelse return error.NoDocumentBase;
         try dom.mutation.replaceAll(@as(?*dom.NodeBase, null), base);
-        const replacement = try scripted_parser.DocumentParser.createComplete(testing.allocator, self.document.ctx, self.document, "<!doctype html><body><div id=abort-replacement>", .{});
+        const replacement = try scripted_parser.DocumentParser.createComplete(self.document.ctx.allocator, self.document.ctx, self.document, "<!doctype html><body><div id=abort-replacement>", .{});
         defer replacement.release();
         try testing.expect(dom.document_lifecycle.associateParser(self.document, replacement));
         replacement.input_stream.complete = false;

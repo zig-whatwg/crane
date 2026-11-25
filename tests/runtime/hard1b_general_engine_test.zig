@@ -98,7 +98,10 @@ test "the leak report and the stats count live general blocks, bytes and objects
     const record = try engine.allocGeneral(.objects, 40, 8, @returnAddress());
     const during = engine.stats();
     try testing.expectEqual(before.bytes.live_blocks + 1, during.bytes.live_blocks);
-    try testing.expectEqual(before.objects.live_blocks + 1, during.objects.live_blocks);
+    try testing.expectEqual(before.general_objects.live_blocks + 1, during.general_objects.live_blocks);
+    // The State blocks' figures do not move: the general blocks have their
+    // own buckets (a freed general block never becomes a State block).
+    try testing.expectEqual(before.objects.live_blocks, during.objects.live_blocks);
     const Count = struct {
         fn line(_: void, _: heap.LeakLine) void {}
     };
@@ -191,4 +194,64 @@ test "a general block made on one thread is freed on another, both ways, under t
         fn line(_: void, _: heap.LeakLine) void {}
     };
     try testing.expectEqual(@as(usize, 0), engine.leakReport({}, Count.line));
+}
+
+test "a general allocation that must open a span fails cleanly when the heap may not grow, and works once it may" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+    const Refuse = struct {
+        var allowed = false;
+        fn call(_: *anyopaque) bool {
+            return allowed;
+        }
+    };
+    const saved = engine.grow_hook;
+    defer engine.grow_hook = saved;
+    engine.grow_hook = .{ .context = engine, .call = Refuse.call };
+    Refuse.allowed = false;
+    // A class, a large run and a huge block of each general partition: each
+    // needs a span opened.
+    for ([_]usize{ 48, 40 * 1024, 3 * 1024 * 1024 }) |size| {
+        try testing.expectError(error.OutOfMemory, engine.allocGeneral(.bytes, size, 1, @returnAddress()));
+        try testing.expectError(error.OutOfMemory, engine.allocGeneral(.objects, size, 8, @returnAddress()));
+    }
+    Refuse.allowed = true;
+    for ([_]usize{ 48, 40 * 1024, 3 * 1024 * 1024 }) |size| {
+        const text = try engine.allocGeneral(.bytes, size, 1, @returnAddress());
+        engine.freeGeneral(text, size, 1);
+        const words = try engine.allocGeneral(.objects, size, 8, @returnAddress());
+        engine.freeGeneral(words, size, 8);
+    }
+    const Count = struct {
+        fn line(_: void, _: heap.LeakLine) void {}
+    };
+    try testing.expectEqual(@as(usize, 0), engine.leakReport({}, Count.line));
+}
+
+fn generalAllocations(allocator: std.mem.Allocator) !void {
+    // A scope over the allocator under test: its heap asks it before each
+    // span opens (Engine.grow_hook), so each class's first block fails in
+    // turn.
+    const scope = try allocator.create(BrowserScope);
+    scope.* = BrowserScope.init(allocator);
+    defer {
+        scope.deinit();
+        allocator.destroy(scope);
+    }
+    const engine = try scope.heapEngine();
+    if (!engine.heap.general_pools) return;
+    const general = heap.general.allocatorOf(engine);
+    const text = try general.alloc(u8, 100);
+    defer general.free(text);
+    const words = try general.alloc(usize, 30);
+    defer general.free(words);
+    const body = try general.alloc(u8, 2 * 1024 * 1024 + 1);
+    defer general.free(body);
+    const units = try general.alloc(u16, 9000);
+    defer general.free(units);
+}
+
+test "the general allocator's out-of-memory paths unwind every failed allocation (checkAllAllocationFailures, through the heap's failure injector)" {
+    try testing.checkAllAllocationFailures(testing.allocator, generalAllocations, .{});
 }

@@ -107,23 +107,32 @@ fn taskEnd(comptime remove_target: bool) !void {
     defer if (!closed) page.close();
     const source = try object(page, "window");
     const record = (try origin(source)).retain();
-    defer record.release();
+    var held = true;
+    defer if (held) record.release();
     if (remove_target) {
         try page.run("globalThis.frame = document.body.appendChild(document.createElement('iframe'));");
     }
     const before = record.refs;
     try page.run(if (remove_target) "frame.contentWindow.postMessage('drop', '*');" else "postMessage('queued at teardown', '*');");
     const queued = record.refs;
+    try std.testing.expectEqual(before + 1, queued);
     if (remove_target) {
         try page.run("frame.remove(); frame = null;");
         _ = try page.browser.runEventLoopBlocking(40);
+        // The dropped task gave its reference back.
+        try std.testing.expectEqual(before, record.refs);
     }
+    // The record is the Browser's - its documents' and its navigations'
+    // (dom.origin_record) - and lives in its heap (allocator-hardening batch
+    // B), so this test's reference goes before the Browser does. A reference
+    // the Browser's end failed to release - the queued message's, here -
+    // leaves the record and its serialization alive in the heap at the
+    // Browser's end, which the heap's leak report fails the test on, as the
+    // allocator's leak check did when the record was the host's.
+    record.release();
+    held = false;
     page.close();
     closed = true;
-    // After the Browser ends, only this test's reference is left. The
-    // allocator also catches the queue record and payload if either leaked.
-    try std.testing.expectEqual(@as(u32, 1), record.refs);
-    try std.testing.expectEqual(before + 1, queued);
 }
 
 test "a task dropped for a removed target releases the sender origin" {

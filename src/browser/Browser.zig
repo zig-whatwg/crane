@@ -91,6 +91,9 @@ const window_agent_hooks: engine.HostHooks = blk: {
 };
 
 /// Browser configuration options
+/// BrowserConfig.general_memory's choices.
+pub const GeneralMemory = enum { crane, host };
+
 pub const BrowserConfig = struct {
     /// The Browser's profile directory (docs/instances.md): its stores
     /// persist under it, and it is the Browser's alone while it lives - a
@@ -138,6 +141,15 @@ pub const BrowserConfig = struct {
     /// (the user, 2026-11-05); off by default - never in a product build. A
     /// Debug build poisons either way, without the quarantine.
     poison_freed_state: bool = false,
+    /// Where the Browser's general memory comes from (allocator-hardening
+    /// design 4.2): `.crane`, its heap's objects and bytes partitions
+    /// (runtime.heap.general) - the default, and what every WPT run uses;
+    /// or `.host`, the allocator `init` is given, for an embedder that must
+    /// account the Browser's memory itself, giving up those partitions'
+    /// hardening (as V8 takes an embedder's ArrayBuffer::Allocator). A test
+    /// that injects allocation failures through the allocator it gives
+    /// `init` asks for `.host`, so its failures reach the Browser's memory.
+    general_memory: GeneralMemory = .crane,
     /// How many pages the back/forward cache keeps (back_forward_cache.zig):
     /// 8 by default - Firefox's desktop cap, for the whole Browser
     /// (back_forward_cache.zig `default_size` says why). 0 keeps none.
@@ -355,7 +367,7 @@ pub const Browser = struct {
         // them (runtime.heap.general); a smaller rung keeps the host's
         // allocator (design 4.2). The host's allocator keeps only the
         // Browser's own record and its scope, made before and ended after.
-        if (scope.heap) |reserved| if (reserved.general_pools) {
+        if (scope.heap) |reserved| if (reserved.general_pools and config.general_memory == .crane) {
             scope.useGeneralAllocator(runtime.heap.general.allocatorOf(try scope.heapEngine()));
         };
         const memory = scope.allocator;

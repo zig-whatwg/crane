@@ -38,6 +38,8 @@
 
 pub const Browser = @import("Browser.zig").Browser;
 pub const BrowserConfig = @import("Browser.zig").BrowserConfig;
+/// BrowserConfig.general_memory's choices (allocator-hardening batch B).
+pub const GeneralMemory = @import("Browser.zig").GeneralMemory;
 
 /// A Browser on a thread of its own, driven from other threads by commands
 /// posted to its loop: the host API's thread-safe surface (lane cdph).

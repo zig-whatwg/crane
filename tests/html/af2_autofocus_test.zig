@@ -177,7 +177,7 @@ fn detachedCandidateSurvivesGc() !void {
     const state = dom.document_autofocus.ofDocument(documentOf(page)).?;
     const held = state.first.?.element.get() orelse return error.CandidateLost;
     var id = try interfaces.Element.get_id(held);
-    defer id.deinit(std.testing.allocator);
+    defer id.deinit(runtime.allocatorOf(held));
     try std.testing.expectEqualStrings("kept", id.asSlice());
     _ = try interfaces.Node.call_appendChild((try interfaces.Document.get_body(documentOf(page))).?, held);
     html.autofocus.flush(documentOf(page));

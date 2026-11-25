@@ -73,13 +73,13 @@ fn exercise() !void {
     const window = try pageWindow(page, realm);
     const document = try pageDocument(page, realm);
     // A Window never given a document keeps none: nothing to check.
-    const bare = try interfaces.Window.init(allocator, realm);
+    const bare = try interfaces.Window.init(realm.allocator, realm);
     defer interfaces.Window.deinit(bare);
     try testing.expect(dom.trusted_types.cspListOf(bare) == null);
     try testing.expect(!try requestBlocked(bare));
     // A Window whose document's container cannot be found: its document
     // has no Document state.
-    const orphan = try interfaces.Window.init(allocator, realm);
+    const orphan = try interfaces.Window.init(realm.allocator, realm);
     defer interfaces.Window.deinit(orphan);
     const stateless = try interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("div"), .notPassed());
     dom.window_globals.setDocument(orphan, stateless);

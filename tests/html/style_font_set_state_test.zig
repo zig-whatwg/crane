@@ -93,7 +93,7 @@ fn loadingEnvironment() !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const document = try interfaces.Document.initWith(std.testing.allocator, realm, .{ .ready_state = ._loading_ });
+    const document = try interfaces.Document.initWith(realm.allocator, realm, .{ .ready_state = ._loading_ });
     const generation = runtime.SlabAllocator.generationOf(document);
     defer document.releaseIfUnwrapped(generation);
     const set = try interfaces.Document.get_fonts(document);
@@ -408,7 +408,7 @@ fn absentFontSet() !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const document = try interfaces.Document.initWith(std.testing.allocator, realm, .{ .ready_state = ._loading_ });
+    const document = try interfaces.Document.initWith(realm.allocator, realm, .{ .ready_state = ._loading_ });
     const generation = runtime.SlabAllocator.generationOf(document);
     defer document.releaseIfUnwrapped(generation);
     const style = dom.style.hooks.engineOf(document) orelse return error.NoStyleEngine;
