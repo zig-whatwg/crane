@@ -10,6 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
+const DOMStringOrCanvasGradientOrCanvasPattern = @import("typedefs").DOMStringOrCanvasGradientOrCanvasPattern;
 const CanvasGradient = @import("interfaces").CanvasGradient;
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const CanvasPattern = @import("interfaces").CanvasPattern;
@@ -79,19 +80,19 @@ pub const CanvasFillStrokeStyles = struct {
         }
     }
 
-    pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!DOMStringOrCanvasGradientOrCanvasPattern {
         return try CanvasFillStrokeStylesImpl.get_strokeStyle(instance);
     }
 
-    pub fn set_strokeStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+    pub fn set_strokeStyle(instance: *runtime.Instance, value: DOMStringOrCanvasGradientOrCanvasPattern) anyerror!void {
         try CanvasFillStrokeStylesImpl.set_strokeStyle(instance, value);
     }
 
-    pub fn get_fillStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn get_fillStyle(instance: *runtime.Instance) anyerror!DOMStringOrCanvasGradientOrCanvasPattern {
         return try CanvasFillStrokeStylesImpl.get_fillStyle(instance);
     }
 
-    pub fn set_fillStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+    pub fn set_fillStyle(instance: *runtime.Instance, value: DOMStringOrCanvasGradientOrCanvasPattern) anyerror!void {
         try CanvasFillStrokeStylesImpl.set_fillStyle(instance, value);
     }
 

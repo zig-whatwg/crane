@@ -67,6 +67,7 @@ pub const DOMStringOrArrayBuffer = @import("DOMStringOrArrayBuffer.zig").DOMStri
 pub const DOMStringOrAudioSinkInfo = @import("DOMStringOrAudioSinkInfo.zig").DOMStringOrAudioSinkInfo;
 pub const DOMStringOrAudioSinkOptions = @import("DOMStringOrAudioSinkOptions.zig").DOMStringOrAudioSinkOptions;
 pub const DOMStringOrBlob = @import("DOMStringOrBlob.zig").DOMStringOrBlob;
+pub const DOMStringOrCanvasGradientOrCanvasPattern = @import("DOMStringOrCanvasGradientOrCanvasPattern.zig").DOMStringOrCanvasGradientOrCanvasPattern;
 pub const DOMStringOrDOMHighResTimeStamp = @import("DOMStringOrDOMHighResTimeStamp.zig").DOMStringOrDOMHighResTimeStamp;
 pub const DOMStringOrElementCreationOptions = @import("DOMStringOrElementCreationOptions.zig").DOMStringOrElementCreationOptions;
 pub const DOMStringOrPerformanceMeasureOptions = @import("DOMStringOrPerformanceMeasureOptions.zig").DOMStringOrPerformanceMeasureOptions;
