@@ -23,6 +23,7 @@
 //! takes the shared path. No threadlocal: the value names its cache.
 
 const std = @import("std");
+const platform = @import("platform");
 const heap = @import("root.zig");
 
 pub const vtable: std.mem.Allocator.VTable = .{
@@ -62,7 +63,7 @@ pub fn engineOf(allocator: std.mem.Allocator) ?*heap.Engine {
 
 fn agentAlloc(context: *anyopaque, len: usize, alignment: std.mem.Alignment, return_address: usize) ?[*]u8 {
     const cache: *heap.AgentCache = @ptrCast(@alignCast(context));
-    if (cache.owner.load(.monotonic) == std.Thread.getCurrentId()) {
+    if (cache.owner.load(.monotonic) == platform.currentThreadToken()) {
         if (@backingInt(alignment) < @ctz(@as(usize, @alignOf(usize))))
             return cache.engine.cacheAlloc(cache, .bytes, len, alignment, return_address) catch null;
         return cache.engine.cacheAlloc(cache, .objects, len, alignment, return_address) catch null;
@@ -83,7 +84,7 @@ fn agentRemap(context: *anyopaque, memory: []u8, alignment: std.mem.Alignment, n
 fn agentFree(context: *anyopaque, memory: []u8, alignment: std.mem.Alignment, return_address: usize) void {
     _ = return_address;
     const cache: *heap.AgentCache = @ptrCast(@alignCast(context));
-    const thread = std.Thread.getCurrentId();
+    const thread = platform.currentThreadToken();
     if (cache.owner.load(.monotonic) == thread) {
         if (@backingInt(alignment) < @ctz(@as(usize, @alignOf(usize))))
             return cache.engine.cacheFree(cache, .bytes, memory.ptr, memory.len, alignment, thread);

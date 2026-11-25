@@ -942,6 +942,10 @@ pub fn devtoolsOpenInheritedPipe(read_fd: i32, write_fd: i32) Error!platform.Dev
 // Browser.init fails cleanly); every page the protocol could name is none.
 // ---------------------------------------------------------------------------
 
+pub inline fn currentThreadToken() usize {
+    return 1;
+}
+
 pub fn pageSize() usize {
     return std.heap.page_size_min;
 }

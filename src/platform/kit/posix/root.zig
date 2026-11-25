@@ -357,6 +357,27 @@ pub fn detachThread(thread: platform.Thread) void {
     std.heap.c_allocator.destroy(handle);
 }
 
+/// platform.currentThreadToken: cheap non-zero per-thread identity token.
+///
+/// On Darwin aarch64, `tpidrro_el0` holds Apple `libpthread`'s TSD base
+/// pointer with the CPU number in the low 3 bits (`_os_tsd_get_base()` in
+/// Apple's `libpthread`: `mrs ..., tpidrro_el0; bic ..., #7`). Masking out the
+/// low 3 bits yields the thread's fixed, 16-byte-aligned TSD base: non-zero,
+/// invariant across CPU core migrations for the thread's lifetime, and unique
+/// across all live threads — in one register read with no external dylib call
+/// (`std.Thread.getCurrentId()` calls `pthread_threadid_np`).
+///
+/// On Linux and other targets, `std.Thread.getCurrentId()` is already a single
+/// TLS read (`tls_thread_id`) and returns a non-zero thread id.
+pub inline fn currentThreadToken() usize {
+    if (comptime builtin.os.tag.isDarwin() and builtin.cpu.arch == .aarch64) {
+        return asm volatile ("mrs %[r], tpidrro_el0"
+            : [r] "=r" (-> usize),
+        ) & ~@as(usize, 7);
+    }
+    return @intCast(std.Thread.getCurrentId());
+}
+
 /// The calling thread's alternate signal stack, mapped with guard pages
 /// (signal_stack.zig); 0 when the thread keeps one it already has.
 pub fn attachSignalStack() platform.SignalStack {

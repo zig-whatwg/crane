@@ -50,6 +50,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const platform = @import("platform");
 const browser_heap = @import("../browser_heap.zig");
 pub const classes = @import("classes.zig");
 /// The general allocator over the objects and bytes partitions (batch B).
@@ -565,8 +566,8 @@ const Partition = struct {
     pool_bytes: usize,
     pool_used: usize,
     pool_hi: usize,
-    /// The node partition's thread: the first that made a block in it.
-    owner: ?std.Thread.Id = null,
+    /// The node partition's thread token: the first that made a block in it.
+    owner: ?usize = null,
     /// The objects and bytes partitions' lock (every agent's thread
     /// allocates there).
     mutex: std.Io.Mutex = .init,
@@ -622,9 +623,9 @@ const empty_large_budget_bytes: usize = 256 * KiB;
 /// (heap.general), never a threadlocal; in the objects partition's metadata pool.
 pub const AgentCache = struct {
     engine: *Engine,
-    /// The agent's thread: the one whose calls take the cache unlocked. 0
+    /// The agent's thread token: the one whose calls take the cache unlocked. 0
     /// once detached.
-    owner: std.atomic.Value(std.Thread.Id),
+    owner: std.atomic.Value(usize),
     /// Hot read-only geometry cached from `engine` + `engine.heap` so
     /// `cacheAlloc` and `cacheFree` never chase `cache -> engine -> heap` on
     /// the fast path (M4).
@@ -668,8 +669,8 @@ const Quarantine = struct {
     /// event loop runs a turn (`beginTask` .. `endTask`). Read by every
     /// thread that frees an objects block.
     active: std.atomic.Value(bool) = .init(false),
-    /// The window agent's thread; read by every thread that frees.
-    thread: std.atomic.Value(std.Thread.Id) = .init(0),
+    /// The window agent's thread token; read by every thread that frees.
+    thread: std.atomic.Value(usize) = .init(0),
     count: usize = 0,
     held_bytes: usize = 0,
     /// Entries committed so far.
@@ -1031,7 +1032,7 @@ pub const Engine = struct {
     /// The node partition's owner check: the window agent's thread, the
     /// first that made a node block (design 3.7). False, and recorded, off
     /// it.
-    inline fn onNodeThread(self: *Engine, address: usize, now: std.Thread.Id) bool {
+    inline fn onNodeThread(self: *Engine, address: usize, now: usize) bool {
         const owner = self.node.owner orelse {
             self.node.owner = now;
             return true;
@@ -1233,7 +1234,7 @@ pub const Engine = struct {
             .node => |kind| {
                 const k: usize = if (random_buckets == 1) 0 else self.randomBucket(site);
                 const bi: u16 = if (classes.classOf(size, alignment)) |class| nodeBucket(kind, k, class) else largeBucket(.node, runOf(bytes));
-                if (!self.onNodeThread(0, std.Thread.getCurrentId())) return error.OutOfMemory;
+                if (!self.onNodeThread(0, platform.currentThreadToken())) return error.OutOfMemory;
                 return self.allocIn(&self.node, bi, size, site, return_address);
             },
             .objects => {
@@ -1285,7 +1286,7 @@ pub const Engine = struct {
                 const k: usize = if (random_buckets == 1) 0 else self.randomBucket(site);
                 const class = classes.classOf(size, alignment);
                 const bi: u16 = if (class) |c| nodeBucket(kind, k, c) else largeBucket(.node, runOf(bytes));
-                const thread = std.Thread.getCurrentId();
+                const thread = platform.currentThreadToken();
                 if (!self.onNodeThread(0, thread)) return error.OutOfMemory;
                 const state = try self.allocIn(&self.node, bi, size, site, return_address);
                 std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
@@ -1461,7 +1462,7 @@ pub const Engine = struct {
         };
         cache.* = .{
             .engine = self,
-            .owner = .init(std.Thread.getCurrentId()),
+            .owner = .init(platform.currentThreadToken()),
             .window_base = self.heap.window_base,
             .reserved_base = self.heap.reserved.base,
             .reserved_size = self.heap.reserved.size,
@@ -1506,7 +1507,7 @@ pub const Engine = struct {
     /// (idle decommit's first step: a span only a cache keeps open would be
     /// kept committed).
     fn flushCachesOfThisThread(self: *Engine) void {
-        const thread = std.Thread.getCurrentId();
+        const thread = platform.currentThreadToken();
         var found: [8]*AgentCache = undefined;
         var n: usize = 0;
         {
@@ -1603,7 +1604,7 @@ pub const Engine = struct {
     /// path skips all `.objects` quarantine/fill checks and uses constant
     /// offsets on `cache` (M4). Cross-partition invalid frees fall back to
     /// `freeGeneral` for full diagnostics.
-    pub inline fn cacheFree(self: *Engine, cache: *AgentCache, comptime expected: PartitionId, ptr: [*]u8, size: usize, alignment: std.mem.Alignment, thread: std.Thread.Id) void {
+    pub inline fn cacheFree(self: *Engine, cache: *AgentCache, comptime expected: PartitionId, ptr: [*]u8, size: usize, alignment: std.mem.Alignment, thread: usize) void {
         const pi = comptime cacheIndex(expected);
         const class = generalClassOfAlign(size, alignment) orelse {
             @branchHint(.cold);
@@ -1927,7 +1928,7 @@ pub const Engine = struct {
         };
         switch (pid) {
             .node => {
-                const thread = std.Thread.getCurrentId();
+                const thread = platform.currentThreadToken();
                 if (!self.onNodeThread(address, thread)) return;
                 self.freeIn(&self.node, offset, want, false, size, thread);
             },
@@ -1954,7 +1955,7 @@ pub const Engine = struct {
     /// lock taken once (`allocInstanceWith`'s counterpart). Each is
     /// validated as those calls validate it, in that order.
     pub fn freeInstanceWith(self: *Engine, slot: *[instance_slot_bytes]u8, state: [*]u8, size: usize, alignment: usize) void {
-        const thread = std.Thread.getCurrentId();
+        const thread = platform.currentThreadToken();
         // The State block, validated before anything is freed.
         const address = @intFromPtr(state);
         const state_at: ?struct { pid: PartitionId, offset: usize, want: u16 } = at: {
@@ -1991,7 +1992,7 @@ pub const Engine = struct {
     /// `want`: the bucket a node free's class names in kind 0, or the exact
     /// bucket.
     /// `thread`: the freeing thread's id where the caller read it already.
-    fn freeIn(self: *Engine, p: *Partition, offset: usize, want: u16, instance: bool, size: usize, thread: ?std.Thread.Id) void {
+    fn freeIn(self: *Engine, p: *Partition, offset: usize, want: u16, instance: bool, size: usize, thread: ?usize) void {
         const address = self.heap.window_base + offset;
         const index = offset / span_bytes;
         const e = self.entry(index);
@@ -2033,10 +2034,10 @@ pub const Engine = struct {
 
     /// Whether a free on this thread now is held: the window agent's loop
     /// runs a task, on this thread.
-    inline fn holds(self: *Engine, thread: ?std.Thread.Id) bool {
+    inline fn holds(self: *Engine, thread: ?usize) bool {
         if (!self.quarantine.active.load(.monotonic)) return false;
         if (self.config.quarantine_cap == 0) return false;
-        return self.quarantine.thread.load(.monotonic) == (thread orelse std.Thread.getCurrentId());
+        return self.quarantine.thread.load(.monotonic) == (thread orelse platform.currentThreadToken());
     }
 
     /// The slot is free again: into its bucket's magazine, or back to its
@@ -2219,7 +2220,7 @@ pub const Engine = struct {
     /// The window agent's event loop begins a turn on this thread: frees on
     /// it are held until `endTask`.
     pub fn beginTask(self: *Engine) void {
-        self.quarantine.thread.store(std.Thread.getCurrentId(), .monotonic);
+        self.quarantine.thread.store(platform.currentThreadToken(), .monotonic);
         self.quarantine.active.store(true, .monotonic);
     }
 
@@ -2394,7 +2395,7 @@ pub const Engine = struct {
         // A span only an agent's cache keeps open would stay committed: this
         // thread's agents give their blocks back first.
         self.flushCachesOfThisThread();
-        const on_owner = if (self.node.owner) |owner| owner == std.Thread.getCurrentId() else true;
+        const on_owner = if (self.node.owner) |owner| owner == platform.currentThreadToken() else true;
         if (on_owner) {
             self.drainMagazines(&self.node);
             self.decommitIn(&self.node, now_ms, min_age_ms, budget, &result);
