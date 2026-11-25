@@ -476,6 +476,30 @@ pub const FetchJob = struct {
             }
         }
 
+        // A tab's DevTools extra headers (CDP Network.setExtraHTTPHeaders;
+        // lane mcp1) join each request of its documents here, before main
+        // fetch - so before CORS: a non-safelisted one makes a cross-origin
+        // request's preflight name it. Chrome's point, reproduced (BSD;
+        // algorithm only): Blink's InspectorNetworkAgent::PrepareRequest
+        // (third_party/blink/renderer/core/inspector/inspector_network_agent.cc)
+        // sets them in the renderer before the network service's CORS
+        // loader sees the request, and navigations get them browser-side in
+        // NetworkHandler::ApplyOverrides (content/browser/devtools/protocol/
+        // network_handler.cc); Chrome 157's record is
+        // tests/devtools/mcp1_extra_headers_test.zig. Each replaces a
+        // same-name header (SetHeader); a "Referer" one is the request's
+        // referrer instead, with policy unsafe-url (Blink: kAlways). A
+        // worker's own requests get none: the reader has none for a worker
+        // client (Chrome's page session does not reach them).
+        for (http_fetch.userAgentOverrideOf(self.request).extra_headers) |header| {
+            if (std.ascii.eqlIgnoreCase(header.name, "Referer")) {
+                self.request.setReferrerUrl(header.value) catch return FetchError.OutOfMemory;
+                self.request.referrer_policy = .unsafe_url;
+                continue;
+            }
+            self.request.header_list.set(header.name, header.value) catch return FetchError.OutOfMemory;
+        }
+
         // Step 11: a preloaded response candidate from the Window client's
         // document - or, the document keeping nothing that answers it, the
         // entry this fetch fills for the document.

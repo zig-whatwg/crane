@@ -2625,6 +2625,8 @@ fn startFetch(record: *Navigation) void {
             // Metadata sends Sec-Fetch-User: ?1 for it; Chrome and Firefox:
             // fetch/metadata/window-open.https.sub.html, generated/element-*).
             .user_activation = record.has_transient_activation,
+            // The tab's user agent override, which the request copies.
+            .user_agent_override = if (record.integration.browsing_context) |bc| html_module.user_agent_override.ofNavigable(bc) else .{},
             // Step 3: redirect mode "manual" - the navigation follows each
             // redirect itself (step 21, `followManualRedirect`), so every
             // hop's request goes through main fetch and Handle Fetch.
@@ -2825,6 +2827,7 @@ fn startFetch(record: *Navigation) void {
             // The blob URL store the entry is in: the Browser's.
             .blob_url_store = blobURLStoreOf(record.integration),
             .blob_storage_key = blob_storage_key,
+            .user_agent_override = if (record.integration.browsing_context) |bc| html_module.user_agent_override.ofNavigable(bc) else .{},
             .referrer = record.referrer,
             .referrer_policy = record.referrer_policy,
             .policy_container = if (record.initiator_policy_container) |*container| container else null,
@@ -2902,6 +2905,7 @@ fn fetchResourceWithoutNetwork(record: *Navigation) void {
         .navigation_id = record.id,
         .redirect = .follow,
         .network = if (observed) networkOf(record.integration) else null,
+        .user_agent_override = if (record.integration.browsing_context) |bc| html_module.user_agent_override.ofNavigable(bc) else .{},
         .referrer = record.referrer,
         .referrer_policy = record.referrer_policy,
         .policy_container = if (record.initiator_policy_container) |*container| container else null,

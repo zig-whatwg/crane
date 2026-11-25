@@ -5351,6 +5351,35 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_page_allocator_module }), "tools-lint_page_allocator", null).step);
 
     // ========================================================================
+    // LINT: every held computed style is released where it was taken
+    // ========================================================================
+    // dom.style.computedStyle answers a HELD style (a reference on a
+    // refcounted ComputedStyle, lane cs1): a hold never released is a leak,
+    // and one kept past the native call that took it crosses into script.
+    // tools/lint_held_style.zig fails on a discarded or unbound hold, and on
+    // a binding or `if` capture whose release is not the next statement,
+    // in src/ and tests/, unless a `// held-style: <why>` line is directly
+    // above it. Not a ratchet: any unmarked site fails.
+    const lint_held_style_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_held_style.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_held_style_exe = b.addExecutable(.{
+        .name = "lint_held_style",
+        .root_module = lint_held_style_module,
+    });
+    const lint_held_style_step = b.step("lint-held-style", "Fail on a held computed style (dom.style.HeldStyle) in src/ or tests/ that is not released where it was taken, with no reviewed `// held-style: <why>` line above it");
+    const lint_held_style = b.addRunArtifact(lint_held_style_exe);
+    // It reads src/ and tests/, which the build graph does not track.
+    lint_held_style.has_side_effects = true;
+    lint_held_style.setCwd(b.path("."));
+    lint_held_style_step.dependOn(&lint_held_style.step);
+    test_step.dependOn(&lint_held_style.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_held_style_module }), "tools-lint_held_style", null).step);
+
+    // ========================================================================
     // LINT: arrays over 64 KiB on a function's stack
     // ========================================================================
     // An optimized build inlines a callee into its caller, whose prologue
