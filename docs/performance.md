@@ -516,15 +516,19 @@ within the bar, 1 over it, 2 an input check, 3 a STOP file, 4 a pass incomplete,
 went quiet; `crane-pool.sh queue-wait` returns it. `--dry-run` makes every check, including the
 check launches, and keeps nothing.
 
-**A memory figure over the bar whose collected launches are bimodal is measured again before it
-goes to a ruling** (the integrator, 2026-11-24, from lane tool1's check of rule (a)): the memory
-pass alone, 15 launches a side, on that row's page - `perf_bench window ... --steps=M,C
---memory-runs=15 --only=<page>` with a fresh `--out`. Nine launches put the median of a figure
-whose launches sit in two modes on either mode by chance: cs1's `observers.resize-construct`
-read 1.033 peak and 1.059 collected at 9 launches a side (the collected launches 19.3-20.4 MB
-in 7 and 24.7-31.8 MB in 11, on both sides) and 1.009 and 0.980 at 15. The rule's grouping
-reads such a collected figure as one level - its upper mode is wider than half the gap - so
-neither clearing applies at 9; the re-run, not a ruling, settles it.
+**Bimodal collected launches are judged mode against mode** (the user, 2026-11-25, lane tool1): when
+the collected launches of both sides form two modes — split at the widest gap, the gap at least 3%
+of the lower mode's median, 2+ launches in each mode, and the gap wider than the lower mode's span
+(the upper mode may be wide: retained allocator pages) — rule (b) judges mode against mode, as rule
+(a) does for steady and peak: each shared mode's tip / base ratio within the bar clears. Steady and
+peak grouping for rule (a) is unchanged. Nine launches put the raw median of a bimodal collected
+figure on either mode by chance: cs1's `observers.resize-construct` read 1.033 peak and 1.059
+collected at 9 launches a side (19.3-20.4 MB in 7 launches and 24.7-31.8 MB in 11, on both sides),
+which clears at 9 launches mode against mode (low 19.3/20.4 = 0.946, high 27.5/27.4 = 1.004) and
+read 1.009 and 0.980 at 15. A memory figure over the bar that rule (b) still does not clear (for
+example, sides sharing no collected mode, or a wide single spread) is measured again before it goes
+to a ruling (the integrator, 2026-11-24): the memory pass alone, 15 launches a side, on that row's
+page - `perf_bench window ... --steps=M,C --memory-runs=15 --only=<page>` with a fresh `--out`.
 
 **A broken console fails fast** (perf1-guard, 2026-11-24: on 2026-11-23 a release console whose
 every script threw made every workload of two windows time out, for 7 h and for 5 h). `perf_bench
@@ -543,7 +547,7 @@ collected, so its steady and peak figures are the row's own, without what earlie
 uncollected; they are a pair's figures, compared only within the pass.
 
 **The rule `cost` applies** (AGENTS.md, "The 3% memory bar reads what Crane holds"; the user,
-2026-11-15 and 2026-11-17):
+2026-11-15, 2026-11-17 and 2026-11-25):
 
 - time and instructions, on the default pass: a row is over when the tip's median over the base's
   is above the bar and the two sides' launches do not overlap;
@@ -552,7 +556,11 @@ uncollected; they are a pair's figures, compared only within the pass.
   ring is on, so the same bytes read in two levels by chance) and never fail the verdict. A
   figure above the bar is **cleared**, with every launch's value printed, when
   (a) both sides reached a common level and each such level's tip / base ratio is within the bar,
-  or (b) the row's collected figure is within the bar. A figure neither clears is over;
+  or (b) the row's collected figure is within the bar — or, when the collected launches of both
+  sides form two modes (split at the widest gap, at least 3% of the lower mode's median, 2+
+  launches in each mode, and the gap wider than the lower mode's span; the upper mode may be wide),
+  both sides reached a shared mode and each shared mode's tip / base ratio is within the bar. A
+  figure neither clears is over;
 - the collected figure never replaces steady and peak: it is read only to clear a row they put
   above the bar.
 
