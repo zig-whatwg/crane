@@ -28,6 +28,7 @@ pub const elements = @import("elements.zig");
 pub const paths = @import("paths.zig");
 pub const logpoints = @import("logpoints.zig");
 pub const source_map = @import("source_map.zig");
+pub const js_scopes = @import("js_scopes.zig");
 
 test {
     @import("std").testing.refAllDecls(@This());

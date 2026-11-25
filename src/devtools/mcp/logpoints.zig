@@ -25,9 +25,8 @@
 //!   (url, from_source_map, line, column), bound at one or more backend
 //!   `Debugger.setBreakpointByUrl` positions (`ModelBreakpoint.currentState`),
 //!   with condition `/** DEVTOOLS_LOGPOINT */ console.log(<expression>)` and
-//!   sourceURL `debugger://logpoint`.
-//!
-//! Minified-name substitution (NamesResolver) is batch 4b item 3c.
+//!   sourceURL `debugger://logpoint`, after minified-name substitution via
+//!   `js_scopes.zig` (`NamesResolver` + `ScopeParser` + `Substitute`).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -222,6 +221,10 @@ pub const Script = struct {
     context_id: i64,
     parse_order: u64,
     map_state: MapState = .none,
+    /// Cached script text from `Debugger.getScriptSource` (used for minified
+    /// variable name substitution via `js_scopes.zig`).
+    source: ?[]u8 = null,
+    source_fetched: bool = false,
     /// Eager wait already ran once for this script (avoids repeated waits on a
     /// permanently stuck map during non-logpoint tool calls).
     eager_waited: bool = false,
@@ -268,6 +271,8 @@ pub const Script = struct {
             .none, .failed => {},
         }
         self.map_state = .none;
+        if (self.source) |src| allocator.free(src);
+        self.source = null;
         allocator.free(self.id);
         allocator.free(self.url);
         allocator.free(self.source_map_url);

@@ -19,6 +19,7 @@ const Page = session_mod.Page;
 const str = session_mod.str;
 const Response = @import("../response.zig").Response;
 const lp = @import("../logpoints.zig");
+const js_scopes = @import("../js_scopes.zig");
 
 pub const list = [_]Tool{
     .{ .name = "set_logpoints", .page_tool = true, .run = setLogpoints },
@@ -315,9 +316,10 @@ fn updateInBackend(ctx: *Context, page: *Page, debugger_session: []const u8, rec
 
     if (raw_locations.len > 0) {
         for (raw_locations) |loc| {
+            const loc_condition = try substituteForRawLocation(ctx, debugger_session, state, loc, record.expression, condition);
             const u = try allocator.dupe(u8, loc.url);
             errdefer allocator.free(u);
-            const cond = try allocator.dupe(u8, condition);
+            const cond = try allocator.dupe(u8, loc_condition);
             try new_state.append(allocator, .{ .url = u, .line = loc.line, .column = loc.column, .condition = cond });
         }
     } else if (record.last_resolved_state.items.len > 0) {
@@ -378,6 +380,46 @@ fn updateInBackend(ctx: *Context, page: *Page, debugger_session: []const u8, rec
     for (new_state.items) |*pos| {
         try record.current_state.append(allocator, try pos.dupe(allocator));
     }
+}
+
+/// Breakpoint.backendCondition: when `loc`'s script has a loaded source map,
+/// lazily fetches script source via `Debugger.getScriptSource` and substitutes
+/// authored identifiers in `expression` to their minified generated names.
+fn substituteForRawLocation(
+    ctx: *Context,
+    debugger_session: []const u8,
+    state: *lp.State,
+    loc: lp.RawLocation,
+    expression: []const u8,
+    default_condition: []const u8,
+) ![]const u8 {
+    if (loc.script_idx >= state.scripts.items.len) return default_condition;
+    const script = &state.scripts.items[loc.script_idx];
+    const sm = switch (script.map_state) {
+        .loaded => |m| m,
+        else => return default_condition,
+    };
+    const script_source = try ensureScriptSource(ctx, debugger_session, script) orelse return default_condition;
+    const rel = script.rawToRelative(@intCast(loc.line), @intCast(loc.column));
+    const substituted = try js_scopes.substituteAtLocation(ctx.arena, script_source, sm, rel.line, rel.column, expression);
+    if (std.mem.eql(u8, substituted, expression)) return default_condition;
+    return lp.backendCondition(ctx.arena, substituted);
+}
+
+fn ensureScriptSource(ctx: *Context, debugger_session: []const u8, script: *lp.Script) !?[]const u8 {
+    if (script.source_fetched) return script.source;
+    script.source_fetched = true;
+    const params = try std.fmt.allocPrint(ctx.arena, "{{\"scriptId\":{f}}}", .{std.json.fmt(script.id, .{})});
+    var r = ctx.session.client.call("Debugger.getScriptSource", params, debugger_session, session_mod.command_timeout_ms) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return null,
+    };
+    defer r.deinit();
+    const result = r.result() orelse return null;
+    const text = str(result.object.get("scriptSource"));
+    if (text.len == 0) return null;
+    script.source = try ctx.session.allocator.dupe(u8, text);
+    return script.source;
 }
 
 /// ModelBreakpoint.resetBreakpoint: Debugger.removeBreakpoint for every backend id.
