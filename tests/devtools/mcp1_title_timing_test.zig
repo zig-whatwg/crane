@@ -5,10 +5,9 @@
 //! Page.domContentEventFired, as Chrome 157 does - Blink reports a title
 //! once its element has its children (HTMLTitleElement's ChildrenChanged /
 //! FinishParsingChildren -> Document::UpdateTitle), not at the end of
-//! parsing. With the encoding named (/streamed-charset.html) Crane parses
-//! the first chunk at once and matches; with none, Crane's parser waits for
-//! its meta charset scan, Blink's does not - known red, a queued parser
-//! item.
+//! parsing. With or without the encoding named (/streamed-charset.html and
+//! /streamed.html), Crane's network parser decodes and parses the first chunk
+//! while the meta charset scan runs (lane prescan1), matching Chrome 157.
 //!
 //! COMPARING with Chrome: run Chrome for Testing 157 with
 //! `--headless=new --remote-debugging-port=<port> --user-data-dir=<empty dir> about:blank`
@@ -129,12 +128,12 @@ fn titleTiming(allocator: Allocator, client: *cdp.Client, url: []const u8) !Seen
 /// achieve passes while it is red and fails when it turns green unannounced
 /// (lesson testing-a-red-test-for-an-unlanded-step-asserts-that-it-is-still-red.md).
 const landed = struct {
-    /// The queued parser item (main, 11:54 PM ET 2026-11-23, not batch 2):
+    /// The queued parser item (main, 11:54 PM ET 2026-11-23, lane prescan1):
     /// the navigation parser decodes and parses each chunk while the meta
     /// charset scan runs, as Blink's TextResourceDecoder::Decode does,
     /// instead of holding the bytes until the scan concludes
-    /// (src/html/scripted_parser.zig receiveBytes, NetworkInput.prescan).
-    const network_parser_decodes_while_scanning = false;
+    /// (src/html/scripted_parser.zig receiveBytes, NetworkInput).
+    const network_parser_decodes_while_scanning = true;
 };
 
 /// Assert `holds`, or - while `step_landed` is false - that it does not.
@@ -196,14 +195,13 @@ test "a parsed title is in Target.getTargets before DOMContentLoaded when the bo
     try testing.expect(!result.seen.event_at_all);
 }
 
-test "a parsed title is in Target.getTargets before DOMContentLoaded with no charset named (knownRed until the network parser decodes while it scans)" {
+test "a parsed title is in Target.getTargets before DOMContentLoaded with no charset named" {
     var gpa: LeakChecked = .init;
     defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     const result = try observe(gpa.allocator(), "/streamed.html");
     try testing.expect(!result.seen.event_at_all);
-    // Chrome: its decoder hands the 60-byte first chunk to the parser while
-    // the meta charset scan reads on; Crane holds the bytes until the scan
-    // has read 1024 characters or the body ended.
+    // Both Chrome and Crane decode and parse the 60-byte first chunk while
+    // the meta charset scan runs in parallel.
     if (result.chrome) return testing.expect(result.seen.listed_before_dcl);
     try knownRed(landed.network_parser_decodes_while_scanning, result.seen.listed_before_dcl, "a no-charset streamed page's title is in getTargets before DOMContentLoaded");
 }

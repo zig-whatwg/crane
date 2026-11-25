@@ -193,8 +193,8 @@ pub const DocumentParser = struct {
     adapter: DomTreeAdapter,
     script_context: ParserScriptContext,
     base_url: []u8,
-    /// A navigation body's first bytes, kept until the encoding sniffing
-    /// algorithm has decided their encoding (`NetworkInput.sniffed`).
+    /// A navigation body's first bytes, kept only while BOM and XML-declaration
+    /// prefix checks are unresolved (`NetworkInput.prefix_checked`).
     raw_bytes: std.ArrayListUnmanaged(u8) = .empty,
     /// The response body this navigation parser reads as it arrives, or null
     /// for input given whole (`ParseOptions.body_stream`).
@@ -949,14 +949,32 @@ pub const DocumentParser = struct {
             self.releaseNetworkInput();
             return;
         }
-        // Taking may let a paused transfer go on and deliver more.
+        // Coalesce all chunks currently sitting in the pipe before calling
+        // receiveBytes so that a single networking task scans all already-
+        // arrived bytes ahead of decoding (zero extra copy for the common
+        // single-chunk case). Taking may let a paused transfer deliver more.
+        const pipe_alloc = pipe.allocator;
+        var batch: std.ArrayListUnmanaged(u8) = .empty;
+        defer batch.deinit(self.allocator);
+        var first_chunk: ?[]u8 = null;
+        defer if (first_chunk) |c| pipe_alloc.free(c);
         while (pipe.hasBytes()) {
             const bytes = try pipe.take();
-            defer pipe.allocator.free(bytes);
             input.received += bytes.len;
-            try self.receiveBytes(bytes, false);
+            if (first_chunk == null and batch.items.len == 0) {
+                first_chunk = bytes;
+            } else {
+                if (first_chunk) |c| {
+                    try batch.appendSlice(self.allocator, c);
+                    pipe_alloc.free(c);
+                    first_chunk = null;
+                }
+                defer pipe_alloc.free(bytes);
+                try batch.appendSlice(self.allocator, bytes);
+            }
         }
         const ended = pipe.state != .open;
+        const arrived: []const u8 = if (first_chunk) |c| c else batch.items;
         if (ended) {
             // HTML 7.5.1: "When no more bytes are available", the implied
             // EOF. A body that failed part-way ends the same way, with what
@@ -966,7 +984,9 @@ pub const DocumentParser = struct {
             // FrameLoader::receivedMainResourceError commits what was
             // received; both then fire load.
             self.releaseNetworkInput();
-            try self.receiveBytes("", true);
+        }
+        if (arrived.len > 0 or ended) try self.receiveBytes(arrived, ended);
+        if (ended) {
             self.input_stream.complete = true;
             // The navigation timing entry was made with the body arriving;
             // its sizes are the body's now (fetch decoded any content coding,
@@ -987,34 +1007,136 @@ pub const DocumentParser = struct {
     }
 
     /// The byte stream's next `bytes` (`last`: its end), decoded into the
-    /// input stream - after the encoding sniffing algorithm has decided the
-    /// encoding from enough of the stream's first bytes. No meta the tree
-    /// builder meets later changes it (encoding_sniffing.zig, the browser
-    /// deviation), so the bytes are not kept once decoded.
+    /// input stream while the meta charset scan runs in parallel.
+    ///
+    /// Design & browser evidence (golden rule 2; HTML §13.2.3.2 step 3 &
+    /// §13.2.3.4 step 5):
+    /// - Blink (`third_party/blink/renderer/core/html/parser/text_resource_decoder.cc`
+    ///   `TextResourceDecoder::Decode`, `CheckForBOM`, `CheckForXMLCharset`,
+    ///   `CheckForMetaCharset`; `core/dom/document.cc` `Document::SetEncodingData`):
+    ///   buffers only while BOM (<=3 bytes) or XML declaration (`<?xml...>` /
+    ///   UTF-16 `<?x`) is unresolved. Once resolved, each chunk is scanned by
+    ///   `HTMLMetaCharsetParser` ahead of decoding and immediately decoded and
+    ///   parsed with the active encoding (tentative parent/XML/windows-1252
+    ///   until a meta switches it). A late `<meta charset>` switches the codec
+    ///   on the fly, updates `document.characterSet`, and re-decodes an
+    ///   already-parsed `<title>` if non-ASCII bytes were tentatively decoded
+    ///   as `windows-1252`.
+    /// - WebKit (`Source/WebCore/loader/TextResourceDecoder.cpp` `decode`,
+    ///   `checkForHeadCharset`) buffers all bytes until the meta scan ends;
+    ///   Gecko (`parser/html/nsHtml5StreamParser.cpp` `SniffStreamBytes`,
+    ///   `SwitchDecoderIfAsciiSoFar`, `ProcessLookingForMetaCharset`) buffers
+    ///   speculative tree ops until the meta scan ends and switches in place
+    ///   for ASCII prefixes.
+    /// Following Blink avoids stalling small streamed responses (<1024 B)
+    /// until EOF so early `<title>` and head markup parse immediately.
     fn receiveBytes(self: *DocumentParser, bytes: []const u8, last: bool) !void {
         const input = &self.network.?;
         var chars: std.ArrayListUnmanaged(u8) = .empty;
         defer chars.deinit(self.allocator);
-        if (!input.sniffed) {
+
+        var chunk: []const u8 = bytes;
+        var clear_raw = false;
+        defer if (clear_raw) self.raw_bytes.clearAndFree(self.allocator);
+
+        if (!input.prefix_checked) {
             try self.raw_bytes.appendSlice(self.allocator, bytes);
-            const prescanned = switch (try input.prescan(self.allocator, self.raw_bytes.items, last)) {
-                .wait => return,
-                .ready => |found| found,
-            };
-            input.sniffed = true;
-            input.releaseScanner();
-            // HTML 13.2.3.2, over the bytes the wait collected.
-            const result = encoding_sniffing.sniff(self.raw_bytes.items, .{ .transport = input.transport, .parent = input.parent, .prescanned = prescanned });
-            try document_internals.setEncoding(self.document, encoding_sniffing.canonicalName(result.encoding));
-            input.decoder = encoding_sniffing.StreamDecoder.init(result.encoding);
+            const prefix = self.raw_bytes.items;
+            // Wait only for BOM (<=3 bytes) and XML declaration (UTF-16 `<?x`
+            // or `<?xml...>`), never for the meta charset scan.
+            if (!last and encoding_sniffing.mayStartBom(prefix)) return;
+            const bom_len = encoding_sniffing.bomLength(prefix);
+            if (bom_len == 0 and input.transport == null and !last and encoding_sniffing.mayStartXmlDeclaration(prefix)) {
+                return;
+            }
+
+            // HTML §13.2.3.2 initial encoding determination:
+            // Step 1: BOM -> certain (skip XML decl and meta scan).
+            // Step 4: transport charset -> certain (skip XML decl and meta scan).
+            // Step 5 (UTF-16 XML decl prefix) -> certain (skip meta scan).
+            // Otherwise: XML encoding > same-origin non-UTF-16 parent > default
+            // windows-1252, all tentative with the meta scan running in parallel.
+            if (bom_len != 0) {
+                const sniffed = encoding_sniffing.sniff(prefix, .{});
+                input.encoding = sniffed.encoding;
+                input.confidence = .certain;
+                input.meta_done = true;
+            } else if (input.transport) |transport| {
+                input.encoding = transport;
+                input.confidence = .certain;
+                input.meta_done = true;
+            } else if (encoding_sniffing.utf16XmlDeclaration(prefix)) |utf16_enc| {
+                input.encoding = utf16_enc;
+                input.confidence = .certain;
+                input.meta_done = true;
+            } else {
+                const initial = encoding_sniffing.getXmlEncoding(prefix) orelse
+                    (if (input.parent) |p| if (!encoding_sniffing.isUtf16(p)) p else null else null) orelse
+                    encoding_sniffing.default_encoding;
+                input.encoding = initial;
+                input.confidence = .tentative;
+                input.meta_done = false;
+            }
+
+            input.prefix_checked = true;
+            try document_internals.setEncoding(self.document, encoding_sniffing.canonicalName(input.encoding));
+            input.decoder = encoding_sniffing.StreamDecoder.init(input.encoding);
             // Encoding "decode" steps 1-2: a BOM is not part of the text.
-            const bom_len = encoding_sniffing.bomLength(self.raw_bytes.items);
-            try input.decoder.?.decodeInto(self.allocator, &chars, self.raw_bytes.items[bom_len..], last);
-            self.raw_bytes.clearAndFree(self.allocator);
-        } else {
-            try input.decoder.?.decodeInto(self.allocator, &chars, bytes, last);
+            chunk = prefix[bom_len..];
+            clear_raw = true;
         }
-        if (last) input.decoder = null;
+
+        // Feed the meta charset scanner ahead of decoding this chunk without
+        // blocking on `.need_more` (Blink `TextResourceDecoder::CheckForMetaCharset`).
+        if (!input.meta_done) {
+            const scanner = input.scanner orelse blk: {
+                const created = try meta_charset_scan.Scanner.create(self.allocator);
+                input.scanner = created;
+                break :blk created;
+            };
+            const outcome = try scanner.feed(chunk, last);
+            switch (outcome) {
+                .found => |found| {
+                    input.meta_done = true;
+                    input.releaseScanner();
+                    // HTML §13.2.3.4 "change the encoding" (steps 1-5:
+                    // MetaAttributes already mapped UTF-16 -> UTF-8 and
+                    // x-user-defined -> windows-1252; current encoding is
+                    // never UTF-16 here).
+                    if (found != input.encoding) {
+                        const old_encoding = input.encoding;
+                        input.encoding = found;
+                        input.decoder = encoding_sniffing.StreamDecoder.init(found);
+                        try document_internals.setEncoding(self.document, encoding_sniffing.canonicalName(found));
+                        if (input.decoded_non_ascii and old_encoding == encoding_sniffing.windows_1252) {
+                            self.redecodeTitle(found);
+                        }
+                    }
+                    input.confidence = .certain;
+                },
+                .none => {
+                    input.meta_done = true;
+                    input.releaseScanner();
+                },
+                .need_more => {},
+            }
+            if (!input.meta_done and !input.decoded_non_ascii) {
+                for (chunk) |b| {
+                    if (b >= 0x80) {
+                        input.decoded_non_ascii = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (input.decoder) |*dec| {
+            try dec.decodeInto(self.allocator, &chars, chunk, last);
+        }
+        if (last) {
+            input.decoder = null;
+            input.releaseScanner();
+        }
         if (chars.items.len == 0) return;
         // Appended at the END of the input stream, past any insertion point:
         // the network's characters follow whatever script wrote.
@@ -1024,6 +1146,77 @@ pub const DocumentParser = struct {
         // 13.2.8: "Bytes pushed into the HTML parser's input byte stream must
         // also be pushed into the speculative HTML parser's input byte stream."
         if (self.speculation) |speculation| speculation.append(chars.items);
+    }
+
+    /// Blink `Document::SetEncodingData` (`third_party/blink/renderer/core/dom/
+    /// document.cc:7756-7772`): when a late `<meta charset>` changes tentative
+    /// `windows-1252` after non-ASCII bytes were already parsed into `<title>`,
+    /// reverse the title's text back to its raw bytes and re-decode with
+    /// `new_encoding` so `document.title` and CDP targets show the right text.
+    fn redecodeTitle(self: *DocumentParser, new_encoding: encoding_sniffing.Encoding) void {
+        const title_el = findHtmlTitleElement(self.document) orelse return;
+        // Match Blink's `!ElementTraversal::FirstWithin(*title_element_)`:
+        // skip if script inserted element children inside `<title>`.
+        var single_text_child: ?*runtime.Instance = null;
+        if (dom.instance_bridge.getNodeBase(title_el)) |title_base| {
+            var child = title_base.firstChild();
+            var child_count: usize = 0;
+            while (child) |c| : (child = c.next_sibling) {
+                if (c.node_type == dom.NodeBase.ELEMENT_NODE) return;
+                child_count += 1;
+                if (child_count == 1 and c.node_type == dom.NodeBase.TEXT_NODE) {
+                    single_text_child = dom.instance_bridge.getInstanceTyped(runtime.Instance, c);
+                } else {
+                    single_text_child = null;
+                }
+            }
+        }
+        var content = (interfaces.Node.get_textContent(title_el) catch return) orelse return;
+        defer content.deinit(title_el.ctx.allocator);
+        const text = content.asSlice();
+        if (text.len == 0) return;
+        const raw = (encoding_sniffing.windows1252Reverse(self.allocator, text) catch return) orelse return;
+        defer self.allocator.free(raw);
+        const redecoded = encoding_sniffing.decodeWith(self.allocator, raw, new_encoding) catch return;
+        defer self.allocator.free(redecoded);
+        if (std.mem.eql(u8, text, redecoded)) return;
+        // Update a single Text child in place (DOM replaceData -> children
+        // changed steps -> HTMLTitleElement titleMayHaveChanged) to avoid
+        // detaching/allocating a Text node; fall back to set_textContent for
+        // multi-child titles.
+        if (single_text_child) |text_node| {
+            interfaces.CharacterData.set_data(text_node, runtime.DOMString.initInterned(redecoded)) catch {};
+        } else {
+            interfaces.Node.set_textContent(title_el, runtime.DOMString.initInterned(redecoded)) catch {};
+        }
+    }
+
+    fn nextNodeInTree(node: *dom.NodeBase, root: *dom.NodeBase) ?*dom.NodeBase {
+        if (node.firstChild()) |first| return first;
+        var cur: *dom.NodeBase = node;
+        while (cur != root) {
+            if (cur.next_sibling) |sibling| return sibling;
+            cur = cur.parent_node orelse return null;
+        }
+        return null;
+    }
+
+    fn findHtmlTitleElement(document: *runtime.Instance) ?*runtime.Instance {
+        const root = dom.instance_bridge.getNodeBase(document) orelse return null;
+        const html_ns = "http://www.w3.org/1999/xhtml";
+        var current = nextNodeInTree(root, root);
+        while (current) |node| : (current = nextNodeInTree(node, root)) {
+            if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
+            const elem = dom.instance_bridge.getInstanceTyped(runtime.Instance, node) orelse continue;
+            const alloc = elem.ctx.allocator;
+            var local = interfaces.Element.get_localName(elem) catch continue;
+            defer local.deinit(alloc);
+            if (!std.mem.eql(u8, local.asSlice(), "title")) continue;
+            var ns = (interfaces.Element.get_namespaceURI(elem) catch continue) orelse continue;
+            defer ns.deinit(alloc);
+            if (std.mem.eql(u8, ns.asSlice(), html_ns)) return elem;
+        }
+        return null;
     }
 
     /// Stop reading the body: its transfer stops once no reader is left.
@@ -1052,47 +1245,24 @@ const NetworkInput = struct {
     parent: ?encoding_sniffing.Encoding,
     /// A networking task to read the body is queued.
     read_queued: bool = false,
-    /// The encoding sniffing algorithm has run: the bytes since go straight
-    /// through `decoder`.
-    sniffed: bool = false,
-    /// The decoder of the body's bytes once the encoding is decided; null
-    /// before, and once every byte is decoded.
+    /// BOM and XML-declaration prefix checks have concluded: `encoding` and
+    /// `decoder` are active and `raw_bytes` has been released.
+    prefix_checked: bool = false,
+    /// The meta charset scan has finished (found a meta, exhausted its window,
+    /// or was skipped because BOM / transport / UTF-16 XML decl decided).
+    meta_done: bool = false,
+    /// The active character encoding and its HTML §13.2.3.2 confidence.
+    encoding: encoding_sniffing.Encoding = encoding_sniffing.default_encoding,
+    confidence: encoding_sniffing.Confidence = .tentative,
+    /// Whether any non-ASCII byte (>= 0x80) was decoded while `!meta_done`.
+    decoded_non_ascii: bool = false,
+    /// The decoder of the body's bytes once `prefix_checked`; null before and
+    /// after EOF.
     decoder: ?encoding_sniffing.StreamDecoder = null,
-    /// The meta scan of the body's first bytes while it has not decided
-    /// (step 5, `prescan`), and how many of them it has read.
+    /// The incremental meta charset scanner while `!meta_done`.
     scanner: ?*meta_charset_scan.Scanner = null,
-    scanned: usize = 0,
     /// The body's bytes received so far.
     received: u64 = 0,
-
-    const Prescan = union(enum) {
-        /// The stream's first bytes are not yet enough to decide.
-        wait,
-        /// Step 5's result (null: none, or the algorithm decides before it).
-        ready: ?encoding_sniffing.Encoding,
-    };
-
-    /// Whether `bytes`, the stream's first (all of them when `last`), are
-    /// enough for the encoding sniffing algorithm, and step 5's prescan of
-    /// them. A BOM needs its three bytes; the transport layer's encoding
-    /// needs nothing more; otherwise the meta scan decides when it has seen
-    /// enough - as Blink's TextResourceDecoder buffers until
-    /// HTMLMetaCharsetParser::CheckForMetaCharset is done - or at the end.
-    /// Stated: HTML 13.2.3.2 step 3 also suggests giving up waiting after
-    /// 500 ms; Crane does not time the wait, as Blink does not.
-    fn prescan(self: *NetworkInput, allocator: Allocator, bytes: []const u8, last: bool) !Prescan {
-        if (!last and encoding_sniffing.mayStartBom(bytes)) return .wait;
-        if (encoding_sniffing.bomLength(bytes) != 0 or self.transport != null) return .{ .ready = null };
-        const scanner = self.scanner orelse blk: {
-            const created = try meta_charset_scan.Scanner.create(allocator);
-            self.scanner = created;
-            break :blk created;
-        };
-        const outcome = try scanner.feed(bytes[self.scanned..], last);
-        self.scanned = bytes.len;
-        if (outcome == .need_more) return .wait;
-        return .{ .ready = meta_charset_scan.prescanResult(bytes, outcome) };
-    }
 
     fn releaseScanner(self: *NetworkInput) void {
         const scanner = self.scanner orelse return;
