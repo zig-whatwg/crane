@@ -1266,6 +1266,155 @@
           }
         }
       ]
+    },
+    {
+      "name": "logpoints: script URLs",
+      "about": "set_logpoints on served scripts and an inline script (no source maps): binding, a line with no code moving to the next possible location, a column, the console output, replacing the set, surviving a reload, the parse, compile and lookup errors, a location with no code, an expression that throws, and the empty set.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/logpoints.html"
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js:4 'sum', sum",
+              "logpoints.html:7 'tripled', tripled",
+              "logpoints.js:6 'blank'",
+              "logpoints.js:3:9 'column', x"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [window.run(2), window.inline(3)]"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js:4 'sum again', sum"
+            ]
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "reload"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => window.run(5)"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "missing.js:1 x"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js:4 sum)"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js 1"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js:0 x"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js:4 'kept'",
+              "logpoints.js:30 'past the end'"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js:4 (() => { throw new Error('boom') })()"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => window.run(1)"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": []
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": []
+          }
+        }
+      ]
     }
   ],
   "expected": [
