@@ -88,13 +88,12 @@ test "the list is exactly the generated callbacks whose return type is neither u
 }
 
 test "the callback returns an impl still converts only shrink" {
-    // 28 -> 19 once codegen emits typed invoke/construct (9 not_invoked leave).
-    // Batch B6 is done at zero.
-    try testing.expectEqual(@as(usize, 19), list.len);
+    // 28 -> 19 (codegen) -> 15 (Trusted Types). Batch B6 is done at zero.
+    try testing.expectEqual(@as(usize, 15), list.len);
     var by_kind: [4]usize = @splat(0);
     for (list) |entry| by_kind[@backingInt(entry[2])] += 1;
     const Conversion = codegen.callback_returns.Conversion;
-    try testing.expectEqual(@as(usize, 6), by_kind[@backingInt(Conversion.hand)]);
+    try testing.expectEqual(@as(usize, 2), by_kind[@backingInt(Conversion.hand)]);
     try testing.expectEqual(@as(usize, 1), by_kind[@backingInt(Conversion.protocol_typed)]);
     try testing.expectEqual(@as(usize, 12), by_kind[@backingInt(Conversion.promise_wrap)]);
     try testing.expectEqual(@as(usize, 0), by_kind[@backingInt(Conversion.not_invoked)]);

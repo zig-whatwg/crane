@@ -21,6 +21,7 @@ const interfaces = @import("interfaces");
 const dom = @import("dom");
 const webidl = @import("webidl");
 const dictionaries = @import("dictionaries");
+const callbacks = @import("callbacks");
 const TrustedTypePolicy = interfaces.TrustedTypePolicy;
 
 const Kind = dom.trusted_types.Kind;
@@ -122,15 +123,15 @@ fn hasParserOptions(policy: *runtime.Instance) bool {
 
 /// 3.3 "Get Trusted Type policy value" for "TrustedHTMLParserOptions":
 /// steps 1-3 (the function, or null / a TypeError when missing), 5-7 (args
-/// « argument » + `arguments`, invoked with "rethrow"). Step 4's callback
-/// argument is the caller's (html.parser_options). The value as the
-/// callback returned it, OWNED.
+/// « argument » + `arguments`, invoked with "rethrow") via generated
+/// `callbacks.call.CreateParserOptionsCallback.invoke`. The returned
+/// `Held(?SetHTMLUnsafeOptions)` is OWNED (`release(policy.ctx.allocator)`).
 fn parserOptionsValue(
     policy: *runtime.Instance,
-    argument: runtime.JSValue,
+    argument: dictionaries.SetHTMLUnsafeOptions,
     arguments: []const runtime.JSValue,
     throw_if_missing: bool,
-) anyerror!?engine.Owned {
+) anyerror!?engine.Held(?dictionaries.SetHTMLUnsafeOptions) {
     const internal = internalOf(policy) orelse return error.TypeError;
     const realm = policy.ctx;
     // 2. "Let function be policy's options[functionName]."
@@ -141,16 +142,17 @@ fn parserOptionsValue(
         return null;
     };
     defer held.release();
-    // 5-6. "Let args be « value »", then each item in arguments.
-    const allocator = realm.allocator;
-    const args = try allocator.alloc(runtime.JSValue, arguments.len + 1);
-    defer allocator.free(args);
-    args[0] = argument;
-    @memcpy(args[1..], arguments);
-    // 7. Invoke function with args and "rethrow".
+    // 5-7. Invoke CreateParserOptionsCallback with « argument » + arguments and "rethrow".
     const callback: engine.CallbackFunction = .{ .function = held, .context = null };
-    const completion = try engine.invokeCallbackFunction(realm, &callback, .undefined, args, .rethrow);
-    switch (completion) {
+    const returned = try callbacks.call.CreateParserOptionsCallback.invoke(
+        realm,
+        &callback,
+        .undefined,
+        .{ .options = argument, .arguments = arguments },
+        .rethrow,
+        realm.allocator,
+    );
+    switch (returned) {
         .throw => |exception| {
             defer exception.release();
             try engine.throwValue(realm, exception.borrow());
@@ -161,9 +163,9 @@ fn parserOptionsValue(
 }
 
 /// 3.3 "Get Trusted Type policy value": the option for `kind` invoked with
-/// « value » + `arguments` and "rethrow", its result converted to the
-/// callback's return type (DOMString?, USVString? for createScriptURL).
-/// OWNED by `allocator`; null for a null or undefined result.
+/// « value » + `arguments` and "rethrow" via the generated callback invoker
+/// (DOMString?, USVString? for createScriptURL). OWNED by `allocator`; null
+/// for a null or undefined result.
 fn policyValue(
     policy: *runtime.Instance,
     kind: Kind,
@@ -183,34 +185,54 @@ fn policyValue(
         return null;
     };
     defer held.release();
-    // 4-5. "Let args be « value »", then each item in arguments.
-    const args = try allocator.alloc(runtime.JSValue, arguments.len + 1);
-    defer allocator.free(args);
-    args[0] = runtime.JSValue.fromStringRef(value);
-    @memcpy(args[1..], arguments);
-    // 6. "Let policyValue be the result of invoking function with args and
-    // "rethrow"." The callback context is not kept: the incumbent is the
-    // caller's.
+    // 4-7. Invoke the generated callback with « value » + arguments and "rethrow".
     const callback: engine.CallbackFunction = .{ .function = held, .context = null };
-    const completion = try engine.invokeCallbackFunction(realm, &callback, .undefined, args, .rethrow);
-    switch (completion) {
-        .throw => |exception| {
-            defer exception.release();
-            try engine.throwValue(realm, exception.borrow());
-            return error.ExceptionPending;
-        },
-        .normal => |result| {
-            defer result.release();
-            // The return type is nullable: null and undefined are null.
-            switch (engine.typeOf(realm, result.borrow())) {
-                .undefined, .null => return null,
-                else => {},
+    const input_str = runtime.DOMString.initInterned(value);
+    switch (kind) {
+        .html => {
+            const returned = try callbacks.call.CreateHTMLCallback.invoke(realm, &callback, .undefined, .{ .input = input_str, .arguments = arguments }, .rethrow, allocator);
+            switch (returned) {
+                .throw => |exception| {
+                    defer exception.release();
+                    try engine.throwValue(realm, exception.borrow());
+                    return error.ExceptionPending;
+                },
+                .normal => |result| {
+                    defer result.release(allocator);
+                    const s = result.value orelse return null;
+                    return try allocator.dupe(u8, s.asSlice());
+                },
             }
-            // 7. Return policyValue, as the callback's return type.
-            return switch (kind) {
-                .script_url => try engine.convertToUSVString(realm, result.borrow(), allocator),
-                .html, .script => try engine.convertToDOMString(realm, result.borrow(), allocator),
-            };
+        },
+        .script => {
+            const returned = try callbacks.call.CreateScriptCallback.invoke(realm, &callback, .undefined, .{ .input = input_str, .arguments = arguments }, .rethrow, allocator);
+            switch (returned) {
+                .throw => |exception| {
+                    defer exception.release();
+                    try engine.throwValue(realm, exception.borrow());
+                    return error.ExceptionPending;
+                },
+                .normal => |result| {
+                    defer result.release(allocator);
+                    const s = result.value orelse return null;
+                    return try allocator.dupe(u8, s.asSlice());
+                },
+            }
+        },
+        .script_url => {
+            const returned = try callbacks.call.CreateScriptURLCallback.invoke(realm, &callback, .undefined, .{ .input = input_str, .arguments = arguments }, .rethrow, allocator);
+            switch (returned) {
+                .throw => |exception| {
+                    defer exception.release();
+                    try engine.throwValue(realm, exception.borrow());
+                    return error.ExceptionPending;
+                },
+                .normal => |result| {
+                    defer result.release(allocator);
+                    const s = result.value orelse return null;
+                    return try allocator.dupe(u8, s);
+                },
+            }
         },
     }
 }

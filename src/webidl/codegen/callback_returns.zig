@@ -35,17 +35,6 @@ pub const Conversion = enum {
 /// (callback, its IDL return type, how the value is converted today).
 pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u8, Conversion }{
     // --- A value type ---
-    // Trusted Types' policy callbacks: impls/TrustedTypePolicy.zig policyValue
-    // (engine.convertToDOMString / convertToUSVString; null and undefined are
-    // null).
-    .{ "CreateHTMLCallback", "DOMString?", .hand },
-    .{ "CreateScriptCallback", "DOMString?", .hand },
-    .{ "CreateScriptURLCallback", "USVString?", .hand },
-    // Invoked in impls/TrustedTypePolicy.zig parserOptionsValue; converted in
-    // html/parser_options.zig trustedFromPolicyValue (the dictionary's
-    // members read by hand, its sanitizer member by
-    // html/sanitizer.zig Converted.fromJS and the hand readers behind it).
-    .{ "CreateParserOptionsCallback", "SetHTMLUnsafeOptions?", .hand },
     // dom/streams_readable.zig defaultControllerEnqueueCompletion and
     // dom/streams_writable.zig getChunkSize (engine.convertToUnrestrictedDouble).
     .{ "QueuingStrategySize", "unrestricted double", .hand },

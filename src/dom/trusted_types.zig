@@ -24,6 +24,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
+const dictionaries = @import("dictionaries");
 const csp = @import("csp");
 const trusted_types = @import("trusted_types");
 const process_start = @import("process_start.zig");
@@ -93,17 +94,17 @@ pub const PolicyHooks = struct {
     ) anyerror!?[]u8,
     /// 3.3 "get trusted type policy value" for "TrustedHTMLParserOptions":
     /// `policy`'s createParserOptions invoked with « argument » + `arguments`
-    /// ("rethrow") - `argument` already made by "create a parser options
-    /// callback argument" (3.3 step 4, the caller's). The callback's value,
-    /// OWNED (release it); null when the policy has no createParserOptions
-    /// and `throw_if_missing` is false (a TypeError when true). An exception
-    /// the callback threw is pending on error.ExceptionPending.
+    /// ("rethrow") via the generated `CreateParserOptionsCallback.invoke`. The
+    /// returned `Held(?SetHTMLUnsafeOptions)` is OWNED (`release(realm.allocator)`);
+    /// outer null means the policy has no createParserOptions and
+    /// `throw_if_missing` is false (a TypeError when true). An exception the
+    /// callback threw is pending on error.ExceptionPending.
     parser_options_value: *const fn (
         policy: *runtime.Instance,
-        argument: runtime.JSValue,
+        argument: dictionaries.SetHTMLUnsafeOptions,
         arguments: []const runtime.JSValue,
         throw_if_missing: bool,
-    ) anyerror!?engine.Owned,
+    ) anyerror!?engine.Held(?dictionaries.SetHTMLUnsafeOptions),
     /// Whether `policy` has a createParserOptions option (3.6 step 8-9's
     /// "function is null" without invoking it).
     has_parser_options: *const fn (policy: *runtime.Instance) bool,
@@ -208,7 +209,7 @@ pub fn parserOptionsValueOf(instance: *runtime.Instance) ?ParserOptionsValue {
 
 /// 3.3 for "TrustedHTMLParserOptions" on `policy` (PolicyHooks
 /// .parser_options_value).
-pub fn parserOptionsPolicyValue(policy: *runtime.Instance, argument: runtime.JSValue, arguments: []const runtime.JSValue, throw_if_missing: bool) anyerror!?engine.Owned {
+pub fn parserOptionsPolicyValue(policy: *runtime.Instance, argument: dictionaries.SetHTMLUnsafeOptions, arguments: []const runtime.JSValue, throw_if_missing: bool) anyerror!?engine.Held(?dictionaries.SetHTMLUnsafeOptions) {
     const hooks = table.read().policy orelse return error.NotImplemented;
     return hooks.parser_options_value(policy, argument, arguments, throw_if_missing);
 }
