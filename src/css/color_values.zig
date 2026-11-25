@@ -804,6 +804,7 @@ fn resolvedComponents(color: Color) ?Components {
         .transparent_keyword => fromBytes(values.RgbaColor.transparent),
         .named => |named| fromBytes(named.rgba),
         .system => |system| fromBytes(system.color(.light)),
+        .resolved_system => |system| fromBytes(system.rgba),
         .current => null,
         .expression => |expression| if (expression.data == .resolved) expression.data.resolved.value else null,
     };
@@ -992,6 +993,7 @@ pub fn legacySrgb(color: Color) ?[4]f64 {
         .rgba => |rgba| fromBytes(rgba),
         .transparent_keyword => fromBytes(values.RgbaColor.transparent),
         .named => |named| fromBytes(named.rgba),
+        .resolved_system => |system| fromBytes(system.rgba),
         .expression => |expression| blk: {
             if (expression.data != .resolved or !expression.data.resolved.legacy) return null;
             const value = expression.data.resolved.value;
@@ -1034,7 +1036,7 @@ pub fn finalLegacy(color: Color) ?values.RgbaColor {
 /// colors, hex) or currentcolor.
 fn legacyOrCurrent(color: Color) bool {
     return switch (color) {
-        .rgba, .transparent_keyword, .named, .system, .current => true,
+        .rgba, .transparent_keyword, .named, .system, .resolved_system, .current => true,
         .expression => |expression| expression.data == .resolved and expression.data.resolved.legacy,
     };
 }

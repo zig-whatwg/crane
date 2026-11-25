@@ -781,10 +781,23 @@ pub const Color = union(enum) {
     /// resolves it against the element's used color scheme (CSS Color 4
     /// 15.5; CSS Color Adjustment 1 2.4). A computed value never holds one.
     system: color_mod.SystemColor,
+    /// A <system-color> resolved during forced colors mode (CSS Color
+    /// Adjustment 1 §3.1): carries its resolved §5.2 sRGB color alongside the
+    /// canonical SystemColor keyword so forced colors mode knows not to
+    /// override explicit system colors and can pair `background-color`
+    /// against `color`'s system color. Only constructed when
+    /// `Context.forced_colors` is true (zero change on `forced-colors: none`);
+    /// pointer-free and smaller than `Named` (0 B growth on `Color`/`Value`).
+    resolved_system: ResolvedSystem,
 
     pub const Named = struct {
         rgba: RgbaColor,
         name: *SharedText,
+    };
+
+    pub const ResolvedSystem = struct {
+        rgba: RgbaColor,
+        keyword: color_mod.SystemColor,
     };
 
     pub const transparent: Color = .transparent_keyword;
@@ -797,6 +810,7 @@ pub const Color = union(enum) {
         scheme: color_scheme_mod.Scheme = .light,
         current: ?Color = null,
         math: @import("math_values.zig").Context = .{},
+        forced_colors: bool = false,
     };
 
     /// Query the original stop graph before computed color resolution. The
@@ -809,7 +823,19 @@ pub const Color = union(enum) {
     pub fn usesLegacyGradientInterpolation(self: Color, stage: GradientStage) bool {
         return switch (self) {
             .expression => |e| e.usesLegacyGradientInterpolation(stage),
-            .rgba, .transparent_keyword, .current, .named, .system => true,
+            .rgba, .transparent_keyword, .current, .named, .system, .resolved_system => true,
+        };
+    }
+
+    pub fn isSystemColor(self: Color) bool {
+        return self == .system or self == .resolved_system;
+    }
+
+    pub fn systemKeyword(self: Color) ?color_mod.SystemColor {
+        return switch (self) {
+            .system => |s| s.standard(),
+            .resolved_system => |s| s.keyword,
+            else => null,
         };
     }
 
@@ -834,6 +860,7 @@ pub const Color = union(enum) {
             .current => try out.appendSlice(allocator, "currentcolor"),
             .named => |n| try out.appendSlice(allocator, n.name.bytes),
             .system => |s| try out.appendSlice(allocator, s.keyword()),
+            .resolved_system => |s| try serializeRgba(s.rgba, out, allocator),
         }
     }
 
@@ -856,10 +883,13 @@ pub const Color = union(enum) {
                 result.retain();
                 break :blk result;
             },
-            .rgba => self,
+            .rgba, .resolved_system => self,
             .transparent_keyword => .{ .rgba = RgbaColor.transparent },
             .named => |n| .{ .rgba = n.rgba },
-            .system => |s| .{ .rgba = s.color(context.scheme) },
+            .system => |s| if (context.forced_colors)
+                .{ .resolved_system = .{ .rgba = s.colorIn(context.scheme, true), .keyword = s.standard() } }
+            else
+                .{ .rgba = s.color(context.scheme) },
         };
     }
 
@@ -867,7 +897,7 @@ pub const Color = union(enum) {
     /// Keep this exhaustive: a future device-cmyk variant is not absolute.
     pub fn isAbsolute(self: Color) bool {
         return switch (self) {
-            .rgba, .transparent_keyword, .named => true,
+            .rgba, .transparent_keyword, .named, .resolved_system => true,
             .current, .system => false,
             .expression => |expression| expression.isAbsolute(),
         };
@@ -879,21 +909,21 @@ pub const Color = union(enum) {
         return switch (self) {
             .current => true,
             .expression => |e| e.containsCurrentColor(),
-            .rgba, .transparent_keyword, .named, .system => false,
+            .rgba, .transparent_keyword, .named, .system, .resolved_system => false,
         };
     }
 
     pub fn needsTreeCounts(self: Color) bool {
         return switch (self) {
             .expression => |e| e.needsTreeCounts(),
-            .rgba, .transparent_keyword, .current, .named, .system => false,
+            .rgba, .transparent_keyword, .current, .named, .system, .resolved_system => false,
         };
     }
 
     pub fn needsRandomBase(self: Color) bool {
         return switch (self) {
             .expression => |e| e.needsRandomBase(),
-            .rgba, .transparent_keyword, .current, .named, .system => false,
+            .rgba, .transparent_keyword, .current, .named, .system, .resolved_system => false,
         };
     }
 
@@ -901,7 +931,7 @@ pub const Color = union(enum) {
     pub fn needsUnavailableMetrics(self: Color, geometry_length: bool) bool {
         return switch (self) {
             .expression => |e| e.needsUnavailableMetrics(geometry_length),
-            .rgba, .transparent_keyword, .current, .named, .system => false,
+            .rgba, .transparent_keyword, .current, .named, .system, .resolved_system => false,
         };
     }
 
@@ -919,6 +949,7 @@ pub const Color = union(enum) {
                 else => false,
             },
             .system => |x| b == .system and b.system == x,
+            .resolved_system => |x| b == .resolved_system and x.keyword == b.resolved_system.keyword and x.rgba.eql(b.resolved_system.rgba),
         };
     }
 
@@ -931,6 +962,7 @@ pub const Color = union(enum) {
             .transparent_keyword => RgbaColor.transparent,
             .named => |n| n.rgba,
             .system => |s| s.color(.light),
+            .resolved_system => |s| s.rgba,
             .current => null,
         };
     }

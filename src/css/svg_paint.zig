@@ -56,12 +56,16 @@ pub const Paint = struct {
     }
 
     pub fn serialize(self: *const Paint, out: *std.ArrayList(u8), allocator: Allocator, current: ?Color) Allocator.Error!void {
+        return self.serializeWith(out, allocator, current, false);
+    }
+
+    fn serializeWith(self: *const Paint, out: *std.ArrayList(u8), allocator: Allocator, current: ?Color, force: bool) Allocator.Error!void {
         if (current != null) {
             try @import("resolved_urls.zig").serialize(.list_style_image, self.url, out, allocator);
         } else try properties.serializeValue(.list_style_image, self.url, out, allocator);
         if (self.fallback) |f| {
             try out.append(allocator, ' ');
-            try serializeColorOrKeyword(f, out, allocator, current);
+            try serializeColorOrKeyword(f, out, allocator, current, force);
         }
     }
 };
@@ -140,14 +144,15 @@ fn releaseFallback(value: Value) void {
     if (value == .color) value.color.release() else value.release();
 }
 
-pub fn serializeResolved(value: Value, current: Color, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
-    if (value == .paint) return value.paint.serialize(out, allocator, current);
-    return serializeColorOrKeyword(value, out, allocator, current);
+pub fn serializeResolved(value: Value, current: Color, force: bool, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+    if (value == .paint) return value.paint.serializeWith(out, allocator, current, force);
+    return serializeColorOrKeyword(value, out, allocator, current, force);
 }
 
-fn serializeColorOrKeyword(value: Value, out: *std.ArrayList(u8), allocator: Allocator, current: ?Color) Allocator.Error!void {
+fn serializeColorOrKeyword(value: Value, out: *std.ArrayList(u8), allocator: Allocator, current: ?Color, force: bool) Allocator.Error!void {
     if (value == .color) {
         if (current) |color| {
+            if (force and !value.color.isSystemColor()) return color.serializeComputed(out, allocator);
             const resolved = try value.color.resolveComputed(allocator, .{ .current = color });
             defer resolved.release();
             return resolved.serializeComputed(out, allocator);
