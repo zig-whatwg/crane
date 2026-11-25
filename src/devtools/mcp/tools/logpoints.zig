@@ -2,11 +2,13 @@
 //! LogpointManager.setLogpoints (Copyright 2026 Google LLC, Apache-2.0;
 //! THIRD_PARTY_NOTICES.md), over the page's DevTools universe
 //! (../logpoints.zig): every logpoint parsed, every expression compiled,
-//! every location found, before anything changes; then each location's
-//! breakpoint set or updated - the last expression for a location wins - a
-//! new one that V8 resolves nowhere removed and reported, and every logpoint
-//! not in the list removed. Script URLs only (batch 4b item 3a): source maps
-//! are item 3b.
+//! every location found (waiting up to 5 s for source maps and preferring a
+//! source-mapped source at the served URL), before anything changes; then each
+//! location normalized through `DebuggerWorkspaceBinding`, set or updated in
+//! V8 (the last expression for a normalized location wins), a new one that V8
+//! resolves nowhere removed and reported, and every logpoint not in the list
+//! removed. Source maps are loaded lazily until logpoints exist, then eagerly
+//! so reloads and rebuilt bundles re-resolve automatically.
 
 const std = @import("std");
 const registry = @import("../tools.zig");
@@ -23,6 +25,39 @@ pub const list = [_]Tool{
 };
 
 const logged = "Logged output appears in list_console_messages once a line executes; objects show as [object Object] there, get_console_message shows them as JSON.";
+const source_mapped_note = "Source-mapped locations are re-resolved automatically when a matching source map loads again (for example after a reload with a regenerated bundle). Note: on the first page load after a rebuild, code that runs during the load itself is not logged yet; if a load-time logpoint stays silent right after a rebuild, reload once more before concluding that the line does not run.";
+
+/// Reap finished background source map loads, wait once for newly parsed
+/// scripts' maps when source-mapped logpoints are active (eager mode after a
+/// reload or rebuild), and re-bind any affected source-mapped logpoints.
+pub fn syncSourceMaps(ctx: *Context, page: *Page) !void {
+    const state = &page.logpoints;
+    _ = state.pollLoads();
+    if (state.lazy_loading or state.records.items.len == 0) return;
+    const has_source_mapped = for (state.records.items) |r| {
+        if (r.from_source_map) break true;
+    } else false;
+    if (has_source_mapped) {
+        var need_wait = false;
+        for (state.scripts.items) |*s| {
+            if (s.source_map_url.len == 0 or s.has_syntax_error or s.eager_waited) continue;
+            if (s.map_state == .none or s.map_state == .loading) {
+                s.eager_waited = true;
+                need_wait = true;
+            }
+        }
+        if (need_wait) {
+            _ = try state.waitForMaps(ctx.session, page, null);
+        }
+    }
+    if (!state.rebind_needed) return;
+    state.rebind_needed = false;
+    const debugger_session = page.debugger_session_id orelse return;
+    for (state.records.items) |record| {
+        if (!record.from_source_map) continue;
+        try updateInBackend(ctx, page, debugger_session, record);
+    }
+}
 
 fn setLogpoints(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Response) anyerror!void {
     const target = page.?;
@@ -47,17 +82,20 @@ fn setLogpoints(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response:
     }
     const debugger_session = target.debugger_session_id orelse return ctx.fail("DevTools universe is not available for page {d}.", .{target.id});
 
+    // Reap any completed background source map loads before lookups.
+    _ = state.pollLoads();
+
     // validateExpression, each.
     for (requests) |request| try validateExpression(ctx, target, request.expression);
 
     // #findUISourceCode, each; the last entry for a location wins, in the
     // place of the first.
-    const Resolved = struct { key: []const u8, url: []const u8, request: lp.Request };
+    const Resolved = struct { key: []const u8, source: lp.UiSource, request: lp.Request };
     var resolved: std.ArrayList(Resolved) = .empty;
     for (requests) |request| {
-        const url = try findSource(ctx, target, request.url);
-        const key = try lp.locationKey(ctx.arena, url, request.line, request.column);
-        const entry: Resolved = .{ .key = key, .url = url, .request = request };
+        const source = try findSource(ctx, target, request.url);
+        const key = try lp.locationKey(ctx.arena, source.url, request.line, request.column);
+        const entry: Resolved = .{ .key = key, .source = source, .request = request };
         const replaced = for (resolved.items) |*r| {
             if (std.mem.eql(u8, r.key, key)) {
                 r.* = entry;
@@ -73,30 +111,37 @@ fn setLogpoints(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response:
     for (resolved.items) |entry| {
         const line = entry.request.line - 1;
         const asked_column: ?u64 = if (entry.request.column) |c| c - 1 else null;
-        // normalizeUILocation: a location in a script's source is a raw
-        // location, whose column is 0 when none was asked for.
-        const column: ?u64 = if (state.hasScript(entry.url)) asked_column orelse 0 else asked_column;
-        const existing = state.find(entry.url, line, column);
+        // BreakpointManager.setBreakpoint -> DebuggerWorkspaceBinding.normalizeUILocation:
+        // moves a generated location covered by a source map to its original
+        // source, and normalizes a mapped original line to its first mapped column.
+        const norm = try state.normalizeUiLocation(ctx.arena, entry.source, line, asked_column);
+        const existing = state.find(norm.url, norm.from_source_map, norm.line, norm.column);
         if (existing) |record| {
             if (!std.mem.eql(u8, record.expression, entry.request.expression)) {
-                // Breakpoint.updateState: the ModelBreakpoint's backend
-                // breakpoint removed, then set with the new condition.
                 const expression = try allocator.dupe(u8, entry.request.expression);
                 allocator.free(record.expression);
                 record.expression = expression;
-                try removeFromBackend(ctx, debugger_session, record);
-                try setInBackend(ctx, debugger_session, record);
             }
-            // An existing logpoint stays, bound or not.
-            try kept.append(ctx.arena, record);
+            try updateInBackend(ctx, target, debugger_session, record);
+            // An existing logpoint stays, bound or not (deduplicated in `kept`).
+            const already_kept = for (kept.items) |k| {
+                if (k == record) break true;
+            } else false;
+            if (!already_kept) try kept.append(ctx.arena, record);
             continue;
         }
         const record = try allocator.create(lp.Logpoint);
-        record.* = .{ .url = &.{}, .line = line, .column = column, .expression = &.{} };
+        record.* = .{
+            .url = &.{},
+            .from_source_map = norm.from_source_map,
+            .line = norm.line,
+            .column = norm.column,
+            .expression = &.{},
+        };
         errdefer record.destroy(allocator);
-        record.url = try allocator.dupe(u8, entry.url);
+        record.url = try allocator.dupe(u8, norm.url);
         record.expression = try allocator.dupe(u8, entry.request.expression);
-        try setInBackend(ctx, debugger_session, record);
+        try updateInBackend(ctx, target, debugger_session, record);
         // A new logpoint V8 resolved nowhere: removed, and reported.
         if (!record.bound()) {
             try unbound.append(ctx.arena, entry.key);
@@ -125,6 +170,10 @@ fn setLogpoints(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response:
         try removeFromBackend(ctx, debugger_session, record);
     }
 
+    // LogpointManager #setLazySourceMapLoading(this.#records.size === 0).
+    state.lazy_loading = state.records.items.len == 0;
+    state.rebind_needed = false;
+
     const listing = try lp.formatList(ctx.arena, state.records.items);
     if (unbound.items.len != 0) {
         // LogpointError: the resulting state, then the error.
@@ -133,6 +182,10 @@ fn setLogpoints(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response:
     }
     try response.line("{s}", .{listing});
     if (state.records.items.len == 0) return;
+    const any_source_mapped = for (state.records.items) |r| {
+        if (r.from_source_map) break true;
+    } else false;
+    if (any_source_mapped) try response.line("{s}", .{source_mapped_note});
     try response.line("{s}", .{logged});
 }
 
@@ -165,61 +218,177 @@ fn errorMessage(arena: std.mem.Allocator, details: std.json.ObjectMap) ![]const 
     return first;
 }
 
-/// #findUISourceCode / #matchUISourceCode: the source whose URL is `url`,
-/// or ends in "/" and `url`; an ambiguous suffix and no match are errors.
-fn findSource(ctx: *Context, page: *Page, url: []const u8) ![]const u8 {
-    const sources = try page.logpoints.sourceUrls(ctx.arena, page.url);
-    var candidates: std.ArrayList([]const u8) = .empty;
-    const suffix = try std.fmt.allocPrint(ctx.arena, "/{s}", .{url});
-    for (sources) |candidate| {
-        if (std.mem.eql(u8, candidate, url)) return candidate;
-        if (std.mem.endsWith(u8, candidate, suffix)) try candidates.append(ctx.arena, candidate);
+/// LogpointManager.#findUISourceCode: matches a script or source-map source,
+/// waiting up to 5 s for source maps when a served script has a sourceMapURL
+/// (preferring a source-mapped source at the same URL) or when nothing matched
+/// yet.
+fn findSource(ctx: *Context, page: *Page, url: []const u8) !lp.UiSource {
+    const state = &page.logpoints;
+    var match = try matchSource(ctx, page, url);
+    var timed_out = false;
+    if (match != null and !match.?.from_source_map) {
+        const matched_url = match.?.url;
+        if (state.hasSourceMapUrl(matched_url)) {
+            const outcome = try state.waitForMaps(ctx.session, page, matched_url);
+            match = try matchSource(ctx, page, url);
+            if (outcome == .timed_out and (match == null or !match.?.from_source_map)) {
+                return ctx.fail("The source map of {s} was still loading after {d} seconds; retry.", .{ matched_url, state.timeoutSecondsLabel() });
+            }
+        }
+    } else if (match == null) {
+        const outcome = try state.waitForMaps(ctx.session, page, null);
+        timed_out = outcome == .timed_out;
+        match = try matchSource(ctx, page, url);
     }
-    if (candidates.items.len > 1) return ctx.fail("\"{s}\" matches multiple sources: {s}. Specify a longer path.", .{ url, try std.mem.join(ctx.arena, ", ", candidates.items) });
-    if (candidates.items.len == 1) return candidates.items[0];
+    if (match) |m| return m;
+
     // Sources with the same file name, at most five.
+    const sources = try state.uiSources(ctx.arena, page.url);
     const name = try lp.baseName(ctx.arena, url);
     var similar: std.ArrayList([]const u8) = .empty;
     for (sources) |candidate| {
         if (similar.items.len == 5) break;
-        if (std.mem.eql(u8, try lp.baseName(ctx.arena, candidate), name)) try similar.append(ctx.arena, candidate);
+        if (std.mem.eql(u8, try lp.baseName(ctx.arena, candidate.url), name)) try similar.append(ctx.arena, candidate.url);
     }
-    const hint = if (similar.items.len != 0) try std.fmt.allocPrint(ctx.arena, " Sources with the same file name: {s}.", .{try std.mem.join(ctx.arena, ", ", similar.items)}) else "";
-    return ctx.fail("No parsed script or original source file matches \"{s}\". The url must match the URL of a script as served to the browser or an original source file from a source map, exactly or as a path suffix.{s}", .{ url, hint });
+    const timeout_note = if (timed_out)
+        try std.fmt.allocPrint(ctx.arena, " Some source maps were still loading after {d} seconds; retry if the file comes from a source map.", .{state.timeoutSecondsLabel()})
+    else
+        "";
+    const hint = if (similar.items.len != 0)
+        try std.fmt.allocPrint(ctx.arena, " Sources with the same file name: {s}.", .{try std.mem.join(ctx.arena, ", ", similar.items)})
+    else
+        "";
+    return ctx.fail("No parsed script or original source file matches \"{s}\". The url must match the URL of a script as served to the browser or an original source file from a source map, exactly or as a path suffix.{s}{s}", .{ url, timeout_note, hint });
 }
 
-/// ModelBreakpoint's #setBreakpointOnBackend: Debugger.setBreakpointByUrl
-/// with the logpoint's condition; its locations are where it is bound.
-fn setInBackend(ctx: *Context, debugger_session: []const u8, record: *lp.Logpoint) !void {
+/// LogpointManager.#matchUISourceCode: exact URL wins; otherwise unique path
+/// suffix (`/<url>`); when both a served script and a source-mapped original
+/// source share the same URL, the source-mapped source wins.
+fn matchSource(ctx: *Context, page: *Page, url: []const u8) !?lp.UiSource {
+    const sources = try page.logpoints.uiSources(ctx.arena, page.url);
+    const suffix = try std.fmt.allocPrint(ctx.arena, "/{s}", .{url});
+    var candidates: std.ArrayList(lp.UiSource) = .empty;
+    for (sources) |candidate| {
+        if (!std.mem.eql(u8, candidate.url, url) and !std.mem.endsWith(u8, candidate.url, suffix)) continue;
+        const existing_idx: ?usize = for (candidates.items, 0..) |c, idx| {
+            if (std.mem.eql(u8, c.url, candidate.url)) break idx;
+        } else null;
+        if (existing_idx) |idx| {
+            if (candidate.from_source_map) candidates.items[idx] = candidate;
+        } else {
+            try candidates.append(ctx.arena, candidate);
+        }
+    }
+    for (candidates.items) |c| {
+        if (std.mem.eql(u8, c.url, url)) return c;
+    }
+    if (candidates.items.len > 1) {
+        const urls = try ctx.arena.alloc([]const u8, candidates.items.len);
+        for (candidates.items, urls) |c, *u| u.* = c.url;
+        return ctx.fail("\"{s}\" matches multiple sources: {s}. Specify a longer path.", .{ url, try std.mem.join(ctx.arena, ", ", urls) });
+    }
+    if (candidates.items.len == 1) return candidates.items[0];
+    return null;
+}
+
+/// ModelBreakpoint.#updateInDebugger: computes backend positions via
+/// `uiLocationToRawLocations` (falling back to `last_resolved_state` or the
+/// breakpoint's own location), skips if already a subset of `current_state`,
+/// otherwise resets existing backend breakpoints and sets the new ones.
+fn updateInBackend(ctx: *Context, page: *Page, debugger_session: []const u8, record: *lp.Logpoint) !void {
     const allocator = ctx.session.allocator;
-    var params: std.Io.Writer.Allocating = .init(ctx.arena);
-    try params.writer.print("{{\"lineNumber\":{d},\"url\":{f}", .{ record.line, std.json.fmt(record.url, .{}) });
-    if (record.column) |c| try params.writer.print(",\"columnNumber\":{d}", .{c});
-    try params.writer.print(",\"condition\":{f}}}", .{std.json.fmt(try lp.backendCondition(ctx.arena, record.expression), .{})});
-    var r = try ctx.session.client.call("Debugger.setBreakpointByUrl", params.written(), debugger_session, session_mod.command_timeout_ms);
-    defer r.deinit();
-    const result = r.result() orelse return;
-    const id = str(result.object.get("breakpointId"));
-    if (id.len == 0) return;
-    record.breakpoint_id = try allocator.dupe(u8, id);
-    const locations = result.object.get("locations") orelse return;
-    if (locations != .array) return;
-    for (locations.array.items) |location| {
-        if (location != .object) continue;
-        const script_id = try allocator.dupe(u8, str(location.object.get("scriptId")));
-        errdefer allocator.free(script_id);
-        try record.resolved.append(allocator, script_id);
+    const state = &page.logpoints;
+    const condition = try lp.backendCondition(ctx.arena, record.expression);
+
+    const raw_locations = try state.uiLocationToRawLocations(
+        ctx.arena,
+        .{ .url = record.url, .from_source_map = record.from_source_map },
+        record.line,
+        record.column orelse 0,
+    );
+
+    var new_state: std.ArrayList(lp.BackendPosition) = .empty;
+    defer {
+        for (new_state.items) |*p| p.deinit(allocator);
+        new_state.deinit(allocator);
+    }
+
+    if (raw_locations.len > 0) {
+        for (raw_locations) |loc| {
+            const u = try allocator.dupe(u8, loc.url);
+            errdefer allocator.free(u);
+            const cond = try allocator.dupe(u8, condition);
+            try new_state.append(allocator, .{ .url = u, .line = loc.line, .column = loc.column, .condition = cond });
+        }
+    } else if (record.last_resolved_state.items.len > 0) {
+        for (record.last_resolved_state.items) |*pos| {
+            const u = try allocator.dupe(u8, pos.url);
+            errdefer allocator.free(u);
+            const cond = try allocator.dupe(u8, condition);
+            try new_state.append(allocator, .{ .url = u, .line = pos.line, .column = pos.column, .condition = cond });
+        }
+    } else {
+        const u = try allocator.dupe(u8, record.url);
+        errdefer allocator.free(u);
+        const cond = try allocator.dupe(u8, condition);
+        try new_state.append(allocator, .{ .url = u, .line = record.line, .column = record.column, .condition = cond });
+    }
+
+    if (record.breakpoint_ids.items.len > 0 and lp.stateSubset(new_state.items, record.current_state.items)) {
+        return;
+    }
+
+    // Update Breakpoint.#lastResolvedState.
+    record.clearLastResolvedState(allocator);
+    for (new_state.items) |*pos| {
+        try record.last_resolved_state.append(allocator, try pos.dupe(allocator));
+    }
+
+    if (record.breakpoint_ids.items.len > 0) {
+        try removeFromBackend(ctx, debugger_session, record);
+    }
+
+    // ModelBreakpoint.#setBreakpointOnBackend.
+    for (new_state.items) |*pos| {
+        var params: std.Io.Writer.Allocating = .init(ctx.arena);
+        try params.writer.print("{{\"lineNumber\":{d},\"url\":{f}", .{ pos.line, std.json.fmt(pos.url, .{}) });
+        if (pos.column) |c| try params.writer.print(",\"columnNumber\":{d}", .{c});
+        try params.writer.print(",\"condition\":{f}}}", .{std.json.fmt(pos.condition, .{})});
+        var r = try ctx.session.client.call("Debugger.setBreakpointByUrl", params.written(), debugger_session, session_mod.command_timeout_ms);
+        defer r.deinit();
+        const result = r.result() orelse continue;
+        const id = str(result.object.get("breakpointId"));
+        if (id.len == 0) continue;
+        const bp_id = try allocator.dupe(u8, id);
+        errdefer allocator.free(bp_id);
+        try record.breakpoint_ids.append(allocator, bp_id);
+        const locations = result.object.get("locations") orelse continue;
+        if (locations != .array) continue;
+        for (locations.array.items) |location| {
+            if (location != .object) continue;
+            const loc_bp = try allocator.dupe(u8, id);
+            errdefer allocator.free(loc_bp);
+            const script_id = try allocator.dupe(u8, str(location.object.get("scriptId")));
+            errdefer allocator.free(script_id);
+            try record.resolved.append(allocator, .{ .breakpoint_id = loc_bp, .script_id = script_id });
+        }
+    }
+
+    record.clearCurrentState(allocator);
+    for (new_state.items) |*pos| {
+        try record.current_state.append(allocator, try pos.dupe(allocator));
     }
 }
 
-/// ModelBreakpoint.resetBreakpoint: Debugger.removeBreakpoint.
+/// ModelBreakpoint.resetBreakpoint: Debugger.removeBreakpoint for every backend id.
 fn removeFromBackend(ctx: *Context, debugger_session: []const u8, record: *lp.Logpoint) !void {
     const allocator = ctx.session.allocator;
     record.clearResolved(allocator);
-    const id = record.breakpoint_id orelse return;
-    record.breakpoint_id = null;
-    defer allocator.free(id);
-    const params = try std.fmt.allocPrint(ctx.arena, "{{\"breakpointId\":{f}}}", .{std.json.fmt(id, .{})});
-    var r = try ctx.session.client.call("Debugger.removeBreakpoint", params, debugger_session, session_mod.command_timeout_ms);
-    r.deinit();
+    record.clearCurrentState(allocator);
+    while (record.breakpoint_ids.pop()) |id| {
+        defer allocator.free(id);
+        const params = try std.fmt.allocPrint(ctx.arena, "{{\"breakpointId\":{f}}}", .{std.json.fmt(id, .{})});
+        var r = try ctx.session.client.call("Debugger.removeBreakpoint", params, debugger_session, session_mod.command_timeout_ms);
+        r.deinit();
+    }
 }

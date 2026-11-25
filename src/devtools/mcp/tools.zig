@@ -216,6 +216,7 @@ pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: 
         // McpPage.init: focused-page emulation, then the DevTools universe.
         try pages.emulateFocus(&ctx, resolved);
         try logpoints.initUniverse(session, resolved);
+        try logpoint_tools.syncSourceMaps(&ctx, resolved);
         if (tool.set_page) response.page = resolved;
         if (tool.blocked_by_dialog) if (resolved.dialog) |d| {
             response.error_message = try std.fmt.allocPrint(arena, "A dialog is open ({s}: {s}).", .{ d.type, d.message });
@@ -229,6 +230,9 @@ pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: 
         },
         error.OutOfMemory => return error.OutOfMemory,
         else => response.error_message = try std.fmt.allocPrint(arena, "{t}", .{err}),
+    };
+    if (page) |resolved| if (!resolved.closed) {
+        logpoint_tools.syncSourceMaps(&ctx, resolved) catch |err| if (err == error.OutOfMemory) return error.OutOfMemory;
     };
     try session.initPages();
     return try response.finish(session);

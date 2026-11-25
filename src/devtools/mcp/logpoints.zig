@@ -1,39 +1,51 @@
 //! set_logpoints' model, as chrome-devtools-mcp v1.13.0 builds it
 //! (src/LogpointManager.ts, src/formatters/LogpointFormatter.ts,
-//! src/devtools/DevtoolsUtils.ts createTargetUniverse; Copyright 2026 Google
-//! LLC, Apache-2.0; THIRD_PARTY_NOTICES.md) over the DevTools frontend's
-//! BreakpointManager, which it runs in a second CDP session on the page - its
+//! src/devtools/DevtoolsUtils.ts createTargetUniverse and waitForSourceMaps;
+//! Copyright 2026 Google LLC, Apache-2.0; THIRD_PARTY_NOTICES.md) over the
+//! DevTools frontend's BreakpointManager, CompilerScriptMapping and
+//! SourceMapManager, which it runs in a second CDP session on the page - its
 //! "DevTools universe". The frontend's parts are reproduced, not copied
-//! (devtools-frontend, BSD-3: front_end/models/breakpoints/
-//! BreakpointManager.ts Breakpoint / ModelBreakpoint / Storage.computeId and
-//! backendCondition, front_end/models/bindings/ResourceScriptMapping.ts and
-//! DebuggerWorkspaceBinding.normalizeUILocation, front_end/core/sdk/
-//! DebuggerModel.ts enableDebugger and Location, Script.containsLocation):
+//! (devtools-frontend, BSD-3-Clause, Copyright The Chromium Authors;
+//! THIRD_PARTY_NOTICES.md: front_end/models/breakpoints/BreakpointManager.ts
+//! Breakpoint / ModelBreakpoint / Storage.computeId and backendCondition,
+//! front_end/models/bindings/CompilerScriptMapping.ts, ResourceScriptMapping.ts
+//! and DebuggerWorkspaceBinding.ts normalizeUILocation,
+//! front_end/core/sdk/SourceMap.ts, SourceMapManager.ts, DebuggerModel.ts,
+//! Script.ts):
 //!
 //! - the universe: a second session, attached the first time a page tool
 //!   runs on the page (McpPage.init), its Debugger enabled as DevTools does
 //!   with "skip all pauses" set - so a `debugger` statement never pauses,
 //!   while a breakpoint's condition still runs;
-//! - the workspace: the URLs of the page's parsed scripts (an inline
-//!   script's is its document's) and the document's own;
-//! - a logpoint: a breakpoint whose condition is
-//!   `/** DEVTOOLS_LOGPOINT */ console.log(<expression>)` with the sourceURL
-//!   debugger://logpoint, set by URL, kept by (url, line, column) - the
-//!   column 0 once the location reaches a script (DevTools' Location) - and
-//!   bound while V8 has resolved it in a live script.
+//! - the workspace: the document's URL, each parsed script's URL, and the
+//!   original source URLs of every attached source map (loaded lazily until
+//!   logpoints exist, then eagerly so reloads and rebuilt bundles re-resolve);
+//! - a logpoint: normalized through `DebuggerWorkspaceBinding` (so a generated
+//!   location covered by a source map moves to its original source), kept by
+//!   (url, from_source_map, line, column), bound at one or more backend
+//!   `Debugger.setBreakpointByUrl` positions (`ModelBreakpoint.currentState`),
+//!   with condition `/** DEVTOOLS_LOGPOINT */ console.log(<expression>)` and
+//!   sourceURL `debugger://logpoint`.
 //!
-//! Original sources through source maps are batch 4b item 3b; minified-name
-//! substitution (NamesResolver) item 3c.
+//! Minified-name substitution (NamesResolver) is batch 4b item 3c.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const platform = @import("platform");
+const fetch = @import("fetch");
 const session_mod = @import("session.zig");
 const Session = session_mod.Session;
 const Page = session_mod.Page;
 const str = session_mod.str;
+const paths_mod = @import("paths.zig");
+pub const source_map = @import("source_map.zig");
+pub const SourceMap = source_map.SourceMap;
 
 /// LOGPOINT_FORMAT.
 pub const logpoint_format = "<url>:<lineNumber>[:<columnNumber>] <expression>";
+
+/// LogpointManager's SOURCE_MAP_LOAD_TIMEOUT_MS.
+pub const default_source_map_timeout_ms: u32 = 5_000;
 
 /// One logpoint as the tool's text gives it (parseLogpoint): a 1-based line
 /// and column, all slices of that text.
@@ -109,35 +121,218 @@ pub fn parse(text: []const u8) Parsed {
     return .invalid;
 }
 
+/// Background HTTP/HTTPS source map loader. The `LibcurlBackend` is created on
+/// the MCP thread before spawning and destroyed only after `joinThread`, while
+/// cancellation uses `backend.getBackend().abort()` (an atomic store), so there
+/// are no data races or dangling threads on teardown.
+pub const MapLoader = struct {
+    allocator: Allocator,
+    compiled_url: []u8,
+    resolved_map_url: []u8,
+    backend: *fetch.network.LibcurlBackend,
+    thread: platform.Thread,
+    done: std.atomic.Value(bool) = .init(false),
+    result: ?*SourceMap = null,
+
+    pub fn start(allocator: Allocator, compiled_url: []const u8, resolved_map_url: []const u8) !*MapLoader {
+        const loader = try allocator.create(MapLoader);
+        errdefer allocator.destroy(loader);
+        const compiled_copy = try allocator.dupe(u8, compiled_url);
+        errdefer allocator.free(compiled_copy);
+        const map_copy = try allocator.dupe(u8, resolved_map_url);
+        errdefer allocator.free(map_copy);
+        const backend = try fetch.network.LibcurlBackend.init(allocator);
+        errdefer backend.deinit();
+        loader.* = .{
+            .allocator = allocator,
+            .compiled_url = compiled_copy,
+            .resolved_map_url = map_copy,
+            .backend = backend,
+            .thread = undefined,
+        };
+        loader.thread = try platform.spawnThread(.{}, run, loader);
+        return loader;
+    }
+
+    fn run(ctx: ?*anyopaque) callconv(.c) void {
+        const self: *MapLoader = @ptrCast(@alignCast(ctx.?));
+        defer self.done.store(true, .release);
+        const request: fetch.NetworkRequest = .{
+            .url = self.resolved_map_url,
+            .method = "GET",
+            .headers = &.{},
+            .body = null,
+            .connect_timeout_ms = 5_000,
+            .timeout_ms = 30_000,
+            .follow_redirects = true,
+            .max_redirects = 20,
+        };
+        var response = self.backend.getBackend().send(self.allocator, &request) catch return;
+        defer response.deinit();
+        if (response.status < 200 or response.status >= 300) return;
+        const body = response.body orelse return;
+        self.result = source_map.parse(self.allocator, self.compiled_url, self.resolved_map_url, body) catch null;
+    }
+
+    /// Abort an in-flight load, join its thread, and free everything.
+    pub fn cancel(self: *MapLoader) void {
+        self.backend.getBackend().abort();
+        platform.joinThread(self.thread);
+        if (self.result) |sm| sm.deinit();
+        self.destroyAfterJoin();
+    }
+
+    /// Reclaim a finished load (`done == true`), returning the parsed map or null.
+    pub fn finish(self: *MapLoader) ?*SourceMap {
+        platform.joinThread(self.thread);
+        const sm = self.result;
+        self.result = null;
+        self.destroyAfterJoin();
+        return sm;
+    }
+
+    fn destroyAfterJoin(self: *MapLoader) void {
+        const alloc = self.allocator;
+        self.backend.deinit();
+        alloc.free(self.compiled_url);
+        alloc.free(self.resolved_map_url);
+        alloc.destroy(self);
+    }
+};
+
+pub const MapState = union(enum) {
+    none,
+    loading: *MapLoader,
+    loaded: *SourceMap,
+    failed,
+};
+
 /// A script V8 parsed in the page (Debugger.scriptParsed on the universe's
 /// session): what DevTools' Script keeps of it for logpoints. OWNED.
 pub const Script = struct {
     id: []u8,
     url: []u8,
+    source_map_url: []u8,
+    has_source_url: bool,
+    has_syntax_error: bool,
     start_line: i64,
     start_column: i64,
     end_line: i64,
     end_column: i64,
     context_id: i64,
+    parse_order: u64,
+    map_state: MapState = .none,
+    /// Eager wait already ran once for this script (avoids repeated waits on a
+    /// permanently stuck map during non-logpoint tool calls).
+    eager_waited: bool = false,
+
+    /// Script.isInlineScript.
+    pub fn isInlineScript(self: *const Script) bool {
+        const starts_at_zero = self.start_line == 0 and self.start_column == 0;
+        return self.url.len != 0 and !starts_at_zero;
+    }
+
+    /// Script.containsLocation.
+    pub fn containsLocation(self: *const Script, line: i64, column: i64) bool {
+        const after_start = (line == self.start_line and column >= self.start_column) or line > self.start_line;
+        const before_end = line < self.end_line or (line == self.end_line and column <= self.end_column);
+        return after_start and before_end;
+    }
+
+    /// Script.rawLocationToRelativeLocation.
+    pub fn rawToRelative(self: *const Script, line: i64, column: i64) struct { line: i64, column: i64 } {
+        var l = line;
+        var c = column;
+        if (!self.has_source_url and self.isInlineScript()) {
+            l -= self.start_line;
+            if (l == 0) c -= self.start_column;
+        }
+        return .{ .line = l, .column = c };
+    }
+
+    /// Script.relativeLocationToRawLocation.
+    pub fn relativeToRaw(self: *const Script, line: i64, column: i64) struct { line: i64, column: i64 } {
+        var l = line;
+        var c = column;
+        if (!self.has_source_url and self.isInlineScript()) {
+            if (l == 0) c += self.start_column;
+            l += self.start_line;
+        }
+        return .{ .line = l, .column = c };
+    }
 
     fn deinit(self: *Script, allocator: Allocator) void {
+        switch (self.map_state) {
+            .loading => |loader| loader.cancel(),
+            .loaded => |sm| sm.deinit(),
+            .none, .failed => {},
+        }
+        self.map_state = .none;
         allocator.free(self.id);
         allocator.free(self.url);
+        allocator.free(self.source_map_url);
     }
 };
 
-/// One logpoint: DevTools' Breakpoint (its storage state's url, line,
-/// column and condition) with its ModelBreakpoint's backend id and the
-/// scripts V8 resolved it in. OWNED.
+/// One backend position sent to `Debugger.setBreakpointByUrl`
+/// (`ModelBreakpoint.currentState` / `Breakpoint.lastResolvedState`). OWNED.
+pub const BackendPosition = struct {
+    url: []u8,
+    line: u64,
+    column: ?u64,
+    condition: []u8,
+
+    pub fn dupe(self: *const BackendPosition, allocator: Allocator) Allocator.Error!BackendPosition {
+        const u = try allocator.dupe(u8, self.url);
+        errdefer allocator.free(u);
+        const cond = try allocator.dupe(u8, self.condition);
+        return .{ .url = u, .line = self.line, .column = self.column, .condition = cond };
+    }
+
+    pub fn eql(self: *const BackendPosition, other: *const BackendPosition) bool {
+        return self.line == other.line and
+            self.column == other.column and
+            std.mem.eql(u8, self.url, other.url) and
+            std.mem.eql(u8, self.condition, other.condition);
+    }
+
+    pub fn deinit(self: *BackendPosition, allocator: Allocator) void {
+        allocator.free(self.url);
+        allocator.free(self.condition);
+    }
+};
+
+/// One V8 resolved location for a backend breakpoint. OWNED.
+pub const ResolvedLocation = struct {
+    breakpoint_id: []u8,
+    script_id: []u8,
+
+    pub fn deinit(self: *ResolvedLocation, allocator: Allocator) void {
+        allocator.free(self.breakpoint_id);
+        allocator.free(self.script_id);
+    }
+};
+
+/// One logpoint: DevTools' Breakpoint (its storage state's url, resourceType,
+/// line, column and condition) with its ModelBreakpoint's backend positions,
+/// backend ids, and the scripts V8 resolved it in. OWNED.
 pub const Logpoint = struct {
     url: []u8,
+    /// True when the breakpoint's home UISourceCode is from a source map
+    /// (`isFromSourceMap`).
+    from_source_map: bool = false,
     /// 0-based, as the model keeps it.
     line: u64,
     column: ?u64,
     expression: []u8,
-    breakpoint_id: ?[]u8 = null,
+    /// ModelBreakpoint.#currentState.
+    current_state: std.ArrayList(BackendPosition) = .empty,
+    /// Breakpoint.#lastResolvedState.
+    last_resolved_state: std.ArrayList(BackendPosition) = .empty,
+    /// ModelBreakpoint.#breakpointIds.
+    breakpoint_ids: std.ArrayList([]u8) = .empty,
     /// The scripts of its resolved locations (Breakpoint.#uiLocations).
-    resolved: std.ArrayList([]u8) = .empty,
+    resolved: std.ArrayList(ResolvedLocation) = .empty,
 
     /// Breakpoint.bound.
     pub fn bound(self: *const Logpoint) bool {
@@ -145,28 +340,83 @@ pub const Logpoint = struct {
     }
 
     pub fn clearResolved(self: *Logpoint, allocator: Allocator) void {
-        for (self.resolved.items) |id| allocator.free(id);
+        for (self.resolved.items) |*loc| loc.deinit(allocator);
         self.resolved.clearRetainingCapacity();
+    }
+
+    pub fn clearCurrentState(self: *Logpoint, allocator: Allocator) void {
+        for (self.current_state.items) |*pos| pos.deinit(allocator);
+        self.current_state.clearRetainingCapacity();
+    }
+
+    pub fn clearLastResolvedState(self: *Logpoint, allocator: Allocator) void {
+        for (self.last_resolved_state.items) |*pos| pos.deinit(allocator);
+        self.last_resolved_state.clearRetainingCapacity();
+    }
+
+    pub fn clearBreakpointIds(self: *Logpoint, allocator: Allocator) void {
+        for (self.breakpoint_ids.items) |id| allocator.free(id);
+        self.breakpoint_ids.clearRetainingCapacity();
     }
 
     pub fn destroy(self: *Logpoint, allocator: Allocator) void {
         allocator.free(self.url);
         allocator.free(self.expression);
-        if (self.breakpoint_id) |id| allocator.free(id);
+        self.clearCurrentState(allocator);
+        self.current_state.deinit(allocator);
+        self.clearLastResolvedState(allocator);
+        self.last_resolved_state.deinit(allocator);
+        self.clearBreakpointIds(allocator);
+        self.breakpoint_ids.deinit(allocator);
         self.clearResolved(allocator);
         self.resolved.deinit(allocator);
         allocator.destroy(self);
     }
 };
 
-/// A page's logpoint state: the universe's scripts and the logpoints (the
-/// manager's #records, in their order).
+/// A workspace UISourceCode identity (either a served script/document or an
+/// original source file from a source map).
+pub const UiSource = struct {
+    url: []const u8,
+    from_source_map: bool,
+};
+
+/// A resolved location in a specific parsed script (0-based).
+pub const RawLocation = struct {
+    script_idx: usize,
+    url: []const u8,
+    line: u64,
+    column: u64,
+};
+
+/// A normalized UI location (`DebuggerWorkspaceBinding.normalizeUILocation`).
+pub const NormalizedLocation = struct {
+    url: []const u8,
+    from_source_map: bool,
+    line: u64,
+    column: ?u64,
+};
+
+pub const WaitOutcome = enum { complete, timed_out };
+
+/// A page's logpoint state: the universe's scripts (and their source maps) and
+/// the logpoints (the manager's #records, in their order).
 pub const State = struct {
     scripts: std.ArrayList(Script) = .empty,
     records: std.ArrayList(*Logpoint) = .empty,
     /// McpPage's #logpointManager exists: made on the first call that names
     /// a logpoint.
     manager: bool = false,
+    /// SourceMapManager.lazyLoadingSettingDescriptor: true until logpoints
+    /// exist on the page, then false so reloads and rebuilt bundles re-resolve.
+    lazy_loading: bool = true,
+    next_parse_order: u64 = 1,
+    /// Set when a source map attaches and existing source-mapped logpoints may
+    /// need their backend breakpoints updated.
+    rebind_needed: bool = false,
+    /// Wait budget for loading source maps (LogpointManager's 5 s default;
+    /// overridable in tests so verify-mode timeout tests run fast).
+    source_map_timeout_ms: u32 = default_source_map_timeout_ms,
 
     pub fn deinit(self: *State, allocator: Allocator) void {
         for (self.scripts.items) |*s| s.deinit(allocator);
@@ -176,24 +426,54 @@ pub const State = struct {
         self.* = .{};
     }
 
+    /// Timeout seconds as reported in Chrome's error messages (5 seconds by
+    /// default; rounds sub-second test overrides to 5 so messages match).
+    pub fn timeoutSecondsLabel(self: *const State) u32 {
+        return if (self.source_map_timeout_ms >= 1_000) self.source_map_timeout_ms / 1_000 else default_source_map_timeout_ms / 1_000;
+    }
+
     /// An event of the universe's session.
-    pub fn debuggerEvent(self: *State, allocator: Allocator, method: []const u8, params: std.json.ObjectMap) !void {
+    pub fn debuggerEvent(
+        self: *State,
+        allocator: Allocator,
+        method: []const u8,
+        params: std.json.ObjectMap,
+        page_url: []const u8,
+        paths: *paths_mod.Policy,
+    ) !void {
         if (std.mem.eql(u8, method, "Debugger.scriptParsed")) {
             const id = str(params.get("scriptId"));
             if (id.len == 0) return;
+            for (self.scripts.items) |s| if (std.mem.eql(u8, s.id, id)) return;
             const id_copy = try allocator.dupe(u8, id);
             errdefer allocator.free(id_copy);
             const url_copy = try allocator.dupe(u8, str(params.get("url")));
             errdefer allocator.free(url_copy);
+            const sm_copy = try allocator.dupe(u8, str(params.get("sourceMapURL")));
+            errdefer allocator.free(sm_copy);
+            const has_source_url = if (params.get("hasSourceURL")) |v| v == .bool and v.bool else false;
+            const has_syntax_error = if (params.get("hasSyntaxError")) |v| v == .bool and v.bool else false;
+            const order = self.next_parse_order;
+            self.next_parse_order += 1;
             try self.scripts.append(allocator, .{
                 .id = id_copy,
                 .url = url_copy,
+                .source_map_url = sm_copy,
+                .has_source_url = has_source_url,
+                .has_syntax_error = has_syntax_error,
                 .start_line = int(params.get("startLine")),
                 .start_column = int(params.get("startColumn")),
                 .end_line = int(params.get("endLine")),
                 .end_column = int(params.get("endColumn")),
                 .context_id = int(params.get("executionContextId")),
+                .parse_order = order,
             });
+            // When logpoints exist, source maps load eagerly (LogpointManager
+            // #setLazySourceMapLoading(false)).
+            if (!self.lazy_loading) {
+                const idx = self.scripts.items.len - 1;
+                self.startMapLoad(allocator, &self.scripts.items[idx], page_url, paths);
+            }
             return;
         }
         if (std.mem.eql(u8, method, "Debugger.breakpointResolved")) {
@@ -202,18 +482,143 @@ pub const State = struct {
             if (location != .object) return;
             const script_id = str(location.object.get("scriptId"));
             for (self.records.items) |r| {
-                const own = r.breakpoint_id orelse continue;
-                if (!std.mem.eql(u8, own, id)) continue;
-                const copy = try allocator.dupe(u8, script_id);
-                errdefer allocator.free(copy);
-                try r.resolved.append(allocator, copy);
+                const owns = for (r.breakpoint_ids.items) |bp_id| {
+                    if (std.mem.eql(u8, bp_id, id)) break true;
+                } else false;
+                if (!owns) continue;
+                const bp_copy = try allocator.dupe(u8, id);
+                errdefer allocator.free(bp_copy);
+                const script_copy = try allocator.dupe(u8, script_id);
+                errdefer allocator.free(script_copy);
+                try r.resolved.append(allocator, .{ .breakpoint_id = bp_copy, .script_id = script_copy });
             }
         }
     }
 
+    /// Start loading `script`'s source map if it has one and has not started.
+    pub fn startMapLoad(
+        self: *State,
+        allocator: Allocator,
+        script: *Script,
+        page_url: []const u8,
+        paths: *paths_mod.Policy,
+    ) void {
+        if (script.map_state != .none) return;
+        if (script.source_map_url.len == 0 or script.has_syntax_error) return;
+
+        var scratch = std.heap.ArenaAllocator.init(allocator);
+        defer scratch.deinit();
+        const tmp = scratch.allocator();
+
+        // SourceMapManager.resolveRelativeSourceURL + ParsedURL.completeURL.
+        const resolved_source_url = (source_map.completeUrl(tmp, page_url, script.url) catch null) orelse script.url;
+        const resolved_map_url = (source_map.completeUrl(tmp, resolved_source_url, script.source_map_url) catch null) orelse {
+            script.map_state = .failed;
+            return;
+        };
+
+        // data: inline source map - decode and parse immediately.
+        if (source_map.schemeIs(resolved_map_url, "data:")) {
+            var data = (fetch.processDataUrl(allocator, resolved_map_url) catch {
+                script.map_state = .failed;
+                return;
+            }) orelse {
+                script.map_state = .failed;
+                return;
+            };
+            defer data.deinit();
+            const sm = source_map.parse(allocator, resolved_source_url, resolved_map_url, data.body) catch {
+                script.map_state = .failed;
+                return;
+            };
+            script.map_state = .{ .loaded = sm };
+            self.rebind_needed = true;
+            return;
+        }
+
+        // file: source map - subject to the server's path policy (McpContext.loadResource).
+        if (source_map.schemeIs(resolved_map_url, "file:")) {
+            const content = paths.readFileUrl(tmp, resolved_map_url) catch {
+                script.map_state = .failed;
+                return;
+            };
+            const sm = source_map.parse(allocator, resolved_source_url, resolved_map_url, content) catch {
+                script.map_state = .failed;
+                return;
+            };
+            script.map_state = .{ .loaded = sm };
+            self.rebind_needed = true;
+            return;
+        }
+
+        // http(s): load on a background thread so a slow map respects the 5 s
+        // timeout while continuing in the background for a retry.
+        if (source_map.schemeIs(resolved_map_url, "http:") or source_map.schemeIs(resolved_map_url, "https:")) {
+            const loader = MapLoader.start(allocator, resolved_source_url, resolved_map_url) catch {
+                script.map_state = .failed;
+                return;
+            };
+            script.map_state = .{ .loading = loader };
+            return;
+        }
+
+        script.map_state = .failed;
+    }
+
+    /// Reap any completed background source map loads. Returns true if any
+    /// script still has a load in flight.
+    pub fn pollLoads(self: *State) bool {
+        var any_loading = false;
+        for (self.scripts.items) |*s| {
+            switch (s.map_state) {
+                .loading => |loader| {
+                    if (loader.done.load(.acquire)) {
+                        if (loader.finish()) |sm| {
+                            s.map_state = .{ .loaded = sm };
+                            self.rebind_needed = true;
+                        } else {
+                            s.map_state = .failed;
+                        }
+                    } else {
+                        any_loading = true;
+                    }
+                },
+                else => {},
+            }
+        }
+        return any_loading;
+    }
+
+    /// Start (if needed) and wait up to `source_map_timeout_ms` for the source
+    /// maps of matching scripts (`only_url == null` waits for all scripts).
+    /// Loads still pending at timeout keep running in the background.
+    pub fn waitForMaps(self: *State, session: *Session, page: *Page, only_url: ?[]const u8) !WaitOutcome {
+        for (self.scripts.items) |*s| {
+            if (only_url) |u| if (!std.mem.eql(u8, s.url, u)) continue;
+            if (s.source_map_url.len != 0 and !s.has_syntax_error and s.map_state == .none) {
+                self.startMapLoad(session.allocator, s, page.url, &session.paths);
+            }
+        }
+        const deadline = platform.monotonicMillis() + @as(i64, self.source_map_timeout_ms);
+        while (true) {
+            _ = self.pollLoads();
+            var pending = false;
+            for (self.scripts.items) |s| {
+                if (only_url) |u| if (!std.mem.eql(u8, s.url, u)) continue;
+                if (s.map_state == .loading) {
+                    pending = true;
+                    break;
+                }
+            }
+            if (!pending) return .complete;
+            if (platform.monotonicMillis() >= deadline) return .timed_out;
+            _ = try session.client.pump(10 * std.time.ns_per_ms);
+        }
+    }
+
     /// A context went away (Runtime.executionContextDestroyed on the page's
-    /// session): its scripts, and the locations resolved in them
-    /// (ModelBreakpoint.resetLocations on the global object's clear).
+    /// session): its scripts, their source maps, and the locations resolved in
+    /// them (ModelBreakpoint.resetLocations on the global object's clear).
     pub fn contextDestroyed(self: *State, allocator: Allocator, context_id: i64) void {
         var i: usize = 0;
         while (i < self.scripts.items.len) {
@@ -239,51 +644,202 @@ pub const State = struct {
         for (self.records.items) |r| {
             var j: usize = 0;
             while (j < r.resolved.items.len) {
-                if (std.mem.eql(u8, r.resolved.items[j], script_id)) {
-                    allocator.free(r.resolved.orderedRemove(j));
+                if (std.mem.eql(u8, r.resolved.items[j].script_id, script_id)) {
+                    var loc = r.resolved.orderedRemove(j);
+                    loc.deinit(allocator);
                 } else j += 1;
             }
         }
     }
 
-    /// The workspace's Network project, in order: the document, then each
-    /// parsed script's URL (an inline script's is its document's), once
-    /// each. DevTools' own internal scripts (debugger:// - a breakpoint's
-    /// condition) and scripts with no URL have no source code there.
-    pub fn sourceUrls(self: *const State, arena: Allocator, document: []const u8) ![]const []const u8 {
-        var out: std.ArrayList([]const u8) = .empty;
-        if (isNetworkUrl(document)) try out.append(arena, document);
+    /// CompilerScriptMapping conflict/compatibility rule
+    /// (`#shouldUseSourceMapForURL` + `compatibleForURL`): the newest parsed
+    /// script mapping `source_url` sets the content/ignoreList baseline; older
+    /// scripts remain active iff compatible with it.
+    pub fn isActiveSourceMap(self: *const State, script_idx: usize, source_url: []const u8) bool {
+        const sm = switch (self.scripts.items[script_idx].map_state) {
+            .loaded => |m| m,
+            else => return false,
+        };
+        var newest_order: u64 = 0;
+        var newest_map: ?*const SourceMap = null;
+        for (self.scripts.items) |s| {
+            const candidate = switch (s.map_state) {
+                .loaded => |m| m,
+                else => continue,
+            };
+            if (!candidate.url_to_info.contains(source_url)) continue;
+            if (newest_map == null or s.parse_order >= newest_order) {
+                newest_order = s.parse_order;
+                newest_map = candidate;
+            }
+        }
+        const winner = newest_map orelse return false;
+        return sm.compatibleForUrl(source_url, winner);
+    }
+
+    /// The workspace's Network project sources, in order: the document, each
+    /// parsed script's URL (not `debugger://`), and each original source URL
+    /// from an attached source map.
+    pub fn uiSources(self: *const State, arena: Allocator, document: []const u8) Allocator.Error![]const UiSource {
+        var out: std.ArrayList(UiSource) = .empty;
+        if (isNetworkUrl(document)) {
+            try out.append(arena, .{ .url = document, .from_source_map = false });
+        }
         for (self.scripts.items) |s| {
             if (s.url.len == 0 or std.mem.startsWith(u8, s.url, "debugger://")) continue;
-            var seen = false;
-            for (out.items) |u| if (std.mem.eql(u8, u, s.url)) {
-                seen = true;
-                break;
+            const seen = for (out.items) |item| {
+                if (!item.from_source_map and std.mem.eql(u8, item.url, s.url)) break true;
+            } else false;
+            if (!seen) try out.append(arena, .{ .url = s.url, .from_source_map = false });
+        }
+        for (self.scripts.items) |s| {
+            const sm = switch (s.map_state) {
+                .loaded => |m| m,
+                else => continue,
             };
-            if (!seen) try out.append(arena, s.url);
+            for (sm.sourceUrls()) |src_url| {
+                const seen = for (out.items) |item| {
+                    if (item.from_source_map and std.mem.eql(u8, item.url, src_url)) break true;
+                } else false;
+                if (!seen) try out.append(arena, .{ .url = src_url, .from_source_map = true });
+            }
         }
         return out.items;
     }
 
-    /// Some script has this URL: a location in its source code is a raw
-    /// location (ResourceScriptMapping), whose column is 0 when none was
-    /// given (DevTools' Location).
-    pub fn hasScript(self: *const State, url: []const u8) bool {
-        for (self.scripts.items) |s| if (std.mem.eql(u8, s.url, url)) return true;
+    /// Whether any script with `url` has a non-empty `sourceMapURL`.
+    pub fn hasSourceMapUrl(self: *const State, url: []const u8) bool {
+        for (self.scripts.items) |s| {
+            if (std.mem.eql(u8, s.url, url) and s.source_map_url.len != 0 and !s.has_syntax_error) return true;
+        }
         return false;
     }
 
-    /// The record at (url, line, column): Storage.computeId's key.
-    pub fn find(self: *const State, url: []const u8, line: u64, column: ?u64) ?*Logpoint {
+    /// DebuggerWorkspaceBinding / CompilerScriptMapping + ResourceScriptMapping
+    /// `uiLocationToRawLocations` (0-based line and column).
+    pub fn uiLocationToRawLocations(
+        self: *const State,
+        arena: Allocator,
+        source: UiSource,
+        line: u64,
+        column: u64,
+    ) Allocator.Error![]const RawLocation {
+        var out: std.ArrayList(RawLocation) = .empty;
+        if (source.from_source_map) {
+            for (self.scripts.items, 0..) |s, idx| {
+                const sm = switch (s.map_state) {
+                    .loaded => |m| m,
+                    else => continue,
+                };
+                if (!sm.url_to_info.contains(source.url)) continue;
+                if (!self.isActiveSourceMap(idx, source.url)) continue;
+                const first = sm.sourceLineMapping(source.url, @intCast(line), @intCast(column)) orelse continue;
+                const entries = try sm.findReverseEntries(arena, source.url, first.source_line, first.source_column, true);
+                for (entries) |entry| {
+                    const raw = s.relativeToRaw(entry.line, entry.column);
+                    if (raw.line < 0 or raw.column < 0) continue;
+                    try out.append(arena, .{
+                        .script_idx = idx,
+                        .url = s.url,
+                        .line = @intCast(raw.line),
+                        .column = @intCast(raw.column),
+                    });
+                }
+            }
+            return out.items;
+        }
+        // Non-source-map UISourceCode: external script (ResourceScriptMapping)
+        // or inline script inside a document (ResourceMapping).
+        for (self.scripts.items, 0..) |s, idx| {
+            if (!std.mem.eql(u8, s.url, source.url)) continue;
+            if (!s.has_source_url and s.isInlineScript() and !s.containsLocation(@intCast(line), @intCast(column))) continue;
+            try out.append(arena, .{
+                .script_idx = idx,
+                .url = s.url,
+                .line = line,
+                .column = column,
+            });
+        }
+        return out.items;
+    }
+
+    /// DebuggerWorkspaceBinding `rawLocationToUILocation`: CompilerScriptMapping
+    /// first, falling back to the script's own URL.
+    pub fn rawLocationToUiLocation(self: *const State, raw: RawLocation) NormalizedLocation {
+        const s = &self.scripts.items[raw.script_idx];
+        switch (s.map_state) {
+            .loaded => |sm| {
+                const rel = s.rawToRelative(@intCast(raw.line), @intCast(raw.column));
+                if (sm.findEntry(rel.line, rel.column)) |entry| {
+                    if (entry.source_url) |src_url| {
+                        if (self.isActiveSourceMap(raw.script_idx, src_url) and entry.source_line >= 0 and entry.source_column >= 0) {
+                            return .{
+                                .url = src_url,
+                                .from_source_map = true,
+                                .line = @intCast(entry.source_line),
+                                .column = @intCast(entry.source_column),
+                            };
+                        }
+                    }
+                }
+            },
+            else => {},
+        }
+        return .{
+            .url = s.url,
+            .from_source_map = false,
+            .line = raw.line,
+            .column = raw.column,
+        };
+    }
+
+    /// DebuggerWorkspaceBinding.normalizeUILocation: round-trips through raw
+    /// locations so a generated script location covered by a source map moves
+    /// to its original source, and a mapped original line picks up its mapped
+    /// source column.
+    pub fn normalizeUiLocation(
+        self: *const State,
+        arena: Allocator,
+        source: UiSource,
+        line: u64,
+        column: ?u64,
+    ) Allocator.Error!NormalizedLocation {
+        const raw_locations = try self.uiLocationToRawLocations(arena, source, line, column orelse 0);
+        if (raw_locations.len > 0) {
+            return self.rawLocationToUiLocation(raw_locations[0]);
+        }
+        return .{
+            .url = source.url,
+            .from_source_map = source.from_source_map,
+            .line = line,
+            .column = column,
+        };
+    }
+
+    /// The record at (url, from_source_map, line, column): Storage.computeId's key.
+    pub fn find(self: *const State, url: []const u8, from_source_map: bool, line: u64, column: ?u64) ?*Logpoint {
         for (self.records.items) |r| {
-            if (r.line != line or !std.mem.eql(u8, r.url, url)) continue;
-            if ((r.column == null) != (column == null)) continue;
-            if (r.column != null and r.column.? != column.?) continue;
+            if (r.from_source_map != from_source_map or r.line != line or !std.mem.eql(u8, r.url, url)) continue;
+            if (r.column != column) continue;
             return r;
         }
         return null;
     }
 };
+
+/// Breakpoint.State.subset: true iff `state_a` is non-empty and every position
+/// in `state_a` appears in `state_b`.
+pub fn stateSubset(state_a: []const BackendPosition, state_b: []const BackendPosition) bool {
+    if (state_a.len == 0 or state_b.len == 0) return false;
+    for (state_a) |*a| {
+        const found = for (state_b) |*b| {
+            if (a.eql(b)) break true;
+        } else false;
+        if (!found) return false;
+    }
+    return true;
+}
 
 /// A document the workspace's Network project holds a source code for.
 fn isNetworkUrl(url: []const u8) bool {
@@ -325,8 +881,19 @@ pub fn formatList(arena: Allocator, records: []const *Logpoint) ![]const u8 {
     for (records) |r| {
         try out.writer.print("\n- {s}:{d}", .{ r.url, r.line + 1 });
         if (r.column) |c| try out.writer.print(":{d}", .{c + 1});
-        const status = if (r.bound()) "bound" else "not bound (no parsed script contains the location)";
-        try out.writer.print(" logging `{s}` [{s}]", .{ r.expression, status });
+        try out.writer.print(" logging `{s}` [", .{r.expression});
+        if (!r.bound() or r.current_state.items.len == 0) {
+            try out.writer.writeAll("not bound (no parsed script contains the location)");
+        } else if (r.from_source_map) {
+            try out.writer.writeAll("bound via source map at ");
+            for (r.current_state.items, 0..) |pos, i| {
+                if (i != 0) try out.writer.writeAll(", ");
+                try out.writer.print("{s}:{d}:{d}", .{ pos.url, pos.line + 1, (pos.column orelse 0) + 1 });
+            }
+        } else {
+            try out.writer.writeAll("bound");
+        }
+        try out.writer.writeAll("]");
     }
     return out.written();
 }
@@ -389,7 +956,7 @@ test "parse: the shortest location, a port's colon, a column, the 1-based check"
     try t.expectEqualStrings("a,\nb", parse("a.js:1 a,\nb").ok.expression);
 }
 
-test "formatList: none, bound and not, a column only when the model has one" {
+test "formatList: none, bound, source-mapped (single and multi), and unbound" {
     const t = std.testing;
     var arena_state = std.heap.ArenaAllocator.init(t.allocator);
     defer arena_state.deinit();
@@ -397,14 +964,32 @@ test "formatList: none, bound and not, a column only when the model has one" {
     try t.expectEqualStrings("No logpoints are set on the page.", try formatList(arena, &.{}));
     var url_a = "http://h/a.js".*;
     var url_b = "http://h/b.html".*;
+    var url_c = "http://h/src/c.ts".*;
+    var url_gen1 = "http://h/c1.js".*;
+    var url_gen2 = "http://h/c2.js".*;
     var e1 = "'x', x".*;
     var e2 = "y".*;
-    var bound_id = "1".*;
+    var e3 = "z".*;
+    var bp_id = "bp1".*;
+    var s_id = "1".*;
+    var cond = "c".*;
+
     var first: Logpoint = .{ .url = &url_a, .line = 3, .column = 0, .expression = &e1 };
-    try first.resolved.append(arena, &bound_id);
+    try first.resolved.append(arena, .{ .breakpoint_id = &bp_id, .script_id = &s_id });
+    try first.current_state.append(arena, .{ .url = &url_a, .line = 3, .column = 0, .condition = &cond });
+
     var second: Logpoint = .{ .url = &url_b, .line = 1, .column = null, .expression = &e2 };
+
+    var third: Logpoint = .{ .url = &url_c, .from_source_map = true, .line = 2, .column = 2, .expression = &e3 };
+    try third.resolved.append(arena, .{ .breakpoint_id = &bp_id, .script_id = &s_id });
+    try third.current_state.append(arena, .{ .url = &url_gen1, .line = 0, .column = 36, .condition = &cond });
+    try third.current_state.append(arena, .{ .url = &url_gen2, .line = 1, .column = 36, .condition = &cond });
+
     try t.expectEqualStrings(
-        "2 logpoint(s) set on the page:\n- http://h/a.js:4:1 logging `'x', x` [bound]\n- http://h/b.html:2 logging `y` [not bound (no parsed script contains the location)]",
-        try formatList(arena, &.{ &first, &second }),
+        "3 logpoint(s) set on the page:\n" ++
+            "- http://h/a.js:4:1 logging `'x', x` [bound]\n" ++
+            "- http://h/b.html:2 logging `y` [not bound (no parsed script contains the location)]\n" ++
+            "- http://h/src/c.ts:3:3 logging `z` [bound via source map at http://h/c1.js:1:37, http://h/c2.js:2:37]",
+        try formatList(arena, &.{ &first, &second, &third }),
     );
 }

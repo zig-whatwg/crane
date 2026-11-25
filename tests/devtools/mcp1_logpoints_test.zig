@@ -175,11 +175,30 @@ const sm_rebuild_v2_map =
     \\
 ;
 
+const sm_slow_html =
+    \\<!doctype html>
+    \\<title>Slow map</title>
+    \\<script src="slow.js"></script>
+    \\
+;
+
+const sm_slow_js =
+    \\window.slowFn = n => { const out = n + 1; return out; };
+    \\//# sourceMappingURL=slow.js.map
+    \\
+;
+
+const sm_slow_map =
+    \\{"version":3,"sources":["src/slow.ts"],"sourcesContent":["// slow\n"],"names":[],"mappings":"AAAA,uBACE,mBACA"}
+    \\
+;
+
 const Site = struct {
     listener: LoopbackListener,
     thread: ?std.Thread = null,
     active: std.atomic.Value(u32) = .init(0),
     rebuild_version: std.atomic.Value(u32) = .init(1),
+    release_slow: std.atomic.Value(bool) = .init(true),
 
     fn start(self: *Site) !void {
         self.* = .{ .listener = try LoopbackListener.open(.{}) };
@@ -187,6 +206,7 @@ const Site = struct {
     }
 
     fn stop(self: *Site) void {
+        self.release_slow.store(true, .release);
         self.listener.stop();
         self.thread.?.join();
         self.listener.close();
@@ -265,8 +285,16 @@ const Site = struct {
             .{ if (v2) sm_rebuild_v2_js else sm_rebuild_v1_js, "text/javascript" }
         else if (std.mem.eql(u8, path, "/lp-sm/rebuild.js.map"))
             .{ if (v2) sm_rebuild_v2_map else sm_rebuild_v1_map, "application/json" }
-        else
-            .{ "", "text/plain" };
+        else if (std.mem.eql(u8, path, "/lp-sm/slow.html"))
+            .{ sm_slow_html, "text/html" }
+        else if (std.mem.eql(u8, path, "/lp-sm/slow.js"))
+            .{ sm_slow_js, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-sm/slow.js.map")) blk: {
+            while (!self.release_slow.load(.acquire)) {
+                std.Io.sleep(std.testing.io, .fromMilliseconds(5), .awake) catch {};
+            }
+            break :blk .{ sm_slow_map, "application/json" };
+        } else .{ "", "text/plain" };
         var output: [1024]u8 = undefined;
         var writer = stream.writer(std.testing.io, &output);
         const status = if (body.len == 0) "404 Not Found" else "200 OK";
@@ -453,4 +481,48 @@ test "set_logpoints: rebuilt bundle across reload re-resolves source-mapped logp
         .{ origin, origin },
     );
     try testing.expectEqualStrings(exp_r2, set_r2.text);
+}
+
+test "set_logpoints: slow source map times out with Chrome's messages, continues in background, and succeeds on retry" {
+    var site: Site = undefined;
+    try site.start();
+    defer site.stop();
+    site.release_slow.store(false, .release);
+
+    var h: Harness = .{};
+    try h.start();
+    defer h.stop();
+    const a = h.arena.allocator();
+    const origin = try std.fmt.allocPrint(a, "http://127.0.0.1:{d}", .{site.listener.port()});
+
+    const nav_args = try std.fmt.allocPrint(a, "{{\"pageId\":1,\"url\":\"{s}/lp-sm/slow.html\"}}", .{origin});
+    _ = try h.tool("navigate_page", nav_args);
+    // Keep the wait short so test-verify runs fast; the message still reports Chrome's 5-second wording.
+    h.mcp_server.session.pages.items[0].logpoints.source_map_timeout_ms = 80;
+
+    // 1. Served script whose source map is still loading: refuses with Chrome's message.
+    const r_served = try h.tool("set_logpoints", "{\"pageId\":1,\"logpoints\":[\"slow.js:1 'x'\"]}");
+    try testing.expect(r_served.is_error);
+    const exp_served = try std.fmt.allocPrint(a, "Error: The source map of {s}/lp-sm/slow.js was still loading after 5 seconds; retry.", .{origin});
+    try testing.expectEqualStrings(exp_served, r_served.text);
+
+    // 2. Original source while map is still loading: reports timeout note.
+    const r_orig = try h.tool("set_logpoints", "{\"pageId\":1,\"logpoints\":[\"src/slow.ts:3 'out', out\"]}");
+    try testing.expect(r_orig.is_error);
+    try testing.expectEqualStrings(
+        "Error: No parsed script or original source file matches \"src/slow.ts\". The url must match the URL of a script as served to the browser or an original source file from a source map, exactly or as a path suffix. Some source maps were still loading after 5 seconds; retry if the file comes from a source map.",
+        r_orig.text,
+    );
+
+    // 3. Release the held source map; background load finishes and retry succeeds.
+    h.mcp_server.session.pages.items[0].logpoints.source_map_timeout_ms = 5_000;
+    site.release_slow.store(true, .release);
+    const r_retry = try h.tool("set_logpoints", "{\"pageId\":1,\"logpoints\":[\"src/slow.ts:3 'out', out\"]}");
+    try testing.expect(!r_retry.is_error);
+    const exp_retry = try std.fmt.allocPrint(
+        a,
+        "1 logpoint(s) set on the page:\n- {s}/lp-sm/src/slow.ts:3:3 logging `'out', out` [bound via source map at {s}/lp-sm/slow.js:1:43]\n" ++ source_mapped_note ++ "\n" ++ logged,
+        .{ origin, origin },
+    );
+    try testing.expectEqualStrings(exp_retry, r_retry.text);
 }
