@@ -591,20 +591,18 @@ pub fn memberInterface(comptime T: type, comptime name: []const u8) ?type {
     }
 }
 
-/// Whether dictionary `T` lists member `name` in `any_members` - or in
-/// `jsvalue_union_members`, an inline union typed runtime.JSValue: for both,
-/// a present null is `.null`, a value for the impl (WebIDL 3.2.18: only
-/// undefined is not present; 3.2.25 converts a union's null by its arms -
-/// SetHTMLOptions `{sanitizer: null}` is an empty SanitizerConfig, which read
-/// as absent took the default preset).
+/// Whether dictionary `T` lists member `name` in `any_members`: a present
+/// null is `.null`, a value for the impl (WebIDL 3.2.18: only undefined is
+/// not present). Until lane bind1's batch B ended, codegen also listed here
+/// the inline unions it typed runtime.JSValue (`jsvalue_union_members`);
+/// every union is named and converted by the binding now (3.2.25 converts a
+/// union's null by its arms - SetHTMLOptions `{sanitizer: null}` is an empty
+/// SanitizerConfig).
 fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
     comptime {
-        for ([_][]const u8{ "any_members", "jsvalue_union_members" }) |table| {
-            if (@hasDecl(T, table)) {
-                for (@field(T, table)) |member| {
-                    if (std.mem.eql(u8, member, name)) return true;
-                }
-            }
+        if (!@hasDecl(T, "any_members")) return false;
+        for (T.any_members) |member| {
+            if (std.mem.eql(u8, member, name)) return true;
         }
         return false;
     }
@@ -632,8 +630,8 @@ fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
 /// `performance.measure("m", {start: null})` names the mark "null", and an
 /// IntersectionObserverInit's `{threshold: null}` is [0] in all three
 /// (probe tmp/probes/bind1-nullmember, 2026-11-23). Such members read null
-/// as not present once lane bind1's B2 typed them (187de50e1): while they
-/// were runtime.JSValue the impl saw the null (`jsvalue_union_members`).
+/// as not present once lane bind1's B2 typed them (187de50e1); while they
+/// were runtime.JSValue the impl saw the null.
 ///
 /// False by default: a required member (it converts null by its type
 /// already), a nullable member, `any`, a `webidl.Opt` member (its presence

@@ -3193,9 +3193,6 @@ pub fn writeDictionary(
     try writer.writeObjectMembers(w, dictionary.members, ir);
     // Which members keep a present null as `.null` (the converter reads it).
     try writer.writeAnyMembers(w, dictionary.members);
-    // Which inline union members (typed runtime.JSValue) keep a present
-    // null as `.null` for the impl's union conversion.
-    try writer.writeJsvalueUnionMembers(w, dictionary.members, ir);
     // Each optional member's IDL default: written to script when unset.
     try writer.writeMemberDefaults(w, dictionary.members, ir);
     // Which optional members' present null is the value null.

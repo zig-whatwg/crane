@@ -65,7 +65,7 @@ pub fn nameEveryUnion(ir: *ir_mod.IR) !void {
                 if (member.type == .attribute) if (member.attribute) |attribute| {
                     if (keepsObjectIdentity(name, attribute.name)) continue;
                 };
-                try nameMemberUnions(ir, name, iface.mixins.items, member);
+                try nameMemberUnions(ir, member);
             }
         }
     }
@@ -74,7 +74,7 @@ pub fn nameEveryUnion(ir: *ir_mod.IR) !void {
         defer allocator.free(names);
         for (names) |name| {
             const namespace = ir.namespaces.getPtr(name) orelse continue;
-            for (namespace.members) |*member| try nameMemberUnions(ir, name, &.{}, member);
+            for (namespace.members) |*member| try nameMemberUnions(ir, member);
         }
     }
     {
@@ -82,10 +82,7 @@ pub fn nameEveryUnion(ir: *ir_mod.IR) !void {
         defer allocator.free(names);
         for (names) |name| {
             const dictionary = ir.dictionaries.getPtr(name) orelse continue;
-            for (dictionary.members) |*member| {
-                if (convertedByImpl(name, &.{}, member.name, "")) continue;
-                try nameType(ir, &member.idlType);
-            }
+            for (dictionary.members) |*member| try nameType(ir, &member.idlType);
         }
     }
     {
@@ -151,68 +148,18 @@ fn keepsObjectIdentity(interface_name: []const u8, attribute_name: []const u8) b
     return false;
 }
 
-/// Union positions an impl still converts by hand, kept `runtime.JSValue`
-/// until a lane bind1 B5 commit moves that area's impl onto the typed union
-/// and deletes its entries: `.{ owner, member, position }` - an interface,
-/// interface mixin or dictionary; a member (an operation, attribute or
-/// dictionary member; "constructor"; "" for an anonymous special
-/// operation); an argument's name, "return", or "" for an attribute's or a
-/// dictionary member's type. A mixin's entry covers its includers. THIS
-/// TABLE ONLY SHRINKS, and is empty before batch B is done
-/// (tests/codegen/argument_unions_test.zig pins it).
-pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const u8 }{
-    // animations (dom/animations: effectOptions, keyframes)
-    // canvas (CanvasFillStrokeStyles' styleValue / setStyle)
-    // css (CSSStyleSheet's constructor, typed OM's mapSet)
-    // dom (element creation options, importNode, view transitions)
-    // events and observers (EventTarget's options; lane rc8 is in these files)
-    // forms (options.add's `before`, setFormValue, the form's named getter)
-    // HTMLAllCollection (its legacy caller and named getter bind `item` and
-    // `namedItem` through a special path that takes the JSValue)
-    // fs
-    // idb
-    // media
-    // performance
-    // popover
-    // sanitizer (html/sanitizer.zig, parser_options.zig)
-    // service workers and workers (lane hard1 is in ExtendableMessageEvent)
-    // url
-    // websocket and xhr
-};
-
-/// Whether position (`member`, `position`) of `owner` - or of a mixin
-/// `owner_mixins` names - is one `unions_converted_by_impl` keeps.
-fn convertedByImpl(owner: []const u8, owner_mixins: []const []const u8, member: []const u8, position: []const u8) bool {
-    for (unions_converted_by_impl) |entry| {
-        if (!std.mem.eql(u8, entry[1], member) or !std.mem.eql(u8, entry[2], position)) continue;
-        if (std.mem.eql(u8, entry[0], owner)) return true;
-        for (owner_mixins) |mixin| {
-            if (std.mem.eql(u8, entry[0], mixin)) return true;
-        }
-    }
-    return false;
-}
-
-/// Name the unions of one member of interface or namespace `owner` (which
-/// includes `mixins`), but the positions `unions_converted_by_impl` keeps.
-fn nameMemberUnions(ir: *ir_mod.IR, owner: []const u8, mixins: []const []const u8, member: *types.Member) !void {
+/// Name the unions of one member of an interface, mixin or namespace.
+fn nameMemberUnions(ir: *ir_mod.IR, member: *types.Member) !void {
     switch (member.type) {
         .operation => if (member.operation) |*operation| {
-            const name = operation.name orelse "";
-            for (operation.arguments) |*argument| {
-                if (convertedByImpl(owner, mixins, name, argument.name)) continue;
-                try nameType(ir, &argument.idlType);
-            }
-            if (!convertedByImpl(owner, mixins, name, "return")) try nameType(ir, &operation.idlType);
+            for (operation.arguments) |*argument| try nameType(ir, &argument.idlType);
+            try nameType(ir, &operation.idlType);
         },
         .constructor => if (member.constructor) |*constructor| {
-            for (constructor.arguments) |*argument| {
-                if (convertedByImpl(owner, mixins, "constructor", argument.name)) continue;
-                try nameType(ir, &argument.idlType);
-            }
+            for (constructor.arguments) |*argument| try nameType(ir, &argument.idlType);
         },
         .attribute => if (member.attribute) |*attribute| {
-            if (!convertedByImpl(owner, mixins, attribute.name, "")) try nameType(ir, &attribute.idlType);
+            try nameType(ir, &attribute.idlType);
         },
         .iterable => if (member.iterable) |*iterable| {
             try nameType(ir, &iterable.keyType);

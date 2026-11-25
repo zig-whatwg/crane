@@ -19,8 +19,8 @@
 //! `new Response('', {headers: null})` is a TypeError, `performance.measure(
 //! 'm', {start: null})` names the mark "null", `new IntersectionObserver(f,
 //! {threshold: null})` has thresholds [0], in all three). It read as not
-//! present once B2 typed such members: while they were runtime.JSValue the
-//! impl saw the null (`jsvalue_union_members`).
+//! present once B2 typed such members; while they were runtime.JSValue the
+//! impl saw the null.
 //!
 //! The predicate's default is pinned: a member the converter cannot convert
 //! null for by its own rule keeps reading null as not present.
@@ -344,9 +344,6 @@ test "OptionalEffectTiming {duration: null} is the union's string member, \"null
     // tmp/probes/bind1-nullmember/report-g3.txt). The member has a generated
     // union type since lane bind1 B5; until then it was the last
     // runtime.JSValue member and the impl converted it.
-    // hasdecl: a generated dictionary; codegen writes the `pub` declaration
-    // only while a member is typed runtime.JSValue - its absence is the claim.
-    try testing.expect(!@hasDecl(dictionaries.OptionalEffectTiming, "jsvalue_union_members"));
     const e = try env();
     const present = try eval("({ duration: null })");
     defer ffi.v8_Value_Dispose(present);
@@ -375,9 +372,6 @@ test "IntersectionObserverInit {threshold: null} is the union's double member, 0
     // Firefox and Safari all answer thresholds [0] for {threshold: null}.
     // The member has a generated union type since lane bind1 B5 (it was
     // runtime.JSValue, and the constructor discarded it).
-    // hasdecl: a generated dictionary; codegen writes the `pub` declaration
-    // only while a member is typed runtime.JSValue - its absence is the claim.
-    try testing.expect(!@hasDecl(dictionaries.IntersectionObserverInit, "jsvalue_union_members"));
     const e = try env();
     const present = try eval("({ threshold: null })");
     defer ffi.v8_Value_Dispose(present);
@@ -405,9 +399,6 @@ test "SetHTMLOptions {sanitizer: null} is the union's SanitizerConfig member, em
     // (crane/san-options-null.html). The member has a generated union type
     // since lane bind1 B5 (it was runtime.JSValue, converted by
     // html/sanitizer.zig), so the binding converts the null.
-    // hasdecl: a generated dictionary; codegen writes the `pub` declaration
-    // only while a member is typed runtime.JSValue - its absence is the claim.
-    try testing.expect(!@hasDecl(dictionaries.SetHTMLOptions, "jsvalue_union_members"));
     const e = try env();
     const present = try eval("({ sanitizer: null })");
     defer ffi.v8_Value_Dispose(present);

@@ -5,8 +5,9 @@
 //! callbacks, sequence and record elements. Until
 //! B2 only a union argument followed by another, whose members a shape-
 //! driven conversion took "faithfully", was named; the rest reached the
-//! impl as `runtime.JSValue`. The positions an impl still converts by hand
-//! are listed in `unions_converted_by_impl`, a table that only shrinks.
+//! impl as `runtime.JSValue`. The positions impls still converted by hand
+//! were a table that only shrank (`unions_converted_by_impl`); batch B's B5
+//! emptied it and removed it.
 
 const std = @import("std");
 const codegen = @import("codegen");
@@ -189,13 +190,6 @@ test "the IndexedDB source attributes, and only they, keep the object itself" {
     try testing.expectEqualStrings("source", table[0][1]);
     try testing.expectEqualStrings("IDBRequest", table[1][0]);
     try testing.expectEqualStrings("source", table[1][1]);
-}
-
-test "the positions an impl still converts by hand only shrink, and are none when batch B is done" {
-    // Lane bind1 batch B: each B5 commit moves one area onto its typed
-    // unions and lowers this count; batch B is done at zero (main,
-    // 2026-11-23 12:39 PM ET).
-    try testing.expectEqual(@as(usize, 0), codegen.argument_unions.unions_converted_by_impl.len);
 }
 
 test "unionName joins the member names in upper camel case" {
