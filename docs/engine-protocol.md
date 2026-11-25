@@ -831,7 +831,10 @@ the V8 link lines and the archive table (`engines/v8/build/archives.zig`),
 the adapter's module wiring, the snapshot and its generator, and tests/v8's
 rows and tables are behind this interface; the setup step's V8 13.1 section
 and the stale engines help text were deleted (`zig build --help` lists
-`-Dengine`'s values).
+`-Dengine`'s values). The platform half (batches P1 to P4) did the same for
+operating systems and platform libraries - its build side is
+docs/platform-protocol.md 10.0 - and since P4 `lint-build` is a plain rule
+with no baseline.
 
 **The young generation's size is a V8 build option:
 `-Dv8-young-generation-mb=<n>`.** A generational collector allocates new

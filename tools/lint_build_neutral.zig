@@ -1,15 +1,16 @@
-//! The build's neutrality, as a ratchet: `zig build lint-build` (and so `zig
+//! The build's neutrality, a plain rule: `zig build lint-build` (and so `zig
 //! build test`) fails when build.zig, or a file it imports, names an engine,
-//! an operating system or a platform library more often than
-//! tools/build_neutral_baseline.txt records.
+//! an operating system or a platform library at all.
 //!
 //! The rule (the user, 2026-11-12): no engine- or platform-specific code in
 //! build.zig. An adapter declares its build options, sources and link inputs
 //! in its own build file, behind the build side of its protocol
-//! (src/runtime/engine_build_protocol.zig; the platform's follows), and the
-//! root build names no adapter. The migration that gets there moves a slice
-//! per batch (tmp/plans/build-protocol-design.md); this lint holds what each
-//! batch gained.
+//! (src/runtime/engine_build_protocol.zig; src/platform/
+//! platform_build_protocol.zig with the kit's src/platform/kit/kit_build.zig),
+//! and the root build names no adapter. The migration that got there moved a
+//! slice per batch (tmp/plans/build-protocol-design.md) against a baseline
+//! that only went down; its last batch (P4, 2026-11-24) took it to zero, and
+//! the baseline is gone: any name fails.
 //!
 //! What is scanned: the root (build.zig) and every `.zig` file reached from it
 //! through `@import("<path>.zig")`, each held by where it lives:
@@ -38,18 +39,19 @@
 //!     that code went. A library key is not counted in a script, where `curl`
 //!     is a command the script runs.
 //!
-//! A count that rises fails, and so does a (file, key, kind) the baseline
-//! lacks - which catches a swap. The baseline only goes down. After a batch
-//! moves a slice out:
-//!     zig build lint-build -- --update
-//! which refuses to record an increase. `-- --list` prints every site: the
-//! work list. When the baseline is empty the lint is a plain rule.
+//! Any occurrence fails, printed with its file, line, key and kind: move it
+//! behind its protocol's build side, or say what it meant without the name.
+//! `-- --list` prints every site; `-- --update` is refused - there is no
+//! baseline to record - and tools/build_neutral_baseline.txt is refused if it
+//! comes back (`refuseBaseline`, as lint-impls refuses its retired one).
 
 const std = @import("std");
 // stdout as a stream: Zig 0.17's positional File.writer overwrites a shared log.
 const stdout_stream = @import("stdout_stream.zig");
 
-const baseline_path = "tools/build_neutral_baseline.txt";
+/// The ratchet's baseline until the rule reached zero; refused if it comes
+/// back (`refuseBaseline`).
+const retired_baseline_path = "tools/build_neutral_baseline.txt";
 
 /// The file the scan starts from.
 const root_path = "build.zig";
@@ -344,95 +346,57 @@ pub fn scanFile(gpa: std.mem.Allocator, path: []const u8, text: []const u8, keys
     return out;
 }
 
-/// Counts per "path class:key kind" key.
-pub const Counts = std.StringHashMapUnmanaged(u32);
-
-/// The baseline key of an occurrence of `key`, of `kind`, in the file at `path`.
-pub fn countKey(gpa: std.mem.Allocator, path: []const u8, key: Key, kind: Kind) ![]u8 {
-    return std.fmt.allocPrint(gpa, "{s} {t}:{s} {t}", .{ path, key.class, key.text, kind });
-}
-
-/// A key the current tree has more of than the baseline allows.
-pub const Violation = struct { key: []const u8, allowed: u32, found: u32 };
-
-fn lessThan(_: void, a: []const u8, b: []const u8) bool {
-    return std.mem.lessThan(u8, a, b);
-}
-
-fn violationLessThan(_: void, a: Violation, b: Violation) bool {
-    return std.mem.lessThan(u8, a.key, b.key);
-}
-
-/// Every key in `current` above its baseline count - a key absent from the
-/// baseline is allowed zero - sorted by key.
-pub fn violations(gpa: std.mem.Allocator, current: *const Counts, baseline: *const Counts) !std.ArrayList(Violation) {
-    var out: std.ArrayList(Violation) = .empty;
-    errdefer out.deinit(gpa);
-    var it = current.iterator();
-    while (it.next()) |entry| {
-        const allowed = baseline.get(entry.key_ptr.*) orelse 0;
-        if (entry.value_ptr.* > allowed) {
-            try out.append(gpa, .{ .key = entry.key_ptr.*, .allowed = allowed, .found = entry.value_ptr.* });
-        }
-    }
-    std.mem.sort(Violation, out.items, {}, violationLessThan);
-    return out;
-}
-
-/// Parse a baseline file: `path class:key kind count` per line, `#` comments.
-/// A key may hold spaces, so the count is what follows the last one. Keys
-/// are allocated with `gpa` and owned by the map.
-pub fn parseBaseline(gpa: std.mem.Allocator, text: []const u8) !Counts {
-    var counts: Counts = .empty;
-    errdefer {
-        var keys = counts.keyIterator();
-        while (keys.next()) |key| gpa.free(key.*);
-        counts.deinit(gpa);
-    }
-    var lines = std.mem.splitScalar(u8, text, '\n');
-    while (lines.next()) |raw| {
-        const line = std.mem.trim(u8, raw, " \t\r");
-        if (line.len == 0 or line[0] == '#') continue;
-        const space = std.mem.lastIndexOfScalar(u8, line, ' ') orelse return error.MalformedBaseline;
-        const count = std.fmt.parseInt(u32, line[space + 1 ..], 10) catch return error.MalformedBaseline;
-        const key = try gpa.dupe(u8, std.mem.trimEnd(u8, line[0..space], " "));
-        errdefer gpa.free(key);
-        const gop = try counts.getOrPut(gpa, key);
-        if (gop.found_existing) {
-            gpa.free(key);
-            gop.value_ptr.* += count;
-        } else gop.value_ptr.* = count;
-    }
-    return counts;
-}
-
-const header =
-    \\# What build.zig and the neutral files it imports still name of an engine, an
-    \\# operating system or a platform library: path class:key kind count.
-    \\# A ratchet - `zig build lint-build`, part of `zig build test`, fails if any
-    \\# count rises or a new line appears. After a batch moves a slice behind the
-    \\# build side of a protocol (src/runtime/engine_build_protocol.zig), lower it
-    \\# with `zig build lint-build -- --update`. Never raise it by hand.
+/// What `--update` is told: the rule has nothing to record.
+pub const no_baseline =
+    \\lint-build is a plain rule since the build migration's last batch (P4, 2026-11-24):
+    \\no name of an engine, an operating system or a platform library is recorded -
+    \\each moves behind its protocol's build side, or is said without the name.
+    \\There is no baseline to update.
     \\
 ;
 
-/// Format counts as a baseline file, keys sorted.
-pub fn formatBaseline(gpa: std.mem.Allocator, counts: *const Counts) ![]u8 {
-    var keys: std.ArrayList([]const u8) = .empty;
-    defer keys.deinit(gpa);
-    var it = counts.keyIterator();
-    while (it.next()) |key| try keys.append(gpa, key.*);
-    std.mem.sort([]const u8, keys.items, {}, lessThan);
+/// What every failure ends with.
+const explanation =
+    \\
+    \\build.zig and the neutral files it imports name no engine, no operating
+    \\system and no platform library (the user, 2026-11-12). What is an adapter's
+    \\goes in the adapter's own build file, behind the build side of its protocol
+    \\(src/runtime/engine_build_protocol.zig, src/platform/platform_build_protocol.zig
+    \\and the kit's src/platform/kit/kit_build.zig); the root build asks the protocol.
+    \\
+;
 
-    var out: std.ArrayList(u8) = .empty;
-    errdefer out.deinit(gpa);
-    try out.appendSlice(gpa, header);
-    for (keys.items) |key| {
-        const line = try std.fmt.allocPrint(gpa, "{s} {d}\n", .{ key, counts.get(key).? });
-        defer gpa.free(line);
-        try out.appendSlice(gpa, line);
+/// Whether the tree fails for its baseline file, printing why: the ratchet's
+/// baseline, retired at zero, is refused - not read - if it comes back.
+pub fn refuseBaseline(out: *std.Io.Writer, exists: bool) !bool {
+    if (!exists) return false;
+    try out.print(
+        \\build neutrality: {s} exists. The rule has no baseline since the build
+        \\migration's last batch (P4, 2026-11-24) - every name fails - so the file is
+        \\refused, not read: delete it, and move what it would record.
+        \\
+    , .{retired_baseline_path});
+    return true;
+}
+
+/// The verdict on a scan: every occurrence of a key in a counted file is a
+/// failure, printed with its site; none is a pass. True when the tree fails.
+pub fn report(out: *std.Io.Writer, files: []const FileSites, keys: []const Key, counted_files: usize) !bool {
+    var found: usize = 0;
+    for (files) |file| found += file.sites.len;
+    if (found == 0) {
+        try out.print("build neutrality: {d} files name no engine, no operating system and no platform library.\n", .{counted_files});
+        return false;
     }
-    return out.toOwnedSlice(gpa);
+    try out.print("build neutrality: {d} name(s) of an engine, an operating system or a platform library.\n\n", .{found});
+    for (files) |file| {
+        for (file.sites) |site| {
+            const key = keys[site.key];
+            try out.print("  {s}:{d} {t}:{s} {t}: {s}\n", .{ file.path, site.line, key.class, key.text, site.kind, site.text });
+        }
+    }
+    try out.writeAll(explanation);
+    return true;
 }
 
 /// The whole tree's totals, per class.
@@ -453,7 +417,7 @@ const Totals = struct {
 };
 
 /// A file's occurrences, kept for the report, and its lines per class.
-const FileSites = struct {
+pub const FileSites = struct {
     path: []const u8,
     sites: []const Site,
     lines: [classes.len][3]u32,
@@ -476,11 +440,8 @@ const FileSites = struct {
     }
 };
 
-/// A violation lists its key's sites only up to this many.
-const max_sites_printed = 20;
-
 fn usage() noreturn {
-    std.debug.print("usage: lint_build_neutral [--engine=<keys>] [--platform=<keys>] [--target=<keys>] [--library=<keys>] [--update] [--list]\n", .{});
+    std.debug.print("usage: lint_build_neutral [--engine=<keys>] [--platform=<keys>] [--target=<keys>] [--library=<keys>] [--list]\n", .{});
     std.process.exit(2);
 }
 
@@ -490,7 +451,6 @@ pub fn main(init: std.process.Init) !void {
     const arena = arena_state.allocator();
     const io = init.io;
 
-    var update = false;
     var list = false;
     var keys: std.ArrayList(Key) = .empty;
     var args = try init.minimal.args.iterateAllocator(arena);
@@ -498,8 +458,8 @@ pub fn main(init: std.process.Init) !void {
     _ = args.next();
     next_arg: while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--update")) {
-            update = true;
-            continue;
+            std.debug.print("{s}", .{no_baseline});
+            std.process.exit(2);
         }
         if (std.mem.eql(u8, arg, "--list")) {
             list = true;
@@ -514,8 +474,22 @@ pub fn main(init: std.process.Init) !void {
         usage();
     }
 
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout_writer = stdout_stream.writer(io, &stdout_buf);
+    const out = &stdout_writer.interface;
+    defer out.flush() catch {};
+
+    // The retired baseline is refused if it comes back: the rule has none.
+    const baseline_back = if (std.Io.Dir.cwd().access(io, retired_baseline_path, .{})) |_| true else |err| switch (err) {
+        error.FileNotFound => false,
+        else => return err,
+    };
+    if (try refuseBaseline(out, baseline_back)) {
+        try out.flush();
+        std.process.exit(1);
+    }
+
     // The root and everything reached from it, each file once.
-    var current: Counts = .empty;
     var totals: Totals = .{};
     var scanned: std.ArrayList(FileSites) = .empty;
     var seen: std.StringHashMapUnmanaged(void) = .empty;
@@ -539,23 +513,12 @@ pub fn main(init: std.process.Init) !void {
         if (scopeOf(path) == .none) continue;
         counted_files += 1;
         try scanned.append(arena, .{ .path = path, .sites = scan.sites.items, .lines = scan.lines });
-        for (scan.sites.items) |site| {
-            const key = keys.items[site.key];
-            const gop = try current.getOrPut(arena, try countKey(arena, path, key, site.kind));
-            if (!gop.found_existing) gop.value_ptr.* = 0;
-            gop.value_ptr.* += 1;
-            totals.occurrences[@backingInt(key.class)] += 1;
-        }
+        for (scan.sites.items) |site| totals.occurrences[@backingInt(keys.items[site.key].class)] += 1;
         for (classes) |class| {
             const i = @backingInt(class);
             for (0..3) |k| totals.lines[i][k] += scan.lines[i][k];
         }
     }
-
-    var stdout_buf: [4096]u8 = undefined;
-    var stdout_writer = stdout_stream.writer(io, &stdout_buf);
-    const out = &stdout_writer.interface;
-    defer out.flush() catch {};
 
     if (list) {
         for (scanned.items) |file| {
@@ -566,69 +529,13 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
-    const text: ?[]u8 = std.Io.Dir.cwd().readFileAlloc(io, baseline_path, arena, .limited(64 << 20)) catch |err| switch (err) {
-        error.FileNotFound => null,
-        else => return err,
-    };
-    if (text == null) {
-        if (!update) {
-            try out.print("build neutrality: no {s}; record one with `zig build lint-build -- --update`.\n", .{baseline_path});
-            try out.flush();
-            std.process.exit(1);
-        }
-        try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = baseline_path, .data = try formatBaseline(arena, &current) });
-        try out.print("build neutrality: first baseline recorded - {d} files, {d} keys.\n", .{ counted_files, current.count() });
-        try totals.print(out);
-        for (scanned.items) |*file| try file.print(out);
-        return;
-    }
-    const baseline = try parseBaseline(arena, text.?);
-
-    const found = try violations(arena, &current, &baseline);
-    if (found.items.len > 0) {
-        try out.print("build neutrality: {d} key(s) above the baseline.\n\n", .{found.items.len});
-        for (found.items) |v| {
-            try out.print("  {s}: allowed {d}, found {d}\n", .{ v.key, v.allowed, v.found });
-            // A key with hundreds of sites would bury the new one: the
-            // change's own diff holds it.
-            if (v.found > max_sites_printed) {
-                try out.print("      ({d} sites: `zig build lint-build -- --list` prints them; the new one is in your diff)\n", .{v.found});
-                continue;
-            }
-            for (scanned.items) |file| {
-                for (file.sites) |site| {
-                    const site_key = try countKey(arena, file.path, keys.items[site.key], site.kind);
-                    if (std.mem.eql(u8, site_key, v.key)) try out.print("      {s}:{d}: {s}\n", .{ file.path, site.line, site.text });
-                }
-            }
-        }
-        try out.print(
-            \\
-            \\build.zig and the neutral files it imports name no engine, no operating
-            \\system and no platform library (the user, 2026-11-12). What is an adapter's
-            \\goes in the adapter's own build file, behind the build side of its protocol
-            \\(src/runtime/engine_build_protocol.zig); the root build asks the protocol.
-            \\
-        , .{});
+    const failed = try report(out, scanned.items, keys.items, counted_files);
+    try totals.print(out);
+    for (scanned.items) |*file| try file.print(out);
+    if (failed) {
         try out.flush();
         std.process.exit(1);
     }
-
-    var lowered: usize = 0;
-    var base_it = baseline.iterator();
-    while (base_it.next()) |entry| {
-        if ((current.get(entry.key_ptr.*) orelse 0) < entry.value_ptr.*) lowered += 1;
-    }
-    if (update) {
-        try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = baseline_path, .data = try formatBaseline(arena, &current) });
-        try out.print("build neutrality: baseline lowered - {d} files, {d} keys.\n", .{ counted_files, current.count() });
-    } else if (lowered > 0) {
-        try out.print("build neutrality: {d} key(s) paid down; record it with `zig build lint-build -- --update`.\n", .{lowered});
-    } else {
-        try out.print("build neutrality: {d} files, {d} keys, none above the baseline.\n", .{ counted_files, current.count() });
-    }
-    try totals.print(out);
-    for (scanned.items) |*file| try file.print(out);
 }
 
 // ============================================================================
@@ -908,68 +815,49 @@ test "keys: a plain key is a substring, word: a word, a dotted name an enum lite
     try testing.expectEqual(Class.target, keys.items[4].class);
 }
 
-test "a violation is any key above its baseline, including a key the baseline lacks (a swap, or code that became a comment)" {
-    var current: Counts = .empty;
-    defer current.deinit(testing.allocator);
-    var baseline: Counts = .empty;
-    defer baseline.deinit(testing.allocator);
-
-    try baseline.put(testing.allocator, "build.zig engine:v8 code", 190);
-    try baseline.put(testing.allocator, "build.zig engine:v8 comment", 218);
-    try baseline.put(testing.allocator, "build.zig platform:linux code", 20);
-    // Paid down: fewer is always allowed.
-    try current.put(testing.allocator, "build.zig engine:v8 code", 150);
-    // Grown.
-    try current.put(testing.allocator, "build.zig engine:v8 comment", 219);
-    // The same total as before under another key: one name swapped for another.
-    try current.put(testing.allocator, "build.zig platform:linux code", 19);
-    try current.put(testing.allocator, "build.zig platform:darwin code", 1);
-    // A file the baseline never had.
-    try current.put(testing.allocator, "tools/new_helper.zig engine:v8 code", 1);
-
-    var found = try violations(testing.allocator, &current, &baseline);
-    defer found.deinit(testing.allocator);
-    try testing.expectEqual(@as(usize, 3), found.items.len);
-    try testing.expectEqualStrings("build.zig engine:v8 comment", found.items[0].key);
-    try testing.expectEqual(@as(u32, 218), found.items[0].allowed);
-    try testing.expectEqual(@as(u32, 219), found.items[0].found);
-    try testing.expectEqualStrings("build.zig platform:darwin code", found.items[1].key);
-    try testing.expectEqual(@as(u32, 0), found.items[1].allowed);
-    try testing.expectEqualStrings("tools/new_helper.zig engine:v8 code", found.items[2].key);
+/// The report on `text` scanned as the file at `path`: whether it failed, and what it printed.
+fn reportOn(arena: std.mem.Allocator, path: []const u8, text: []const u8) !struct { bool, []const u8 } {
+    const keys = try testKeys(arena);
+    const scan = try scanFile(arena, path, text, keys);
+    var out: std.Io.Writer.Allocating = .init(arena);
+    const files = [_]FileSites{.{ .path = path, .sites = scan.sites.items, .lines = scan.lines }};
+    const failed = try report(&out.writer, &files, keys, files.len);
+    return .{ failed, out.written() };
 }
 
-test "the baseline round-trips, sorted, with a key that holds a space, and ignores comments" {
+test "any name of an engine, an OS or a platform library fails, each site printed - there is no baseline" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const keys = try testKeys(arena.allocator());
-    var abi: ?Key = null;
-    for (keys) |key| {
-        if (std.mem.eql(u8, key.text, ".abi ==")) abi = key;
-    }
+    const failed, const printed = try reportOn(arena.allocator(), "build.zig",
+        \\const ok = 1;
+        \\// System frameworks (macOS)
+        \\const lib = "curl";
+    );
+    try testing.expect(failed);
+    try testing.expect(std.mem.indexOf(u8, printed, "build.zig:2 platform:macos comment: // System frameworks (macOS)") != null);
+    try testing.expect(std.mem.indexOf(u8, printed, "build.zig:3 library:curl code: const lib = \"curl\";") != null);
+    try testing.expect(std.mem.indexOf(u8, printed, "2 name(s)") != null);
+}
 
-    var counts: Counts = .empty;
-    defer counts.deinit(testing.allocator);
-    const abi_key = try countKey(testing.allocator, "build.zig", abi.?, .code);
-    defer testing.allocator.free(abi_key);
-    try testing.expectEqualStrings("build.zig target:.abi == code", abi_key);
-    try counts.put(testing.allocator, abi_key, 2);
-    try counts.put(testing.allocator, "build.zig engine:v8 script", 90);
-    try counts.put(testing.allocator, "build.zig engine:v8 code", 191);
+test "a tree that names none passes" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const failed, const printed = try reportOn(arena.allocator(), "build.zig",
+        \\const os_side = platform_build.chooseOs(b, target, build_probe);
+        \\// What the target's C needs that Zig does not find by itself.
+    );
+    try testing.expect(!failed);
+    try testing.expect(std.mem.indexOf(u8, printed, "1 files name no engine, no operating system and no platform library") != null);
+}
 
-    const text = try formatBaseline(testing.allocator, &counts);
-    defer testing.allocator.free(text);
-    try testing.expect(std.mem.indexOf(u8, text, "build.zig engine:v8 code 191\nbuild.zig engine:v8 script 90\nbuild.zig target:.abi == code 2\n") != null);
-
-    var parsed = try parseBaseline(testing.allocator, text);
-    defer {
-        var it = parsed.keyIterator();
-        while (it.next()) |key| testing.allocator.free(key.*);
-        parsed.deinit(testing.allocator);
-    }
-    try testing.expectEqual(@as(u32, 3), parsed.count());
-    try testing.expectEqual(@as(u32, 2), parsed.get("build.zig target:.abi == code").?);
-    try testing.expectEqual(@as(u32, 191), parsed.get("build.zig engine:v8 code").?);
-    try testing.expectError(error.MalformedBaseline, parseBaseline(testing.allocator, "build.zig engine:v8 code many\n"));
+test "the rule keeps no baseline: --update is refused, and so is the retired baseline if it comes back" {
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try testing.expect(!try refuseBaseline(&out.writer, false));
+    try testing.expectEqual(@as(usize, 0), out.written().len);
+    try testing.expect(try refuseBaseline(&out.writer, true));
+    try testing.expect(std.mem.indexOf(u8, out.written(), "tools/build_neutral_baseline.txt exists") != null);
+    try testing.expect(std.mem.indexOf(u8, no_baseline, "There is no baseline to update.") != null);
 }
 
 test {

@@ -37,10 +37,10 @@ pub const RunnerModes = struct {
     /// (the refcount ledger, the isolate cleanup validation) while LLVM
     /// optimizes their code at the root's level.
     crane_modules: Mode,
-    /// The C libraries the runner links: libcurl, mbedTLS, zlib, nghttp2,
-    /// Brotli, the image codecs.
+    /// The C libraries the runner links: the platform kit's (its network,
+    /// TLS, compression and HTTP/2 libraries, its image codecs).
     c_libraries: Mode,
-    /// The C sanitizer for the engine adapter's C++ and the C libraries (libcurl's own
+    /// The C sanitizer for the engine adapter's C++ and the C libraries (the network library's own
     /// sources excepted: build.zig turns it off there in every mode). `.full`
     /// in the safe modes, as in Debug: the same checks as `.trap` (ReleaseSafe's
     /// default), but a failed one names the check and the source line and
@@ -108,7 +108,7 @@ pub fn effectiveSanitizeC(sanitize_c: ?std.zig.SanitizeC, mode: Mode) std.zig.Sa
 pub const LinkedCLibrary = struct {
     /// The build that links it: its binary's name ("wpt_runner").
     build: []const u8,
-    /// The library artifact's name ("mbedtls"), or "the root".
+    /// The library artifact's name, as its build named it, or "the root".
     library: []const u8,
     /// The artifact's identity (its address in the build graph): two builds
     /// that link one artifact give the same value.
@@ -134,22 +134,22 @@ pub const LinkedUbsanRuntime = struct {
 /// The check build.zig runs at the end of every configuration (lane
 /// buildfix1, 2026-11-10). Zig memoizes a dependency by its arguments, so the
 /// production and bug-finding graphs - both with ReleaseSafe C libraries -
-/// got ONE mbedTLS and ONE zlib artifact, and each graph wrote its own C
+/// got ONE TLS and ONE compression artifact, and each graph wrote its own C
 /// sanitizer onto them: the bug-finding graph, configured second, won. Main's
 /// release console then failed to link (ten `___ubsan_handle_*` undefined, all
-/// from libmbedtls.a), and generation 214's production runner was not the
-/// shipped configuration: its mbedTLS and zlib carried the full sanitizer,
+/// from the TLS library), and generation 214's production runner was not the
+/// shipped configuration: its TLS and compression libraries carried the full sanitizer,
 /// and it linked the UBSan runtime for them. Nothing said so, because nothing
 /// compared what a build links with what its modes say.
 ///
 /// So, in both directions - a production build carries no `.full` C and no
-/// UBSan runtime, a bug-finding build carries `.full` everywhere, nghttp2 and
-/// Brotli included - for every checked build:
+/// UBSan runtime, a bug-finding build carries `.full` everywhere, the kit's
+/// every C library included - for every checked build:
 /// - every C library it links (`libraries`), and its root, is compiled in
 ///   the mode and with the sanitizer its modes say (compared as compiled:
 ///   `effectiveSanitizeC`);
 /// - it links no two artifacts of one name (a shared artifact that each
-///   graph adds its own library to, as libcurl had two nghttp2s);
+///   graph adds its own library to, as the network library had two HTTP/2 ones);
 /// - no artifact is linked by two builds whose modes for it differ: a shared
 ///   dependency instance, written per graph;
 /// - it links Zig's UBSan runtime exactly when its modes need one
@@ -255,7 +255,7 @@ pub fn releaseOption(release: bool, release_fast: bool) error{TwoReleaseBuilds}!
 }
 
 /// The platform module graph a build links (build.zig maps it to a
-/// `Platform`): the console's - the target's own adapter (linux, darwin),
+/// `Platform`): the console's - the adapter that answers for the target,
 /// what Crane's own browser ships - or the testing platform's, whose
 /// compiled-in test capabilities (image decoders, an in-memory clipboard,
 /// fixed fonts, the replaced-element layout stopgap) only the unit tests use.

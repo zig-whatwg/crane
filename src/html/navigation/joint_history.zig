@@ -191,8 +191,13 @@ pub const Entry = struct {
     /// which a back/forward traversal back to the entry gives the document
     /// it makes. Owned.
     persisted_user_state: ?[]u8 = null,
+    /// This entry introduced its step: the browser's record of the step
+    /// (`NavigationEntryRecord` - user agent data, recorded, never
+    /// consulted). Null on every other entry. Owned.
+    navigation_entry: ?NavigationEntryRecord = null,
 
     fn deinit(self: *Entry, allocator: Allocator) void {
+        if (self.navigation_entry) |*record| record.deinit(allocator);
         if (self.persisted_user_state) |bytes| allocator.free(bytes);
         allocator.free(self.url);
         self.state.deinit(allocator);
@@ -228,6 +233,64 @@ pub const Entry = struct {
         allocator.destroy(activation);
         self.activation = null;
     }
+};
+
+/// USER AGENT DATA, NOT HTML'S: the browser's own record of one step of the
+/// joint session history - what Chrome keeps on a NavigationEntry
+/// (content/browser/renderer_host/navigation_entry_impl.h: title_,
+/// transition_type_, user_typed_url_), one per step, and what CDP's
+/// Page.getNavigationHistory lists (content/browser/devtools/protocol/
+/// page_handler.cc GetNavigationHistory; src/devtools/domains/page.zig).
+/// No web specification defines it and nothing web-exposed reads it: it is
+/// recorded where the history changes and NEVER CONSULTED by any of HTML's
+/// algorithms here - no step, entry, view or traversal decision reads it.
+///
+/// It sits on the entry that introduced its step (`Entry.navigation_entry`):
+/// the traversable's first entry (auto_toplevel), a push's new entry. A step
+/// a child navigable's navigation or a same-document navigation adds clones
+/// the record of the step it was made from, as Chrome's
+/// NavigationEntryImpl::CloneAndReplace copies the title, the transition
+/// and the user-typed URL (a top-level same-document one as a link,
+/// NavigationControllerImpl::RendererDidNavigateToNewEntry); a top-level
+/// cross-document commit records its own (`recordNavigationEntry`); a
+/// replace keeps the record with the entry that takes the replaced one's
+/// place; the current step's record takes the traversable's document's
+/// title (`recordTitle`) and a reload (`recordReload`). Recorded as Chrome
+/// 157 showed it (tests/devtools/mcp1_history_test.zig).
+pub const NavigationEntryRecord = struct {
+    /// The traversable's document's title while the step was current (""
+    /// for none). Owned.
+    title: []u8 = &.{},
+    transition: Transition = .link,
+    /// The URL the step's navigation was asked for (Chrome: set by
+    /// CreateNavigationEntry to the URL to load, before any redirect). Owned.
+    user_typed_url: []u8 = &.{},
+
+    /// Chrome's ui::PageTransition core types that Crane's navigations make
+    /// (CDP's TransitionType names them).
+    pub const Transition = enum { link, typed, auto_toplevel, form_submit, reload };
+
+    fn deinit(self: *NavigationEntryRecord, allocator: Allocator) void {
+        allocator.free(self.title);
+        allocator.free(self.user_typed_url);
+    }
+
+    fn clone(self: NavigationEntryRecord, allocator: Allocator) !NavigationEntryRecord {
+        const title = try allocator.dupe(u8, self.title);
+        errdefer allocator.free(title);
+        return .{ .title = title, .transition = self.transition, .user_typed_url = try allocator.dupe(u8, self.user_typed_url) };
+    }
+};
+
+/// One step as `JointHistory.navigationEntries` lists it: the id of the
+/// entry that introduced the step, the traversable's URL at the step, and
+/// the step's record. Strings BORROWED from the history until it changes.
+pub const NavigationEntry = struct {
+    id: u64,
+    url: []const u8,
+    title: []const u8,
+    transition: NavigationEntryRecord.Transition,
+    user_typed_url: []const u8,
 };
 
 /// A NavigationType.
@@ -378,6 +441,10 @@ pub const JointHistory = struct {
     /// "Current session history step".
     current_step: u32 = 0,
     next_id: u64 = 1,
+    /// The traversable's navigable: the first one given an initial entry
+    /// (`addInitialEntry`). Read by the browser's step records only
+    /// (`NavigationEntryRecord`), never by HTML's algorithms.
+    top_navigable: ?u64 = null,
     next_document_state: u64 = 1,
     /// For the navigation API's keys and IDs.
     prng: std.Random.DefaultPrng,
@@ -843,7 +910,15 @@ pub const JointHistory = struct {
         defer self.endChange();
         const doc_state = self.next_document_state;
         self.next_document_state += 1;
-        try self.append(navigable, self.viewStep(), url, doc_state, document, .null, .undefined, origin, null, null);
+        const step = self.viewStep();
+        try self.append(navigable, step, url, doc_state, document, .null, .undefined, origin, null, null);
+        // The browser's record of the traversable's first step: Chrome's
+        // first entry of a tab, auto_toplevel, typed as its URL (UA data).
+        if (self.top_navigable == null) self.top_navigable = navigable;
+        if (self.stepRecord(step) == null) {
+            const owned = self.allocator.dupe(u8, url) catch return;
+            self.entries.items[self.entries.items.len - 1].navigation_entry = .{ .transition = .auto_toplevel, .user_typed_url = owned };
+        }
     }
 
     /// HTML "create a new child navigable" step 12 for `navigable`, a child
@@ -996,6 +1071,7 @@ pub const JointHistory = struct {
                 const removed = self.clearForwardListed();
                 const step = self.current_step + 1;
                 try self.append(navigable, step, url, doc_state, document, .null, .undefined, origin, null, reserved);
+                self.introduceStep(self.entries.items.len - 1, false);
                 return .{ .step = step, .entry = reserved.id, .removed = removed };
             },
             .replace => {
@@ -1273,6 +1349,9 @@ pub const JointHistory = struct {
             listed.step = step;
             listed.pending = false;
             listed.pending_push = false;
+            // A same-document step of the traversable is a link (Chrome's
+            // RendererDidNavigateToNewEntry); a child's is its step's clone.
+            self.introduceStep(at, listed.navigable == self.top_navigable);
             self.pending_count -= 1;
             self.pending_push_count -= 1;
             // "Apply the push/replace history step" step 20, inline.
@@ -1298,6 +1377,14 @@ pub const JointHistory = struct {
         moved.dropActivation(self.allocator);
         moved.activation = slot.activation;
         slot.activation = null;
+        // The browser's record of the step stays with the entry in the
+        // replaced one's place (a top-level replaceState: a link).
+        if (moved.navigation_entry) |*record| record.deinit(self.allocator);
+        moved.navigation_entry = slot.navigation_entry;
+        slot.navigation_entry = null;
+        if (moved.navigation_entry) |*record| {
+            if (moved.navigable == self.top_navigable) record.transition = .link;
+        }
         slot.deinit(self.allocator);
         slot.* = moved;
         // The entry moved into its replaced one's place: one rebuild.
@@ -1609,6 +1696,7 @@ pub const JointHistory = struct {
                 self.clearForward();
                 const step = self.current_step + 1;
                 try self.append(navigable, step, url, doc_state, document, state, api_state, origin, null, prepared);
+                self.introduceStep(self.entries.items.len - 1, false);
                 self.current_step = step;
             },
             .replace => {
@@ -1654,6 +1742,168 @@ pub const JointHistory = struct {
                 self.reindex();
             },
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // The browser's step records (NavigationEntryRecord: user agent data,
+    // recorded here and read only by `navigationEntries`)
+    // ---------------------------------------------------------------------
+
+    /// The record of `step`: the one its introducing entry carries.
+    fn stepRecord(self: *JointHistory, step: u32) ?*NavigationEntryRecord {
+        for (self.entries.items) |*entry| {
+            if (entry.pending or entry.step != step) continue;
+            if (entry.navigation_entry) |*record| return record;
+        }
+        return null;
+    }
+
+    /// The entry at `index` introduces its step: its record is a clone of
+    /// the current step's (Chrome's NavigationEntryImpl::CloneAndReplace),
+    /// a link when `link`. A top-level cross-document commit then records
+    /// its own (`recordNavigationEntry`). Out of memory: no record.
+    fn introduceStep(self: *JointHistory, index: usize, link: bool) void {
+        var record: NavigationEntryRecord = if (self.stepRecord(self.current_step)) |from|
+            from.clone(self.allocator) catch return
+        else
+            .{};
+        if (link) record.transition = .link;
+        const entry = &self.entries.items[index];
+        if (entry.navigation_entry) |*old| old.deinit(self.allocator);
+        entry.navigation_entry = record;
+    }
+
+    /// A top-level cross-document commit of entry `entry_id` - how its
+    /// navigation came (`transition`) and the URL it was asked for: Chrome's
+    /// new NavigationEntry for the document, which has no title yet. Nothing
+    /// when the entry introduced no step, or out of memory.
+    pub fn recordNavigationEntry(self: *JointHistory, entry_id: u64, transition: NavigationEntryRecord.Transition, user_typed_url: []const u8) void {
+        const index = self.indexOfId(entry_id) orelse return;
+        const entry = &self.entries.items[index];
+        const record = if (entry.navigation_entry) |*r| r else return;
+        const owned = self.allocator.dupe(u8, user_typed_url) catch return;
+        self.allocator.free(record.user_typed_url);
+        record.user_typed_url = owned;
+        self.allocator.free(record.title);
+        record.title = &.{};
+        record.transition = transition;
+    }
+
+    /// The traversable's active document's title is `title` now: the
+    /// record of the step that document stands for takes it (Chrome:
+    /// WebContentsImpl::UpdateTitle sets the title of the entry the document
+    /// committed; the others keep theirs). While an apply runs that is its
+    /// target step (`viewStep`): a new document's parsed title arrives
+    /// inside its commit, before step 20 moves the current step there.
+    pub fn recordTitle(self: *JointHistory, title: []const u8) void {
+        const record = self.stepRecord(self.viewStep()) orelse return;
+        if (std.mem.eql(u8, record.title, title)) return;
+        const owned = self.allocator.dupe(u8, title) catch return;
+        self.allocator.free(record.title);
+        record.title = owned;
+    }
+
+    /// The traversable's reload applies: the current step's record says so
+    /// (Chrome's entry keeps its id and takes the reload transition).
+    pub fn recordReload(self: *JointHistory) void {
+        const record = self.stepRecord(self.current_step) orelse return;
+        record.transition = .reload;
+    }
+
+    /// The browser prunes the history to its current step - Chrome's
+    /// NavigationController::PruneAllButLastCommitted, which CDP's
+    /// Page.resetNavigationHistory runs (page_handler.cc
+    /// ResetNavigationHistory), a browser operation as back and forward are.
+    /// Entries are removed as "clear the forward session history" removes
+    /// them - by step, in one pass (`removeWhere`) - here every step but the
+    /// current: each navigable keeps the entry current at that step, which
+    /// now sits at it (so it is the one used step left: history.length 1),
+    /// and only the current step's record stays, with its introducing entry
+    /// and id. False, with nothing changed, when an apply is running or a
+    /// synchronous navigation's entry is still pending (Chrome:
+    /// CanPruneAllButLastCommitted is false while a navigation is pending).
+    pub fn pruneAllButCurrent(self: *JointHistory) bool {
+        if (self.apply != null or self.pending_count != 0) return false;
+        const step = self.current_step;
+        var kept: std.AutoHashMapUnmanaged(u64, void) = .empty;
+        defer kept.deinit(self.allocator);
+        var navigables: std.ArrayListUnmanaged(u64) = .empty;
+        defer navigables.deinit(self.allocator);
+        for (self.entries.items) |entry| {
+            if (std.mem.indexOfScalar(u64, navigables.items, entry.navigable) == null) navigables.append(self.allocator, entry.navigable) catch return false;
+        }
+        for (navigables.items) |navigable| {
+            const entry = self.entryAt(navigable, step) orelse continue;
+            kept.put(self.allocator, entry.id, {}) catch return false;
+        }
+        var record_holder: ?u64 = null;
+        for (self.entries.items) |entry| {
+            if (!entry.pending and entry.step == step and entry.navigation_entry != null) {
+                record_holder = entry.id;
+                break;
+            }
+        }
+        self.beginChange();
+        defer self.endChange();
+        _ = self.removeWhere(@as(*const std.AutoHashMapUnmanaged(u64, void), &kept), struct {
+            fn notKept(keep: *const std.AutoHashMapUnmanaged(u64, void), entry: *const Entry) bool {
+                return !keep.contains(entry.id);
+            }
+        }.notKept);
+        for (self.entries.items) |*entry| {
+            entry.step = step;
+            if (record_holder != null and entry.id == record_holder.?) continue;
+            if (entry.navigation_entry) |*record| record.deinit(self.allocator);
+            entry.navigation_entry = null;
+        }
+        // A navigable's kept active entry: gone with its step, or now at
+        // the one step left.
+        var gone: std.ArrayListUnmanaged(u64) = .empty;
+        defer gone.deinit(self.allocator);
+        var it = self.update_only.iterator();
+        while (it.next()) |e| {
+            if (kept.contains(e.value_ptr.entry)) {
+                e.value_ptr.step = step;
+            } else gone.append(self.allocator, e.key_ptr.*) catch {};
+        }
+        for (gone.items) |navigable| _ = self.update_only.remove(navigable);
+        return true;
+    }
+
+    /// Each step of the history, in order, as the browser lists it - Chrome's
+    /// NavigationController entries: the id of the entry that introduced the
+    /// step, the traversable's URL at the step, the step's record - into
+    /// `out` (cleared first; strings borrowed until the history changes).
+    /// Returns the current step's index.
+    pub fn navigationEntries(self: *JointHistory, allocator: Allocator, out: *std.ArrayList(NavigationEntry)) !usize {
+        out.clearRetainingCapacity();
+        var steps: std.ArrayListUnmanaged(u32) = .empty;
+        defer steps.deinit(allocator);
+        try self.usedSteps(allocator, &steps);
+        const top = self.top_navigable orelse return 0;
+        var current: usize = 0;
+        for (steps.items, 0..) |step, i| {
+            if (step == self.current_step) current = i;
+            const at_step = self.entryAt(top, step) orelse continue;
+            var id = at_step.id;
+            var record: NavigationEntryRecord = .{};
+            for (self.entries.items) |*entry| {
+                if (entry.pending or entry.step != step) continue;
+                if (entry.navigation_entry) |r| {
+                    id = entry.id;
+                    record = r;
+                    break;
+                }
+            }
+            try out.append(allocator, .{
+                .id = id,
+                .url = at_step.url,
+                .title = record.title,
+                .transition = record.transition,
+                .user_typed_url = record.user_typed_url,
+            });
+        }
+        return current;
     }
 
     /// "Get all used history steps", sorted and unique, into `out`.
