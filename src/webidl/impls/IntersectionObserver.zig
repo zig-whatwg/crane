@@ -84,12 +84,21 @@ pub const InternalState = struct {
     /// keep per observe() would hold the observer until its realm ended.
     kept_alive: bool = false,
 
-    /// [[rootMargin]]: top, right, bottom, left - whole pixels or
-    /// percentages, as "parse a margin" left them.
-    root_margin: margin.Margins = margin.zero,
-
-    /// [[scrollMargin]], likewise.
-    scroll_margin: margin.Margins = margin.zero,
+    /// [[rootMargin]] and [[scrollMargin]] (top, right, bottom, left -
+    /// whole pixels or percentages, as "parse a margin" left them), in a
+    /// block made only when the constructor was given a margin that is not
+    /// "0px": null is both at margin.zero, which the getters then read.
+    /// OWNED, freed by `deinit` - every path that frees this state, the
+    /// constructor's own failure after it made the block included.
+    ///
+    /// Why a block: every observer keeps the field, and a page that makes
+    /// and drops observers by the thousand holds what each costs until a
+    /// collection. With two Margins inline (80 bytes, 64 on main before lane
+    /// bind1's 3a) perf_bench observers.intersection-construct - 20,000
+    /// observers with no options - reached a collection-length iteration in
+    /// 5 of its 10 iterations where main reached it in 4, in every launch
+    /// (lane bind1 B5 3a, 2026-11-25).
+    margins: ?*MarginPair = null,
 
     /// Minimum delay between notifications in milliseconds
     delay: i32 = 0,
@@ -136,6 +145,19 @@ pub const InternalState = struct {
     /// Context for creating entries
     ctx: runtime.Context = undefined,
 
+    pub const MarginPair = struct {
+        root: margin.Margins,
+        scroll: margin.Margins,
+    };
+
+    fn rootMargin(self: *const InternalState) margin.Margins {
+        return if (self.margins) |pair| pair.root else margin.zero;
+    }
+
+    fn scrollMargin(self: *const InternalState) margin.Margins {
+        return if (self.margins) |pair| pair.scroll else margin.zero;
+    }
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -160,6 +182,9 @@ pub const InternalState = struct {
 
         // Free thresholds
         self.thresholds.deinit(self.allocator);
+
+        if (self.margins) |pair| self.allocator.destroy(pair);
+        self.margins = null;
     }
 
     /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
@@ -299,9 +324,6 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
     //    `this`; until then the call's argument does.
     internal.callback = callback.keepTraced();
 
-    internal.root_margin = root_margin;
-    internal.scroll_margin = scroll_margin;
-
     // 7. "Sort thresholds in ascending order." Equal doubles are the same
     //    value, so an unstable sort gives the same list; and one or none is
     //    sorted already. std.mem.sort (a block sort) took about a quarter
@@ -339,6 +361,15 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
         },
     };
 
+    // Steps 3-4's [[rootMargin]] and [[scrollMargin]]: a block only for a
+    // margin other than "0px" (InternalState.margins). The last step that
+    // can fail; if a later one could, the errdefer's deinit frees it.
+    if (!std.meta.eql(root_margin, margin.zero) or !std.meta.eql(scroll_margin, margin.zero)) {
+        const pair = try internal.allocator.create(InternalState.MarginPair);
+        pair.* = .{ .root = root_margin, .scroll = scroll_margin };
+        internal.margins = pair;
+    }
+
     // 14. "Return this."
     return instance;
 }
@@ -360,13 +391,13 @@ pub fn get_root(instance: *runtime.Instance) anyerror!?typedefs.ElementOrDocumen
 /// Getter for rootMargin: [[rootMargin]] serialized (2.2) - "not guaranteed
 /// to be identical to the options.rootMargin passed to the constructor".
 pub fn get_rootMargin(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const text = try margin.serialize(instance.ctx.allocator, getInternal(instance).root_margin);
+    const text = try margin.serialize(instance.ctx.allocator, getInternal(instance).rootMargin());
     return runtime.DOMString.initOwned(text);
 }
 
 /// Getter for scrollMargin: [[scrollMargin]] serialized, likewise.
 pub fn get_scrollMargin(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const text = try margin.serialize(instance.ctx.allocator, getInternal(instance).scroll_margin);
+    const text = try margin.serialize(instance.ctx.allocator, getInternal(instance).scrollMargin());
     return runtime.DOMString.initOwned(text);
 }
 
