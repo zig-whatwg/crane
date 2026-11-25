@@ -12,6 +12,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
+const typedefs = @import("typedefs");
 const css = @import("css");
 
 pub const timing = @import("timing.zig");
@@ -114,11 +115,14 @@ pub fn copyKeyframeEffect(effect_instance: *runtime.Instance, source_instance: *
 // Animatable (6.8)
 // ============================================================================
 
-/// Element.animate(keyframes, options) (6.8).
-pub fn animate(target: *runtime.Instance, keyframe_input: ?JSValue, options_value: ?JSValue) !*runtime.Instance {
+/// Element.animate(keyframes, options) (6.8). `options_value` is the
+/// argument the binding converted, null when it was not passed.
+pub fn animate(target: *runtime.Instance, keyframe_input: ?JSValue, options_value: ?typedefs.UnrestrictedDoubleOrKeyframeAnimationOptions) !*runtime.Instance {
     const realm = target.ctx;
     const allocator = realm.allocator;
-    var converted = try options.effectOptions(engine.currentRealm() orelse realm, options_value, allocator, true);
+    // Released after step 4, once the new Animation's traced edge keeps the
+    // timeline member (options.EffectOptions.timeline_hold).
+    var converted = try options.effectOptions(options_value, allocator);
     defer converted.deinit(allocator);
     // 2. A KeyframeEffect in target's relevant realm.
     const effect = try interfaces.KeyframeEffect.init(allocator, realm);

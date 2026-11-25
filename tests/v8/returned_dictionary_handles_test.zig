@@ -39,8 +39,20 @@ fn Returned(comptime operation: anytype) type {
 
 /// Navigation.navigate()'s result.
 const NavigationResult = Returned(interfaces.Navigation.call_navigate);
-/// AnimationEffect.getComputedTiming()'s result: it inherits EffectTiming.
-const ComputedEffectTiming = Returned(interfaces.AnimationEffect.call_getComputedTiming);
+/// A returned dictionary that inherits a runtime.JSValue member, as
+/// AnimationEffect.getComputedTiming()'s ComputedEffectTiming inherited
+/// EffectTiming's `duration` until lane bind1 B5 typed it (a union now). No
+/// dictionary the platform returns has one since, so the test's own pair,
+/// shaped as codegen writes an inheriting dictionary (`base` first).
+const InheritedBase = struct {
+    pub const webidl_dictionary = true;
+    detail: ?runtime.JSValue = null,
+};
+const Inheriting = struct {
+    pub const webidl_dictionary = true;
+    base: InheritedBase,
+    count: ?f64 = null,
+};
 
 const Env = struct {
     isolate: *ffi.Isolate,
@@ -186,16 +198,16 @@ test "a member that holds nothing is not released: unset, undefined, a number, a
 }
 
 test "an inherited dictionary's handed-over member is released too" {
-    // ComputedEffectTiming inherits EffectTiming's `duration`, a
-    // runtime.JSValue: codegen keeps it in the `base` field.
+    // The inherited runtime.JSValue member: codegen keeps it in the `base`
+    // field.
     try withEnv(struct {
         fn body(env: Env) !void {
-            for (0..64) |_| try env.returnDictionary(ComputedEffectTiming, .{ .base = .{ .duration = try env.promise() } }, true);
+            for (0..64) |_| try env.returnDictionary(Inheriting, .{ .base = .{ .detail = try env.promise() } }, true);
             const before = env.bytes();
-            for (0..rounds) |_| try env.returnDictionary(ComputedEffectTiming, .{ .base = .{ .duration = try env.promise() } }, true);
+            for (0..rounds) |_| try env.returnDictionary(Inheriting, .{ .base = .{ .detail = try env.promise() } }, true);
             const left = env.bytes() -| before;
             if (left >= margin) {
-                std.debug.print("{d} returned ComputedEffectTimings left {d} B of global handles\n", .{ rounds, left });
+                std.debug.print("{d} returned inheriting dictionaries left {d} B of global handles\n", .{ rounds, left });
                 return error.HandlesKept;
             }
         }

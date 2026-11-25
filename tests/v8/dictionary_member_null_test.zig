@@ -52,8 +52,8 @@ const dictionaries = struct {
     /// union with a generated type (lane bind1 B5).
     const SetHTMLOptions = @FieldType(@typeInfo(@TypeOf(interfaces.Element.call_setHTML)).@"fn".param_types[2].?, "value");
     /// effect.updateTiming(timing)'s `timing`: `(unrestricted double or
-    /// DOMString) duration`, an inline union still typed runtime.JSValue
-    /// (codegen's `unions_converted_by_impl`).
+    /// DOMString) duration`, a generated union (lane bind1 B5, the last
+    /// area: it was runtime.JSValue, converted by dom/animations/options.zig).
     const OptionalEffectTiming = @FieldType(@typeInfo(@TypeOf(interfaces.AnimationEffect.call_updateTiming)).@"fn".param_types[1].?, "value");
     /// new IntersectionObserver(callback, options)'s `options`: `(double or
     /// sequence<double>) threshold = 0`, a generated union (lane bind1 B5).
@@ -335,23 +335,32 @@ test "MessageEventInit {ports: null} is a TypeError; {transfer: undefined} stays
     try testing.expect(options.transfer == null);
 }
 
-test "an inline union member typed JSValue keeps a present null apart from absent" {
+test "OptionalEffectTiming {duration: null} is the union's string member, \"null\"; a number is the double; undefined is not present" {
     defer test_agent.close();
-    // WebIDL 3.2.18: only undefined is "not present"; a present null converts
-    // by the union's type. Where the impl still converts the JSValue (a
-    // position codegen's `unions_converted_by_impl` lists), it must see the
-    // null: codegen lists the member in `jsvalue_union_members`.
-    // OptionalEffectTiming's duration is one until the animations area
-    // retires (the last); this case goes with it.
-    // hasdecl: a generated dictionary (src/webidl/dictionaries/); codegen
-    // writes `pub const jsvalue_union_members` into each one with such a member.
-    try testing.expect(@hasDecl(dictionaries.OptionalEffectTiming, "jsvalue_union_members"));
+    // 3.2.25 step 15: null is no Number, and the union has a string member,
+    // so it converts to "null" - which "update the timing properties"
+    // (Web Animations 1 6.5.4 step 3) rejects: updateTiming({duration: null})
+    // is a TypeError in Chrome, Firefox and Safari (probe
+    // tmp/probes/bind1-nullmember/report-g3.txt). The member has a generated
+    // union type since lane bind1 B5; until then it was the last
+    // runtime.JSValue member and the impl converted it.
+    // hasdecl: a generated dictionary; codegen writes the `pub` declaration
+    // only while a member is typed runtime.JSValue - its absence is the claim.
+    try testing.expect(!@hasDecl(dictionaries.OptionalEffectTiming, "jsvalue_union_members"));
     const e = try env();
     const present = try eval("({ duration: null })");
     defer ffi.v8_Value_Dispose(present);
     const given = try conversions.fromV8Value(dictionaries.OptionalEffectTiming, testing.allocator, e.isolate, e.context, present);
-    try testing.expect(given.duration != null);
-    try testing.expect(given.duration.? == .null);
+    var duration = given.duration.?;
+    defer if (duration == .domstring) duration.domstring.deinit(testing.allocator);
+    try testing.expect(given.duration.? == .domstring);
+    try testing.expectEqualStrings("null", given.duration.?.domstring.asSlice());
+
+    const number = try eval("({ duration: 250 })");
+    defer ffi.v8_Value_Dispose(number);
+    const timed = try conversions.fromV8Value(dictionaries.OptionalEffectTiming, testing.allocator, e.isolate, e.context, number);
+    try testing.expect(timed.duration.? == .double);
+    try testing.expectEqual(@as(f64, 250), timed.duration.?.double);
 
     const absent = try eval("({ duration: undefined })");
     defer ffi.v8_Value_Dispose(absent);

@@ -162,13 +162,6 @@ fn keepsObjectIdentity(interface_name: []const u8, attribute_name: []const u8) b
 /// (tests/codegen/argument_unions_test.zig pins it).
 pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const u8 }{
     // animations (dom/animations: effectOptions, keyframes)
-    .{ "Animatable", "animate", "options" },
-    .{ "KeyframeEffect", "constructor", "options" },
-    .{ "BasePropertyIndexedKeyframe", "composite", "" },
-    .{ "BasePropertyIndexedKeyframe", "easing", "" },
-    .{ "BasePropertyIndexedKeyframe", "offset", "" },
-    .{ "EffectTiming", "duration", "" },
-    .{ "OptionalEffectTiming", "duration", "" },
     // canvas (CanvasFillStrokeStyles' styleValue / setStyle)
     // css (CSSStyleSheet's constructor, typed OM's mapSet)
     // dom (element creation options, importNode, view transitions)
