@@ -351,88 +351,92 @@ test "M1: a freed general large run gives its pages back at once, past one empty
     defer scope.deinit();
     const engine = try generalEngine(&scope);
     const size = 64 * 1024;
-    inline for (.{ heap.PartitionId.bytes, heap.PartitionId.objects }) |pid| {
-        const alignment: usize = if (pid == .bytes) 1 else 8;
+    // Objects large runs stay class-stable per bucket: one empty run stays
+    // committed for the next block of its length; the other two decommit at free.
+    {
         var blocks: [3][*]u8 = undefined;
-        for (&blocks) |*block| block.* = try engine.allocGeneral(pid, size, alignment, @returnAddress());
-        const before = engine.stats();
-        for (blocks) |block| engine.freeGeneral(block, size, alignment);
-        const after = engine.stats();
-        const b = if (pid == .bytes) before.bytes else before.objects;
-        const a = if (pid == .bytes) after.bytes else after.objects;
-        // One empty run stays committed for the next block of its length;
-        // the other two are decommitted at their free (libc gives a large
-        // block back at once too: main's malloc, the pair's base).
-        try testing.expectEqual(b.spans_decommitted + 2, a.spans_decommitted);
-        // The kept run is the next one issued: nothing is recommitted.
-        const again = try engine.allocGeneral(pid, size, alignment, @returnAddress());
-        const now = engine.stats();
-        try testing.expectEqual(a.spans_decommitted, (if (pid == .bytes) now.bytes else now.objects).spans_decommitted);
-        engine.freeGeneral(again, size, alignment);
+        for (&blocks) |*block| block.* = try engine.allocGeneral(.objects, size, 8, @returnAddress());
+        const before = engine.stats().objects;
+        for (blocks) |block| engine.freeGeneral(block, size, 8);
+        const after = engine.stats().objects;
+        try testing.expectEqual(before.spans_decommitted + 2, after.spans_decommitted);
+        const again = try engine.allocGeneral(.objects, size, 8, @returnAddress());
+        const now = engine.stats().objects;
+        try testing.expectEqual(after.spans_decommitted, now.spans_decommitted);
+        engine.freeGeneral(again, size, 8);
     }
 }
 
-test "M7-2a: general large runs keep a bounded 4 MiB MRU ring for hot reuse and evict oldest past budget" {
+test "M8-4b: objects large runs keep a bounded 256 KiB / 4-slot MRU ring and evict oldest past budget" {
     var scope = BrowserScope.init(testing.allocator);
     defer scope.deinit();
     const engine = try generalEngine(&scope);
-    // Hot streaming loop: 256 KiB, 512 KiB, 1 MiB, 1.5 MiB (total 3.25 MiB <=
-    // 4 MiB budget) stay committed in the MRU ring across reuse with zero
-    // decommits (no madvise + kernel zero-fill churn on fetch.loopback-*).
-    const hot = [_]usize{ 256 * 1024, 512 * 1024, 1024 * 1024, 1536 * 1024 };
-    inline for (.{ heap.PartitionId.bytes, heap.PartitionId.objects }) |pid| {
-        const alignment: usize = if (pid == .bytes) 1 else 8;
-        const before = engine.stats();
-        const b = if (pid == .bytes) before.bytes else before.objects;
-        for (0..3) |_| {
-            for (hot) |sz| {
-                const p = try engine.allocGeneral(pid, sz, alignment, @returnAddress());
-                engine.freeGeneral(p, sz, alignment);
-            }
+    // Hot objects large runs (32K + 48K + 80K + 96K = 256 KiB <= 256 KiB / 4 slots)
+    // stay committed across reuse with zero decommits.
+    const hot = [_]usize{ 32 * 1024, 48 * 1024, 80 * 1024, 96 * 1024 };
+    const before = engine.stats().objects;
+    for (0..3) |_| {
+        for (hot) |sz| {
+            const p = try engine.allocGeneral(.objects, sz, 8, @returnAddress());
+            engine.freeGeneral(p, sz, 8);
         }
-        const after_hot = engine.stats();
-        const ah = if (pid == .bytes) after_hot.bytes else after_hot.objects;
-        try testing.expectEqual(b.spans_decommitted, ah.spans_decommitted);
-        // Pushing distinct large runs past the 4 MiB budget evicts oldest runs
-        // immediately so empty large runs stay bounded (never 127 buckets).
-        const extra = [_]usize{ 1280 * 1024, 1792 * 1024, 1920 * 1024 };
-        for (extra) |sz| {
-            const p = try engine.allocGeneral(pid, sz, alignment, @returnAddress());
-            engine.freeGeneral(p, sz, alignment);
-        }
-        const after_extra = engine.stats();
-        const ae = if (pid == .bytes) after_extra.bytes else after_extra.objects;
-        try testing.expect(ae.spans_decommitted >= b.spans_decommitted + 3);
-        try testing.expect(ae.committed_span_bytes <= b.committed_span_bytes + 4 * 1024 * 1024);
     }
+    const after_hot = engine.stats().objects;
+    try testing.expectEqual(before.spans_decommitted, after_hot.spans_decommitted);
+    // Pushing distinct objects large runs past 256 KiB evicts oldest runs immediately.
+    const extra = [_]usize{ 128 * 1024, 192 * 1024 };
+    for (extra) |sz| {
+        const p = try engine.allocGeneral(.objects, sz, 8, @returnAddress());
+        engine.freeGeneral(p, sz, 8);
+    }
+    const after_extra = engine.stats().objects;
+    try testing.expect(after_extra.spans_decommitted >= before.spans_decommitted + 3);
+    try testing.expect(after_extra.committed_span_bytes <= before.committed_span_bytes + 256 * 1024);
 }
 
-test "M7-2b: general class spans keep up to 4 empty spans per bucket (capped at 512 KiB per partition) and decommit bursts immediately" {
+test "M8-4b: general class spans start tight (<= 2 empty for <= 2 KiB, <= 1 for > 2 KiB) and adapt when thrashing" {
     var scope = BrowserScope.init(testing.allocator);
     defer scope.deinit();
     const engine = try generalEngine(&scope);
     const blocks_per_span = heap.span_bytes / 64;
-    const total = blocks_per_span * 20;
+    const total = blocks_per_span * 10;
     const ptrs = try testing.allocator.alloc([*]u8, total);
     defer testing.allocator.free(ptrs);
+    engine.setNow(1_000);
     inline for (.{ heap.PartitionId.bytes, heap.PartitionId.objects }) |pid| {
         const alignment: usize = if (pid == .bytes) 1 else 8;
         const before = engine.stats();
         const b = if (pid == .bytes) before.bytes else before.objects;
-        // 4 spans freed: all 4 stay committed for loop reuse (zero decommits).
-        for (ptrs[0 .. blocks_per_span * 4]) |*slot| slot.* = try engine.allocGeneral(pid, 64, alignment, @returnAddress());
-        for (ptrs[0 .. blocks_per_span * 4]) |slot| engine.freeGeneral(slot, 64, alignment);
-        const after4 = engine.stats();
-        const a4 = if (pid == .bytes) after4.bytes else after4.objects;
-        try testing.expectEqual(b.spans_decommitted, a4.spans_decommitted);
-        // 20 spans freed: at least 16 decommit immediately (at most 4 empty kept).
+        // 2 spans freed: both stay committed (zero decommits).
+        for (ptrs[0 .. blocks_per_span * 2]) |*slot| slot.* = try engine.allocGeneral(pid, 64, alignment, @returnAddress());
+        for (ptrs[0 .. blocks_per_span * 2]) |slot| engine.freeGeneral(slot, 64, alignment);
+        const after2 = engine.stats();
+        const a2 = if (pid == .bytes) after2.bytes else after2.objects;
+        try testing.expectEqual(b.spans_decommitted, a2.spans_decommitted);
+        // 10 spans freed: at least 8 decommit immediately (at most 2 empty kept initially).
         for (ptrs) |*slot| slot.* = try engine.allocGeneral(pid, 64, alignment, @returnAddress());
         for (ptrs) |slot| engine.freeGeneral(slot, 64, alignment);
-        const after20 = engine.stats();
-        const a20 = if (pid == .bytes) after20.bytes else after20.objects;
-        try testing.expect(a20.spans_decommitted >= b.spans_decommitted + 16);
-        try testing.expect(a20.spans_empty <= b.spans_empty + 4);
+        const after10 = engine.stats();
+        const a10 = if (pid == .bytes) after10.bytes else after10.objects;
+        try testing.expect(a10.spans_decommitted >= b.spans_decommitted + 8);
+        try testing.expect(a10.spans_empty <= b.spans_empty + 2);
+        // Thrashing: immediately re-allocating + freeing 10 spans within < 200 ms
+        // adapts the bucket's empty cap upward so the second cycle stops thrashing.
+        for (ptrs) |*slot| slot.* = try engine.allocGeneral(pid, 64, alignment, @returnAddress());
+        const d_mid = (if (pid == .bytes) engine.stats().bytes else engine.stats().objects).spans_decommitted;
+        for (ptrs) |slot| engine.freeGeneral(slot, 64, alignment);
+        const after_thrash = if (pid == .bytes) engine.stats().bytes else engine.stats().objects;
+        try testing.expect(after_thrash.spans_empty > b.spans_empty + 2);
+        try testing.expect(after_thrash.spans_decommitted < d_mid + 8);
     }
+    // Non-cached classes (> 2 KiB, e.g. 4096 B) keep at most 1 empty span.
+    const big_blocks_per_span = heap.span_bytes / 4096;
+    var big_ptrs: [big_blocks_per_span * 4][*]u8 = undefined;
+    const before_big = engine.stats().objects;
+    for (&big_ptrs) |*slot| slot.* = try engine.allocGeneral(.objects, 4096, 8, @returnAddress());
+    for (big_ptrs) |slot| engine.freeGeneral(slot, 4096, 8);
+    const after_big = engine.stats().objects;
+    try testing.expect(after_big.spans_decommitted >= before_big.spans_decommitted + 3);
 }
 
 test "M7-3: idle decommit reclaims empty general class spans, MRU large runs, and AgentCache-held spans at general_decommit_age_ms (200 ms)" {
@@ -488,21 +492,25 @@ test "M3: AgentCache uses depth 8 and refill never opens extra spans for large o
     }
 }
 
-test "M7-1: general blocks take the halves classes (20: 16-B steps to 64 B, then two per doubling) cutting idle span overhead" {
-    try testing.expectEqual(@as(usize, 20), heap.GeneralClasses.count);
+test "M8-4a: general blocks take span-divisor-clean halves_span classes (19: 5120 B span/3, no 12288 B)" {
+    try testing.expectEqual(@as(usize, 19), heap.GeneralClasses.count);
+    // 4800 B (e.g. querySelectorAll 200-node static NodeList) lands in 5120 B
+    // (3 slots per 16 KiB span instead of 2 in 6144 B).
+    try testing.expectEqual(@as(usize, 5120), heap.GeneralClasses.bytes(heap.GeneralClasses.of(4800)));
+    try testing.expectEqual(@as(usize, 3), heap.span_bytes / heap.GeneralClasses.bytes(heap.GeneralClasses.of(4800)));
+    // 12288 B is dropped (1 slot/span == 16384 B).
+    try testing.expectEqual(@as(usize, 16384), heap.GeneralClasses.bytes(heap.GeneralClasses.of(12288)));
     var scope = BrowserScope.init(testing.allocator);
     defer scope.deinit();
     const engine = try generalEngine(&scope);
     const before = engine.stats().bytes.live_bytes;
     const text = try engine.allocGeneral(.bytes, 200, 1, @returnAddress());
     defer engine.freeGeneral(text, 200, 1);
-    // 200 B is in (128, 256]: halves step 64 -> 256 B.
     try testing.expectEqual(before + 256, engine.stats().bytes.live_bytes);
     const med = try engine.allocGeneral(.bytes, 600, 1, @returnAddress());
     defer engine.freeGeneral(med, 600, 1);
-    // 600 B is in (512, 1024]: halves step 256 -> 768 B.
     try testing.expectEqual(before + 256 + 768, engine.stats().bytes.live_bytes);
-    // Every class is a multiple of 16 and holds its requests, and every
+    // Every class is a multiple of 16, holds its requests, and every
     // power-of-two alignment divides its class size.
     var align_shift: u6 = 0;
     while (align_shift <= 14) : (align_shift += 1) {
@@ -552,4 +560,207 @@ test "M4: AgentCache frees of objects inside a task go to quarantine and catch d
     engine.checks = .panic;
     allocator.free(bytes);
     allocator.free(second);
+}
+
+test "M8-1a: lock-free per-agent objects quarantine recycles directly to AgentCache on eviction and purge, preserving cap and write-after-free" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+    var cfg = heap.Config.production;
+    cfg.quarantine_cap = 4096;
+    engine.configureForTest(cfg);
+    const cache = try engine.attachAgent();
+    defer engine.detachAgent(cache);
+    const allocator = cache.allocator();
+
+    engine.beginTask();
+    // Free 1 block during task: quarantined, live_blocks drops to 0.
+    const a = try allocator.alloc(usize, 16); // 128 B
+    allocator.free(a);
+    try testing.expect(engine.isQuarantined(a.ptr));
+    const s_q = engine.stats();
+    try testing.expectEqual(@as(usize, 0), s_q.general_objects.live_blocks);
+    try testing.expectEqual(@as(usize, 1), s_q.quarantine_blocks);
+
+    // Overflow the 4 KiB quarantine with 128 B objects blocks: evicted victims
+    // recycle straight into AgentCache (and spill cleanly when cache_depth fills).
+    for (0..64) |_| {
+        const blk = try allocator.alloc(usize, 16);
+        allocator.free(blk);
+    }
+    const s_ov = engine.stats();
+    try testing.expect(s_ov.quarantine_bytes <= 4096);
+    try testing.expect(s_ov.quarantine_total_evicted > 0);
+    // At least one victim recycled straight into the agent cache's stack.
+    try testing.expect(cache.counts[0][heap.GeneralClasses.of(128)] > 0);
+
+    // Purge at endTask moves remaining cache-owned quarantined entries directly
+    // into AgentCache; next alloc reuses them and detects a write-after-free.
+    engine.endTask();
+    try testing.expectEqual(@as(usize, 0), engine.stats().quarantine_blocks);
+    const c_idx = heap.GeneralClasses.of(128);
+    try testing.expect(cache.counts[0][c_idx] > 0);
+
+    // Corrupt the top cached block to verify write-after-free is caught on issue.
+    const top_off = @as(usize, cache.slots[0][c_idx][cache.counts[0][c_idx] - 1]) * 16;
+    const top_ptr: [*]u8 = @ptrFromInt(cache.window_base + top_off);
+    top_ptr[7] = 0x55;
+    engine.checks = .report;
+    const reused = try allocator.alloc(usize, 16);
+    try testing.expectEqual(@as(?heap.Violation, .write_after_free), engine.takeViolation());
+    engine.checks = .panic;
+    allocator.free(reused);
+}
+
+test "M8-1b: detaching AgentCache mid-task safely migrates cache-owned quarantined entries to span-owned" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+    const cache = try engine.attachAgent();
+    const allocator = cache.allocator();
+
+    engine.beginTask();
+    const p1 = try allocator.alloc(usize, 8);
+    const p2 = try allocator.alloc(usize, 16);
+    allocator.free(p1);
+    allocator.free(p2);
+    try testing.expect(engine.isQuarantined(p1.ptr));
+    try testing.expect(engine.isQuarantined(p2.ptr));
+
+    // Detach mid-task: entries stay quarantined (no premature reuse) and
+    // double-free is still caught, then endTask purges cleanly with zero leaks.
+    engine.detachAgent(cache);
+    try testing.expect(engine.isQuarantined(p1.ptr));
+    try testing.expect(engine.isQuarantined(p2.ptr));
+    engine.checks = .report;
+    engine.freeGeneral(@ptrCast(p1.ptr), 64, 8);
+    try testing.expectEqual(@as(?heap.Violation, .double_free), engine.takeViolation());
+    engine.checks = .panic;
+
+    engine.endTask();
+    try testing.expectEqual(@as(usize, 0), engine.stats().quarantine_blocks);
+    try testing.expectEqual(@as(usize, 0), engine.stats().general_objects.live_blocks);
+}
+
+test "M8-1c: production general objects > 1 KiB zero and verify first 1 KiB on free and issue full zeroed request (Design 3.4)" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+    engine.configureForTest(heap.Config.production);
+
+    const a = try engine.allocGeneral(.objects, 4096, 8, @returnAddress());
+    @memset(a[0..4096], 0xAB);
+    engine.freeGeneral(a, 4096, 8);
+    // First 1 KiB was zeroed on free.
+    for (a[0..1024]) |byte| try testing.expectEqual(@as(u8, 0), byte);
+    // Write-after-free within first 1 KiB is caught on reissue.
+    a[512] = 0x77;
+    engine.checks = .report;
+    const b = try engine.allocGeneral(.objects, 4096, 8, @returnAddress());
+    try testing.expectEqual(@as(?heap.Violation, .write_after_free), engine.takeViolation());
+    engine.checks = .panic;
+    // Issued block is fully zeroed across all 4096 bytes.
+    for (b[0..4096]) |byte| try testing.expectEqual(@as(u8, 0), byte);
+    engine.freeGeneral(b, 4096, 8);
+}
+
+test "M8-2: idle decommit reclaims inactive bitmap pages and recommits cleanly on span reuse" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+    // Open enough spans in objects to cover at least 2 full OS bitmap pages
+    // (16 spans/page on 4 KiB Linux, 64 spans/page on 16 KiB macOS -> 140 spans).
+    const span_count: usize = 140;
+    const ptrs = try testing.allocator.alloc([*]u8, span_count);
+    defer testing.allocator.free(ptrs);
+    engine.setNow(1_000);
+    for (ptrs) |*slot| slot.* = try engine.allocGeneral(.objects, 16 * 1024, 8, @returnAddress());
+    for (ptrs) |slot| engine.freeGeneral(slot, 16 * 1024, 8);
+
+    _ = engine.decommitAged(1_300, heap.decommit_age_ms, std.math.maxInt(usize));
+    const after_idle = engine.stats().objects;
+    try testing.expect(after_idle.bitmap_pages_decommitted >= 1);
+
+    // Reusing those spans recommits the bitmap page cleanly and still catches double-frees.
+    const again = try engine.allocGeneral(.objects, 16 * 1024, 8, @returnAddress());
+    engine.freeGeneral(again, 16 * 1024, 8);
+    engine.checks = .report;
+    engine.freeGeneral(again, 16 * 1024, 8);
+    try testing.expectEqual(@as(?heap.Violation, .double_free), engine.takeViolation());
+    engine.checks = .panic;
+}
+
+test "M8-3: bytes large runs coalesce adjacent frees, resize in place, validate frees, and reclaim at 200 ms idle" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+    const cache = try engine.attachAgent();
+    defer engine.detachAgent(cache);
+    const allocator = cache.allocator();
+
+    engine.setNow(1_000);
+    // Allocate 32 KiB + 64 KiB + 32 KiB (contiguous in the same super page),
+    // free all 3 -> coalesce into a single 128 KiB committed free run.
+    const b1 = try allocator.alloc(u8, 32 * 1024);
+    const b2 = try allocator.alloc(u8, 64 * 1024);
+    const b3 = try allocator.alloc(u8, 32 * 1024);
+    const va_before = engine.stats().bytes.va_assigned;
+    allocator.free(b1);
+    allocator.free(b2);
+    allocator.free(b3);
+    const big = try allocator.alloc(u8, 128 * 1024);
+    try testing.expectEqual(va_before, engine.stats().bytes.va_assigned);
+    try testing.expectEqual(@intFromPtr(b1.ptr), @intFromPtr(big.ptr));
+
+    // In-place shrink (128 KiB -> 48 KiB) then in-place grow (48 KiB -> 96 KiB).
+    try testing.expect(allocator.resize(big, 48 * 1024));
+    const shrunk = big[0 .. 48 * 1024];
+    try testing.expect(allocator.resize(shrunk, 96 * 1024));
+    const grown = shrunk.ptr[0 .. 96 * 1024];
+    @memset(grown, 0x33);
+
+    // Validation: wrong size, interior, and double free.
+    engine.checks = .report;
+    engine.freeGeneral(grown.ptr, 48 * 1024, 1);
+    try testing.expectEqual(@as(?heap.Violation, .wrong_size), engine.takeViolation());
+    engine.freeGeneral(grown.ptr + 64, 96 * 1024, 1);
+    try testing.expectEqual(@as(?heap.Violation, .invalid_free), engine.takeViolation());
+    engine.checks = .panic;
+    allocator.free(grown);
+    engine.checks = .report;
+    engine.freeGeneral(grown.ptr, 96 * 1024, 1);
+    try testing.expectEqual(@as(?heap.Violation, .double_free), engine.takeViolation());
+    engine.checks = .panic;
+
+    // 200 ms idle decommits 100% of committed free bytes runs.
+    _ = engine.decommitAged(1_300, heap.decommit_age_ms, std.math.maxInt(usize));
+    try testing.expectEqual(@as(usize, 0), engine.stats().bytes.committed_span_bytes);
+}
+
+test "M8-4c: quarantine uses inline buffer up to 512 entries and spills cleanly to external memory above 512" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+    const cache = try engine.attachAgent();
+    defer engine.detachAgent(cache);
+    const allocator = cache.allocator();
+
+    engine.beginTask();
+    // 100 small objects stay in the inline quarantine buffer (0 external bytes committed).
+    for (0..100) |_| {
+        const blk = try allocator.alloc(usize, 4); // 32 B
+        allocator.free(blk);
+    }
+    try testing.expectEqual(@as(usize, 0), engine.stats().quarantine_external_bytes);
+    try testing.expectEqual(@as(usize, 100), engine.stats().quarantine_blocks);
+
+    // Pushing past 512 entries seamlessly commits external quarantine storage.
+    for (0..500) |_| {
+        const blk = try allocator.alloc(usize, 4);
+        allocator.free(blk);
+    }
+    try testing.expect(engine.stats().quarantine_external_bytes > 0);
+    try testing.expectEqual(@as(usize, 600), engine.stats().quarantine_blocks);
+    engine.endTask();
+    try testing.expectEqual(@as(usize, 0), engine.stats().quarantine_blocks);
 }
