@@ -261,6 +261,16 @@ pub const Page = struct {
     }
 };
 
+/// Active `take_heapsnapshot` chunk sink (tools/memory.zig): collects
+/// `HeapProfiler.addHeapSnapshotChunk` events for `session_id` while
+/// `HeapProfiler.takeHeapSnapshot` is in flight.
+pub const HeapCapture = struct {
+    session_id: []const u8,
+    allocator: Allocator,
+    chunks: std.ArrayList(u8) = .empty,
+    failed: bool = false,
+};
+
 pub const Session = struct {
     allocator: Allocator,
     client: Client,
@@ -275,6 +285,8 @@ pub const Session = struct {
     next_isolated_context: u32 = 1,
     /// The wait a tool's action runs under (wait.zig), if any.
     watch: ?*Watch = null,
+    /// Active heap snapshot capture (tools/memory.zig), if any.
+    heap_capture: ?*HeapCapture = null,
     /// The tools' definitions (tools/list's array), parsed: the input
     /// schemas calls are checked against (validate.zig).
     schemas: ?std.json.Parsed(std.json.Value) = null,
@@ -481,6 +493,16 @@ pub const Session = struct {
         };
         // A page session's events.
         const page = self.pageBySession(session_id) orelse return;
+        if (std.mem.eql(u8, method, "HeapProfiler.addHeapSnapshotChunk")) {
+            if (self.heap_capture) |cap| {
+                if (std.mem.eql(u8, cap.session_id, session_id) and !cap.failed) {
+                    cap.chunks.appendSlice(cap.allocator, str(p.get("chunk"))) catch {
+                        cap.failed = true;
+                    };
+                }
+            }
+            return;
+        }
         if (std.mem.eql(u8, method, "Page.javascriptDialogOpening")) {
             if (self.watch) |w| if (w.page == page) {
                 w.dialog_detected = true;

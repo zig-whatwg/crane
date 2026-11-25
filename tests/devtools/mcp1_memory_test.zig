@@ -154,13 +154,22 @@ test "take_heapsnapshot: saves valid V8 snapshot, normalizes extension, enforces
     r = try h.tool("take_heapsnapshot", "{\"pageId\":1,\"filePath\":\"   \"}");
     try testing.expect(r.is_error);
 
-    // 8. Blocked by an open dialog, then succeeds once dismissed.
-    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => { setTimeout(() => alert('hold'), 0); return 1; }\"}");
+    // 8. Blocked by an open dialog, then succeeds once dismissed (an alert
+    // firing after evaluate_script's wait window stays open).
+    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => { setTimeout(() => alert('hold'), 400); return 1; }\"}");
     try testing.expect(!r.is_error);
-    try h.settle(100);
+    var tries: u32 = 0;
+    while (tries < 100) : (tries += 1) {
+        try h.settle(50);
+        const lp = try h.tool("list_pages", "{}");
+        if (std.mem.startsWith(u8, lp.text, "# Open dialog")) break;
+    }
     r = try h.tool("take_heapsnapshot", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"filePath\":{f}}}", .{std.json.fmt(direct_path, .{})}));
     try testing.expect(r.is_error);
-    try testing.expect(std.mem.indexOf(u8, r.text, "A dialog is open (alert: hold).") != null);
+    try testing.expectEqualStrings(
+        "# Open dialog\nalert: hold.\nCall handle_dialog to handle it before continuing.\nError: A dialog is open (alert: hold).",
+        r.text,
+    );
     r = try h.tool("handle_dialog", "{\"pageId\":1,\"action\":\"accept\"}");
     try testing.expect(!r.is_error);
     r = try h.tool("take_heapsnapshot", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"filePath\":{f}}}", .{std.json.fmt(direct_path, .{})}));
