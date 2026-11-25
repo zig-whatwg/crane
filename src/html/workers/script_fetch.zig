@@ -462,7 +462,13 @@ pub fn workerScriptRequest(
     // The outside settings' user agent override, copied now (user agent
     // data, not a step).
     const client_override = options.user_agent_override;
-    internal_request.setOverrideSnapshot(client_override.user_agent, client_override.accept_language, client_override.extra_headers) catch return WorkerScriptError.OutOfMemory;
+    internal_request.setOverrideSnapshotWithNetwork(
+        client_override.user_agent,
+        client_override.accept_language,
+        client_override.extra_headers,
+        client_override.network_offline,
+        client_override.network_rules,
+    ) catch return WorkerScriptError.OutOfMemory;
     return internal_request;
 }
 

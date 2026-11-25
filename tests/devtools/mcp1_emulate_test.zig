@@ -79,13 +79,14 @@ test "emulate: the settings Crane cannot apply yet say so; an invalid viewport i
     var h: Harness = .{};
     try h.start();
     defer h.stop();
-    var r = try h.tool("emulate", "{\"pageId\":1,\"networkConditions\":\"Slow 3G\"}");
-    try testing.expect(!r.is_error);
-    try testing.expectEqualStrings("Emulation configured successfully\nEmulating network conditions: Slow 3G\nDefault navigation timeout set to 100000 ms", r.text);
-    r = try h.tool("emulate", "{\"pageId\":1,\"cpuThrottlingRate\":4}");
+    var r = try h.tool("emulate", "{\"pageId\":1,\"cpuThrottlingRate\":4}");
+    try testing.expect(r.is_error);
     try testing.expectEqualStrings("Error: cpuThrottlingRate is not supported by Crane's MCP server yet.", r.text);
     r = try h.tool("emulate", "{\"pageId\":1,\"geolocation\":\"52.5,13.4\"}");
     try testing.expectEqualStrings("Error: geolocation is not supported by Crane's MCP server yet.", r.text);
+    r = try h.tool("emulate", "{\"pageId\":1,\"networkConditions\":\"Slow 3G\"}");
+    try testing.expect(!r.is_error);
+    try testing.expectEqualStrings("Emulation configured successfully\nEmulating network conditions: Slow 3G\nDefault navigation timeout set to 100000 ms", r.text);
     // A rate of 1 is none (and clears networkConditions left out of the call).
     r = try h.tool("emulate", "{\"pageId\":1,\"cpuThrottlingRate\":1}");
     try testing.expectEqualStrings("Emulation configured successfully", r.text);

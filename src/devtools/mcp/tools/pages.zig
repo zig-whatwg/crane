@@ -278,7 +278,7 @@ fn navigatePage(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response:
         response: *Response,
 
         pub fn run(self: @This(), c: *Context) !void {
-            const t = self.timeout orelse default_navigation_timeout_ms;
+            const t = self.timeout orelse session_mod.Emulation.defaultNavigationTimeoutMs(self.page.emulation.network_conditions);
             if (std.mem.eql(u8, self.kind, "url")) {
                 const to = self.url orelse return c.fail("A URL is required for navigation of type=url.", .{});
                 if (goto(c, self.page, to, t)) {

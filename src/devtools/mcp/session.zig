@@ -25,16 +25,35 @@ const log = std.log.scoped(.mcp);
 pub const command_timeout_ms: u32 = 30_000;
 
 /// A dialog open on a page (Page.javascriptDialogOpening).
-/// McpPage.emulationSettings, the settings Crane applies (network
-/// conditions, CPU throttling and geolocation are not supported yet).
-/// Strings OWNED.
+/// McpPage.emulationSettings, the settings Crane applies (CPU throttling and
+/// geolocation are not supported yet). Strings OWNED.
 pub const Emulation = struct {
+    network_conditions: ?[]u8 = null,
     viewport: ?Viewport = null,
     user_agent: ?[]u8 = null,
     color_scheme: ?[]u8 = null,
     forced_colors: ?[]u8 = null,
     prefers_contrast: ?[]u8 = null,
     prefers_reduced_motion: ?[]u8 = null,
+
+    /// McpPage's NAVIGATION_TIMEOUT (10 s) scaled by network conditions.
+    pub const base_navigation_timeout_ms: u32 = 10_000;
+
+    /// chrome-devtools-mcp's getNetworkMultiplierFromString
+    /// (src/utils/WaitForHelper.ts, chrome-devtools-mcp-v1.13.0, Apache-2.0).
+    pub fn networkMultiplier(network_conditions: ?[]const u8) f64 {
+        const name = network_conditions orelse return 1;
+        if (std.mem.eql(u8, name, "Fast 4G")) return 1;
+        if (std.mem.eql(u8, name, "Slow 4G")) return 2.5;
+        if (std.mem.eql(u8, name, "Fast 3G")) return 5;
+        if (std.mem.eql(u8, name, "Slow 3G")) return 10;
+        return 1;
+    }
+
+    /// McpPage.updateTimeouts' defaultNavigationTimeout (ms).
+    pub fn defaultNavigationTimeoutMs(network_conditions: ?[]const u8) u32 {
+        return @intFromFloat(@as(f64, @floatFromInt(base_navigation_timeout_ms)) * networkMultiplier(network_conditions));
+    }
 
     /// viewportTransform's object spread over McpPage's defaults.
     pub const Viewport = struct {
@@ -49,7 +68,7 @@ pub const Emulation = struct {
     };
 
     pub fn deinit(self: *Emulation, allocator: Allocator) void {
-        inline for (.{ "user_agent", "color_scheme", "forced_colors", "prefers_contrast", "prefers_reduced_motion" }) |field| {
+        inline for (.{ "network_conditions", "user_agent", "color_scheme", "forced_colors", "prefers_contrast", "prefers_reduced_motion" }) |field| {
             if (@field(self, field)) |s| allocator.free(s);
         }
         self.* = .{};

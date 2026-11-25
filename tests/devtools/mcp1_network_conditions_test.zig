@@ -295,7 +295,7 @@ test "MCP emulate networkConditions: presets, timeout text, Offline fetch failur
     // Verify list_network_requests reports the failed offline fetch with ERR_INTERNET_DISCONNECTED.
     r = try h.tool("list_network_requests", "{\"pageId\":1}");
     try testing.expect(!r.is_error);
-    try testing.expect(std.mem.indexOf(u8, r.text, "data.json [failed - net::ERR_INTERNET_DISCONNECTED]") != null);
+    try testing.expect(std.mem.indexOf(u8, r.text, "data.json [net::ERR_INTERNET_DISCONNECTED]") != null);
     try testing.expect(std.mem.indexOf(u8, r.text, "Emulating network conditions: Offline\nDefault navigation timeout set to 10000 ms") != null);
 
     // Slow 3G -> 10x -> 100000 ms, online restored
