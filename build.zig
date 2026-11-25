@@ -4250,6 +4250,10 @@ pub fn build(b: *std.Build) void {
             "tests/wpt_runner/file_lock.zig",
             "tests/wpt_runner/work_queue.zig",
             "tests/wpt_runner/build_compare.zig",
+            // The A/B runner (lane tool1-ab) and what it shares with perf_bench
+            // window: the clock, commit abbreviations, SHA256SUMS.
+            "tests/wpt_runner/ab.zig",
+            "tools/window_common.zig",
         };
         for (harness_sources) |src| {
             const harness_tests = b.addTest(.{
@@ -4266,6 +4270,8 @@ pub fn build(b: *std.Build) void {
                         .{ .name = "xml_document_encoding", .module = testing_graph.xml_document_encoding },
                         // runner_allocator.zig's Poisoning (lane poison2).
                         .{ .name = "poisoning", .module = poisoning_module },
+                        // ab.zig's clock and checks (tools/window_common.zig).
+                        .{ .name = "window_common", .module = b.createModule(.{ .root_source_file = b.path("tools/window_common.zig"), .target = target, .optimize = optimize }) },
                     },
                 }),
             });
@@ -4389,6 +4395,28 @@ pub fn build(b: *std.Build) void {
     build_compare_step.dependOn(&run_build_compare.step);
     const install_build_compare_step = b.step("wpt-build-compare-exe", "Build only zig-out/bin/wpt_build_compare");
     install_build_compare_step.dependOn(&install_build_compare.step);
+    // The A/B runner (tests/wpt_runner/ab.zig, lane tool1-ab): one committed
+    // tool every lane runs for its targeted and full WPT A/B - base and tip
+    // runners from frozen dirs, the worklist subset, the bug-finding run,
+    // reruns, timers and verify, the record count before any verdict. std
+    // only (with `host`), built for the target like wpt_build_compare, and
+    // frozen beside the runners.
+    const ab_exe = b.addExecutable(.{
+        .name = "wpt_ab",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/wpt_runner/ab.zig"),
+            .target = target,
+            .optimize = .ReleaseSafe,
+            .imports = &.{
+                .{ .name = "host", .module = testing_graph.host },
+                .{ .name = "window_common", .module = b.createModule(.{ .root_source_file = b.path("tools/window_common.zig"), .target = target, .optimize = .ReleaseSafe }) },
+            },
+        }),
+    });
+    const install_ab = b.addInstallArtifact(ab_exe, .{});
+    b.getInstallStep().dependOn(&install_ab.step);
+    const install_ab_step = b.step("wpt-ab-exe", "Build only zig-out/bin/wpt_ab, the WPT A/B runner (tests/wpt_runner/ab.zig)");
+    install_ab_step.dependOn(&install_ab.step);
     const bug_finding_step = b.step("wpt-runner-bug-finding", "Build only wpt_runner_bug_finding, the BUG-FINDING WPT runner (debug allocator, poison-on-free, Debug checks, the full C sanitizer: never published or timed); pair with -j2");
     bug_finding_step.dependOn(&bug_finding_runner.install.step);
 
@@ -4594,6 +4622,8 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "site_html", .module = b.createModule(.{ .root_source_file = b.path("tools/wpt_site/html.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
             .{ .name = "site_card", .module = b.createModule(.{ .root_source_file = b.path("tools/wpt_site/card.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+            // window.zig's clock and checks, shared with wpt_ab.
+            .{ .name = "window_common", .module = b.createModule(.{ .root_source_file = b.path("tools/window_common.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
         },
     });
     const perf_bench_exe = b.addExecutable(.{ .name = "perf_bench", .root_module = perf_bench_module });

@@ -620,7 +620,7 @@ fn readFile(arena: Allocator, path: []const u8) ![]u8 {
 
 /// A run's output directory: its journal.jsonl, and every
 /// journal*.wptreport.jsonl in it and below it (a sweep's chunks).
-fn loadRun(arena: Allocator, run: *Run, dir_path: []const u8) !void {
+pub fn loadRun(arena: Allocator, run: *Run, dir_path: []const u8) !void {
     const journal_path = try std.fs.path.join(arena, &.{ dir_path, "journal.jsonl" });
     const log = try journal.read(arena, journal_path);
     try run.addJournal(arena, log);
