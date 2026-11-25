@@ -28,10 +28,28 @@ test "emulate: a user agent, the media features and a viewport, each cleared by 
 
     r = try h.tool("emulate", "{\"pageId\":1,\"userAgent\":\"Agent/1\",\"colorScheme\":\"dark\",\"prefersReducedMotion\":\"reduce\",\"prefersContrast\":\"more\",\"forcedColors\":\"active\",\"viewport\":\"400x300x2\"}");
     try testing.expect(!r.is_error);
-    try testing.expectEqualStrings("Emulation configured successfully", r.text);
+    // McpResponse prints the page's emulation for a page tool's answer.
+    const emulating =
+        \\Emulating viewport: {"deviceScaleFactor":2,"isMobile":false,"hasTouch":false,"isLandscape":false,"width":400,"height":300}
+        \\Emulating user agent: Agent/1
+        \\Emulating color scheme: dark
+        \\Emulating forced-colors: active
+        \\Emulating prefers-contrast: more
+        \\Emulating prefers-reduced-motion: reduce
+    ;
+    try testing.expectEqualStrings("Emulation configured successfully\n" ++ emulating, r.text);
+    // evaluate_script is not a page tool (it resolves its page itself):
+    // its answers below carry none.
     try expectResult(&h, "() => navigator.userAgent", "\"Agent/1\"");
     try expectResult(&h, media, "[true,true,true,true]");
     try expectResult(&h, "() => [innerWidth, innerHeight, devicePixelRatio]", "[400,300,2]");
+    // Another page tool's answer carries them, after its own lines.
+    r = try h.tool("list_console_messages", "{\"pageId\":1}");
+    try testing.expect(std.mem.indexOf(u8, r.text, emulating) != null);
+    // A viewport with no scale: the undefined key JSON drops.
+    r = try h.tool("emulate", "{\"pageId\":1,\"viewport\":\"500x400\"}");
+    try testing.expectEqualStrings("Emulation configured successfully\nEmulating viewport: {\"isMobile\":false,\"hasTouch\":false,\"isLandscape\":false,\"width\":500,\"height\":400}", r.text);
+    try expectResult(&h, "() => [innerWidth, innerHeight, devicePixelRatio]", "[500,400,1]");
 
     // A call with none of them: each is cleared.
     r = try h.tool("emulate", "{\"pageId\":1}");
@@ -52,7 +70,7 @@ test "emulate: mobile and touch reload the page, as Puppeteer's setViewport does
     try testing.expect(!r.is_error);
     try expectResult(&h, "() => { window.marker = 1; return window.marker; }", "1");
     r = try h.tool("emulate", "{\"pageId\":1,\"viewport\":\"390x844x3,mobile,touch\"}");
-    try testing.expectEqualStrings("Emulation configured successfully", r.text);
+    try testing.expectEqualStrings("Emulation configured successfully\nEmulating viewport: {\"deviceScaleFactor\":3,\"isMobile\":true,\"hasTouch\":true,\"isLandscape\":false,\"width\":390,\"height\":844}", r.text);
     // A new document: the marker is gone.
     try expectResult(&h, "() => [window.marker === undefined, innerWidth, navigator.maxTouchPoints > 0]", "[true,390,true]");
 }

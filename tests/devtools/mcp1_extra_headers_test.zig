@@ -145,8 +145,14 @@ const Recorder = struct {
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             self.lines.append(self.allocator, line) catch self.allocator.free(line);
         }
-        // A connection closed with no answer: the navigation fails.
-        if (std.mem.eql(u8, path, "/reset")) return;
+        // An answer that is not HTTP: the navigation fails (Chrome resends
+        // a request whose connection closed with no answer; this it does not).
+        if (std.mem.eql(u8, path, "/invalid")) {
+            var raw: [64]u8 = undefined;
+            var bad = stream.writer(std.testing.io, &raw);
+            try bad.interface.writeAll("nonsense\r\n\r\n");
+            return bad.interface.flush();
+        }
         // Held until the navigation that asked is cancelled (10 s at most).
         if (std.mem.eql(u8, path, "/slow")) {
             var waited: u32 = 0;
@@ -247,10 +253,11 @@ const Probe = struct {
 
     fn navigate(self: *Probe, name: []const u8, url: []const u8) ![]const u8 {
         const from = self.server.count();
-        const start = self.rec.log.items.len;
         const params = try std.fmt.allocPrint(self.arena, "{{\"url\":{f}}}", .{std.json.fmt(url, .{})});
-        _ = try self.rec.send("Page.navigate", params, self.session);
-        _ = try self.rec.awaitEvent("Page.loadEventFired", self.session, start, &.{});
+        // The load after this navigation's answer: one from an error page
+        // a failed navigation left could come later than its answer.
+        const answered = try self.rec.awaitResponse(try self.rec.send("Page.navigate", params, self.session));
+        _ = try self.rec.awaitEvent("Page.loadEventFired", self.session, answered, &.{});
         const seen = try self.server.since(self.arena, from);
         if (verbose()) std.debug.print("mcp1_extra_headers: {s}: {s}\n", .{ name, seen.text });
         return std.fmt.allocPrint(self.arena, "{s}: {s}", .{ name, seen.text });
@@ -315,7 +322,7 @@ fn check(allocator: Allocator, arena: Allocator, client: *cdp.Client, server: *R
     try record.append(arena, try probe.requests("frame", frame));
     try record.append(arena, try probe.requests("shared worker", try std.fmt.allocPrint(arena, shared, .{"headers"})));
     try record.append(arena, try probe.cancelledFrame("cancelled frame"));
-    try record.append(arena, try probe.navigateFailing("reset", try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/reset", .{p})));
+    try record.append(arena, try probe.navigateFailing("invalid response", try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/invalid", .{p})));
     try record.append(arena, try probe.navigate("redirect", try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/redirect", .{p})));
     try record.append(arena, try probe.setHeaders("{\"Referer\":\"http://example.com/ref\"}"));
     try record.append(arena, try probe.requests("referer", "fetch('/ref').then(r => r.status)"));
@@ -348,9 +355,14 @@ fn check(allocator: Allocator, arena: Allocator, client: *cdp.Client, server: *R
 
 /// What Chrome for Testing 157.0.8103.78 answered (recorded on chat.local
 /// with CRANE_CDP_TRACE_CHROME_PORT, 2026-11-24), one line each: "" for a
-/// setExtraHTTPHeaders that succeeded. The headers join a request before
-/// CORS (the cross-origin fetch's preflight names x-test); a dedicated
-/// worker's own fetch does not carry the page session's headers.
+/// command that succeeded. The headers join a request before CORS (the
+/// cross-origin fetch's preflight names x-test). A navigation, a frame's,
+/// a redirected, a failed and a cancelled one carry them, and so does a
+/// worker's script request (the ancestor frame's overrides: Chrome's
+/// devtools_instrumentation OnWorkerMainScriptRequestWillBeSent). A
+/// dedicated worker's own fetch does not. The User-Agent override reaches
+/// the same requests. The headers apply only while Network is enabled;
+/// Network.disable clears them.
 const chrome_157 = [_][]const u8{
     "",
     "navigate: GET 127.0.0.1/page.html x-test=one acrh=- referer=-",
@@ -360,7 +372,7 @@ const chrome_157 = [_][]const u8{
     "frame: GET 127.0.0.1/frame.html x-test=one acrh=- referer=/page.html",
     "shared worker: GET 127.0.0.1/shared.js x-test=one acrh=- referer=/page.html",
     "cancelled frame: GET 127.0.0.1/slow x-test=one acrh=- referer=/page.html",
-    "reset: GET 127.0.0.1/reset x-test=one acrh=- referer=- failed=true",
+    "invalid response: GET 127.0.0.1/invalid x-test=one acrh=- referer=- failed=true",
     "redirect: GET 127.0.0.1/page.html x-test=one acrh=- referer=- | GET 127.0.0.1/redirect x-test=one acrh=- referer=-",
     "",
     "referer: GET 127.0.0.1/ref x-test=- acrh=- referer=/ref",
