@@ -1229,6 +1229,8 @@ const FileTally = struct {
     load_ms: u64 = 0,
     /// How many (global, variant) pairs reported into this tally.
     runs: usize = 0,
+    /// True if any run of this file executed in crashtest mode.
+    crashtest: bool = false,
     /// The harness's message for the run that set the file's status - why it
     /// is an ERROR or TIMEOUT, in the journal where triage can group by it.
     message: journal.MessageSlot = .{},
@@ -1265,6 +1267,7 @@ const FileTally = struct {
 
     fn add(self: *FileTally, result: test_harness.TestResult) void {
         self.runs += 1;
+        if (result.crashtest) self.crashtest = true;
         self.duration_ms += result.duration_ms;
         self.nav_ms += result.nav_ms;
         self.load_ms += result.load_ms;
@@ -1314,6 +1317,7 @@ const FileTally = struct {
             .heap_used_kb = heap.used_kb,
             .native_contexts = heap.native_contexts,
             .message = self.message.get(),
+            .crashtest = self.crashtest,
         });
     }
 };

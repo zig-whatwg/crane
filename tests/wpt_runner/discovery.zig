@@ -233,14 +233,27 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
         var manifest = try wpt_manifest.loadManifest(allocator, options.wpt_root);
         defer manifest.deinit();
 
-        // --full-corpus: every testharness source, past the allowlist and the
+        // --full-corpus: every manifest source, past the allowlist and the
         // exclusion patterns (selection.Scope.full_corpus).
+        // --crashtests / --include-crashtests: select items.crashtest alone or
+        // beside items.testharness without changing the default testharness
+        // denominator.
         const scope: selection.Scope = if (options.full_corpus) .full_corpus else .in_scope;
-        var sel = try selection.select(allocator, &manifest, options.filters.items, scope);
+        const include_testharness = !options.crashtests_only or options.include_crashtests;
+        const include_crashtests = options.crashtests_only or options.include_crashtests;
+        var sel = try selection.selectKinds(
+            allocator,
+            &manifest,
+            options.filters.items,
+            scope,
+            include_testharness,
+            include_crashtests,
+        );
         defer sel.deinit();
 
         result.total_in_scope_urls = sel.url_count;
-        result.total_manifest_urls = manifest.urlCount();
+        result.total_manifest_urls = (if (include_testharness) manifest.urlCount() else 0) +
+            (if (include_crashtests) manifest.crashtestCount() else 0);
 
         for (sel.sources) |source_path| {
             if (options.pattern) |pat| {
@@ -698,4 +711,85 @@ test "globMatch backtracks past a false start" {
     try testing.expect(globMatch("xabyab", "*ab"));
     try testing.expect(globMatch("aaa", "*a"));
     try testing.expect(!globMatch("xabyabz", "*ab"));
+}
+
+const mixed_crashtest_manifest =
+    \\{"version": 9, "url_base": "/", "items": {
+    \\  "testharness": {
+    \\    "dom": {"nodes": {"Node-appendChild.html": ["h", [null, {}]]}}
+    \\  },
+    \\  "crashtest": {
+    \\    "dom": {"nodes": {"insert-crash.html": ["h", [null, {}]]}},
+    \\    "accessibility": {"crashtests": {"aria-crash.html": ["h", [null, {}]]}}
+    \\  }
+    \\}}
+;
+
+const mixed_crashtest_files = [_][]const u8{
+    "dom/nodes/Node-appendChild.html",
+    "dom/nodes/insert-crash.html",
+    "accessibility/crashtests/aria-crash.html",
+};
+
+test "discoverTests supports --crashtests and --include-crashtests without changing default testharness discovery" {
+    const allocator = testing.allocator;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try writeManifestTree(tmp.dir, mixed_crashtest_manifest, &mixed_crashtest_files);
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(root);
+
+    // Default: testharness only (denominator untouched).
+    {
+        var options = testOptions(allocator);
+        defer options.deinit();
+        options.wpt_root = root;
+        var result = try discoverTests(allocator, options);
+        defer result.deinit();
+        try testing.expectEqual(@as(usize, 1), result.test_files.items.len);
+        try testing.expectEqualStrings("dom/nodes/Node-appendChild.html", result.test_files.items[0].path);
+        try testing.expectEqual(@as(usize, 1), result.total_manifest_urls);
+    }
+
+    // --crashtests (in-scope): dom/ crashtest only.
+    {
+        var options = testOptions(allocator);
+        defer options.deinit();
+        options.wpt_root = root;
+        options.crashtests_only = true;
+        var result = try discoverTests(allocator, options);
+        defer result.deinit();
+        try testing.expectEqual(@as(usize, 1), result.test_files.items.len);
+        try testing.expectEqualStrings("dom/nodes/insert-crash.html", result.test_files.items[0].path);
+        try testing.expectEqual(@as(usize, 2), result.total_manifest_urls);
+    }
+
+    // --crashtests --full-corpus accessibility/crashtests/: finds out-of-scope crashtest.
+    {
+        var options = testOptions(allocator);
+        defer options.deinit();
+        options.wpt_root = root;
+        options.crashtests_only = true;
+        options.full_corpus = true;
+        try options.filters.append(allocator, try allocator.dupe(u8, "accessibility/crashtests/"));
+        var result = try discoverTests(allocator, options);
+        defer result.deinit();
+        try testing.expectEqual(@as(usize, 1), result.test_files.items.len);
+        try testing.expectEqualStrings("accessibility/crashtests/aria-crash.html", result.test_files.items[0].path);
+    }
+
+    // --include-crashtests: both in-scope testharness and crashtests.
+    {
+        var options = testOptions(allocator);
+        defer options.deinit();
+        options.wpt_root = root;
+        options.include_crashtests = true;
+        var result = try discoverTests(allocator, options);
+        defer result.deinit();
+        try testing.expectEqual(@as(usize, 2), result.test_files.items.len);
+        try testing.expectEqualStrings("dom/nodes/Node-appendChild.html", result.test_files.items[0].path);
+        try testing.expectEqualStrings("dom/nodes/insert-crash.html", result.test_files.items[1].path);
+        try testing.expectEqual(@as(usize, 3), result.total_manifest_urls);
+    }
 }
