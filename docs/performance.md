@@ -512,6 +512,16 @@ within the bar, 1 over it, 2 an input check, 3 a STOP file, 4 a pass incomplete,
 went quiet; `crane-pool.sh queue-wait` returns it. `--dry-run` makes every check, including the
 check launches, and keeps nothing.
 
+**A memory figure over the bar whose collected launches are bimodal is measured again before it
+goes to a ruling** (the integrator, 2026-11-24, from lane tool1's check of rule (a)): the memory
+pass alone, 15 launches a side, on that row's page - `perf_bench window ... --steps=M,C
+--memory-runs=15 --only=<page>` with a fresh `--out`. Nine launches put the median of a figure
+whose launches sit in two modes on either mode by chance: cs1's `observers.resize-construct`
+read 1.033 peak and 1.059 collected at 9 launches a side (the collected launches 19.3-20.4 MB
+in 7 and 24.7-31.8 MB in 11, on both sides) and 1.009 and 0.980 at 15. The rule's grouping
+reads such a collected figure as one level - its upper mode is wider than half the gap - so
+neither clearing applies at 9; the re-run, not a ruling, settles it.
+
 **A broken console fails fast** (perf1-guard, 2026-11-24: on 2026-11-23 a release console whose
 every script threw made every workload of two windows time out, for 7 h and for 5 h). `perf_bench
 check` launches `workloads/overhead.html` once in every pinned engine and fails, naming the
