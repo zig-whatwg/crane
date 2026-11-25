@@ -103,3 +103,46 @@ pub fn getRequestPostData(session: *PageSession, params: N.getRequestPostData.Pa
     const reported = try network_resources.reportedPostData(session.arena.?, bytes);
     return .{ .postData = reported.text, .base64Encoded = reported.base64 };
 }
+
+/// Chrome's NetworkHandler::SetUserAgentOverride: the tab's user agent, as
+/// Emulation.setUserAgentOverride sets it (the same host override: Chrome
+/// applies both to the tab's requests and navigator).
+pub fn setUserAgentOverride(session: *PageSession, params: N.setUserAgentOverride.Params) !N.setUserAgentOverride.Result {
+    const bc = frames.navigable(session, session.tab) orelse return session.fail("Target is not a page");
+    try bc.host_overrides.setUserAgent(bc.allocator, @intFromPtr(session), params.userAgent, params.platform, params.acceptLanguage);
+    return .{};
+}
+
+/// Blink's InspectorNetworkAgent::overrideNetworkState: the network state
+/// the page sees - navigator.onLine, and navigator.connection, which Crane
+/// does not have (Chrome alone ships the Network Information API). Online is
+/// what every Crane tab is; offline needs lane mcp1 batch 4b item 7 and is
+/// refused until it lands.
+pub fn overrideNetworkState(session: *PageSession, params: N.overrideNetworkState.Params) !N.overrideNetworkState.Result {
+    if (params.offline) return session.fail("Network emulation is not supported by Crane yet");
+    return .{};
+}
+
+/// Chrome's NetworkHandler::EmulateNetworkConditionsByRule
+/// (content/browser/devtools/protocol/network_handler.cc): a rule id per
+/// condition (base::UnguessableToken, 32 uppercase hex digits). Conditions
+/// that throttle nothing - online, no latency, no throughput limit (a
+/// throughput of 0 or less is none) - are what every Crane tab has;
+/// Puppeteer sends them on every emulate. Any other needs lane mcp1 batch 4b
+/// item 7 and is refused until it lands.
+pub fn emulateNetworkConditionsByRule(session: *PageSession, params: N.emulateNetworkConditionsByRule.Params) !N.emulateNetworkConditionsByRule.Result {
+    if (params.offline orelse false) return session.fail("Network emulation is not supported by Crane yet");
+    for (params.matchedNetworkConditions) |c| {
+        const throttles = (c.offline orelse false) or c.latency > 0 or c.downloadThroughput > 0 or c.uploadThroughput > 0 or (c.packetLoss orelse 0) > 0;
+        if (throttles) return session.fail("Network emulation is not supported by Crane yet");
+    }
+    const arena = session.arena.?;
+    const ids = try arena.alloc([]const u8, params.matchedNetworkConditions.len);
+    for (ids) |*id| {
+        var bytes: [16]u8 = undefined;
+        @import("platform").fillRandom(&bytes);
+        const hex = std.fmt.bytesToHex(bytes, .upper);
+        id.* = try arena.dupe(u8, &hex);
+    }
+    return .{ .ruleIds = ids };
+}

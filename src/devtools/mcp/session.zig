@@ -120,6 +120,14 @@ pub const Page = struct {
     same_document_navigated: bool = false,
     /// McpPage.init's focus emulation was asked for.
     focus_emulated: bool = false,
+    /// The emulate tool's state Puppeteer keeps per page: a user agent
+    /// override applied (NetworkManager #userAgentOverrideApplied), a
+    /// viewport override active and its mobile and touch
+    /// (EmulationManager's viewport state, #emulatingMobile, #hasTouch).
+    user_agent_emulated: bool = false,
+    viewport_emulated: bool = false,
+    emulating_mobile: bool = false,
+    emulating_touch: bool = false,
     /// The main frame's id (Page.frameNavigated without a parentId).
     main_frame_id: ?[]u8 = null,
     /// The frames' execution contexts Puppeteer keeps (FrameManager
