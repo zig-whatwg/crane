@@ -838,3 +838,50 @@ test "convertFromJS: BasePropertyIndexedKeyframe and BaseKeyframe end-to-end via
         },
     }
 }
+
+test "TransformStream readable.cancel() and parallel writable.close() reject when async cancel() calls controller.error()" {
+    const page = try Page.open();
+    defer page.close();
+    const a = testing.allocator;
+
+    const run = try Page.makeCallback(
+        page.realm,
+        \\() => {
+        \\  globalThis.__tsResult = 'pending';
+        \\  const thrownError = new Error('boom');
+        \\  let controller;
+        \\  const ts = new TransformStream({
+        \\    start(c) { controller = c; },
+        \\    async cancel() { controller.error(thrownError); },
+        \\  });
+        \\  const cancelP = ts.readable.cancel('reason');
+        \\  const closeP = ts.writable.close();
+        \\  Promise.all([
+        \\    cancelP.then(() => 'cancel-resolved', e => e === thrownError ? 'ok' : 'cancel-wrong'),
+        \\    closeP.then(() => 'close-resolved', e => e === thrownError ? 'ok' : 'close-wrong'),
+        \\  ]).then(([c, w]) => { globalThis.__tsResult = c + ':' + w; });
+        \\}
+    ,
+        page.realm,
+    );
+    defer run.release();
+    switch (try protocol.invokeCallbackFunctionAs(void, .{}, page.realm, &run, .undefined, .{}, .rethrow, a)) {
+        .normal => |h| h.release(a),
+        .throw => |t| {
+            t.release();
+            return error.UnexpectedThrow;
+        },
+    }
+    const read_res = try Page.makeCallback(page.realm, "() => globalThis.__tsResult", page.realm);
+    defer read_res.release();
+    switch (try protocol.invokeCallbackFunctionAs(runtime.DOMString, .{}, page.realm, &read_res, .undefined, .{}, .rethrow, a)) {
+        .normal => |h| {
+            defer h.release(a);
+            try testing.expectEqualStrings("ok:ok", h.value.asSlice());
+        },
+        .throw => |t| {
+            t.release();
+            return error.UnexpectedThrow;
+        },
+    }
+}
