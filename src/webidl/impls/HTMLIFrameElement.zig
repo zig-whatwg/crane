@@ -5296,6 +5296,10 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
     if (record.traversal_entry != 0) {
         const entry = history.entryById(record.traversal_entry) orelse return null;
         const kind: joint_history.NavigationType = if (record.traversal_entry == record.traversal_from) .reload else .traverse;
+        // The browser's record of the step (user agent data, never read by
+        // HTML): a top-level reload's commit marks it, as Chrome's entry
+        // takes the reload transition and keeps its id.
+        if (kind == .reload and bc.parent == null) history.recordReload();
         const state = entry.document_state;
         const taken = previous;
         previous = null;
@@ -5335,6 +5339,7 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
     if (record.srcdoc) |markup| history.setCurrentResource(bc.id, markup) catch {};
     if (record.markup) |markup| history.setCurrentResource(bc.id, markup) catch {};
     const current = history.currentEntry(bc.id) orelse return null;
+    if (bc.parent == null) history.recordNavigationEntry(current.id, navigationEntryTransition(record), record.url);
     // "Update document for history step application" step 7's inputs, for
     // navigation.activation, before any of the document's script runs.
     const taken = previous;
@@ -5378,6 +5383,8 @@ fn listBeforeUnload(integration: *IFrameIntegration, record: *Navigation, respon
         return;
     };
     record.listed = listed;
+    // The browser's record of a top-level commit's step (user agent data).
+    if (bc.parent == null) history.recordNavigationEntry(listed.entry, navigationEntryTransition(record), record.url);
     record.listed_previous = previous;
     record.listed_previous_allocator = history.allocator;
     // Navigate step 24.4: the document state's resource is documentResource.
@@ -5498,6 +5505,17 @@ fn originOfWindow(window: ?*runtime.Instance, allocator: std.mem.Allocator) ![]u
     const origin = interfaces.Window.get_origin(w) catch return allocator.dupe(u8, "null");
     defer w.ctx.allocator.free(origin);
     return allocator.dupe(u8, origin);
+}
+
+/// How a top-level navigation came, as the browser records its history step
+/// (joint_history.NavigationEntryRecord: user agent data, never read by
+/// HTML) - Chrome's page transition: a form submission's form_submit, the
+/// browser UI's typed (CDP Page.navigate, the address bar), anything a
+/// document started a link (Chrome 157, tests/devtools/mcp1_history_test.zig).
+fn navigationEntryTransition(record: *const Navigation) html_core.navigation.joint_history.NavigationEntryRecord.Transition {
+    if (record.csp_navigation_type == .form_submission) return .form_submit;
+    if (record.browser_initiated) return .typed;
+    return .link;
 }
 
 fn jointHandling(handling: navigate_steps.HistoryHandling) html_core.navigation.joint_history.HistoryHandling {

@@ -114,6 +114,10 @@ pub const Page = struct {
     dialog: ?Dialog = null,
     /// Page.loadEventFired seen since the last `expectLoad`.
     load_fired: bool = false,
+    /// A main-frame Page.navigatedWithinDocument seen since it was last
+    /// cleared: what ends Puppeteer's waitForNavigation for a same-document
+    /// navigation (LifecycleWatcher's sameDocumentNavigation).
+    same_document_navigated: bool = false,
     /// McpPage.init's focus emulation was asked for.
     focus_emulated: bool = false,
     /// The main frame's id (Page.frameNavigated without a parentId).
@@ -454,6 +458,14 @@ pub const Session = struct {
             const kind = str(p.get("navigationType"));
             if (std.mem.eql(u8, method, "Page.frameStartedNavigating") and (std.mem.eql(u8, kind, "sameDocument") or std.mem.eql(u8, kind, "historySameDocument"))) return;
             w.navigation_started = true;
+            return;
+        }
+        if (std.mem.eql(u8, method, "Page.navigatedWithinDocument")) {
+            // The main frame's URL moves (Puppeteer's Frame
+            // _navigatedWithinDocument, which page.url() reads).
+            if (!std.mem.eql(u8, str(p.get("frameId")), page.mainFrameId())) return;
+            try replace(self.allocator, &page.url, str(p.get("url")));
+            page.same_document_navigated = true;
             return;
         }
         if (std.mem.eql(u8, method, "Page.frameNavigated")) {
