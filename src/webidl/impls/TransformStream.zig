@@ -86,13 +86,25 @@ pub fn call_constructor(ctx: runtime.Context, transformer: webidl.Opt(runtime.JS
     var writable_size = try sw.extractSizeAlgorithm(writable_strategy);
     errdefer if (writable_size == .callback) js.dispose(writable_size.callback);
 
-    // Step 9: Let startPromise be a new promise.
+    // Step 9: Let startPromise be a new promise. The constructor's own: no
+    // internal slot of the stream holds it (6.2.2), so it goes when the
+    // constructor returns, settled (steps 12-13) or not (start() threw) -
+    // after that only the sides' start reactions wait on it, and they go
+    // with it once nothing else reaches the stream. Kept by the stream (a
+    // strong handle), one that never settled kept the whole stream until
+    // its realm ended (tests/v8/ctor1_transform_stream_start_test.zig).
     const start_promise = try js.Deferred.init(realm);
-    const start_handle = try js.clone(start_promise.promise);
-    defer js.dispose(start_handle);
+    defer start_promise.deinit();
 
     // Step 10: Perform ! InitializeTransformStream(this, startPromise, ...).
     const instance = try st.newStream(ctx);
+    // Until it is returned, the construction is the stream's only owner: a
+    // failed step frees it whole when no wrapper took it. Once the sides'
+    // setup traced it (InitializeTransformStream), it is its wrapper's, and
+    // goes with everything it reaches when script lets go - a controller
+    // start() kept still works on it meanwhile (Instance.releaseIfUnwrapped).
+    const instance_generation = runtime.SlabAllocator.generationOf(instance);
+    errdefer instance.releaseIfUnwrapped(instance_generation);
     const sizes_taken = .{ writable_size, readable_size };
     writable_size = .one;
     readable_size = .one;
@@ -101,6 +113,9 @@ pub fn call_constructor(ctx: runtime.Context, transformer: webidl.Opt(runtime.JS
     // Step 11: Perform ? SetUpTransformStreamDefaultControllerFromTransformer(this, transformer, transformerDict).
     const controller = try st.newController(ctx, instance, .{ .ctx = dict, .vtable = &st.JsTransformer.vtable });
     owned_dict = null;
+    // The same for the controller: whole when its setup did not wrap it.
+    const controller_generation = runtime.SlabAllocator.generationOf(controller);
+    errdefer controller.releaseIfUnwrapped(controller_generation);
     try st.setUpController(realm, instance, controller);
 
     // Step 12: If transformerDict["start"] exists, then resolve startPromise
@@ -108,12 +123,11 @@ pub fn call_constructor(ctx: runtime.Context, transformer: webidl.Opt(runtime.JS
     // « this.[[controller]] » and callback this value transformer - the
     // constructor's own values; the dictionary is the controller's now.
     // Step 13: Otherwise, resolve startPromise with undefined.
-    const slots = st.streamOf(instance).?;
     if (start_callback) |start_fn| {
         switch (try realm.call(start_fn, transformer_object, &.{realm.instanceValue(controller)})) {
             .normal => |v| {
                 defer js.dispose(v);
-                slots.start_promise.?.resolve(realm, v);
+                start_promise.resolve(realm, v);
             },
             .thrown => |e| {
                 defer js.dispose(e);
@@ -121,7 +135,7 @@ pub fn call_constructor(ctx: runtime.Context, transformer: webidl.Opt(runtime.JS
             },
         }
     } else {
-        slots.start_promise.?.resolveUndefined(realm);
+        start_promise.resolveUndefined(realm);
     }
     return instance;
 }
