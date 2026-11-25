@@ -64,6 +64,8 @@ const sheet_mod = @import("sheet.zig");
 const style_rules = @import("rules.zig");
 const ua_sheet = @import("ua_sheet.zig");
 const element_style = @import("element_style.zig");
+const held_style = @import("held_style.zig");
+pub const HeldStyle = held_style.HeldStyle;
 // H-R3-ENGINE-KEY / H-R3-ENGINE-RESOLVE (lane rendering3): Web Animations.
 const animations = struct {
     const effect_stack = @import("../animations/effect_stack.zig");
@@ -1321,10 +1323,43 @@ noinline fn scopedProximity(res: *Resolution, matcher: *selector_matching.StyleM
 
 /// The computed style of `element` - or of its pseudo-element `pseudo`
 /// (lowercase, without colons) - resolved now if its cached one is not
-/// valid. Borrowed: valid until the next style read of the element. Null
-/// for an element that has no style: not connected, not in the flat tree,
-/// or before a Document installed its engine.
-pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*const ComputedStyle {
+/// valid, HELD for the caller (held_style.zig): it stays valid, unchanged,
+/// until the caller releases it, whatever style reads happen meanwhile -
+/// `defer held.release()` at once, and never past the native call that took
+/// it. Null for an element that has no style: not connected, not in the
+/// flat tree, or before a Document installed its engine.
+pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?HeldStyle {
+    const style = (try resolvedStyle(element, pseudo)) orelse return null;
+    return try held_style.hold(element.ctx, style);
+}
+
+/// The style `computedStyle` holds, resolved now (and the style change
+/// events it is starting), kept by no one: for a read that needs the style
+/// resolved and nothing of it - getAnimations()'s and commitStyles()'s
+/// "pending style changes" (Web Animations 1).
+pub fn resolveStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!void {
+    _ = try resolvedStyle(element, pseudo);
+}
+
+/// The base style of `element` (or of its pseudo-element `pseudo`) - its
+/// style without the animation and transition origins - resolved now, held
+/// as `computedStyle` holds: getKeyframes()'s implicit values (CSS
+/// Animations 2's CSSAnimation keyframes). The computed style itself when
+/// no effect applies.
+pub fn baseStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?HeldStyle {
+    const style = (try resolvedStyle(element, pseudo)) orelse return null;
+    const state = element_style.existingOf(element) orelse return try held_style.hold(element.ctx, style);
+    const cached: *const element_style.Cached = if (pseudo) |p| &(state.pseudoCached(p) orelse return try held_style.hold(element.ctx, style)).cached else &(state.cached orelse return try held_style.hold(element.ctx, style));
+    return try held_style.hold(element.ctx, cached.base orelse cached.style);
+}
+
+/// The computed style of `element` (or of its pseudo-element), resolved now
+/// if its cached one is not valid. BORROWED, and only until the next style
+/// read of the element or of anything in its flat tree - a volatile style
+/// (and everything below one) is resolved again, and the cached one
+/// released, on every read. Private to this file: everything else reads
+/// through `computedStyle`, which holds it (lane cs1).
+fn resolvedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*const ComputedStyle {
     const node = instance_bridge.getNodeBase(element) orelse return null;
     if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) return null;
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return null;
@@ -2270,7 +2305,7 @@ pub const ContainerProbe = struct {
 pub fn queriesContainer(element: *runtime.Instance, container: *runtime.Instance) bool {
     // The element's (and its ancestors') styles first: the query containers
     // are read from their cached styles.
-    _ = (computedStyle(element, null) catch return false) orelse return false;
+    _ = (resolvedStyle(element, null) catch return false) orelse return false;
     const node = instance_bridge.getNodeBase(element) orelse return false;
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
     const engine = hooks.engineOf(document) orelse return false;
@@ -2333,7 +2368,7 @@ pub const GeneratedPseudos = packed struct(u4) {
 /// are resolved as getComputedStyle would. CDP's DOM agents ask (lane
 /// cdpd1).
 pub fn generatedPseudos(element: *runtime.Instance) GeneratedPseudos {
-    const style = (computedStyle(element, null) catch null) orelse return .{};
+    const style = (resolvedStyle(element, null) catch null) orelse return .{};
     const state = element_style.existingOf(element) orelse return .{};
     const cached = state.cached orelse return .{};
     if (!cached.rendered) return .{};
@@ -2352,7 +2387,7 @@ pub fn generatedPseudos(element: *runtime.Instance) GeneratedPseudos {
 /// ::after (none and normal compute to nothing there), anything but none
 /// otherwise.
 fn pseudoGenerates(element: *runtime.Instance, comptime name: []const u8, comptime needs_list: bool) bool {
-    const style = (computedStyle(element, name) catch null) orelse return false;
+    const style = (resolvedStyle(element, name) catch null) orelse return false;
     if (style.display().box == .none) return false;
     const content = style.get(.content);
     if (content == .content) return true;
@@ -2394,7 +2429,7 @@ pub fn findQueryContainer(element: *runtime.Instance, request: ContainerRequest)
     var next = flatParent(node, &slotted);
     while (next == .element) {
         const candidate = instanceOf(next.element) orelse return null;
-        const style = (computedStyle(candidate, null) catch null) orelse return null;
+        const style = (resolvedStyle(candidate, null) catch null) orelse return null;
         if (requestMatches(style, request)) return candidate;
         next = flatParent(next.element, &slotted);
     }
@@ -3219,7 +3254,7 @@ fn updateSubtree(allocator: Allocator, root: *NodeBase) !bool {
     for (nodes.items()) |node| {
         if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) continue;
         const element = instanceOf(node) orelse continue;
-        _ = computedStyle(element, null) catch continue;
+        _ = resolvedStyle(element, null) catch continue;
         if (generated == null) generated = generatedPseudoRules(node);
         const state = element_style.existingOf(element) orelse continue;
         if (state.cached) |cached| any_volatile = any_volatile or cached.@"volatile";
@@ -3239,7 +3274,7 @@ fn updateSubtree(allocator: Allocator, root: *NodeBase) !bool {
         // starting-style.html, Chrome 157 1/1).
         if (selectKind(element) == .drop_down) try addPseudo(allocator, &names, "picker");
         try addViewTransitionPseudos(allocator, &names, node);
-        for (names.items) |n| _ = computedStyle(element, n) catch continue;
+        for (names.items) |n| _ = resolvedStyle(element, n) catch continue;
     }
     return any_volatile;
 }
@@ -3315,7 +3350,7 @@ fn sheetsStyleGenerated(sheets: []const ActiveSheet) bool {
 pub fn flushForAnimations(root: *runtime.Instance, subtree: bool) void {
     const node = instance_bridge.getNodeBase(root) orelse return;
     if (node.node_type == NodeBase.ELEMENT_NODE) {
-        _ = computedStyle(root, null) catch {};
+        _ = resolvedStyle(root, null) catch {};
         if (element_style.existingOf(root)) |state| {
             // Its cached pseudo-element styles, and ::before, ::after and
             // ::marker, whose animations a browser runs without a read.
@@ -3336,7 +3371,7 @@ pub fn flushForAnimations(root: *runtime.Instance, subtree: bool) void {
             // The document element's view transition pseudo-elements while
             // their tree is shown (CSS View Transitions 1 §3.2).
             addViewTransitionPseudos(allocator, &names, node) catch {};
-            for (names.items) |name| _ = computedStyle(root, name) catch {};
+            for (names.items) |name| _ = resolvedStyle(root, name) catch {};
         }
         if (!subtree) return;
     }
@@ -3413,7 +3448,7 @@ fn renderedInFlatTree(element: *runtime.Instance, comptime accepts_contents: boo
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
     const view = interfaces.Document.get_defaultView(document) catch null;
     if (view == null) return false;
-    const style = (try computedStyle(element, null)) orelse return false;
+    const style = (try resolvedStyle(element, null)) orelse return false;
     if (!accepts_contents and style.display().box == .contents) return false;
     // Inherited computed interactivity is checked on the target only. An
     // explicit auto can restore CSS interaction, but not HTML inertness.
@@ -3423,7 +3458,7 @@ fn renderedInFlatTree(element: *runtime.Instance, comptime accepts_contents: boo
     var current: *NodeBase = node;
     while (true) {
         const e = instanceOf(current) orelse return false;
-        const s = (try computedStyle(e, null)) orelse return false;
+        const s = (try resolvedStyle(e, null)) orelse return false;
         if (s.display().box == .none) return false;
         // CSS Contain 2 section 4: skipped contents produce no boxes, but
         // the containing element keeps its own box. Reuse this style read.
@@ -3477,7 +3512,7 @@ pub fn isCssImageResourceOrigin(element: *runtime.Instance) Error!bool {
     var current = node;
     while (true) {
         const instance = instanceOf(current) orelse return false;
-        const style = (try computedStyle(instance, null)) orelse return false;
+        const style = (try resolvedStyle(instance, null)) orelse return false;
         if (style.display().box == .none) return false;
         switch (resourceFlatParent(current)) {
             .root => return true,
@@ -3491,7 +3526,8 @@ pub fn isCssImageResourceOrigin(element: *runtime.Instance) Error!bool {
 /// assigned text inherits from its slot; a shadow-root child from its host.
 /// Fonts inside skipped contents do not start loading (Chrome/Firefox,
 /// liaison Q5). An element's own box can render while its text is skipped.
-pub fn fontStyleForText(node: *NodeBase) Error!?*const ComputedStyle {
+/// HELD, as `computedStyle` holds.
+pub fn fontStyleForText(node: *NodeBase) Error!?HeldStyle {
     if (node.node_type != NodeBase.TEXT_NODE or !node.is_connected) return null;
     // HTML 15.5.17: a textarea renders its current value, not its source
     // children. The control consumer reads that value through the interface.
@@ -3505,24 +3541,27 @@ pub fn fontStyleForText(node: *NodeBase) Error!?*const ComputedStyle {
         .root, .none => return null,
     };
     if (!try isCssImageResourceOrigin(parent) or !try isBeingRenderedOrDelegating(parent)) return null;
-    const style = (try computedStyle(parent, null)) orelse return null;
-    return if (contentsSkipped(parent, style)) null else style;
+    const style = (try resolvedStyle(parent, null)) orelse return null;
+    return if (contentsSkipped(parent, style)) null else try held_style.hold(parent.ctx, style);
 }
 
 /// Q62's control probe: only a rendered control's displayed text and
 /// first-available-font metrics request fonts, including empty controls.
-pub fn fontStyleForControl(element: *runtime.Instance) Error!?*const ComputedStyle {
+/// HELD, as `computedStyle` holds.
+pub fn fontStyleForControl(element: *runtime.Instance) Error!?HeldStyle {
     if (!try isCssImageResourceOrigin(element) or !try isBeingRendered(element)) return null;
-    const style = (try computedStyle(element, null)) orelse return null;
-    return if (contentsSkipped(element, style)) null else style;
+    const style = (try resolvedStyle(element, null)) orelse return null;
+    return if (contentsSkipped(element, style)) null else try held_style.hold(element.ctx, style);
 }
 
-/// Generated text uses its originating element for flat-tree/contents
-/// eligibility, while font matching reads the pseudo-element's style.
-pub fn fontStyleForGeneratedText(element: *runtime.Instance, style: *const ComputedStyle) Error!?*const ComputedStyle {
-    if (!try isCssImageResourceOrigin(element) or !try isBeingRenderedOrDelegating(element)) return null;
-    const origin = (try computedStyle(element, null)) orelse return null;
-    return if (contentsSkipped(element, origin)) null else style;
+/// Whether the generated text of `element`'s pseudo-elements selects fonts:
+/// generated text uses its originating element for flat-tree/contents
+/// eligibility, while font matching reads the pseudo-element's style (the
+/// caller's, held).
+pub fn generatedTextSelectsFonts(element: *runtime.Instance) Error!bool {
+    if (!try isCssImageResourceOrigin(element) or !try isBeingRenderedOrDelegating(element)) return false;
+    const origin = (try resolvedStyle(element, null)) orelse return false;
+    return !contentsSkipped(element, origin);
 }
 
 fn contentsSkipped(element: *runtime.Instance, style: *const ComputedStyle) bool {

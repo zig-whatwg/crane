@@ -117,7 +117,9 @@ const Page = struct {
 /// `source` evaluates to an element; its computed `property`, resolved.
 fn expectComputed(page: Page, source: []const u8, property: []const u8, expected: []const u8) !void {
     const element = try page.instance(source);
-    const style = (try dom.style.computedStyle(element, null)) orelse return error.NoComputedStyle;
+    const held = (try dom.style.computedStyle(element, null)) orelse return error.NoComputedStyle;
+    defer held.release();
+    const style = held.style;
     const l = switch (dom.style.css.properties.lookup(property) orelse return error.UnknownProperty) {
         .longhand => |x| x,
         .shorthand => return error.Shorthand,
@@ -204,12 +206,20 @@ test "a cached style is reused until an input moves" {
     defer page.close();
     try page.eval(html_page);
     const element = try page.instance("div");
-    const first = (try dom.style.computedStyle(element, null)).?;
-    const again = (try dom.style.computedStyle(element, null)).?;
-    try testing.expect(first == again);
+    // Holds, released before script runs (runtime.native_holds); `again`
+    // is kept as an address only, never read.
+    const again = blk: {
+        const first = (try dom.style.computedStyle(element, null)).?;
+        defer first.release();
+        const second = (try dom.style.computedStyle(element, null)).?;
+        defer second.release();
+        try testing.expect(first.style == second.style);
+        break :blk second.style;
+    };
     try page.eval("div.setAttribute('data-x', '1')");
     const after = (try dom.style.computedStyle(element, null)).?;
-    try testing.expect(after != again);
+    defer after.release();
+    try testing.expect(after.style != again);
 }
 
 test "a style read marks its document's engine resolving only while it runs (Codex row 61 Q16)" {
@@ -221,9 +231,9 @@ test "a style read marks its document's engine resolving only while it runs (Cod
     const document = try page.instance("d");
     const engine = dom.style.engine.engineOf(document) orelse return error.NoEngine;
     try testing.expect(!engine.resolving);
-    _ = try dom.style.computedStyle(element, null);
+    try dom.style.engine.resolveStyle(element, null);
     try testing.expect(!engine.resolving);
-    _ = try dom.style.computedStyle(element, "before");
+    try dom.style.engine.resolveStyle(element, "before");
     try testing.expect(!engine.resolving);
     _ = try dom.style.isBeingRendered(element);
     try testing.expect(!engine.resolving);

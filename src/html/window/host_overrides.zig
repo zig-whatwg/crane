@@ -56,6 +56,10 @@ pub const Screen = struct {
 /// An opaque token naming who set an override; 0 is nobody.
 pub const Owner = usize;
 
+/// One extra header: fetch's (http_fetch.ExtraHeader), which the request
+/// reader hands on as it is.
+pub const ExtraHeader = @import("fetch").algorithms.http_fetch.ExtraHeader;
+
 pub const HostOverrides = struct {
     media: ?Media = null,
     media_owner: Owner = 0,
@@ -71,11 +75,54 @@ pub const HostOverrides = struct {
     platform: ?[]u8 = null,
     accept_language: ?[]u8 = null,
     user_agent_owner: Owner = 0,
+    /// CDP Network.setExtraHTTPHeaders: headers every request of the tab's
+    /// documents carries (Chrome's NetworkHandler and Blink's
+    /// InspectorNetworkAgent keep them per session; the last setter wins
+    /// here). OWNED, names and values.
+    extra_headers: []ExtraHeader = &.{},
+    extra_headers_owner: Owner = 0,
 
     /// Free what is owned (the browsing context's end).
     pub fn deinit(self: *HostOverrides, allocator: Allocator) void {
         self.freeUserAgent(allocator);
+        self.freeExtraHeaders(allocator);
         self.* = .{};
+    }
+
+    /// Replace the extra headers with copies of `headers` (none: cleared).
+    pub fn setExtraHeaders(self: *HostOverrides, allocator: Allocator, owner: Owner, headers: []const ExtraHeader) Allocator.Error!void {
+        const copy = try allocator.alloc(ExtraHeader, headers.len);
+        var made: usize = 0;
+        errdefer {
+            for (copy[0..made]) |h| {
+                allocator.free(h.name);
+                allocator.free(h.value);
+            }
+            allocator.free(copy);
+        }
+        for (headers, 0..) |h, i| {
+            const name = try allocator.dupe(u8, h.name);
+            errdefer allocator.free(name);
+            copy[i] = .{ .name = name, .value = try allocator.dupe(u8, h.value) };
+            made += 1;
+        }
+        self.freeExtraHeaders(allocator);
+        if (copy.len == 0) {
+            allocator.free(copy);
+            return;
+        }
+        self.extra_headers = copy;
+        self.extra_headers_owner = owner;
+    }
+
+    fn freeExtraHeaders(self: *HostOverrides, allocator: Allocator) void {
+        for (self.extra_headers) |h| {
+            allocator.free(h.name);
+            allocator.free(h.value);
+        }
+        if (self.extra_headers.len > 0) allocator.free(self.extra_headers);
+        self.extra_headers = &.{};
+        self.extra_headers_owner = 0;
     }
 
     pub fn setMedia(self: *HostOverrides, owner: Owner, media: ?Media) void {
@@ -122,6 +169,7 @@ pub const HostOverrides = struct {
         if (self.touch_owner == owner) self.setMaxTouchPoints(0, null);
         if (self.screen_owner == owner) self.setScreen(0, null);
         if (self.user_agent_owner == owner) self.freeUserAgent(allocator);
+        if (self.extra_headers_owner == owner) self.freeExtraHeaders(allocator);
     }
 
     fn freeUserAgent(self: *HostOverrides, allocator: Allocator) void {

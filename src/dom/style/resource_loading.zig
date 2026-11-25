@@ -680,7 +680,9 @@ fn selectDocumentResources(state: *State) Allocator.Error!void {
         if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) continue;
         const element: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(node) orelse continue));
         if (!try eligibleOrigin(element)) continue;
-        const style = (try @import("engine.zig").computedStyle(element, null)) orelse continue;
+        const style_hold = (try @import("engine.zig").computedStyle(element, null)) orelse continue;
+        defer style_hold.release();
+        const style = style_hold.style;
         if (style.display().box != .contents) {
             try selectStyleResources(state, style);
             try selectSvgReferences(state, element, style);
@@ -689,7 +691,9 @@ fn selectDocumentResources(state: *State) Allocator.Error!void {
         // non-none content. Their originating display:contents element
         // need not generate its own box for a pseudo-element to exist.
         for ([_][]const u8{ "before", "after" }) |pseudo| {
-            const generated = (try @import("engine.zig").computedStyle(element, pseudo)) orelse continue;
+            const generated_hold = (try @import("engine.zig").computedStyle(element, pseudo)) orelse continue;
+            defer generated_hold.release();
+            const generated = generated_hold.style;
             if (generated.display().box == .none or generated.display().box == .contents) continue;
             const content = generated.get(.content);
             if (content != .content or content.content.items.len == 0) continue;

@@ -39,7 +39,8 @@ pub const Config = struct {
     pins: []const engines.Pin,
     host: journal.Host,
     environ: *const std.process.Environ.Map,
-    stop_file: ?[]const u8 = null,
+    /// STOP files (`--stop-file`, repeated): any one present stops the run.
+    stop_files: []const []const u8 = &.{},
     /// Only the pages or workloads whose name contains this.
     only: ?[]const u8 = null,
     iterations: u32 = 10,
@@ -56,6 +57,123 @@ pub const Config = struct {
     /// (collector.zig). The page then runs at another pace, so such a
     /// pass's times are not a round's, and no published round is run so.
     collected: bool = false,
+    /// `--max-timeouts`: the run stops when this many launches of one
+    /// engine IN A ROW ended without the page finishing - the time ran out,
+    /// or the engine exited first (`FailureGuard`). 0: never.
+    max_failed_in_a_row: u32 = 3,
+};
+
+/// How one launch ended, as the run's guard reads it.
+pub const LaunchEnd = enum {
+    /// The page finished (whatever its records say).
+    done,
+    /// The page's time ran out.
+    timeout,
+    /// The engine's process ended before the page did.
+    crash,
+    /// Anything else: the engine could not be driven, the launch was
+    /// refused or is unsupported. Neither a failure in a row nor a success.
+    other,
+    /// A STOP file ended it.
+    stopped,
+
+    pub fn of(ending: collector_mod.Ending) LaunchEnd {
+        return switch (ending) {
+            .done => .done,
+            .timeout => .timeout,
+            .exited => .crash,
+            .driver => .other,
+            .stopped => .stopped,
+        };
+    }
+};
+
+/// Launches in a row, per engine, that ended in a timeout or a crash
+/// (perf1-guard, 2026-11-24: a release console whose every script threw
+/// made perf_bench record "no result in 600 s" on every workload of both
+/// sides, and two windows ran 7 h and 5 h before anyone looked). A launch
+/// whose page finished starts the count again; any other ending leaves it.
+pub const FailureGuard = struct {
+    /// 0: the guard never stops a run.
+    max: u32,
+    in_a_row: std.EnumArray(journal.EngineName, Streak) = .initFill(.{}),
+
+    /// One engine's failed launches since its last finished page.
+    pub const Streak = struct {
+        timeouts: u32 = 0,
+        crashes: u32 = 0,
+
+        pub fn count(s: Streak) u32 {
+            return s.timeouts + s.crashes;
+        }
+    };
+
+    /// Notes one launch of `engine`; its streak when that reached `max`
+    /// (the run stops), else null.
+    pub fn note(g: *FailureGuard, engine: journal.EngineName, end: LaunchEnd) ?Streak {
+        const s = g.in_a_row.getPtr(engine);
+        switch (end) {
+            .done => s.* = .{},
+            .timeout => s.timeouts += 1,
+            .crash => s.crashes += 1,
+            .other, .stopped => {},
+        }
+        if (g.max > 0 and s.count() >= g.max) return s.*;
+        return null;
+    }
+};
+
+/// The page `perf_bench check` launches once in every pinned engine
+/// (perf1-guard): the suite's own floor, `overhead.empty`, which every
+/// engine runs and which needs only the harness's script to post its marks.
+/// A console whose every script throws, or that cannot load a page, has no
+/// result for it. Its own time limit: a working engine answers in seconds.
+pub const check_page: suite_mod.Page = .{ .page = "workloads/overhead.html", .kind = .timed, .timeout_s = 60, .workloads = &.{"overhead.empty"} };
+
+/// What `perf_bench check`'s launches say of each pin: one line per pin
+/// with no ok record of the check page's workload (none when every engine
+/// answered).
+pub fn checkProblems(arena: Allocator, records: []const journal.Record, pins: []const engines.Pin) Allocator.Error![]const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    for (pins) |pin| {
+        const rec = for (records) |r| {
+            if (r.engine.name == pin.name and std.mem.eql(u8, r.workload, check_page.workloads[0])) break r;
+        } else {
+            try out.append(arena, try std.fmt.allocPrint(arena, "{s}: no record of {s} (the launch made none)", .{ @tagName(pin.name), check_page.workloads[0] }));
+            continue;
+        };
+        if (rec.status == .ok) continue;
+        try out.append(arena, try std.fmt.allocPrint(arena, "{s}: {s} on {s}: {s}", .{ @tagName(pin.name), @tagName(rec.status), check_page.page, rec.message orelse "(no message)" }));
+    }
+    return out.items;
+}
+
+/// How a run ended: every launch made, a STOP file, or the guard.
+pub const Outcome = union(enum) {
+    complete,
+    stopped,
+    /// `streak` launches of `engine` in a row ended in a timeout or a
+    /// crash; the last was `last` (its page, run and ending, as text).
+    failing: struct { engine: journal.EngineName, streak: FailureGuard.Streak, last: []const u8 },
+
+    /// The process's exit status for it: 0, 3 (a STOP file: the journal
+    /// is not the whole run) or 4 (the guard).
+    pub fn exitCode(o: Outcome) u8 {
+        return switch (o) {
+            .complete => 0,
+            .stopped => 3,
+            .failing => 4,
+        };
+    }
+
+    /// The line that says why a run ended early.
+    pub fn line(o: Outcome, w: *Io.Writer) Io.Writer.Error!void {
+        switch (o) {
+            .complete => try w.writeAll("perf_bench: run complete\n"),
+            .stopped => try w.writeAll("perf_bench: STOPPED by a STOP file: the journal is not the whole run\n"),
+            .failing => |f| try w.print("perf_bench: STOPPED: {d} launches of {s} in a row ended without the page finishing ({d} timed out, {d} crashed); the last: {s}\n", .{ f.streak.count(), @tagName(f.engine), f.streak.timeouts, f.streak.crashes, f.last }),
+        }
+    }
 };
 
 /// The launch in progress, shared with the server's threads (marks) and the
@@ -215,12 +333,18 @@ pub const Runner = struct {
     out: Io.Dir = undefined,
     launches: u32 = 0,
     records: u32 = 0,
+    /// How the last launch ended, as text (`noteEnd`).
+    last_end_buf: [256]u8 = undefined,
+    last_end_len: usize = 0,
 
     pub fn init(gpa: Allocator, io: Io, config: Config) Runner {
         return .{ .gpa = gpa, .io = io, .config = config, .live = .{ .io = io } };
     }
 
-    pub fn run(self: *Runner) !void {
+    /// Every launch of the run, until a STOP file or the guard
+    /// (`max_failed_in_a_row`) ends it; how it ended. The Outcome's text
+    /// lives as long as the Runner.
+    pub fn run(self: *Runner) !Outcome {
         const cwd = Io.Dir.cwd();
         try cwd.createDirPath(self.io, self.config.out_dir);
         self.out = try cwd.openDir(self.io, self.config.out_dir, .{});
@@ -246,33 +370,59 @@ pub const Runner = struct {
         std.debug.print("perf_bench: serving {s} on http://127.0.0.1:{d}/\n", .{ self.config.root, self.server.port() });
 
         const pins = self.config.pins;
+        var guard: FailureGuard = .{ .max = self.config.max_failed_in_a_row };
+        var outcome: Outcome = .complete;
         var r: u32 = 0;
         outer: while (r < self.config.runs) : (r += 1) {
             for (self.config.suite.pages, 0..) |page, pi| {
                 if (!self.selected(page)) continue;
                 for (0..pins.len) |k| {
                     const pin = pins[(k + r) % pins.len];
-                    if (self.stopped()) break :outer;
-                    try self.launchOne(pin, page, @intCast(pi), r);
+                    if (self.stopped()) {
+                        outcome = .stopped;
+                        break :outer;
+                    }
+                    const end = try self.launchOne(pin, page, @intCast(pi), r);
+                    if (end == .stopped) {
+                        outcome = .stopped;
+                        break :outer;
+                    }
+                    if (guard.note(pin.name, end)) |streak| {
+                        outcome = .{ .failing = .{ .engine = pin.name, .streak = streak, .last = self.last_end_buf[0..self.last_end_len] } };
+                        break :outer;
+                    }
                 }
             }
         }
         try self.journal_writer.interface.flush();
         std.debug.print("perf_bench: {d} launches, {d} records -> {s}/journal.jsonl\n", .{ self.launches, self.records, self.config.out_dir });
+        return outcome;
     }
 
     fn selected(self: *const Runner, page: suite_mod.Page) bool {
-        const only = self.config.only orelse return true;
-        if (std.mem.indexOf(u8, page.page, only) != null) return true;
-        for (page.workloads) |w| if (std.mem.indexOf(u8, w, only) != null) return true;
-        return false;
+        return pageSelected(page, self.config.only);
+    }
+
+    /// "<page> run <r>: <why it ended>" of the last launch, for the
+    /// guard's line.
+    fn noteEnd(self: *Runner, page: suite_mod.Page, run_index: u32, ending: collector_mod.Ending) void {
+        const text = switch (ending) {
+            .done => std.fmt.bufPrint(&self.last_end_buf, "{s} run {d}: finished", .{ page.page, run_index }),
+            .timeout => |s| std.fmt.bufPrint(&self.last_end_buf, "{s} run {d}: no result in {d} s", .{ page.page, run_index, s }),
+            .exited => |e| std.fmt.bufPrint(&self.last_end_buf, "{s} run {d}: the engine exited before the page finished: {s}", .{ page.page, run_index, e }),
+            .driver => |e| std.fmt.bufPrint(&self.last_end_buf, "{s} run {d}: the engine could not be driven to the page: {s}", .{ page.page, run_index, e }),
+            .stopped => std.fmt.bufPrint(&self.last_end_buf, "{s} run {d}: stopped (STOP file)", .{ page.page, run_index }),
+        } catch self.last_end_buf[0..];
+        self.last_end_len = text.len;
     }
 
     fn stopped(self: *const Runner) bool {
-        const f = self.config.stop_file orelse return false;
-        Io.Dir.cwd().access(self.io, f, .{}) catch return false;
-        std.debug.print("perf_bench: STOP file {s} present: stopping before the next launch\n", .{f});
-        return true;
+        for (self.config.stop_files) |f| {
+            Io.Dir.cwd().access(self.io, f, .{}) catch continue;
+            std.debug.print("perf_bench: STOP file {s} present: stopping before the next launch\n", .{f});
+            return true;
+        }
+        return false;
     }
 
     fn nowRfc3339(self: *const Runner, arena: Allocator) ![]const u8 {
@@ -287,7 +437,7 @@ pub const Runner = struct {
         });
     }
 
-    fn launchOne(self: *Runner, pin: engines.Pin, page: suite_mod.Page, page_index: u32, run_index: u32) !void {
+    fn launchOne(self: *Runner, pin: engines.Pin, page: suite_mod.Page, page_index: u32, run_index: u32) !LaunchEnd {
         // Two arenas: the collector's, used only under the live mutex (the
         // server's threads add marks to it), and this thread's own.
         var arena_state: std.heap.ArenaAllocator = .init(self.gpa);
@@ -332,7 +482,7 @@ pub const Runner = struct {
         if (pin.name == .safari and n_instances > 1) {
             collector.failed.put(collector.arena, page.workloads[0], .{ .message = "safaridriver allows one session at a time: no second instance", .unsupported = true }) catch {};
             try self.writeRecords(try collector.finish(.done));
-            return;
+            return .other;
         }
         // The engine's app must be this launch's own: one already running
         // (a session's left over, or another's) would serve the page with
@@ -342,7 +492,7 @@ pub const Runner = struct {
             const text = try std.fmt.allocPrint(collector.arena, "{s} is already running (pid {d}): its processes would not be this launch's - end it first", .{ app_names[0], pid });
             try self.writeRecords(try collector.finish(.{ .driver = text }));
             std.debug.print("perf_bench: {s} {s} run {d}: refused, {s}\n", .{ @tagName(pin.name), page.page, run_index, text });
-            return;
+            return .other;
         }
         const launch_abs = proc.absoluteNow();
 
@@ -502,6 +652,9 @@ pub const Runner = struct {
         self.live.mutex.unlock(self.io);
         try self.writeRecords(records);
         std.debug.print("perf_bench: {s} {s} run {d}: {d} records ({s})\n", .{ @tagName(pin.name), page.page, run_index, records.len, @tagName(ending) });
+        // Its text before the arenas go (the guard's line reads it).
+        self.noteEnd(page, run_index, ending);
+        return LaunchEnd.of(ending);
     }
 
     const WaitFor = enum { done, loaded_count };
@@ -550,6 +703,15 @@ pub const Runner = struct {
         try self.journal_writer.interface.flush();
     }
 };
+
+/// Whether `--only=<text>` runs `page`: its name or one of its workloads'
+/// contains the text. A selected page runs all its workloads.
+pub fn pageSelected(page: suite_mod.Page, only: ?[]const u8) bool {
+    const text = only orelse return true;
+    if (std.mem.indexOf(u8, page.page, text) != null) return true;
+    for (page.workloads) |w| if (std.mem.indexOf(u8, w, text) != null) return true;
+    return false;
+}
 
 /// The URL a launch opens: the page, with the harness's query
 /// (tests/perf/harness.js). A retained page's settle time is its own (the
@@ -747,6 +909,91 @@ test "ending processes by exact pid: TERM first, KILL after the grace time" {
     // Only the one that ignored TERM needed KILL; both were gone when it returned.
     try testing.expectEqual(@as(usize, 1), killed);
     try testing.expect(gone[0] and gone[1]);
+}
+
+test "a run's guard: N launches of one engine in a row that time out or crash stop it; a finished page starts the count again" {
+    const none: ?FailureGuard.Streak = null;
+    var g: FailureGuard = .{ .max = 3 };
+    // The two sides alternate; only one of them is failing.
+    try testing.expectEqual(none, g.note(.crane, .timeout));
+    try testing.expectEqual(none, g.note(.crane_base, .done));
+    try testing.expectEqual(none, g.note(.crane, .crash));
+    // A finished page starts the count again.
+    try testing.expectEqual(none, g.note(.crane, .done));
+    try testing.expectEqual(none, g.note(.crane, .timeout));
+    try testing.expectEqual(none, g.note(.crane, .timeout));
+    // A launch that could not be driven is neither: the count stands.
+    try testing.expectEqual(none, g.note(.crane, .other));
+    const streak = g.note(.crane, .crash).?;
+    try testing.expectEqual(@as(u32, 2), streak.timeouts);
+    try testing.expectEqual(@as(u32, 1), streak.crashes);
+    // The other side's count is its own.
+    try testing.expectEqual(none, g.note(.crane_base, .timeout));
+    try testing.expectEqual(none, g.note(.crane_base, .timeout));
+    try testing.expectEqual(@as(u32, 3), g.note(.crane_base, .timeout).?.timeouts);
+    // 0: never.
+    var off: FailureGuard = .{ .max = 0 };
+    for (0..10) |_| try testing.expectEqual(none, off.note(.crane, .timeout));
+
+    // The line a stopped run ends with names the engine, the crashes and the
+    // last launch; the exit status says which ending it was.
+    var buf: [512]u8 = undefined;
+    var w: Io.Writer = .fixed(&buf);
+    const failing: Outcome = .{ .failing = .{ .engine = .crane, .streak = streak, .last = "workloads/attributes.html run 0: the engine exited before the page finished: signal 6" } };
+    try failing.line(&w);
+    try testing.expectEqualStrings("perf_bench: STOPPED: 3 launches of crane in a row ended without the page finishing (2 timed out, 1 crashed); the last: workloads/attributes.html run 0: the engine exited before the page finished: signal 6\n", w.buffered());
+    try testing.expectEqual(@as(u8, 4), failing.exitCode());
+    try testing.expectEqual(@as(u8, 3), (Outcome{ .stopped = {} }).exitCode());
+    try testing.expectEqual(@as(u8, 0), (Outcome{ .complete = {} }).exitCode());
+    // The endings of a launch, as the guard reads them.
+    try testing.expectEqual(LaunchEnd.timeout, LaunchEnd.of(.{ .timeout = 600 }));
+    try testing.expectEqual(LaunchEnd.crash, LaunchEnd.of(.{ .exited = "signal 11" }));
+    try testing.expectEqual(LaunchEnd.other, LaunchEnd.of(.{ .driver = "CDP connect" }));
+    try testing.expectEqual(LaunchEnd.done, LaunchEnd.of(.done));
+    try testing.expectEqual(LaunchEnd.stopped, LaunchEnd.of(.stopped));
+}
+
+test "perf_bench check's launches: every pinned engine needs an ok record of the check page, and each that has none is named" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const pins = [_]engines.Pin{
+        .{ .name = .crane, .version = "tip", .build = "release", .binary = "/t/repl", .sha256 = sha },
+        .{ .name = .crane_base, .version = "main", .build = "release", .binary = "/m/repl", .sha256 = sha },
+        .{ .name = .chrome, .version = "157", .build = "stable", .binary = "/c/chrome", .sha256 = sha },
+    };
+    const record: journal.Record = .{
+        .format = journal.format_name,
+        .round = 0,
+        .time = "2026-11-24T22:00:00Z",
+        .host = .{ .name = "h", .os = "macOS", .arch = "aarch64", .cpu = "M", .cores = 8, .memory_bytes = 1 },
+        .engine = .{ .name = .crane, .version = "tip", .build = "release", .binary = "/t/repl", .binary_sha256 = sha, .flags = &.{} },
+        .page = check_page.page,
+        .workload = "overhead.empty",
+        .kind = .timed,
+        .run = 0,
+        .status = .ok,
+    };
+    // 2026-11-23's console: every script threw, so no result in the time.
+    var broken = record;
+    broken.engine.name = .crane_base;
+    broken.status = .timeout;
+    broken.message = "no result in 60 s";
+    // The page's own row is not the workload's.
+    var page_row = record;
+    page_row.engine.name = .chrome;
+    page_row.workload = "page.overhead";
+    const problems = try checkProblems(a, &.{ record, broken, page_row }, &pins);
+    try testing.expectEqual(@as(usize, 2), problems.len);
+    try testing.expectEqualStrings("crane_base: timeout on workloads/overhead.html: no result in 60 s", problems[0]);
+    try testing.expectEqualStrings("chrome: no record of overhead.empty (the launch made none)", problems[1]);
+    // Every engine answered: nothing to say.
+    var chrome_ok = record;
+    chrome_ok.engine.name = .chrome;
+    var base_ok = record;
+    base_ok.engine.name = .crane_base;
+    try testing.expectEqual(@as(usize, 0), (try checkProblems(a, &.{ record, base_ok, chrome_ok }, &pins)).len);
 }
 
 test "a page's URL: a retained page's count and settle time; every other page's as it was" {

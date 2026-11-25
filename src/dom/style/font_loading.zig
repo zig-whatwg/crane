@@ -2150,7 +2150,9 @@ const UsedFonts = struct {
         const file = input and std.mem.eql(u8, kind.asSlice(), "file");
         // Q66: numeric/date/range/color/checkable controls await evidence.
         if (input and !text_entry and !button and !file) return;
-        const style = (try @import("engine.zig").fontStyleForControl(element)) orelse return;
+        const held = (try @import("engine.zig").fontStyleForControl(element)) orelse return;
+        defer held.release();
+        const style = held.style;
         // Fonts 4 §5.2's first available font uses U+0020, even when no
         // character is displayed. Q62 confirms this for rendered controls.
         try self.selectText(style, " ");
@@ -2186,8 +2188,13 @@ const UsedFonts = struct {
             var placeholder = if (textarea) try interfaces.HTMLTextAreaElement.get_placeholder(element) else try interfaces.HTMLInputElement.get_placeholder(element);
             defer placeholder.deinit(element.ctx.allocator);
             if (!placeholder.isEmpty()) {
-                const hint_style = (try @import("engine.zig").computedStyle(element, "placeholder")) orelse style;
-                try self.selectText(hint_style, placeholder.asSlice());
+                // The control's style stays held across this read of its
+                // ::placeholder, which resolves the control again when its
+                // style is volatile (a text control's always is: the UA
+                // sheet's :autofill).
+                const hint = try @import("engine.zig").computedStyle(element, "placeholder");
+                defer if (hint) |h| h.release();
+                try self.selectText(if (hint) |h| h.style else style, placeholder.asSlice());
             }
         }
     }
@@ -2257,16 +2264,21 @@ pub fn selectUsedFonts(set: *Set) !void {
         if (node.node_type == NodeBase.TEXT_NODE) {
             const text = @import("../character_data.zig").dataOf(instance) orelse continue;
             if (text.len == 0) continue;
-            const style = (try @import("engine.zig").fontStyleForText(node)) orelse continue;
-            try selector.selectText(style, text);
+            const held = (try @import("engine.zig").fontStyleForText(node)) orelse continue;
+            defer held.release();
+            try selector.selectText(held.style, text);
         } else if (node.node_type == NodeBase.ELEMENT_NODE) {
             try selector.selectControl(instance);
             for ([_][]const u8{ "before", "after" }) |pseudo| {
-                const style = (try @import("engine.zig").computedStyle(instance, pseudo)) orelse continue;
+                const held = (try @import("engine.zig").computedStyle(instance, pseudo)) orelse continue;
+                defer held.release();
+                const style = held.style;
                 if (style.display().box == .none or style.display().box == .contents) continue;
                 const content = style.get(.content);
                 if (content != .content) continue;
-                _ = (try @import("engine.zig").fontStyleForGeneratedText(instance, style)) orelse continue;
+                // Reads the originating element and its ancestors: the
+                // pseudo-element's style stays held across them.
+                if (!try @import("engine.zig").generatedTextSelectsFonts(instance)) continue;
                 const visual_end = content.content.alternate orelse content.content.items.len;
                 for (content.content.items[0..visual_end]) |item| {
                     if (item.kind == .text) try selector.selectText(style, item.text);

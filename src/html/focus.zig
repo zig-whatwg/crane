@@ -236,7 +236,9 @@ pub fn isInertNode(node: *Instance) bool {
 fn isInert(node: *Instance) bool {
     if (isHostInert(node)) return true;
     if (!isElement(node)) return false;
-    const style = (dom.style.engine.computedStyle(node, null) catch null) orelse return false;
+    const style_hold = (dom.style.engine.computedStyle(node, null) catch null) orelse return false;
+    defer style_hold.release();
+    const style = style_hold.style;
     return style.keyword(.interactivity) == .inert;
 }
 
@@ -261,7 +263,9 @@ pub fn isFocusableArea(element: *Instance) bool {
     // HTML 6.6.2: a slot without a box owns a navigation scope but is not
     // itself a focusable area. A styled slot that generates a box can be.
     if (element.vtable == &interfaces.HTMLSlotElement.vtable) {
-        const style = (dom.style.engine.computedStyle(element, null) catch null) orelse return false;
+        const style_hold = (dom.style.engine.computedStyle(element, null) catch null) orelse return false;
+        defer style_hold.release();
+        const style = style_hold.style;
         if (style.display().box == .contents) return false;
     }
     // HTML 6.6.2, first row: a host that delegates focus is not itself a
@@ -812,7 +816,9 @@ fn isImageMapAreaFocusable(area: *Instance) bool {
         } else false;
         if (!contains or isHostInert(image)) continue;
         if (!(dom.style.engine.isBeingRendered(image) catch false)) continue;
-        const style = (dom.style.engine.computedStyle(image, null) catch null) orelse continue;
+        const style_hold = (dom.style.engine.computedStyle(image, null) catch null) orelse continue;
+        defer style_hold.release();
+        const style = style_hold.style;
         if (style.keyword(.visibility) == .visible and style.keyword(.interactivity) != .inert) return true;
     }
     return false;

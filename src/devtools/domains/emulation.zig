@@ -294,3 +294,32 @@ pub fn setLocaleOverride(session: *PageSession, params: E.setLocaleOverride.Para
     if (locale.len == 0 or std.ascii.eqlIgnoreCase(locale, "en-US") or std.ascii.eqlIgnoreCase(locale, "en")) return .{};
     return session.fail("Another locale override is already in effect");
 }
+
+/// Blink's InspectorEmulationAgent::setCPUThrottlingRate
+/// (inspector_emulation_agent.cc): the renderer main thread's throttling
+/// rate - 1 (or less) is none, what every Crane tab runs at; Puppeteer sends
+/// it on every emulate. A slower rate needs Crane's throttler (lane mcp1
+/// batch 4b item 6, design first) and is refused until it lands.
+pub fn setCPUThrottlingRate(session: *PageSession, params: E.setCPUThrottlingRate.Params) !E.setCPUThrottlingRate.Result {
+    _ = tabOf(session) orelse return session.fail("Target is not a page");
+    if (params.rate <= 1) return .{};
+    return session.fail("CPU throttling is not supported by Crane yet");
+}
+
+/// Chrome's EmulationHandler::ClearGeolocationOverride: the tab's
+/// geolocation is the platform's again - which it is: Crane has no override
+/// to clear (its Geolocation API is queued; setGeolocationOverride waits
+/// for it).
+pub fn clearGeolocationOverride(session: *PageSession, params: E.clearGeolocationOverride.Params) !E.clearGeolocationOverride.Result {
+    _ = params;
+    _ = tabOf(session) orelse return session.fail("Target is not a page");
+    return .{};
+}
+
+/// Chrome's EmulationHandler::SetGeolocationOverride: refused until Crane's
+/// Geolocation API lands (queued by main, 2026-11-24): nothing would read
+/// the override.
+pub fn setGeolocationOverride(session: *PageSession, params: E.setGeolocationOverride.Params) !E.setGeolocationOverride.Result {
+    _ = params;
+    return session.fail("Geolocation is not supported by Crane yet");
+}

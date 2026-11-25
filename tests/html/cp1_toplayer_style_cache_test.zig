@@ -200,7 +200,7 @@ fn stableCache() !void {
     const target = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("stable"))).?;
     for (0..2) |phase| {
         if (phase == 1) try page.run("document.getElementById('layer').showPopover();");
-        _ = (try dom.style.computedStyle(target, null)).?;
+        try dom.style.engine.resolveStyle(target, null);
         const before = dom.style.element_style.existingOf(target).?.cached.?.key;
         const generation = style_engine.generation;
         // Pin the same cache-validity predicate as the existing environment
@@ -212,7 +212,7 @@ fn stableCache() !void {
             ancestor = try interfaces.Node.get_parentElement(node);
         }
         for (0..2) |_| {
-            _ = (try dom.style.computedStyle(target, null)).?;
+            try dom.style.engine.resolveStyle(target, null);
             const after = dom.style.element_style.existingOf(target).?.cached.?;
             try std.testing.expectEqual(generation, style_engine.generation);
             try std.testing.expectEqual(generation, after.key.generation);

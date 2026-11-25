@@ -382,7 +382,11 @@ pub fn visibilityHidden(node: *Instance) anyerror!bool {
     if (isHtml(node) and eq(localName(node), "area")) return visibilityHidden(imageForArea(node) orelse return true);
     // Visibility is inherited, but a visible descendant can override it.
     const element = if (data.of(node) != null) node else parent(node) orelse return false;
-    if (try style.computedStyle(element, null)) |computed| return computed.keyword(.visibility) == .hidden or computed.keyword(.visibility) == .collapse;
+    if (try style.computedStyle(element, null)) |computed| {
+        defer computed.release();
+        const visibility = computed.style.keyword(.visibility);
+        return visibility == .hidden or visibility == .collapse;
+    }
     return false;
 }
 
@@ -394,7 +398,8 @@ pub fn displayHidden(node: *Instance) anyerror!bool {
     var at: ?*Instance = node;
     while (at) |element| : (at = parent(element)) {
         if (try style.computedStyle(element, null)) |computed| {
-            if (computed.display().box == .none) return true;
+            defer computed.release();
+            if (computed.style.display().box == .none) return true;
         } else if (attribute(element, "hidden") != null) return true;
     }
     return false;
@@ -625,10 +630,14 @@ const Name = struct {
 
     fn generated(self: *Name, out: *std.ArrayList(u8), node: *Instance, pseudo: []const u8) !void {
         if (eq(pseudo, "marker")) {
-            const own = (try style.computedStyle(node, null)) orelse return;
+            const own_hold = (try style.computedStyle(node, null)) orelse return;
+            defer own_hold.release();
+            const own = own_hold.style;
             if (!own.display().list_item) return;
         }
-        const computed = (try style.computedStyle(node, pseudo)) orelse return;
+        const computed_hold = (try style.computedStyle(node, pseudo)) orelse return;
+        defer computed_hold.release();
+        const computed = computed_hold.style;
         if (computed.display().box == .none or computed.keyword(.visibility) == .hidden or computed.keyword(.visibility) == .collapse) return;
         const value = computed.get(.content);
         if (value == .content) try value.content.appendAccessible(out, self.allocator);
@@ -643,7 +652,8 @@ const Name = struct {
         if (!from_owns and self.owners.contains(node)) return;
         var separate = eq(localName(node), "br");
         if (try style.computedStyle(node, null)) |computed| {
-            const display = computed.display();
+            defer computed.release();
+            const display = computed.style.display();
             // Shipping engines separate atomic inline boxes as well as
             // block boxes; AccName #225 tracks the whitespace prose.
             separate = separate or display.outer == .block or display.box == .internal or display.inner == .flow_root or display.inner == .flex or display.inner == .grid or display.inner == .table;
@@ -833,7 +843,9 @@ const Name = struct {
 /// `allocator` (an arena's).
 pub fn transformedText(allocator: Allocator, text_node: *Instance, bytes: []const u8) ![]const u8 {
     const element = parent(text_node) orelse return try allocator.dupe(u8, bytes);
-    const computed = (try style.computedStyle(element, null)) orelse return try allocator.dupe(u8, bytes);
+    const computed_hold = (try style.computedStyle(element, null)) orelse return try allocator.dupe(u8, bytes);
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     const case = computed.textTransform().case;
     if (case == .none) return try allocator.dupe(u8, bytes);
     var points: std.ArrayList(u21) = .empty;

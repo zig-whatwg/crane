@@ -23,6 +23,7 @@ pub const list = [_]Tool{
     .{ .name = "list_pages", .page_tool = false, .run = listPages },
     .{ .name = "navigate_page", .page_tool = true, .run = navigatePage },
     .{ .name = "new_page", .page_tool = false, .run = newPage },
+    .{ .name = "resize_page", .page_tool = true, .run = resizePage },
     .{ .name = "select_page", .page_tool = false, .run = selectPage },
 };
 
@@ -31,6 +32,65 @@ const close_page_error = "The last open page cannot be closed. It is fine to kee
 /// McpPage's NAVIGATION_TIMEOUT: the pages' default navigation timeout
 /// (Page.setDefaultNavigationTimeout).
 const default_navigation_timeout_ms: u32 = 10_000;
+
+/// resize_page (src/tools/pages.ts resizePage): the page's window back to
+/// its normal state when it is not (Browser.getWindowBounds, then
+/// setWindowBounds - twice from fullscreen, "on Ubuntu"; any failure there
+/// ignored: "Window APIs are not supported on all platforms"), then
+/// Puppeteer's page.resize - Browser.setContentsSize of the page's window
+/// (Browser.getWindowForTarget on the page's session); the answer is the
+/// pages.
+fn resizePage(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Response) anyerror!void {
+    const target = page.?;
+    // The schema made both positive integers.
+    const width: i64 = @intFromFloat(registry.numberArg(args, "width") orelse 0);
+    const height: i64 = @intFromFloat(registry.numberArg(args, "height") orelse 0);
+    const window_id = windowIdOf(ctx, target) catch |err| switch (err) {
+        error.OutOfMemory => return err,
+        else => null,
+    };
+    if (window_id) |id| restoreWindow(ctx, id) catch |err| if (err == error.OutOfMemory) return err;
+    // page.resize: its own windowId(), whose failure is the tool's.
+    const id = windowIdOf(ctx, target) catch |err| switch (err) {
+        error.OutOfMemory => return err,
+        error.ToolFailed => return err,
+        else => return ctx.fail("Protocol error (Browser.getWindowForTarget): {t}", .{err}),
+    };
+    const params = try std.fmt.allocPrint(ctx.arena, "{{\"windowId\":{d},\"width\":{d},\"height\":{d}}}", .{ id, width, height });
+    var r = try ctx.session.client.call("Browser.setContentsSize", params, target.session_id, session_mod.command_timeout_ms);
+    defer r.deinit();
+    if (r.errorMessage()) |message| return ctx.fail("Protocol error (Browser.setContentsSize): {s}", .{message});
+    response.include_pages = true;
+}
+
+/// Puppeteer's page.windowId(): Browser.getWindowForTarget on the page's
+/// session.
+fn windowIdOf(ctx: *Context, page: *Page) !i64 {
+    var r = try ctx.session.client.call("Browser.getWindowForTarget", "{}", page.session_id, session_mod.command_timeout_ms);
+    defer r.deinit();
+    if (r.errorMessage()) |message| return ctx.fail("Protocol error (Browser.getWindowForTarget): {s}", .{message});
+    const id = (r.result() orelse return error.NoResult).object.get("windowId") orelse return error.NoResult;
+    if (id != .integer) return error.NoResult;
+    return id.integer;
+}
+
+/// resizePage's restore: Browser.getWindowBounds, then setWindowBounds to
+/// "normal" - twice for fullscreen - when the window is not normal.
+fn restoreWindow(ctx: *Context, window_id: i64) !void {
+    const params = try std.fmt.allocPrint(ctx.arena, "{{\"windowId\":{d}}}", .{window_id});
+    var r = try ctx.session.client.call("Browser.getWindowBounds", params, "", session_mod.command_timeout_ms);
+    defer r.deinit();
+    if (r.errorMessage() != null) return error.ProtocolError;
+    const bounds = (r.result() orelse return error.ProtocolError).object.get("bounds") orelse return error.ProtocolError;
+    const state = session_mod.str(bounds.object.get("windowState"));
+    if (std.mem.eql(u8, state, "normal")) return;
+    const restore = try std.fmt.allocPrint(ctx.arena, "{{\"windowId\":{d},\"bounds\":{{\"windowState\":\"normal\"}}}}", .{window_id});
+    const times: usize = if (std.mem.eql(u8, state, "fullscreen")) 2 else 1;
+    for (0..times) |_| {
+        var s = try ctx.session.client.call("Browser.setWindowBounds", restore, "", session_mod.command_timeout_ms);
+        s.deinit();
+    }
+}
 
 fn listPages(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Response) anyerror!void {
     _ = .{ ctx, args, page };

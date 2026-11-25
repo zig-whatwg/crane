@@ -126,7 +126,12 @@ fn initWithPairs(
 
     // Create instance
     const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
-    errdefer deinit(instance);
+    // Until it is returned, the construction is the object's only owner: a
+    // failed step ("initialize" step 1's TypeError) frees it whole. Its own
+    // deinit is its destructor, not a free, and left its slot and State until
+    // the Browser ended (url/urlsearchparams-constructor.any.js; lane hard1-b;
+    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    errdefer runtime.gc.releaseOwned(instance);
 
     const state = instance.getState(State);
 
@@ -166,7 +171,8 @@ pub fn initWithString(
 ) !*runtime.Instance {
     // Create instance
     const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
-    errdefer deinit(instance);
+    // Freed whole if a later step fails, as `initWithPairs` does.
+    errdefer runtime.gc.releaseOwned(instance);
 
     const state = instance.getState(State);
 

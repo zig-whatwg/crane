@@ -432,6 +432,13 @@ pub const NavigationFetchOptions = struct {
     /// params' has transient activation, as the request's user-activation.
     user_activation: bool = false,
 
+    /// The navigable's tab's user agent override
+    /// (user_agent_override.ofNavigable), which the request copies as it is
+    /// made (InternalRequest.override_snapshot): its fetch outlives the
+    /// document that started it, and Chrome applies DevTools overrides to a
+    /// navigation once, at its start. BORROWED for the call. Empty: none.
+    user_agent_override: fetch.algorithms.http_fetch.UserAgentOverride = .{},
+
     pub const Destination = enum {
         document,
         iframe,
@@ -608,6 +615,10 @@ pub fn navigationRequest(
     if (options.policy_container) |container| {
         internal_request.setPolicyContainer(container.clone(allocator) catch return NavigationFetchError.OutOfMemory);
     }
+    // The tab's user agent override, copied now (user agent data: Chrome's
+    // NavigationRequest takes DevTools' headers and User-Agent at its start).
+    const tab_override = options.user_agent_override;
+    internal_request.setOverrideSnapshot(tab_override.user_agent, tab_override.accept_language, tab_override.extra_headers) catch return NavigationFetchError.OutOfMemory;
     return internal_request;
 }
 

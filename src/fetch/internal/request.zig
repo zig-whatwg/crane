@@ -297,6 +297,68 @@ pub const RequestPolicyContainer = union(enum) {
 
 pub const PolicyContainer = @import("policy_container.zig").PolicyContainer;
 
+/// One DevTools extra header (CDP Network.setExtraHTTPHeaders).
+pub const ExtraHeader = struct {
+    name: []const u8,
+    value: []const u8,
+};
+
+/// A tab's user agent override - a host's emulation (CDP's
+/// Emulation/Network.setUserAgentOverride, Network.setExtraHTTPHeaders;
+/// WebDriver BiDi's emulation) - copied onto a request made where the tab
+/// can be read, for a fetch that runs where it cannot: a navigation's
+/// request (its fetch outlives the document that started it) and a
+/// dedicated worker's script request (made on its creator's thread, fetched
+/// on the worker's). Chrome's model: DevTools overrides are applied to a
+/// navigation once, as it starts, keyed by its frame
+/// (content/browser/devtools/devtools_instrumentation.cc
+/// ApplyNetworkRequestOverrides, called from NavigationRequest), and to a
+/// dedicated worker's main script in the browser process that fetches it.
+/// Not a spec concept: user agent data, read only by http_fetch.
+/// userAgentOverrideOf. Everything OWNED by the snapshot (lane mcp1).
+pub const OverrideSnapshot = struct {
+    user_agent: ?[]const u8 = null,
+    accept_language: ?[]const u8 = null,
+    extra_headers: []const ExtraHeader = &.{},
+
+    /// A copy of the given override, or null when it overrides nothing.
+    pub fn create(allocator: Allocator, user_agent: ?[]const u8, accept_language: ?[]const u8, extra_headers: []const ExtraHeader) Allocator.Error!?*OverrideSnapshot {
+        if (user_agent == null and accept_language == null and extra_headers.len == 0) return null;
+        const self = try allocator.create(OverrideSnapshot);
+        self.* = .{};
+        errdefer self.destroy(allocator);
+        if (user_agent) |ua| self.user_agent = try allocator.dupe(u8, ua);
+        if (accept_language) |al| self.accept_language = try allocator.dupe(u8, al);
+        if (extra_headers.len > 0) {
+            const headers = try allocator.alloc(ExtraHeader, extra_headers.len);
+            // Each entry starts empty, so destroy frees exactly what was
+            // copied when a later copy fails.
+            @memset(headers, .{ .name = "", .value = "" });
+            self.extra_headers = headers;
+            for (extra_headers, headers) |from, *to| {
+                to.name = try allocator.dupe(u8, from.name);
+                to.value = try allocator.dupe(u8, from.value);
+            }
+        }
+        return self;
+    }
+
+    pub fn clone(self: *const OverrideSnapshot, allocator: Allocator) Allocator.Error!?*OverrideSnapshot {
+        return create(allocator, self.user_agent, self.accept_language, self.extra_headers);
+    }
+
+    pub fn destroy(self: *OverrideSnapshot, allocator: Allocator) void {
+        if (self.user_agent) |ua| allocator.free(ua);
+        if (self.accept_language) |al| allocator.free(al);
+        for (self.extra_headers) |header| {
+            allocator.free(header.name);
+            allocator.free(header.value);
+        }
+        if (self.extra_headers.len > 0) allocator.free(self.extra_headers);
+        allocator.destroy(self);
+    }
+};
+
 /// Referrer - either special value or URL string.
 pub const Referrer = union(enum) {
     no_referrer,
@@ -386,6 +448,12 @@ pub const InternalRequest = struct {
     /// userAgentOverrideOf). BORROWED: cleared, as the traversable is, when
     /// a kept fetch outlives its client.
     user_agent_client: ?*anyopaque = null,
+
+    /// The tab's user agent override, copied when the request was made
+    /// (OverrideSnapshot: a navigation's, a dedicated worker's script's),
+    /// which http_fetch.userAgentOverrideOf answers before asking the tab.
+    /// OWNED; a clone takes its own copy. Null: none copied.
+    override_snapshot: ?*OverrideSnapshot = null,
 
     // === Request Metadata ===
 
@@ -737,8 +805,17 @@ pub const InternalRequest = struct {
         self.blob_url_captured = true;
     }
 
+    /// Set `override_snapshot` to a copy of the given override (null when it
+    /// overrides nothing), releasing one it replaces.
+    pub fn setOverrideSnapshot(self: *Self, user_agent: ?[]const u8, accept_language: ?[]const u8, extra_headers: []const ExtraHeader) Allocator.Error!void {
+        const copy = try OverrideSnapshot.create(self.allocator, user_agent, accept_language, extra_headers);
+        if (self.override_snapshot) |old| old.destroy(self.allocator);
+        self.override_snapshot = copy;
+    }
+
     /// Deinitialize the request.
     pub fn deinit(self: *Self) void {
+        if (self.override_snapshot) |snapshot| snapshot.destroy(self.allocator);
         if (self.blob_url_entry) |entry| entry.release();
         if (self.network_partition_key) |key| self.allocator.free(key);
         if (self.blob_storage_key) |key| self.allocator.free(key);
@@ -1081,6 +1158,8 @@ pub const InternalRequest = struct {
             new_request.policy_container = .{ .container = cloned_container };
         }
 
+        // And the copied user agent override.
+        if (self.override_snapshot) |snapshot| new_request.override_snapshot = try snapshot.clone(self.allocator);
         // So is non-empty integrity metadata: `deinit` frees it, and a shared
         // slice was freed twice.
         if (self.cryptographic_nonce_owned) try new_request.setCryptographicNonceMetadata(self.cryptographic_nonce_metadata);
@@ -1411,4 +1490,46 @@ test "a request owns a nonce and integrity metadata set through their setters" {
     try std.testing.expectEqualStrings("def", copy.cryptographic_nonce_metadata);
     try std.testing.expect(copy.cryptographic_nonce_metadata.ptr != request.cryptographic_nonce_metadata.ptr);
     try std.testing.expectEqualStrings("sha256-x", copy.integrity_metadata);
+}
+
+test "a request owns the user agent override it copied: set, replaced, cloned, released" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "https://example.com/page.html");
+    defer request.deinit();
+    // Nothing overridden: nothing copied.
+    try request.setOverrideSnapshot(null, null, &.{});
+    try std.testing.expect(request.override_snapshot == null);
+
+    var name = "X-Test".*;
+    var value = "one".*;
+    try request.setOverrideSnapshot("Probe/1", "fr", &.{.{ .name = &name, .value = &value }});
+    // A second one replaces the first, which is released.
+    try request.setOverrideSnapshot("Probe/2", null, &.{.{ .name = &name, .value = &value }});
+    // The copy is the request's: the caller's strings may change.
+    value[0] = 'O';
+    const snapshot = request.override_snapshot.?;
+    try std.testing.expectEqualStrings("Probe/2", snapshot.user_agent.?);
+    try std.testing.expect(snapshot.accept_language == null);
+    try std.testing.expectEqualStrings("one", snapshot.extra_headers[0].value);
+
+    // A redirect's or a service worker's clone takes its own copy.
+    const copy = try request.clone();
+    defer copy.deinit();
+    try std.testing.expect(copy.override_snapshot.? != snapshot);
+    try std.testing.expectEqualStrings("X-Test", copy.override_snapshot.?.extra_headers[0].name);
+    try request.setOverrideSnapshot(null, null, &.{});
+    try std.testing.expect(request.override_snapshot == null);
+    try std.testing.expectEqualStrings("Probe/2", copy.override_snapshot.?.user_agent.?);
+}
+
+fn overrideSnapshotUnderAllocationFailure(allocator: Allocator) !void {
+    const request = try InternalRequest.init(allocator, "https://example.com/page.html");
+    defer request.deinit();
+    try request.setOverrideSnapshot("Probe/1", "fr", &.{ .{ .name = "X-A", .value = "a" }, .{ .name = "X-B", .value = "b" } });
+    const copy = try request.clone();
+    copy.deinit();
+}
+
+test "copying a user agent override with no memory leaks nothing" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, overrideSnapshotUnderAllocationFailure, .{});
 }

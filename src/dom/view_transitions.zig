@@ -590,7 +590,9 @@ fn captureOldState(transition: *Transition, document: *runtime.Instance) !bool {
         // 7.1-7.2: no renderer skips contents or fragments a box.
         // 7.3-7.4: "If transitionName is none, or element is not rendered,
         // then continue."
-        const style = (try style_engine.computedStyle(element, null)) orelse continue;
+        const style_hold = (try style_engine.computedStyle(element, null)) orelse continue;
+        defer style_hold.release();
+        const style = style_hold.style;
         const name = try transitionNameOf(allocator, element, style) orelse continue;
         var owns_name = true;
         defer if (owns_name) allocator.free(name);
@@ -605,7 +607,9 @@ fn captureOldState(transition: *Transition, document: *runtime.Instance) !bool {
     }
     // 8. "For each element in captureElements": the capture.
     for (elements.items, names.items) |element, name| {
-        const style = (try style_engine.computedStyle(element, null)) orelse continue;
+        const style_hold = (try style_engine.computedStyle(element, null)) orelse continue;
+        defer style_hold.release();
+        const style = style_hold.style;
         var capture: Captured = .{ .name = try allocator.dupe(u8, name), .has_old_image = true };
         errdefer capture.deinit(allocator);
         // 8.3-8.5: the snapshot containing block for the document element,
@@ -637,7 +641,9 @@ fn captureNewState(transition: *Transition, document: *runtime.Instance) !bool {
     }
     var walk = ElementWalk.init(document) orelse return true;
     while (walk.next()) |element| {
-        const style = (try style_engine.computedStyle(element, null)) orelse continue;
+        const style_hold = (try style_engine.computedStyle(element, null)) orelse continue;
+        defer style_hold.release();
+        const style = style_hold.style;
         const name = try transitionNameOf(allocator, element, style) orelse continue;
         var owns_name = true;
         defer if (owns_name) allocator.free(name);
@@ -747,7 +753,9 @@ fn updatePseudoElementStyles(transition: *Transition, document: *runtime.Instanc
             // 3.1 "Return failure if ... capturedElement's new element is
             // not rendered."
             if (!try style_engine.isBeingRendered(element)) return false;
-            const style = (try style_engine.computedStyle(element, null)) orelse return false;
+            const style_hold = (try style_engine.computedStyle(element, null)) orelse return false;
+            defer style_hold.release();
+            const style = style_hold.style;
             // 3.2-3.5: the snapshot containing block, else its border box.
             if (root != null and root.? == element) {
                 width = size[0];
