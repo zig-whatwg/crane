@@ -30,18 +30,31 @@
 const std = @import("std");
 const css = @import("css");
 
-/// One side's offset: a pixel length (a whole number when it is not
-/// negative - the module comment), or a percentage.
-pub const Margin = struct {
+/// One side's offset while parsing: a pixel length (a whole number when it
+/// is not negative - the module comment), or a percentage.
+const Margin = struct {
     value: f64 = 0,
     percent: bool = false,
 };
 
-/// The four sides, in the order CSS margins take: top, right, bottom, left.
-pub const Margins = [4]Margin;
+/// The four sides, in the order CSS margins take: top, right, bottom, left -
+/// each a pixel length or a percentage. Packed (40 bytes, where four
+/// Margins are 64): every IntersectionObserver keeps two, and a page that
+/// makes and drops observers by the thousand holds them until a collection
+/// (perf_bench observers.intersection-construct, lane bind1 B5 3a).
+pub const Margins = struct {
+    values: [4]f64 = @splat(0),
+    /// Bit i: side i is a percentage.
+    percent: u4 = 0,
 
-/// "0px 0px 0px 0px": the value when no margin was passed.
-pub const zero: Margins = @splat(.{});
+    pub fn isPercent(self: Margins, side: u2) bool {
+        return self.percent & (@as(u4, 1) << side) != 0;
+    }
+};
+
+/// "0px 0px 0px 0px": what "0px" - the members' default - parses to
+/// (a test pins it), so an absent member needs no parse.
+pub const zero: Margins = .{};
 
 /// A CSS absolute length unit's size in pixels (CSS Values 4, 6.2); null
 /// for any other unit.
@@ -126,7 +139,12 @@ pub fn parse(margin_string: []const u8) ?Margins {
         else => {},
     }
     // 7. "Return tokens."
-    return tokens;
+    var out: Margins = .{};
+    for (tokens, 0..) |token, side| {
+        out.values[side] = token.value;
+        if (token.percent) out.percent |= @as(u4, 1) << @intCast(side);
+    }
+    return out;
 }
 
 /// The rootMargin / scrollMargin getter: "the result of serializing the
@@ -141,10 +159,10 @@ pub fn parse(margin_string: []const u8) ?Margins {
 pub fn serialize(allocator: std.mem.Allocator, margins: Margins) ![]u8 {
     var values: [4]f64 = undefined;
     var units: [4][]const u8 = undefined;
-    for (margins, &values, &units) |margin, *value, *unit| {
+    for (margins.values, &values, &units, 0..) |margin, *value, *unit, side| {
         // -0 is 0: "-0px" serializes as "0px".
-        value.* = if (margin.value == 0) 0 else margin.value;
-        unit.* = if (margin.percent) "%" else "px";
+        value.* = if (margin == 0) 0 else margin;
+        unit.* = if (margins.isPercent(@intCast(side))) "%" else "px";
     }
     return std.fmt.allocPrint(allocator, "{d}{s} {d}{s} {d}{s} {d}{s}", .{
         values[0], units[0], values[1], units[1], values[2], units[2], values[3], units[3],
@@ -173,6 +191,12 @@ test "parse a margin: one to four values fill the four sides as CSS margins do" 
     try expectSerialized("1px 2px 3px", "1px 2px 3px 2px");
     try expectSerialized("1px 2px 3px 4px", "1px 2px 3px 4px");
     try expectSerialized("1px\t2px\n3px", "1px 2px 3px 2px");
+}
+
+test "parse a margin: the members' default \"0px\" is `zero`, which an absent member takes without a parse" {
+    try testing.expectEqual(zero, parse("0px").?);
+    try testing.expectEqual(zero, parse("").?);
+    try testing.expect(@sizeOf(Margins) <= 40);
 }
 
 test "parse a margin: no value at all is 0px" {

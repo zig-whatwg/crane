@@ -122,7 +122,13 @@ pub const InternalState = struct {
     /// force a collection there either. Source evidence stands in where a
     /// probe cannot collect (the integrator, 2026-11-24). The spec says only
     /// "the root provided to the IntersectionObserver constructor".
-    root: ?same_object.Link = null,
+    ///
+    /// The link is kept as its two halves - the pointer, null for no root,
+    /// and the generation - in 16 bytes where a `?same_object.Link` takes
+    /// 24: every observer has the field (perf_bench
+    /// observers.intersection-construct, lane bind1 B5 3a).
+    root: ?*runtime.Instance = null,
+    root_generation: u64 = 0,
 
     /// The observer instance (for callback invocation)
     self_instance: ?*runtime.Instance = null,
@@ -258,9 +264,11 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
     // 3. "Attempt to parse a margin from options.rootMargin. If a list is
     //    returned, set this's internal [[rootMargin]] slot to that.
     //    Otherwise, throw a SyntaxError exception." (default "0px")
-    const root_margin = margin.parse(if (opts.rootMargin) |text| text.asSlice() else "0px") orelse return error.SyntaxError;
+    //    An absent member is its default, "0px", which parses to
+    //    margin.zero (src/dom/intersection_margin.zig pins it): no parse.
+    const root_margin = if (opts.rootMargin) |text| margin.parse(text.asSlice()) orelse return error.SyntaxError else margin.zero;
     // 4. The same from options.scrollMargin, into [[scrollMargin]].
-    const scroll_margin = margin.parse(if (opts.scrollMargin) |text| text.asSlice() else "0px") orelse return error.SyntaxError;
+    const scroll_margin = if (opts.scrollMargin) |text| margin.parse(text.asSlice()) orelse return error.SyntaxError else margin.zero;
 
     // 5. "Let thresholds be a list equal to options.threshold." (default 0)
     var single: [1]f64 = .{0};
@@ -294,9 +302,14 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
     internal.root_margin = root_margin;
     internal.scroll_margin = scroll_margin;
 
-    // 7. "Sort thresholds in ascending order."
+    // 7. "Sort thresholds in ascending order." Equal doubles are the same
+    //    value, so an unstable sort gives the same list; and one or none is
+    //    sorted already. std.mem.sort (a block sort) took about a quarter
+    //    of every construction's time for the default single [0] - a
+    //    sampled profile of perf_bench observers.intersection-construct
+    //    (lane bind1 B5 3a, 2026-11-25).
     try internal.thresholds.appendSlice(internal.allocator, given);
-    std.mem.sort(f64, internal.thresholds.items, {}, std.sort.asc(f64));
+    if (internal.thresholds.items.len > 1) std.mem.sortUnstable(f64, internal.thresholds.items, {}, std.sort.asc(f64));
     // 8. "If thresholds is empty, append 0 to thresholds."
     if (internal.thresholds.items.len == 0) try internal.thresholds.append(internal.allocator, 0.0);
     // 9. "The thresholds attribute getter will return this sorted
@@ -319,7 +332,11 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
     // The root attribute: "the root provided to the IntersectionObserver
     // constructor, or null if none was provided" (2.2).
     if (opts.root) |root| switch (root) {
-        inline else => |node| internal.root = same_object.Link.to(node),
+        inline else => |node| {
+            const link = same_object.Link.to(node);
+            internal.root = link.instance;
+            internal.root_generation = link.generation;
+        },
     };
 
     // 14. "Return this."
@@ -329,8 +346,8 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
 /// The observer's root while it is alive; null for an implicit root
 /// observer and once the root was collected (`InternalState.root`).
 fn rootOf(internal: *const InternalState) ?*runtime.Instance {
-    const link = internal.root orelse return null;
-    return if (dom.refcount.weakLinkLive(link.instance, link.generation)) link.instance else null;
+    const root = internal.root orelse return null;
+    return if (dom.refcount.weakLinkLive(root, internal.root_generation)) root else null;
 }
 
 /// Getter for root: the root the constructor was given; null when none was,
