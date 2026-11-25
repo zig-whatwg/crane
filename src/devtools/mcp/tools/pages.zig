@@ -303,7 +303,8 @@ fn reload(ctx: *Context, page: *Page, ignore_cache: bool, timeout: u32) !void {
 }
 
 /// Puppeteer's goBack/goForward: Page.getNavigationHistory, then
-/// Page.navigateToHistoryEntry and the load.
+/// Page.navigateToHistoryEntry and its navigation (waitForNavigation: the
+/// load of a new document, or a same-document navigation).
 fn history(ctx: *Context, page: *Page, back: bool, timeout: u32) !void {
     var h = try ctx.session.client.call("Page.getNavigationHistory", "{}", page.session_id, timeout);
     defer h.deinit();
@@ -315,11 +316,24 @@ fn history(ctx: *Context, page: *Page, back: bool, timeout: u32) !void {
     if (next < 0 or next >= entries.len) return ctx.fail("History entry to navigate to not found.", .{});
     const entry_id = entries[@intCast(next)].object.get("id").?.integer;
     page.load_fired = false;
+    page.same_document_navigated = false;
     const params = try std.fmt.allocPrint(ctx.arena, "{{\"entryId\":{d}}}", .{entry_id});
     var r = try ctx.session.client.call("Page.navigateToHistoryEntry", params, page.session_id, timeout);
     defer r.deinit();
     if (r.errorMessage()) |message| return ctx.fail("Protocol error (Page.navigateToHistoryEntry): {s}", .{message});
-    try waitForLoad(ctx, page, timeout);
+    try waitForNavigation(ctx, page, timeout);
+}
+
+/// Puppeteer's waitForNavigation (LifecycleWatcher, waitUntil "load"): a
+/// same-document navigation of the main frame, or a new document's load.
+fn waitForNavigation(ctx: *Context, page: *Page, timeout: u32) !void {
+    const Navigated = struct {
+        page: *Page,
+        fn done(self: @This()) bool {
+            return self.page.same_document_navigated or self.page.load_fired or self.page.closed;
+        }
+    };
+    if (!try ctx.session.waitUntil(timeout, Navigated{ .page = page }, Navigated.done)) return ctx.fail("Navigation timeout of {d} ms exceeded", .{timeout});
 }
 
 fn waitForLoad(ctx: *Context, page: *Page, timeout: u32) !void {
