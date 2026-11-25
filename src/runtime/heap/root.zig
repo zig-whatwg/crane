@@ -57,19 +57,73 @@ pub const general = @import("general.zig");
 
 const BrowserHeap = browser_heap.BrowserHeap;
 const Classes = classes.Classes;
-/// The classes general blocks take (batch B, M2): the eighths scheme - 16-byte
-/// steps to 512 B, then eight per doubling to 16 KiB, 72 classes - not the
-/// State blocks' quantum16 (258): every general class in use keeps a partly
-/// filled span committed, per partition, per Browser.
-pub const GeneralClasses = classes.SizeClasses(.eighths);
+/// The classes general blocks take (batch B, M6): PartitionAlloc's quarters
+/// scheme - 16-byte steps to 128 B, then four per doubling to 16 KiB, 36
+/// classes (allocator-hardening design 3.3 & 6.3) - half the classes of
+/// eighths (72), halving partly filled spans committed per Browser.
+pub const GeneralClasses = classes.SizeClasses(.quarters);
+
+/// Comptime magic multiplier for exact `within / block_bytes` over any offset
+/// within a 16 KiB span (`within < 16384`, `block_bytes = 16 * m`, `1 <= m <= 1024`):
+/// `((within >> 4) * magic) >> 20 == within / block_bytes` with zero runtime
+/// `udiv`, and `slot * block_bytes == within` checks exact alignment in one
+/// multiply-compare (batch B, M4).
+const SlotDiv = struct {
+    block_bytes: u32,
+    magic: u32,
+};
+const general_slot_div: [GeneralClasses.count]SlotDiv = blk: {
+    var table: [GeneralClasses.count]SlotDiv = undefined;
+    for (0..GeneralClasses.count) |c| {
+        const bb = GeneralClasses.bytes(c);
+        const m = bb / 16;
+        table[c] = .{
+            .block_bytes = @intCast(bb),
+            .magic = @intCast(((@as(usize, 1) << 20) + m - 1) / m),
+        };
+    }
+    break :blk table;
+};
+
+comptime {
+    // Pin exactness of the magic multiplier for every general class and
+    // every 16-byte position in a span (compile-time check, zero runtime cost).
+    @setEvalBranchQuota(100_000);
+    for (0..GeneralClasses.count) |c| {
+        const d = general_slot_div[c];
+        const slots_in_span = browser_heap.span_bytes / 16;
+        for (0..slots_in_span) |q| {
+            const within = q * 16;
+            const slot = (q * d.magic) >> 20;
+            if (slot != within / d.block_bytes) @compileError("general_slot_div magic mismatch");
+        }
+    }
+}
 
 /// The general class of a request, or null past the largest (a large run).
-fn generalClassOf(size: usize, alignment: usize) ?usize {
+inline fn generalClassOf(size: usize, alignment: usize) ?usize {
     const n = classes.requestBytes(size, alignment);
     if (n > GeneralClasses.max_size) return null;
     const class = GeneralClasses.of(n);
     std.debug.assert(alignment <= classes.natural_alignment or GeneralClasses.bytes(class) % alignment == 0);
     return class;
+}
+
+/// Fast general class lookup from `std.mem.Alignment` (batch B, M4): 99%+ of
+/// calls have `alignment <= 16` (`align_log2 <= 4`) and 70-92% have
+/// `size <= 128`, avoiding `toByteUnits()`, `alignForward` and runtime modulo.
+inline fn generalClassOfAlign(size: usize, alignment: std.mem.Alignment) ?usize {
+    if (@backingInt(alignment) <= 4) {
+        if (size <= 128) return if (size == 0) 0 else (size - 1) >> 4;
+        if (size <= GeneralClasses.max_size) return GeneralClasses.of(size);
+        return null;
+    }
+    return generalClassOfSlow(size, alignment.toByteUnits());
+}
+
+fn generalClassOfSlow(size: usize, alignment: usize) ?usize {
+    @branchHint(.cold);
+    return generalClassOf(size, alignment);
 }
 const layout = browser_heap.layout;
 
@@ -520,6 +574,9 @@ const Partition = struct {
     /// many it holds.
     huge_table: u32 = no_chunk,
     huge_count: u32 = 0,
+    /// Committed bytes of general large runs currently in the empty tier
+    /// (maintained by `setTier`, bounded by `empty_large_budget_bytes`: M5).
+    empty_large_bytes: usize = 0,
     stats: PartitionStats = .{},
 };
 
@@ -538,26 +595,46 @@ const huge_regions_max: usize = 4096;
 /// A huge block's span entry's bucket.
 const huge_bucket: u16 = std.math.maxInt(u16) - 1;
 
-/// How many blocks an agent's cache keeps per class of each general
-/// partition (batch B; measured with time and memory before it is chosen).
-pub const cache_depth: usize = 32;
+/// How many blocks an agent's cache keeps per cached class of each general
+/// partition (batch B, M3: W2 measured depth 8 equal on time and strictly
+/// lower on memory than 32 and 128).
+pub const cache_depth: usize = 8;
 
-/// An agent's general-memory cache (design 3.7): per class of the objects
-/// and bytes partitions, a stack of released blocks' offsets - an array, no
-/// link in any block (libpas's thread-local cache, pas_thread_local_cache.h)
-/// - which its agent's thread takes from and gives back to without the
-/// partition's lock. Its blocks are `.cached` in their slot maps, so a double
-/// free of one is caught. Reached through its allocator (heap.general), never
-/// a threadlocal; in the objects partition's metadata pool.
+/// Largest general class cached in `AgentCache` (M3): classes past 2 KiB
+/// (2.5-16 KiB) go straight to the shared path so large spans are never
+/// pinned `.cached` in a thread cache.
+pub const cache_max_bytes: usize = 2048;
+const cache_class_count: usize = GeneralClasses.of(cache_max_bytes) + 1;
+
+/// M5 (bounded empty large-run retention): a general large run at or below
+/// `large_keep_max_bytes` keeps at most one empty run per bucket while the
+/// partition's empty large-run total stays within `empty_large_budget_bytes`;
+/// larger runs and anything past the budget decommit immediately at free.
+const large_keep_max_bytes: usize = 128 * KiB;
+const empty_large_budget_bytes: usize = 256 * KiB;
+
+/// An agent's general-memory cache (design 3.7): per small class (<= 2 KiB)
+/// of the objects and bytes partitions, a stack of released blocks' offsets -
+/// an array, no link in any block (libpas's thread-local cache,
+/// pas_thread_local_cache.h) - which its agent's thread takes from and gives
+/// back to without the partition's lock. Its blocks are `.cached` in their
+/// slot maps, so a double free of one is caught. Reached through its allocator
+/// (heap.general), never a threadlocal; in the objects partition's metadata pool.
 pub const AgentCache = struct {
     engine: *Engine,
     /// The agent's thread: the one whose calls take the cache unlocked. 0
     /// once detached.
     owner: std.atomic.Value(std.Thread.Id),
-    stacks: [2][GeneralClasses.count]Stack = @splat(@splat(.{})),
+    stacks: [2][cache_class_count]Stack = @splat(@splat(.{})),
+    /// Owner-thread shadow of `held`: mutated without atomic RMW and mirrored
+    /// to `held` via plain monotonic stores for `Engine.stats()` (M4).
+    held_local: [2]usize = .{ 0, 0 },
     /// Blocks the stacks hold now (objects, bytes): out of their spans and
     /// counted live in their buckets, but no one's - the stats subtract them.
     held: [2]std.atomic.Value(usize) = .{ .init(0), .init(0) },
+    /// Owner-thread cached partition frontiers (objects, bytes): avoids an
+    /// `.acquire` load of `p.frontier` on 99.999% of `cacheFree` calls (M4).
+    seen_frontier: [2]usize = .{ 0, 0 },
     next: ?*AgentCache = null,
 
     pub const Stack = struct {
@@ -883,6 +960,15 @@ pub const Engine = struct {
         while (@cmpxchgWeak(u64, word, old, (old & ~mask) | bits, .monotonic, .monotonic)) |actual| old = actual;
     }
 
+    /// Move `slot` from `.cached` (11) to `.allocated` (01) in one atomic
+    /// bit-clear (M4: single arm64 `ldclr` with no CAS loop), returning
+    /// whether the slot was `.cached`.
+    inline fn slotClaimCached(map: *[map_words]u64, slot: usize) bool {
+        const shift: u6 = @intCast((slot % 32) * 2);
+        const prev = @atomicRmw(u64, &map[slot / 32], .And, ~(@as(u64, 2) << shift), .monotonic);
+        return ((prev >> shift) & 3) == @backingInt(SlotState.cached);
+    }
+
     /// Move `slot` from `from` to `to` in one atomic step; false, and no
     /// change, when it was not in `from` (an agent cache's free of a block
     /// not allocated: a double free).
@@ -1058,13 +1144,19 @@ pub const Engine = struct {
         return @intCast(first);
     }
 
-    fn setTier(self: *Engine, p: *const Partition, b: *Bucket, e: *const SpanEntry, tier: Tier, on: bool) void {
+    fn setTier(self: *Engine, p: *Partition, b: *Bucket, e: *const SpanEntry, tier: Tier, on: bool) void {
         const c = self.chunk(p, e.chunk);
         const bit = @as(u64, 1) << @intCast(e.ordinal);
         const t = @backingInt(tier);
         const was = c.masks[t] & bit != 0;
         if (tier == .empty and was != on) {
-            if (on) b.empty_count += 1 else b.empty_count -= 1;
+            if (on) {
+                b.empty_count += 1;
+                if (b.general and b.kind == .large) p.empty_large_bytes += b.block_bytes;
+            } else {
+                b.empty_count -= 1;
+                if (b.general and b.kind == .large) p.empty_large_bytes -= b.block_bytes;
+            }
         }
         if (on) {
             c.masks[t] |= bit;
@@ -1414,9 +1506,11 @@ pub const Engine = struct {
             std.Io.Threaded.mutexLockUncancelable(&p.mutex);
             defer std.Io.Threaded.mutexUnlock(&p.mutex);
             for (&cache.stacks[pi], 0..) |*stack, class| {
+                if (stack.count == 0) continue;
                 self.giveBack(p, generalBucket(pid, class, 0), stack.at[0..stack.count]);
                 stack.count = 0;
             }
+            cache.held_local[pi] = 0;
             cache.held[pi].store(0, .monotonic);
         }
     }
@@ -1437,26 +1531,33 @@ pub const Engine = struct {
 
     /// A general class block from `cache`, on its agent's thread: the top of
     /// its stack for the class, refilled from the spans under the lock when
-    /// empty. A large run or a huge block takes the shared path.
-    pub fn cacheAlloc(self: *Engine, cache: *AgentCache, pid: PartitionId, size: usize, alignment: usize, return_address: usize) Error![*]u8 {
-        const class = generalClassOf(size, alignment) orelse return self.allocGeneral(pid, size, alignment, return_address);
+    /// empty. Classes past `cache_max_bytes`, large runs and huge blocks take
+    /// the shared path.
+    pub fn cacheAlloc(self: *Engine, cache: *AgentCache, pid: PartitionId, size: usize, alignment: std.mem.Alignment, return_address: usize) Error![*]u8 {
+        const class = generalClassOfAlign(size, alignment) orelse
+            return self.allocGeneral(pid, size, alignment.toByteUnits(), return_address);
+        if (class >= cache_class_count)
+            return self.allocGeneral(pid, size, alignment.toByteUnits(), return_address);
         const pi = cacheIndex(pid);
         const stack = &cache.stacks[pi][class];
         if (stack.count == 0) try self.refill(cache, pid, class);
         stack.count -= 1;
         const offset = @as(usize, stack.at[stack.count]) * 16;
-        _ = cache.held[pi].fetchSub(1, .monotonic);
-        const p = self.partition(pid);
-        const b = &self.buckets(pid)[generalBucket(pid, class, 0)];
+        cache.held_local[pi] -= 1;
+        cache.held[pi].store(cache.held_local[pi], .monotonic);
         const index = offset / span_bytes;
-        const slot = (offset - index * span_bytes) / b.block_bytes;
-        if (!slotSwap(self.slotMap(index), slot, .cached, .allocated)) @panic("heap: a cached block left its cache's state (allocator-hardening design 3.3)");
+        const within = offset & (span_bytes - 1);
+        const slot = ((within >> 4) * general_slot_div[class].magic) >> 20;
+        if (!slotClaimCached(self.slotMap(index), slot)) @panic("heap: a cached block left its cache's state (allocator-hardening design 3.3)");
         const block: [*]u8 = @ptrFromInt(self.heap.window_base + offset);
-        if (self.fills(p)) self.verifyFreed(block[0..size], false);
-        const e = self.entry(index);
-        if (e.sites != 0) {
-            const sites: [*]usize = @ptrFromInt(self.heap.window_base + p.pool_base + (@as(usize, e.sites) - 1) * @sizeOf(Chunk));
-            sites[slot] = return_address | site_return_tag | site_general_tag;
+        if (pid != .bytes or self.config.fill == .poison) self.verifyFreed(block[0..size], false);
+        if (self.config.record_sites) {
+            const e = self.entry(index);
+            if (e.sites != 0) {
+                const p = self.partition(pid);
+                const sites: [*]usize = @ptrFromInt(self.heap.window_base + p.pool_base + (@as(usize, e.sites) - 1) * @sizeOf(Chunk));
+                sites[slot] = return_address | site_return_tag | site_general_tag;
+            }
         }
         return block;
     }
@@ -1466,30 +1567,55 @@ pub const Engine = struct {
     /// its class, allocated - the last in one atomic step), filled, and onto
     /// the cache's stack, half of which goes back to the spans when it is
     /// full. An objects block freed while the window agent runs a task here
-    /// is held by the quarantine instead (the shared path); a large run or a
-    /// huge block takes the shared path.
-    pub fn cacheFree(self: *Engine, cache: *AgentCache, ptr: [*]u8, size: usize, alignment: usize) void {
-        const class = generalClassOf(size, alignment) orelse return self.freeGeneral(ptr, size, alignment);
+    /// goes directly to `freeIn` under the objects lock (no duplicate checks
+    /// or `getCurrentId` calls); classes past `cache_max_bytes`, large runs
+    /// and huge blocks take the shared path.
+    pub fn cacheFree(self: *Engine, cache: *AgentCache, ptr: [*]u8, size: usize, alignment: std.mem.Alignment, thread: std.Thread.Id) void {
+        const class = generalClassOfAlign(size, alignment) orelse
+            return self.freeGeneral(ptr, size, alignment.toByteUnits());
+        if (class >= cache_class_count)
+            return self.freeGeneral(ptr, size, alignment.toByteUnits());
         const address = @intFromPtr(ptr);
         const offset = self.offsetOf(address) orelse return self.violation(.other_heap, address);
-        const pid = self.partitionOfOffset(offset) orelse return self.violation(.invalid_free, address);
+        // Fast path: check the alignment's expected partition first (one
+        // unsigned range test); fall back to full partition lookup on mismatch
+        // so cross-partition invalid frees still get exact diagnostics.
+        const expected = general.partitionFor(alignment);
+        const ep = self.partition(expected);
+        const pid: PartitionId = if (offset -% ep.lo < ep.hi - ep.lo)
+            expected
+        else
+            self.partitionOfOffset(offset) orelse return self.violation(.invalid_free, address);
         if (pid == .node) return self.violation(.invalid_free, address);
-        if (pid == .objects and self.holds(null)) return self.freeGeneral(ptr, size, alignment);
+        const want = generalBucket(pid, class, 0);
+        if (pid == .objects and self.holds(thread)) {
+            std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+            self.freeIn(&self.objects, offset, want, false, size, thread);
+            return;
+        }
         const p = self.partition(pid);
-        if (offset >= @atomicLoad(usize, &p.frontier, .acquire)) return self.violation(.invalid_free, address);
+        const pi = cacheIndex(pid);
+        if (offset >= cache.seen_frontier[pi]) {
+            const f = @atomicLoad(usize, &p.frontier, .acquire);
+            cache.seen_frontier[pi] = f;
+            if (offset >= f) return self.violation(.invalid_free, address);
+        }
         const index = offset / span_bytes;
         const e = self.entry(index);
-        if (e.state == .unopened or e.state == .run_tail) return self.violation(.invalid_free, address);
-        if (e.state != .active) return self.violation(.double_free, address);
-        const want = generalBucket(pid, class, 0);
-        if (e.bucket != want) return self.violation(if (e.bucket >= self.buckets(pid).len or self.buckets(pid)[e.bucket].kind == .instance) .invalid_free else .wrong_size, address);
-        const b = &self.buckets(pid)[want];
-        const within = offset - index * span_bytes;
-        if (within % b.block_bytes != 0) return self.violation(.invalid_free, address);
-        const slot = within / b.block_bytes;
+        if (e.state != .active) {
+            return self.violation(if (e.state == .unopened or e.state == .run_tail) .invalid_free else .double_free, address);
+        }
+        if (e.bucket != want) {
+            @branchHint(.cold);
+            return self.violation(if (e.bucket >= self.buckets(pid).len or self.buckets(pid)[e.bucket].kind == .instance) .invalid_free else .wrong_size, address);
+        }
+        const div = general_slot_div[class];
+        const within = offset & (span_bytes - 1);
+        const slot = ((within >> 4) * div.magic) >> 20;
+        if (slot * div.block_bytes != within) return self.violation(.invalid_free, address);
         if (!slotSwap(self.slotMap(index), slot, .allocated, .cached)) return self.violation(.double_free, address);
-        if (self.fills(p)) @memset(ptr[0..b.fill_bytes], self.config.fillByte());
-        const pi = cacheIndex(pid);
+        if (pid != .bytes or self.config.fill == .poison) @memset(ptr[0..div.block_bytes], self.config.fillByte());
         const stack = &cache.stacks[pi][class];
         if (stack.count == cache_depth) {
             // Full: the older half goes back to its spans.
@@ -1501,16 +1627,19 @@ pub const Engine = struct {
             }
             std.mem.copyForwards(u32, stack.at[0 .. cache_depth - half], stack.at[half..cache_depth]);
             stack.count = cache_depth - half;
-            _ = cache.held[pi].fetchSub(half, .monotonic);
+            cache.held_local[pi] -= half;
         }
         stack.at[stack.count] = @intCast(offset / 16);
         stack.count += 1;
-        _ = cache.held[pi].fetchAdd(1, .monotonic);
+        cache.held_local[pi] += 1;
+        cache.held[pi].store(cache.held_local[pi], .monotonic);
     }
 
-    /// Fill `cache`'s stack for `class` of `pid` with up to half its depth of
-    /// blocks, lowest address first, under the partition's lock: from the
-    /// bucket's magazine, then its spans.
+    /// Fill `cache`'s stack for `class` of `pid` with up to `want` blocks
+    /// (at most `cache_depth / 2` and at most ~1 KiB), lowest address first,
+    /// under the partition's lock. Past the first block, only already-committed
+    /// spans with room are drawn from (`takeSlotExisting`): refill never opens
+    /// or recommits an extra span just to top up a cache (M3).
     fn refill(self: *Engine, cache: *AgentCache, pid: PartitionId, class: usize) Error!void {
         const p = self.partition(pid);
         if (p.lo == p.hi) return error.OutOfMemory;
@@ -1518,29 +1647,29 @@ pub const Engine = struct {
         const b = &self.buckets(pid)[bi];
         const pi = cacheIndex(pid);
         const stack = &cache.stacks[pi][class];
+        const want: usize = @min(cache_depth / 2, @max(@as(usize, 1), 1024 / general_slot_div[class].block_bytes));
         std.Io.Threaded.mutexLockUncancelable(&p.mutex);
         defer std.Io.Threaded.mutexUnlock(&p.mutex);
-        var n: usize = 0;
-        while (n < cache_depth / 2) : (n += 1) {
-            const offset = self.takeSlot(p, b, bi) catch |err| {
-                if (n == 0) return err;
-                break;
-            };
-            // Lowest address on top: the stack pops from the end.
-            stack.at[cache_depth / 2 - 1 - n] = @intCast(offset / 16);
+        var got: [cache_depth / 2]u32 = undefined;
+        const first = try self.takeSlot(p, b, bi);
+        got[0] = @intCast(first / 16);
+        var n: usize = 1;
+        while (n < want) : (n += 1) {
+            const offset = self.takeSlotExisting(p, b) orelse break;
+            got[n] = @intCast(offset / 16);
         }
-        // Slide what was taken to the bottom, lowest last (popped first).
-        if (n < cache_depth / 2) std.mem.copyForwards(u32, stack.at[0..n], stack.at[cache_depth / 2 - n .. cache_depth / 2]);
+        // Lowest address on top: the stack pops from the end.
+        for (0..n) |i| stack.at[i] = got[n - 1 - i];
         stack.count = @intCast(n);
-        _ = cache.held[pi].fetchAdd(n, .monotonic);
+        cache.held_local[pi] += n;
+        cache.held[pi].store(cache.held_local[pi], .monotonic);
+        cache.seen_frontier[pi] = p.frontier;
     }
 
-    /// A block of bucket `b` out of its spans into a cache, state `.cached`:
-    /// as `allocIn` takes one (the bucket's magazine first, then the lowest
-    /// span with room, a released span, a new one), counted live in the
-    /// bucket. A fresh slot is filled as a freed one is, so every cached
-    /// block reads the fill. The partition's lock held. Its offset.
-    fn takeSlot(self: *Engine, p: *Partition, b: *Bucket, bi: u16) Error!usize {
+    /// A block of bucket `b` from an ALREADY-COMMITTED span with room (or its
+    /// magazine, if any), without opening or recommitting a span. Null if none
+    /// has room. The partition's lock held.
+    fn takeSlotExisting(self: *Engine, p: *Partition, b: *Bucket) ?usize {
         if (magazine_depth != 0 and b.mag_count != 0) {
             b.mag_count -= 1;
             const offset = @as(usize, self.magazineOf(p, b)[b.mag_count]) * 16;
@@ -1551,13 +1680,27 @@ pub const Engine = struct {
         }
         var index = b.current;
         if (index == no_span or self.entry(index).used == self.entry(index).slots) {
-            index = self.lowest(p, b, .room) orelse released: {
-                const released = self.lowest(p, b, .released) orelse break :released try self.openSpan(p, bi);
-                try self.reuseReleased(p, b, released);
-                break :released released;
-            };
+            index = self.lowest(p, b, .room) orelse return null;
             b.current = index;
         }
+        return self.takeSlotFromSpan(p, b, index);
+    }
+
+    /// A block of bucket `b` out of its spans into a cache, state `.cached`:
+    /// from an already-committed span first, else a released span or a new
+    /// span. The partition's lock held. Its offset.
+    fn takeSlot(self: *Engine, p: *Partition, b: *Bucket, bi: u16) Error!usize {
+        if (self.takeSlotExisting(p, b)) |offset| return offset;
+        const index = released: {
+            const released = self.lowest(p, b, .released) orelse break :released try self.openSpan(p, bi);
+            try self.reuseReleased(p, b, released);
+            break :released released;
+        };
+        b.current = index;
+        return self.takeSlotFromSpan(p, b, index);
+    }
+
+    fn takeSlotFromSpan(self: *Engine, p: *Partition, b: *Bucket, index: u32) usize {
         const e = self.entry(index);
         const map = self.slotMap(index);
         const slot = findFree(map, e.hint, e.slots) orelse unreachable;
@@ -1572,7 +1715,7 @@ pub const Engine = struct {
             self.setTier(p, b, e, .room, false);
             b.current = no_span;
         }
-        const offset = index * span_bytes + slot * b.block_bytes;
+        const offset = @as(usize, index) * span_bytes + slot * b.block_bytes;
         if (slot >= e.issued_hi) {
             e.issued_hi = @intCast(slot + 1);
             b.fresh += 1;
@@ -1787,9 +1930,9 @@ pub const Engine = struct {
         self.freeIn(&self.objects, offset, instance_bucket, true, instance_fill_bytes, thread);
     }
 
-    fn offsetOf(self: *Engine, address: usize) ?usize {
+    inline fn offsetOf(self: *Engine, address: usize) ?usize {
         const base = self.heap.reserved.base;
-        if (address < base or address - base >= self.heap.reserved.size) return null;
+        if (address -% base >= self.heap.reserved.size) return null;
         return address - self.heap.window_base;
     }
 
@@ -1854,7 +1997,7 @@ pub const Engine = struct {
         // more spans than lowest-address-first keeps them in, spans last
         // touched just before idle decommit looked: +0.7 to +1.2 MB steady and
         // collected on the events and tree rows (lane hard1's chat2 runs).
-        if (magazine_depth != 0 and b.kind != .large and !self.config.retire_freed_spans and
+        if (!b.general and magazine_depth != 0 and b.kind != .large and !self.config.retire_freed_spans and
             (b.current == no_span or index <= b.current) and
             self.pushMagazine(p, b, index, slot)) return;
         self.releaseSlot(p, b, index, slot, self.now_ms.load(.monotonic));
@@ -1964,14 +2107,23 @@ pub const Engine = struct {
         if (e.used == 0) {
             self.setTier(p, b, e, .empty, true);
             p.stats.spans_empty += 1;
-            // M1 (batch B): a general large run gives its pages back at once
-            // past the one empty run its bucket keeps for its next block -
-            // a growing buffer walks many run lengths, and each would keep
-            // its run committed until idle decommit (libc gives a large
-            // block back at its free).
-            if (b.general and b.kind == .large and b.empty_count > 1) {
-                self.releaseSpan(p, b, @intCast(index), false);
-                return;
+            // M5 (batch B): bounded empty-span retention for general buckets
+            // (PartitionAlloc's bounded empty slot-span ring):
+            // - class buckets keep at most 1 empty span committed for hot reuse
+            //   and decommit additional empty spans immediately at free (fixes
+            //   the 35-118 MB bursts held across settles in streams/qSA/observers);
+            // - large runs keep 1 empty run only when <= 128 KiB and the
+            //   partition's empty large-run total is <= 256 KiB; larger runs
+            //   (e.g. 1-2 MiB gzip/br buffers) and excess runs decommit at once.
+            if (b.general) {
+                const decommit_now = if (b.kind == .large)
+                    b.empty_count > 1 or b.block_bytes > large_keep_max_bytes or p.empty_large_bytes > empty_large_budget_bytes
+                else
+                    b.empty_count > 1;
+                if (decommit_now) {
+                    self.releaseSpan(p, b, @intCast(index), false);
+                    return;
+                }
             }
             // The bug-finding run makes it inaccessible at once - unless it
             // is the span the bucket allocates from next (no lower span has

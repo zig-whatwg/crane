@@ -60,14 +60,11 @@ pub fn engineOf(allocator: std.mem.Allocator) ?*heap.Engine {
     return null;
 }
 
-inline fn onAgentThread(cache: *heap.AgentCache) bool {
-    return cache.owner.load(.monotonic) == std.Thread.getCurrentId();
-}
-
 fn agentAlloc(context: *anyopaque, len: usize, alignment: std.mem.Alignment, return_address: usize) ?[*]u8 {
     const cache: *heap.AgentCache = @ptrCast(@alignCast(context));
     const pid = partitionFor(alignment);
-    if (onAgentThread(cache)) return cache.engine.cacheAlloc(cache, pid, len, alignment.toByteUnits(), return_address) catch null;
+    if (cache.owner.load(.monotonic) == std.Thread.getCurrentId())
+        return cache.engine.cacheAlloc(cache, pid, len, alignment, return_address) catch null;
     return cache.engine.allocGeneral(pid, len, alignment.toByteUnits(), return_address) catch null;
 }
 
@@ -84,13 +81,15 @@ fn agentRemap(context: *anyopaque, memory: []u8, alignment: std.mem.Alignment, n
 fn agentFree(context: *anyopaque, memory: []u8, alignment: std.mem.Alignment, return_address: usize) void {
     _ = return_address;
     const cache: *heap.AgentCache = @ptrCast(@alignCast(context));
-    if (onAgentThread(cache)) return cache.engine.cacheFree(cache, memory.ptr, memory.len, alignment.toByteUnits());
+    const thread = std.Thread.getCurrentId();
+    if (cache.owner.load(.monotonic) == thread)
+        return cache.engine.cacheFree(cache, memory.ptr, memory.len, alignment, thread);
     cache.engine.freeGeneral(memory.ptr, memory.len, alignment.toByteUnits());
 }
 
 /// The partition a call of `alignment` is routed to.
 pub inline fn partitionFor(alignment: std.mem.Alignment) heap.PartitionId {
-    return if (alignment.toByteUnits() < @alignOf(usize)) .bytes else .objects;
+    return if (@backingInt(alignment) < @ctz(@as(usize, @alignOf(usize)))) .bytes else .objects;
 }
 
 fn alloc(context: *anyopaque, len: usize, alignment: std.mem.Alignment, return_address: usize) ?[*]u8 {
