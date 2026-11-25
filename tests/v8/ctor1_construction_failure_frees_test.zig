@@ -18,9 +18,10 @@
 //!   index by index): Event, a subclass of a subclass (KeyboardEvent), and
 //!   a constructor that registers itself (BroadcastChannel);
 //! - a constructor that made child objects, then failed: MessageChannel
-//!   (its ports);
-//! - constructor steps that run script which throws, after the make:
-//!   TransformStream's transformer.start().
+//!   (its ports).
+//! Script that throws inside the steps, after the make - TransformStream's
+//! transformer.start() - is tests/v8/ctor1_transform_stream_start_test.zig's
+//! (its own merge: the stream kept its startPromise).
 //!
 //! Each failed construction must leave the scope's slab with the objects it
 //! had before (`currently_allocated`): the object made, and any child of it,
@@ -31,7 +32,6 @@
 const std = @import("std");
 const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
-const protocol = @import("engine");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const testing = std.testing;
@@ -155,114 +155,4 @@ test "a BroadcastChannel whose steps fail after it was made frees it whole" {
 
 test "a MessageChannel that fails after making its ports frees it and its ports whole" {
     try sweep("MessageChannel", newMessageChannel);
-}
-
-// Script that throws inside the constructor steps, after the make: the
-// object's realm has an engine, and the steps run script with it.
-
-const WindowHost = struct {
-    fn createGlobalObject(r: runtime.Context, global_this: runtime.JSValue, host: ?*anyopaque) ?*runtime.Instance {
-        _ = global_this;
-        _ = host;
-        return interfaces.Window.init(std.heap.c_allocator, r) catch null;
-    }
-};
-
-const Reports = struct {
-    count: usize = 0,
-
-    fn report(host: ?*anyopaque, info: *const protocol.ErrorInfo) void {
-        const self: *Reports = @ptrCast(@alignCast(host.?));
-        self.count += 1;
-        std.debug.print("reported: {s}\n", .{info.message});
-    }
-
-    fn reporter(self: *Reports) protocol.Reporter {
-        return .{ .report = report, .host = self };
-    }
-};
-
-const no_hooks: protocol.HostHooks = .{};
-
-const Page = struct {
-    agent: *protocol.Agent,
-    realm: runtime.Context,
-
-    fn open() !Page {
-        test_process.start();
-        const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
-        errdefer protocol.destroyAgent(agent);
-        const realm = try protocol.createWindowRealm(&.{
-            .agent_cluster_cross_origin_isolated = true,
-            .agent = agent,
-            .allocator = std.heap.c_allocator,
-            .from_snapshot = false,
-            .timer = null,
-            .origin = "https://example.test",
-            .create_global_object = WindowHost.createGlobalObject,
-        });
-        return .{ .agent = agent, .realm = realm };
-    }
-
-    fn close(self: Page) void {
-        protocol.destroyWindowRealm(self.realm, .global_detached);
-        protocol.destroyAgent(self.agent);
-    }
-
-    /// `source`'s completion value as a string; nothing reported.
-    fn expect(self: Page, source: []const u8, expected: []const u8) !void {
-        var reports: Reports = .{};
-        const got = protocol.evaluateClassicScriptToString(self.realm, .{ .utf8 = source }, "", null, testing.allocator, reports.reporter()) catch |err| {
-            std.debug.print("evaluating failed ({s}, {d} reported): {s}\n", .{ @errorName(err), reports.count, source });
-            return err;
-        };
-        defer testing.allocator.free(got);
-        try testing.expectEqual(@as(usize, 0), reports.count);
-        try testing.expectEqualStrings(expected, got);
-    }
-
-    /// A full collection, twice: what script let go of is finalized.
-    fn collect(self: Page) !void {
-        const Collect = struct {
-            fn steps(data: ?*anyopaque) void {
-                protocol.requestGarbageCollection(@ptrCast(@alignCast(data.?)));
-            }
-        };
-        try protocol.runInRealm(self.realm, Collect.steps, self.agent);
-        try protocol.runInRealm(self.realm, Collect.steps, self.agent);
-    }
-
-    /// Runs `source` - which answers "64" when each of its 64 constructions
-    /// failed as it should - once to warm up, then again, and fails when the
-    /// second run left platform objects in the slab after a full
-    /// collection.
-    fn expectNothingLeft(self: Page, source: []const u8) !void {
-        try self.expect(source, "64");
-        try self.collect();
-        const before = liveObjects();
-        try self.expect(source, "64");
-        try self.collect();
-        const after = liveObjects();
-        if (after != before) {
-            std.debug.print("platform objects {d} -> {d} over 64 failed constructions\n", .{ before, after });
-            return error.InstanceLeaked;
-        }
-    }
-};
-
-test "a TransformStream whose transformer's start() throws frees what it made" {
-    const page = try Page.open();
-    defer page.close();
-    // Streams 6.2.2 constructor step 12: the start algorithm's throw is
-    // rethrown - after step 10 made the stream (and its readable and
-    // writable sides) and step 11 its controller.
-    try page.expectNothingLeft(
-        \\(() => {
-        \\  let n = 0;
-        \\  for (let i = 0; i < 64; i++) {
-        \\    try { new TransformStream({ start() { throw 7; } }); } catch (e) { if (e === 7) n++; }
-        \\  }
-        \\  return String(n);
-        \\})()
-    );
 }
