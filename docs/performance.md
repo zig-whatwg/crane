@@ -1,8 +1,8 @@
 # Performance: the benchmark suite, the journal and /performance/
 
 Crane's performance is measured the way its users run it - pages in a headless browser - and
-always beside the browsers: Chrome, Firefox, Safari and Lightpanda run the same pages, launched
-the same way, on the same host. Every round of perf work (feature-queue, "deep performance
+always beside the browsers: Chrome, Firefox, Safari, Lightpanda and Ladybird run the same pages,
+launched the same way, on the same host. Every round of perf work (feature-queue, "deep performance
 analysis") is measured with this suite before and after, and published at
 <https://zig-whatwg.github.io/crane/performance/>. Memory is half of performance: every row
 carries its memory beside its time.
@@ -47,7 +47,9 @@ These are the user's (2026-11-02 and 2026-11-04) and the runner enforces what it
   `build=` line names the value.
 - **Browsers launch headless, in the background, never taking focus.** Safari has no headless
   mode: it runs through `safaridriver` in chat.local's console session, one session at a time.
-  Lightpanda runs through its CDP server.
+  Lightpanda runs through its CDP server. Ladybird runs through the official Alpha release's
+  bundled `WebDriver --headless` (performance matrix only: no Ladybird WPT column, and Ladybird
+  is never part of golden rule 2's majority).
 - **Memory is half of perf**: each row has the engine's footprint when its workload ended and its
   peak during it; the memory rows measure one page, page after page, and instance after instance.
 
@@ -149,7 +151,8 @@ tables, so they are not a comparison; this measures the whole engine, the same w
   but the nodes - a slot for each in an array, a host element, the markup to parse - and the
   harness holds it to the end, so both readings hold it; then the page asks for a full collection
   where the engine lets it (`TestUtils.gc()` twice in Crane's console; `gc()` twice in Chrome,
-  launched with `--js-flags=--expose-gc`; Firefox, Safari and Lightpanda let a page ask for none),
+  launched with `--js-flags=--expose-gc`; Firefox, Safari, Lightpanda and Ladybird let a page ask
+  for none),
   idles `settle_ms`, and posts `before`; makes and keeps `count` nodes; collects and idles again,
   and posts `after`. The runner reads the process set's footprint at each mark, as for every row.
 - **The cases**, N = 100,000 in every engine: divs kept in a JS array; divs appended to the
@@ -171,7 +174,7 @@ tables, so they are not a comparison; this measures the whole engine, the same w
 ```bash
 zig-out/bin/perf_bench run --suite=tests/perf/elements.json --root=tests/perf --out=<dir> --round=<n> \
   --runs=5 --pin=crane.pin --pin=crane_fast.pin --pin=chrome.pin --pin=firefox.pin --pin=safari.pin \
-  --pin=lightpanda.pin --stop-file=<STOP>
+  --pin=lightpanda.pin --pin=ladybird.pin --stop-file=<STOP>
 ```
 
 ## How it is measured
@@ -233,7 +236,14 @@ zig-out/bin/perf_bench run --suite=tests/perf/elements.json --root=tests/perf --
   while a Safari runs and, when the launch ends, ends the automation Safari it started by exact
   pid (safaridriver leaves it running after Delete Session on Safari 27.2: in round 0's first
   window every launch reused one Safari, whose app, Networking and GPU processes were outside
-  the set); Crane: `repl <url> --proxy=direct`, its stdin held open (the
+  the set); Ladybird: the official Alpha's bundled `WebDriver --headless --listen-address 127.0.0.1
+  --port <port> --profile-path <profile>`, a WebDriver session (`browserName: "ladybird"`) and
+  Navigate To, with a fresh profile whose `config/Settings.json` disables `backgroundNetworking`,
+  `contentBlockerSubscriptionUpdates`, `updateChecks` and `crashReportSending` (`"never"`). Every
+  Ladybird process (`Ladybird`, `Hub`, `WebContent`, `RequestServer`, `Compositor`, `ProcessReaper`,
+  and any on-demand helper such as `ImageDecoder`) is a descendant of `WebDriver`, so `proc_pid_rusage`
+  (`phys_footprint`) sums the entire tree automatically (7 processes per single instance, 28 for
+  `memory.instances`), and `Delete Session` exits the browser tree cleanly; Crane: `repl <url> --proxy=direct`, its stdin held open (the
   page stays live) and closed at the end (the console exits as on Ctrl+D), started in its build's
   own directory: the console restores the `whatwg_snapshot.bin` beside its executable, and only
   without one searches from its working directory, so even that fallback is the build's own
@@ -306,7 +316,7 @@ PIN
 zig-out/bin/perf_bench check --suite=tests/perf/suite.json --root=tests/perf --pin=crane.pin --pin=chrome.pin ...
 zig-out/bin/perf_bench run --suite=tests/perf/suite.json --root=tests/perf --out=<dir> \
   --round=0 --runs=5 --pin=crane.pin --pin=crane_fast.pin --pin=chrome.pin --pin=firefox.pin \
-  --pin=safari.pin --pin=lightpanda.pin --stop-file=<STOP>
+  --pin=safari.pin --pin=lightpanda.pin --pin=ladybird.pin --stop-file=<STOP>
 zig-out/bin/perf_bench gc-bench --gc-bench=zig-out/bin/gc_bench --pin=crane.pin --out=<dir2> --round=0 --runs=5
 zig-out/bin/perf_bench validate <dir>/journal.jsonl <dir2>/journal.jsonl
 zig-out/bin/perf_bench report --journals=<journals> --out=<gh-pages>/performance
@@ -317,7 +327,8 @@ zig-out/bin/perf_bench report --journals=<journals> --out=<gh-pages>/performance
 launches. `perf_bench serve --root=tests/perf` serves the pages alone, to open one by hand.
 
 The `.pin` files are `key=value` lines: `name`, `version`, `build`, `binary`, `sha256`; Crane's
-also `commit`, `optimize`, `target_cpu`, `v8`; Safari's `webdriver` (`/usr/bin/safaridriver`).
+also `commit`, `optimize`, `target_cpu`, `v8`; Safari's and Ladybird's `webdriver`
+(`/usr/bin/safaridriver` and `Ladybird.app/Contents/MacOS/WebDriver`).
 `check` and `run` refuse a binary whose SHA-256 is not its pin's, a Crane pin whose `optimize` is
 not its engine's modes as `build_mode.zig` `describe` writes them (`crane`: root ReleaseSafe ...;
 `crane_fast`: root ReleaseFast ...) - the correctness runner, or one build under the other's name,
@@ -334,7 +345,7 @@ its tests byte for byte; `perf_bench validate` reads journals the same way. The 
 | `format` | `crane-perf/1` |
 | `round`, `time` | the perf round (0: the baseline), and the launch's UTC time |
 | `host` | name, OS, arch, CPU, cores, memory |
-| `engine` | name (`crane`, `crane_fast`, `crane_base`, `crane_control`, `chrome`, `firefox`, `safari`, `lightpanda`), version, build; Crane's commit, optimize modes, CPU target (`target_cpu`, absent from round 0's rows) and V8; the binary, its SHA-256, the launch flags |
+| `engine` | name (`crane`, `crane_fast`, `crane_base`, `crane_control`, `chrome`, `firefox`, `safari`, `lightpanda`, `ladybird`), version, build; Crane's commit, optimize modes, CPU target (`target_cpu`, absent from round 0's rows) and V8; the binary, its SHA-256, the launch flags |
 | `page`, `workload`, `kind`, `run` | what ran: `timed`, `chain`, `idle`, `startup`, `instances`, `gc_bench`, `retained` |
 | `status`, `message` | `ok`, `error`, `timeout`, `crash` or `unsupported`, and why |
 | `ops`, `wall_ms` | operations per sample and each sample's time (a chain: each step's load) |
@@ -370,8 +381,8 @@ windows: the re-measured rows are not comparable with the round's, and are not p
 ## Re-measuring Crane: Crane-only windows
 
 **The user's rule (2026-11-06): re-measuring /performance/ runs ONLY Crane** (ReleaseSafe, and
-ReleaseFast where the round has it). Chrome, Firefox, Safari and Lightpanda keep their last
-rows. A browser runs again only when it updates, and then only that browser.
+ReleaseFast where the round has it). Chrome, Firefox, Safari, Lightpanda and Ladybird keep their
+last rows. A browser runs again only when it updates, and then only that browser.
 
 A Crane-only window alternates the new Crane (`crane`, the tip) with the frozen previous Crane as
 its base (`crane_base`: round 0's is chat.local `~/crane-work/perf0-bins/crane-9b0f1b1f382/`).
@@ -714,7 +725,15 @@ points (`report.zig` `progress`).
 Each browser is pinned under `~/crane-browsers/` with a setup script that checks for an update
 and installs it, writing the browser's `.pin`: Chrome for Testing (stable, with chromedriver),
 Firefox (the latest release, with geckodriver), Lightpanda (the newest nightly from its GitHub
-releases), and Safari (the installed version; `softwareupdate --list` only - an update needs the
-admin password and a restart, so it is reported to the user, never installed unattended). The
-user's rule: check daily and before each round; an updated browser's benchmarks are re-run as a
-new data point, and the report shows each browser's history by version.
+releases), Ladybird Alpha (the official macOS arm64 `.dmg` from
+`https://download.ladybird.org/releases.json`, notarized by `KQT83NTQL8`, never a source build;
+pinned at `2026.47.8`, commit `0be55a57cc07`, `.dmg` SHA-256 `a7d9b83e900b1001...`, installed
+under `~/crane-browsers/ladybird-alpha-2026.47.8/` and managed by `~/crane-browsers/ladybird-setup.sh`;
+rolling-channel auto-updates held via `SUEnableAutomaticChecks=false`, `SUAutomaticallyUpdate=false`,
+and per-profile `config/Settings.json`, with its `Ladybird` binary SHA-256 verified on every run;
+every workload in `suite.json` (61/61) and `elements.json` (6/6) runs `ok` with none unsupported;
+performance matrix only — never part of golden rule 2's majority and no WPT column), and Safari (the
+installed version; `softwareupdate --list` only - an update needs the admin password and a
+restart, so it is reported to the user, never installed unattended). The user's rule: check daily
+and before each round; an updated browser's benchmarks are re-run as a new data point, and the
+report shows each browser's history by version.

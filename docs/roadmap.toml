@@ -887,11 +887,13 @@ rolling channel's auto-update held so the measured build stays fixed, and re-mea
 engines inside the same windows; perf_bench's engine list, the report, the card and docs/performance.md \
 carry it with its version and how its memory is read; workloads it cannot run are listed with the reason. \
 Ladybird does not count toward golden rule 2's majority (Chrome, Firefox, Safari)."""
-progress = []
+progress = [
+  "lane lad1 (2026-11-25): official Ladybird Alpha 2026.47.8 (notarized macOS arm64 dmg, commit 0be55a57cc07, dmg sha256 a7d9b83e900b1001) installed and pinned under ~/crane-browsers/ladybird-alpha-2026.47.8/ on chat.local with ~/crane-browsers/ladybird-setup.sh and auto-updates held (SUEnableAutomaticChecks=false, SUAutomaticallyUpdate=false, per-profile config/Settings.json); driven headless via its bundled WebDriver with HTTP/1.1 keep-alive Content-Length handling; memory summed via proc_pid_rusage phys_footprint over WebDriver's full descendant tree (7 processes/instance, 28 for memory.instances); added to tools/perf_bench (journal, engines, webdriver, runner, report, 5-column card), tools/wpt_site link text, and docs/performance.md (perf matrix only; no WPT column). Closed chat.local window alternating with round-11 Crane drift control (5 runs; drift control within noise: time 1.017x, memory 1.000x): all 61 suite.json workloads (380/380 ok) and all 6 elements.json cases (30/30 ok) ran with 0 unsupported; Crane round 11 reads 197% of Ladybird's time (50 workloads) and 29% of its memory (52 workloads).",
+]
 
   [[infra.items]]
   name = "Pinned Ladybird on chat.local, measured in the performance report"
-  status = "todo"
+  status = "done"
 
 [[infra]]
 id = "cdp-mcp"
