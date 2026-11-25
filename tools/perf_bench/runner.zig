@@ -564,6 +564,12 @@ pub const Runner = struct {
                 var pdir = try Io.Dir.cwd().openDir(self.io, profile, .{});
                 defer pdir.close(self.io);
                 try pdir.writeFile(self.io, .{ .sub_path = "user.js", .data = engines.firefox_user_js });
+            } else if (pin.name == .ladybird) {
+                const cfg_dir = try std.fmt.allocPrint(arena, "{s}/config", .{profile});
+                try Io.Dir.cwd().createDirPath(self.io, cfg_dir);
+                var cdir = try Io.Dir.cwd().openDir(self.io, cfg_dir, .{});
+                defer cdir.close(self.io);
+                try cdir.writeFile(self.io, .{ .sub_path = "Settings.json", .data = engines.ladybird_settings_json });
             }
             const url = try self.pageUrl(arena, page, inst_token);
             const protocol_port: u16 = switch (engines.driveOf(pin.name)) {
@@ -605,7 +611,7 @@ pub const Runner = struct {
             switch (l.drive) {
                 .argv => {},
                 .cdp, .webdriver => {
-                    drivers[k] = .{ .io = self.io, .gpa = self.gpa, .drive = l.drive, .port = protocol_port, .url = url };
+                    drivers[k] = .{ .io = self.io, .gpa = self.gpa, .drive = l.drive, .browser_name = @tagName(pin.name), .port = protocol_port, .url = url };
                     try drivers[k].?.start();
                 },
             }
@@ -779,13 +785,14 @@ pub fn appRunning(names: []const []const u8) ?i32 {
     return if (n > 0) pids[0] else null;
 }
 
-/// The protocol side of a launch: Lightpanda's CDP session, Safari's
-/// WebDriver session, on a thread of their own (each blocks while the page
-/// runs), with the error that ended it if one did.
+/// The protocol side of a launch: Lightpanda's CDP session, Safari's or
+/// Ladybird's WebDriver session, on a thread of their own (each blocks while
+/// the page runs), with the error that ended it if one did.
 const Driver = struct {
     io: Io,
     gpa: Allocator,
     drive: engines.Drive,
+    browser_name: []const u8,
     port: u16,
     url: []const u8,
     thread: ?std.Thread = null,
@@ -794,9 +801,9 @@ const Driver = struct {
     err_len: std.atomic.Value(usize) = .init(0),
     ws: cdp.WebSocket = undefined,
     ws_open: std.atomic.Value(bool) = .init(false),
-    safari: ?webdriver.Session = null,
-    /// Set (release) once `safari` is written by the driver thread.
-    safari_ready: std.atomic.Value(bool) = .init(false),
+    wd: ?webdriver.Session = null,
+    /// Set (release) once `wd` is written by the driver thread.
+    wd_ready: std.atomic.Value(bool) = .init(false),
     arena: std.heap.ArenaAllocator = undefined,
 
     fn start(self: *Driver) !void {
@@ -839,25 +846,26 @@ const Driver = struct {
                 }
             },
             .webdriver => {
-                const s = webdriver.Session.create(arena, self.io, self.port, 15_000) catch |err| return self.fail("WebDriver New Session: {t}", .{err});
-                self.safari = s;
-                self.safari_ready.store(true, .release);
+                const s = webdriver.Session.create(arena, self.io, self.port, self.browser_name, 15_000) catch |err| return self.fail("WebDriver New Session: {t}", .{err});
+                self.wd = s;
+                self.wd_ready.store(true, .release);
                 s.navigate(self.url) catch |err| return self.fail("WebDriver Navigate To: {t}", .{err});
             },
         }
     }
 
     /// Before the engine's processes end: the WebDriver session is deleted
-    /// (Safari closes the window it opened), and the CDP connection shut
-    /// down, which ends its read loop (shutdown, not close: closing a socket
-    /// another thread reads is a race on its descriptor).
+    /// (Safari closes the window it opened; Ladybird exits its browser tree),
+    /// and the CDP connection shut down, which ends its read loop (shutdown,
+    /// not close: closing a socket another thread reads is a race on its
+    /// descriptor).
     fn beginStop(self: *Driver) void {
         self.stop.store(true, .release);
-        if (self.safari_ready.load(.acquire)) {
+        if (self.wd_ready.load(.acquire)) {
             // Not the driver thread's arena: that thread may be in Navigate To.
             var buf: [64 * 1024]u8 = undefined;
             var fba = std.heap.FixedBufferAllocator.init(&buf);
-            self.safari.?.delete(fba.allocator());
+            self.wd.?.delete(fba.allocator());
         }
         if (self.ws_open.load(.acquire)) self.ws.stream.shutdown(self.io, .both) catch {};
     }

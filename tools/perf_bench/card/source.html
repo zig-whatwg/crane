@@ -23,7 +23,7 @@ text { font-kerning: none; font-variant-numeric: tabular-nums lining-nums; }
 <script>
 const NS = "http://www.w3.org/2000/svg";
 // card.zig's constants.
-const COLUMN_RIGHT = [498, 688, 878, 1078];
+const COLUMN_RIGHT = [358, 538, 718, 898, 1078];
 const TIME_BASELINE = 404, MEMORY_BASELINE = 504;
 const ROUND_BASELINE = 178, SINCE_TIME_RIGHT = 862, SINCE_MEMORY_RIGHT = 1078;
 function svg(w, h) {
@@ -63,7 +63,7 @@ document.fonts.load('600 40px "Source Serif 4"').then(() => document.fonts.load(
   for (const right of [SINCE_TIME_RIGHT, SINCE_MEMORY_RIGHT]) text(s, right + 4, ROUND_BASELINE, "%", "serif", 40, 400, "#5a5e63");
   text(s, 80, 236, "CRANE’S TIME AND MEMORY AS A PERCENTAGE OF EACH BROWSER’S", "sans", 21, 600, "#5a5e63", { "letter-spacing": "1.7" });
   const rule = (y) => { const l = document.createElementNS(NS, "rect"); l.setAttribute("x", 80); l.setAttribute("y", y); l.setAttribute("width", 1040); l.setAttribute("height", 1); l.setAttribute("fill", "#d9dce0"); s.append(l); };
-  ["Chrome", "Firefox", "Safari", "Lightpanda"].forEach((l, i) => text(s, COLUMN_RIGHT[i] + 34, 316, l, "sans", 22, 600, "#202124", { "text-anchor": "end" }));
+  ["Chrome", "Firefox", "Safari", "Lightpanda", "Ladybird"].forEach((l, i) => text(s, COLUMN_RIGHT[i] + 34, 316, l, "sans", 22, 600, "#202124", { "text-anchor": "end" }));
   rule(336);
   text(s, 80, TIME_BASELINE, "Time", "sans", 26, 500, "#202124");
   text(s, 80, MEMORY_BASELINE, "Memory", "sans", 26, 500, "#202124");

@@ -17,10 +17,10 @@ pub const height = 630;
 
 pub const Figures = struct {
     round: u32 = 0,
-    /// Chrome, Firefox, Safari, Lightpanda: Crane's percentage of each; null
-    /// where there is no comparison.
-    time: [4]?u64 = @splat(null),
-    memory: [4]?u64 = @splat(null),
+    /// Chrome, Firefox, Safari, Lightpanda, Ladybird: Crane's percentage of
+    /// each; null where there is no comparison.
+    time: [5]?u64 = @splat(null),
+    memory: [5]?u64 = @splat(null),
     /// The progress: Crane's time and memory in this round as a percentage of
     /// its first round's (report.zig `sinceFirst`); null in a first round,
     /// whose card then shows no progress line at all.
@@ -32,7 +32,7 @@ const base_png = @embedFile("card/base.png");
 
 /// The right edges the numbers end at, one per browser column (each
 /// column's "%" is in base.png just right of it), and the rows' baselines.
-pub const column_right = [4]f64{ 498, 688, 878, 1078 };
+pub const column_right = [5]f64{ 358, 538, 718, 898, 1078 };
 pub const time_baseline = 404;
 pub const memory_baseline = 504;
 /// The round number's pen and baseline, after base.png's "Round".
@@ -122,7 +122,7 @@ fn darkIn(img: png.Image, x0: u32, y0: u32, x1: u32, y1: u32) usize {
 }
 
 test "the card: 1200x630, a number where each figure is, none where there is none" {
-    const bytes = try render(testing.allocator, .{ .round = 3, .time = .{ 54, 61, null, 112 }, .memory = .{ 23, 19, null, 88 } });
+    const bytes = try render(testing.allocator, .{ .round = 3, .time = .{ 54, 61, null, 112, 48 }, .memory = .{ 23, 19, null, 88, 31 } });
     defer testing.allocator.free(bytes);
     var img = try png.decode(testing.allocator, bytes);
     defer img.deinit(testing.allocator);
@@ -135,28 +135,34 @@ test "the card: 1200x630, a number where each figure is, none where there is non
     defer empty.deinit(testing.allocator);
 
     // Chrome's time cell has ink in the figures' card and less in the empty one.
-    const cx0: u32 = @intFromFloat(column_right[0] - 120);
+    const cx0: u32 = @intFromFloat(column_right[0] - 100);
     const cx1: u32 = @intFromFloat(column_right[0]);
     try testing.expect(darkIn(img, cx0, time_baseline - 50, cx1, time_baseline + 5) > darkIn(empty, cx0, time_baseline - 50, cx1, time_baseline + 5) + 50);
+    // Ladybird's memory cell (5th column) has ink and keeps its "%".
+    const lx0: u32 = @intFromFloat(column_right[4] - 100);
+    const lx1: u32 = @intFromFloat(column_right[4]);
+    try testing.expect(darkIn(img, lx0, memory_baseline - 50, lx1, memory_baseline + 5) > darkIn(empty, lx0, memory_baseline - 50, lx1, memory_baseline + 5) + 50);
     // Safari has no figure: its cell is blank, "%" and all.
-    const sx0: u32 = @intFromFloat(column_right[2] - 120);
+    const sx0: u32 = @intFromFloat(column_right[2] - 100);
     const sx1: u32 = @intFromFloat(column_right[2] + percent_width);
     try testing.expectEqual(@as(usize, 0), darkIn(img, sx0, memory_baseline - 50, sx1, memory_baseline + 5));
     // A cell with a figure keeps its "%".
     const px0: u32 = @intFromFloat(column_right[0]);
     try testing.expect(darkIn(img, px0, time_baseline - percent_height, px0 + percent_width, time_baseline + percent_descent) > 20);
+    const lpx0: u32 = @intFromFloat(column_right[4]);
+    try testing.expect(darkIn(img, lpx0, memory_baseline - percent_height, lpx0 + percent_width, memory_baseline + percent_descent) > 20);
     // Same figures, same bytes.
-    const again = try render(testing.allocator, .{ .round = 3, .time = .{ 54, 61, null, 112 }, .memory = .{ 23, 19, null, 88 } });
+    const again = try render(testing.allocator, .{ .round = 3, .time = .{ 54, 61, null, 112, 48 }, .memory = .{ 23, 19, null, 88, 31 } });
     defer testing.allocator.free(again);
     try testing.expectEqualSlices(u8, bytes, again);
 }
 
 test "the card names the progress since the first round, and a first round's card has no progress line" {
-    const with = try render(testing.allocator, .{ .round = 1, .time = .{ 510, 440, 505, 470 }, .memory = .{ 40, 23, 84, 220 }, .since_time = 71, .since_memory = 63 });
+    const with = try render(testing.allocator, .{ .round = 1, .time = .{ 510, 440, 505, 470, 290 }, .memory = .{ 40, 23, 84, 220, 65 }, .since_time = 71, .since_memory = 63 });
     defer testing.allocator.free(with);
     var img = try png.decode(testing.allocator, with);
     defer img.deinit(testing.allocator);
-    const first = try render(testing.allocator, .{ .round = 0, .time = .{ 510, 440, 505, 470 }, .memory = .{ 40, 23, 84, 220 } });
+    const first = try render(testing.allocator, .{ .round = 0, .time = .{ 510, 440, 505, 470, 290 }, .memory = .{ 40, 23, 84, 220, 65 } });
     defer testing.allocator.free(first);
     var none = try png.decode(testing.allocator, first);
     defer none.deinit(testing.allocator);
