@@ -233,6 +233,7 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
     // HTML setCustomValidity steps 1–2: normalize newlines, then replace.
     try (try validationState(instance)).setCustomError(instance.ctx.allocator, @"error".asSlice());
+    @import("dom").style.dynamicStateChanged(instance);
 }
 
 /// Operation: checkValidity

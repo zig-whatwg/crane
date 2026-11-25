@@ -486,4 +486,5 @@ pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
 pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
     // HTML setCustomValidity steps 1–2: normalize newlines, then replace.
     try (try validationState(instance)).setCustomError(instance.ctx.allocator, @"error".asSlice());
+    @import("dom").style.dynamicStateChanged(instance);
 }
