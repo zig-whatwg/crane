@@ -36,14 +36,7 @@ fn validationError(ctx: *Context, path: []const u8, message: []const u8) error{T
     return ctx.failPlain("Input validation error: Invalid arguments for tool emulate: {s}: {s}", .{ path, message });
 }
 
-const Viewport = struct {
-    width: i64,
-    height: i64,
-    scale: f64 = 1,
-    mobile: bool = false,
-    landscape: bool = false,
-    touch: bool = false,
-};
+const Viewport = session_mod.Emulation.Viewport;
 
 /// viewportTransform: '<width>x<height>x<devicePixelRatio>[,mobile][,touch][,landscape]'.
 fn parseViewport(ctx: *Context, text: []const u8) !?Viewport {
@@ -152,10 +145,30 @@ fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Res
     // setExtraHTTPHeaders, only when given.
     if (headers_json) |json| try send(ctx, target, "Network.setExtraHTTPHeaders", json);
 
+    // McpPage's emulationSettings, set before setViewport; a viewport that
+    // fails keeps the one before it.
+    try recordSettings(ctx, target, args, user_agent);
     // setViewport: the override (or its clear), then a reload when mobile
     // or touch changed.
     try applyViewport(ctx, target, viewport);
+    target.emulation.viewport = viewport;
     try response.line("Emulation configured successfully", .{});
+}
+
+/// McpPage.emulate's newSettings for what Crane applies: each setting the
+/// call names, none for one it leaves out or sets to "auto".
+fn recordSettings(ctx: *Context, page: *Page, args: std.json.ObjectMap, user_agent: []const u8) !void {
+    const allocator = ctx.session.allocator;
+    var next: session_mod.Emulation = .{ .viewport = page.emulation.viewport };
+    errdefer next.deinit(allocator);
+    if (user_agent.len != 0) next.user_agent = try allocator.dupe(u8, user_agent);
+    const features = .{ .{ "color_scheme", "colorScheme" }, .{ "forced_colors", "forcedColors" }, .{ "prefers_contrast", "prefersContrast" }, .{ "prefers_reduced_motion", "prefersReducedMotion" } };
+    inline for (features) |f| {
+        const value = registry.stringArg(args, f[1]) orelse "";
+        if (value.len != 0 and !std.mem.eql(u8, value, "auto")) @field(next, f[0]) = try allocator.dupe(u8, value);
+    }
+    page.emulation.deinit(allocator);
+    page.emulation = next;
 }
 
 /// headerStringTransform, then Puppeteer's setExtraHTTPHeaders (each value
@@ -205,7 +218,7 @@ fn applyViewport(ctx: *Context, page: *Page, viewport: ?Viewport) !void {
         return;
     };
     const orientation = if (v.landscape) "{\"angle\":90,\"type\":\"landscapePrimary\"}" else "{\"angle\":0,\"type\":\"portraitPrimary\"}";
-    try send(ctx, page, "Emulation.setDeviceMetricsOverride", try std.fmt.allocPrint(ctx.arena, "{{\"mobile\":{},\"width\":{d},\"height\":{d},\"deviceScaleFactor\":{d},\"screenOrientation\":{s}}}", .{ v.mobile, v.width, v.height, v.scale, orientation }));
+    try send(ctx, page, "Emulation.setDeviceMetricsOverride", try std.fmt.allocPrint(ctx.arena, "{{\"mobile\":{},\"width\":{d},\"height\":{d},\"deviceScaleFactor\":{d},\"screenOrientation\":{s}}}", .{ v.mobile, v.width, v.height, v.scale orelse 1, orientation }));
     try send(ctx, page, "Emulation.setTouchEmulationEnabled", if (v.touch) "{\"enabled\":true}" else "{\"enabled\":false}");
     const reload = page.emulating_mobile != v.mobile or page.emulating_touch != v.touch;
     page.viewport_emulated = true;
