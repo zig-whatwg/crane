@@ -47,6 +47,15 @@ const page =
     \\
 ;
 
+/// tools/mcp_diff/fixtures/logpoints-dup.html: two scripts of one file name.
+const duplicates_page =
+    \\<!doctype html>
+    \\<title>Duplicates</title>
+    \\<script src="lp-a/same.js"></script>
+    \\<script src="lp-b/same.js"></script>
+    \\
+;
+
 const Site = struct {
     listener: LoopbackListener,
     thread: ?std.Thread = null,
@@ -95,6 +104,14 @@ const Site = struct {
             .{ page, "text/html" }
         else if (std.mem.eql(u8, path, "/logpoints.js"))
             .{ script, "text/javascript" }
+        else if (std.mem.eql(u8, path, "/logpoints-dup.html"))
+            .{ duplicates_page, "text/html" }
+        else if (std.mem.eql(u8, path, "/lp-a/same.js"))
+            .{ "window.a = () => 1;\n", "text/javascript" }
+        else if (std.mem.eql(u8, path, "/lp-b/same.js"))
+            .{ "window.b = () => 2;\n", "text/javascript" }
+        else if (std.mem.eql(u8, path, "/title.html"))
+            .{ "<!doctype html><title>Fixture title</title><p>hello</p>\n", "text/html" }
         else
             .{ "", "text/plain" };
         var output: [1024]u8 = undefined;
@@ -142,7 +159,24 @@ const chrome_157 = [_]Step{
     .{ .tool = "set_logpoints", .args = "{\"pageId\":1,\"logpoints\":[]}", .answer = "No logpoints are set on the page." },
 };
 
-test "set_logpoints: script URLs and an inline script, as Chrome 157's server answers" {
+/// tools/mcp_diff case "logpoints: lookups, documents, pauses": Chrome
+/// 157's answers (chat2, 2026-11-25).
+const chrome_157_lookups = [_]Step{
+    .{ .tool = "navigate_page", .args = "{\"pageId\":1,\"url\":\"{fixture}/logpoints-dup.html\"}", .answer = "Successfully navigated to {fixture}/logpoints-dup.html.\n## Pages\n1: Duplicates ({fixture}/logpoints-dup.html) [selected]" },
+    .{ .tool = "set_logpoints", .args = "{\"pageId\":1,\"logpoints\":[\"same.js:1 'x'\"]}", .is_error = true, .answer = "Error: \"same.js\" matches multiple sources: {fixture}/lp-a/same.js, {fixture}/lp-b/same.js. Specify a longer path." },
+    .{ .tool = "set_logpoints", .args = "{\"pageId\":1,\"logpoints\":[\"c/same.js:1 'x'\"]}", .is_error = true, .answer = "Error: No parsed script or original source file matches \"c/same.js\". The url must match the URL of a script as served to the browser or an original source file from a source map, exactly or as a path suffix. Sources with the same file name: {fixture}/lp-a/same.js, {fixture}/lp-b/same.js." },
+    .{ .tool = "set_logpoints", .args = "{\"pageId\":1,\"logpoints\":[\"lp-a/same.js:1 'a'\"]}", .answer = "1 logpoint(s) set on the page:\n- {fixture}/lp-a/same.js:1:1 logging `'a'` [bound]\n" ++ logged },
+    // The universe skips all pauses: the debugger statement does not stop.
+    .{ .tool = "evaluate_script", .args = "{\"pageId\":1,\"function\":\"() => { debugger; return window.a() + window.b(); }\"}", .answer = "Script ran on page and returned:\n```json\n3\n```" },
+    .{ .tool = "list_console_messages", .args = "{\"pageId\":1}", .answer = "## Console messages\n<no console messages found>" },
+    .{ .tool = "navigate_page", .args = "{\"pageId\":1,\"url\":\"{fixture}/title.html\"}", .answer = "Successfully navigated to {fixture}/title.html.\n## Pages\n1: Fixture title ({fixture}/title.html) [selected]" },
+    // A document with no script: found, never bound.
+    .{ .tool = "set_logpoints", .args = "{\"pageId\":1,\"logpoints\":[\"title.html:1 'doc'\"]}", .is_error = true, .answer = "No logpoints are set on the page.\nError: No executable code at {fixture}/title.html:1 (for example a comment, type annotation or empty line, or a line not mapped to the generated script). Pick lines containing executable code. The other logpoints were applied." },
+    // The last page's scripts are gone from the workspace.
+    .{ .tool = "set_logpoints", .args = "{\"pageId\":1,\"logpoints\":[\"lp-a/same.js:1 'a'\"]}", .is_error = true, .answer = "Error: No parsed script or original source file matches \"lp-a/same.js\". The url must match the URL of a script as served to the browser or an original source file from a source map, exactly or as a path suffix." },
+};
+
+fn run(steps: []const Step) !void {
     var site: Site = undefined;
     try site.start();
     defer site.stop();
@@ -151,7 +185,7 @@ test "set_logpoints: script URLs and an inline script, as Chrome 157's server an
     defer h.stop();
     const a = h.arena.allocator();
     const origin = try std.fmt.allocPrint(a, "http://127.0.0.1:{d}", .{site.listener.port()});
-    for (chrome_157, 1..) |step, call| {
+    for (steps, 1..) |step, call| {
         const args = try std.mem.replaceOwned(u8, a, step.args, "{fixture}", origin);
         const expected = try std.mem.replaceOwned(u8, a, step.answer, "{fixture}", origin);
         const r = h.tool(step.tool, args) catch |err| {
@@ -164,4 +198,12 @@ test "set_logpoints: script URLs and an inline script, as Chrome 157's server an
         };
         try testing.expectEqual(step.is_error, r.is_error);
     }
+}
+
+test "set_logpoints: script URLs and an inline script, as Chrome 157's server answers" {
+    try run(&chrome_157);
+}
+
+test "set_logpoints: an ambiguous suffix, the same-file-name hint, a document with no script, a navigation; no pause" {
+    try run(&chrome_157_lookups);
 }
