@@ -1,0 +1,1 @@
+{"version":3,"sources":["same-url.js"],"sourcesContent":["// line 1\n// line 2\n// line 3\nwindow.viteFn = (x: number) => {\n  const y = x * 5;\n  return y;\n};\n"],"names":[],"mappings":"AAGA;EACE;EACA"}

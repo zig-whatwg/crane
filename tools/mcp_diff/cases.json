@@ -1493,6 +1493,145 @@
           }
         }
       ]
+    },
+    {
+      "name": "logpoints: source maps",
+      "about": "set_logpoints through external source maps: binding an original source file by path suffix, moving a generated script location to its original source, deduplicating generated and original locations that normalize to one line, reporting an unmapped original line, logging on execution, and surviving a reload.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/lp-sm/page.html"
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "src/calc.ts:4 'total', total",
+              "bundle.js:2:54 'out', out"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => window.calcRun(4)"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "src/calc.ts:4 'first', total",
+              "bundle.js:1:49 'second', total"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "src/calc.ts:4 'kept', total",
+              "src/calc.ts:1 'comment'"
+            ]
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "reload"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => window.calcRun(6)"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "logpoints: inline, same-url, indexed, and shared maps",
+      "about": "set_logpoints with inline data: source maps, a transpiled file served at its original source URL (source map preferred), an XSSI-prefixed index map with sections and sourceRoot, one original source mapped across two bundles, and a script whose source map returns 404.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/lp-sm/page.html"
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "src/inline.ts:5 'res', res",
+              "same-url.js:6 'y', y",
+              "sec-a.ts:4 'a', r",
+              "sec-b.ts:5 'b', r",
+              "shared.ts:3 't', t",
+              "broken-map.js:1:46 'z', z"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [window.inlineMapped(5), window.viteFn(3), window.secA(10), window.secB(20), window.c1(7), window.c2(8), window.brokenMapFn(9)]"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "same-url.js:1 'unmapped-same-url'"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": []
+          }
+        }
+      ]
     }
   ],
   "expected": [

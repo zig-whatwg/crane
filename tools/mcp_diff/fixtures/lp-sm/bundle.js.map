@@ -1,0 +1,1 @@
+{"version":3,"sources":["src/calc.ts"],"sourcesContent":["// calc.ts comment\nexport function doubleAdd(a: number, b: number): number {\n  const total = a + b;\n  return total * 2;\n}\n\nwindow.calcRun = (n: number) => {\n  const out = doubleAdd(n, 3);\n  return out;\n};\n"],"names":[],"mappings":"AACA,2BACE,qBACA;AAGF,wBACE,6BACA"}

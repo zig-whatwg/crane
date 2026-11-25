@@ -1,0 +1,1 @@
+{"version":3,"sources":["shared.ts"],"sourcesContent":["// shared\nexport function tag(v) {\n  return v;\n}\n"],"names":[],"mappings":";AACA,mBAAE,iBACA"}
