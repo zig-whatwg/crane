@@ -667,7 +667,10 @@ pub fn presentNullConvertsByType(comptime T: type, comptime field: Zig017Field) 
             // A sequence<T>, FrozenArray<T> or record<K, V> (a slice of
             // entries): the slice branch of fromV8ValueAs throws for a value
             // that is not an Object. ([]const u8 is a string type, above.)
-            .pointer => |pointer| pointer.size == .slice,
+            // A boxed dictionary (a member whose type is its own
+            // dictionary): null converts to the dictionary with no member,
+            // as it does for any dictionary (3.2.18 step 1).
+            .pointer => |pointer| pointer.size == .slice or (pointer.size == .one and interface_mod.isDictionaryType(pointer.child)),
             else => false,
         };
     }
@@ -3108,6 +3111,21 @@ fn convertValueAs(
     if (type_info == .pointer and type_info.pointer.size == .one) {
         const ChildType = type_info.pointer.child;
         const child_info = @typeInfo(ChildType);
+
+        // A BOXED dictionary member: codegen types a member whose type is
+        // its own dictionary as a pointer (a struct cannot contain itself;
+        // the dictionary's `boxed_members` - RouterCondition's `not`). It
+        // converts as its dictionary, into a box made with the argument's
+        // allocator; `interface.freeConvertedArg` frees the pointee's
+        // members and then the box, with the dictionary. A failure inside
+        // frees what the pointee's conversion made (its own errdefer) and
+        // the box here.
+        if (comptime interface_mod.isDictionaryType(ChildType)) {
+            const boxed = allocator.create(ChildType) catch return ConversionError.OutOfMemory;
+            errdefer allocator.destroy(boxed);
+            boxed.* = try fromV8Value(ChildType, allocator, isolate, context, value);
+            return boxed;
+        }
 
         // Check if child type is a struct (like ArrayBuffer)
         if (child_info == .@"struct") {
