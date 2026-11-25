@@ -32,22 +32,17 @@ fn modelOf(instance: *runtime.Instance) !*animations.model.Effect {
 
 /// Constructor (6.6): KeyframeEffect(target, keyframes, options) or
 /// KeyframeEffect(source).
-pub fn call_constructor(ctx: runtime.Context, args: interfaces.KeyframeEffect.ConstructorArgs) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, args: interfaces.KeyframeEffect.ConstructorArgs) !void {
+    const ctx = instance.ctx;
     switch (args) {
         .Element_object_UnrestrictedDoubleOrKeyframeEffectOptions => |given| {
             // The binding converted the options argument before the steps.
             var converted = try animations.options.effectOptions(if (given.options.was_passed) given.options.value else null, ctx.allocator);
             defer converted.deinit(ctx.allocator);
-            const instance = try KeyframeEffect.init(ctx.allocator, ctx);
-            errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
             try animations.constructKeyframeEffect(instance, given.target, given.keyframes, &converted);
-            return instance;
         },
         .KeyframeEffect => |source| {
-            const instance = try KeyframeEffect.init(ctx.allocator, ctx);
-            errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
             try animations.copyKeyframeEffect(instance, source);
-            return instance;
         },
     }
 }

@@ -11,39 +11,11 @@ destructor AbsoluteOrientationSensor deinit(instance)
 destructor Accelerometer deinit(instance)
 destructor AmbientLightSensor deinit(instance)
 destructor AnalyserNode deinit(instance)
-destructor AnimationTrigger deinit(instance)
-destructor AudioBuffer deinit(instance)
-destructor AudioBufferSourceNode deinit(instance)
-destructor AudioContext deinit(instance)
-destructor AudioData deinit(instance)
-destructor AudioDecoder deinit(instance)
-destructor AudioEncoder deinit(instance)
-destructor AudioWorkletNode deinit(instance)
 destructor BarcodeDetector deinit(instance)
-destructor BiquadFilterNode deinit(instance)
 destructor BluetoothDataFilter deinit(instance)
 destructor BluetoothLEScanFilter deinit(instance)
 destructor BluetoothManufacturerDataFilter deinit(instance)
 destructor BluetoothServiceDataFilter deinit(instance)
-destructor CSSColor deinit(instance)
-destructor CSSHSL deinit(instance)
-destructor CSSHWB deinit(instance)
-destructor CSSLCH deinit(instance)
-destructor CSSLab deinit(instance)
-destructor CSSOKLCH deinit(instance)
-destructor CSSOKLab deinit(instance)
-destructor CSSParserAtRule deinit(instance)
-destructor CSSParserBlock deinit(instance)
-destructor CSSParserDeclaration deinit(instance)
-destructor CSSParserFunction deinit(instance)
-destructor CSSParserQualifiedRule deinit(instance)
-destructor CSSRGB deinit(instance)
-destructor ChannelMergerNode deinit(instance)
-destructor ChannelSplitterNode deinit(instance)
-destructor ConstantSourceNode deinit(instance)
-destructor ConvolverNode deinit(instance)
-destructor DelayNode deinit(instance)
-destructor DynamicsCompressorNode deinit(instance)
 destructor EncodedAudioChunk deinit(instance)
 destructor EncodedVideoChunk deinit(instance)
 destructor Exception deinit(instance)
@@ -51,36 +23,17 @@ destructor EyeDropper deinit(instance)
 destructor FaceDetector deinit(instance)
 destructor FencedFrameConfig deinit(instance)
 destructor FragmentResult deinit(instance)
-destructor GPUInternalError deinit(instance)
-destructor GPUOutOfMemoryError deinit(instance)
-destructor GPUPipelineError deinit(instance)
-destructor GPUValidationError deinit(instance)
-destructor GainNode deinit(instance)
 destructor Global deinit(instance)
 destructor GravitySensor deinit(instance)
-destructor GroupEffect deinit(instance)
 destructor Gyroscope deinit(instance)
 destructor HandwritingStroke deinit(instance)
-destructor IIRFilterNode deinit(instance)
 destructor IdleDetector deinit(instance)
-destructor ImageCapture deinit(instance)
-destructor ImageDecoder deinit(instance)
 destructor Instance deinit(instance)
 destructor JsonLdProcessor deinit(instance)
 destructor LinearAccelerationSensor deinit(instance)
 destructor MLGraphBuilder deinit(instance)
 destructor Magnetometer deinit(instance)
 destructor ManagedMediaSource deinit(instance)
-destructor MediaElementAudioSourceNode deinit(instance)
-destructor MediaMetadata deinit(instance)
-destructor MediaRecorder deinit(instance)
-destructor MediaSource deinit(instance)
-destructor MediaStream deinit(instance)
-destructor MediaStreamAudioDestinationNode deinit(instance)
-destructor MediaStreamAudioSourceNode deinit(instance)
-destructor MediaStreamTrackAudioSourceNode deinit(instance)
-destructor MediaStreamTrackHandle MediaStreamTrackHandle.deinit(instance)
-destructor MediaStreamTrackProcessor deinit(instance)
 destructor Memory deinit(instance)
 destructor Module deinit(instance)
 destructor NDEFMessage deinit(instance)
@@ -88,42 +41,16 @@ destructor NDEFReader deinit(instance)
 destructor NDEFRecord deinit(instance)
 destructor Observable deinit(instance)
 destructor OfflineAudioContext deinit(instance)
-destructor OffscreenCanvas OffscreenCanvas.deinit(instance)
-destructor OscillatorNode deinit(instance)
-destructor PannerNode deinit(instance)
-destructor Path2D deinit(instance)
-destructor PeriodicWave deinit(instance)
 destructor PointerTimeline deinit(instance)
 destructor PressureObserver deinit(instance)
 destructor Profiler deinit(instance)
 destructor ProximitySensor deinit(instance)
-destructor RTCEncodedAudioFrame deinit(instance)
-destructor RTCEncodedVideoFrame deinit(instance)
-destructor RTCError deinit(instance)
-destructor RTCIceCandidate deinit(instance)
-destructor RTCIceTransport deinit(instance)
-destructor RTCIdentityAssertion deinit(instance)
-destructor RTCPeerConnection deinit(instance)
-destructor RTCRtpSFrameDecryptor RTCRtpSFrameDecryptor.deinit(instance)
-destructor RTCRtpSFrameEncryptor RTCRtpSFrameEncryptor.deinit(instance)
-destructor RTCRtpScriptTransform deinit(instance)
-destructor RTCSessionDescription deinit(instance)
 destructor RdfDataset deinit(instance)
 destructor RdfGraph deinit(instance)
 destructor RdfLiteral deinit(instance)
 destructor RdfTriple deinit(instance)
 destructor RelativeOrientationSensor deinit(instance)
 destructor RemoteDocument deinit(instance)
-destructor SFrameDecryptorStream SFrameDecryptorStream.deinit(instance)
-destructor SFrameEncryptorStream SFrameEncryptorStream.deinit(instance)
-destructor ScrollTimeline deinit(instance)
-destructor SequenceEffect deinit(instance)
-destructor ShadowAnimation deinit(instance)
-destructor SpeechGrammarList deinit(instance)
-destructor SpeechRecognition deinit(instance)
-destructor SpeechRecognitionPhrase deinit(instance)
-destructor SpeechSynthesisUtterance deinit(instance)
-destructor StereoPannerNode deinit(instance)
 destructor Table deinit(instance)
 destructor Tag deinit(instance)
 destructor TextDetector deinit(instance)
@@ -138,46 +65,16 @@ destructor USBIsochronousOutTransferPacket deinit(instance)
 destructor USBIsochronousOutTransferResult deinit(instance)
 destructor USBOutTransferResult deinit(instance)
 destructor UncalibratedMagnetometer deinit(instance)
-destructor VideoColorSpace deinit(instance)
-destructor VideoDecoder deinit(instance)
-destructor VideoEncoder deinit(instance)
-destructor VideoFrame deinit(instance)
-destructor VideoTrackGenerator deinit(instance)
-destructor ViewTimeline deinit(instance)
-destructor WaveShaperNode deinit(instance)
-destructor WorkletAnimation deinit(instance)
-destructor XRGPUBinding XRGPUBinding.deinit(instance)
-destructor XRMediaBinding deinit(instance)
-destructor XRRay deinit(instance)
-destructor XRRigidTransform deinit(instance)
-destructor XRWebGLBinding deinit(instance)
-destructor XRWebGLLayer deinit(instance)
 factory AbsoluteOrientationSensor
 factory Accelerometer
 factory AmbientLightSensor
 factory AnalyserNode
-factory Animation
-factory AnimationTrigger
-factory AudioBuffer
-factory AudioBufferSourceNode
-factory AudioContext
-factory AudioData
-factory AudioDecoder
-factory AudioEncoder
-factory AudioWorkletNode
-factory AudioWorkletProcessor
 factory BarcodeDetector
-factory BiquadFilterNode
 factory BluetoothDataFilter
 factory BluetoothLEScanFilter
 factory BluetoothManufacturerDataFilter
 factory BluetoothServiceDataFilter
-factory CSSColor
-factory CSSHSL
-factory CSSHWB
 factory CSSKeywordValue
-factory CSSLCH
-factory CSSLab
 factory CSSMathClamp
 factory CSSMathInvert
 factory CSSMathMax
@@ -186,15 +83,7 @@ factory CSSMathNegate
 factory CSSMathProduct
 factory CSSMathSum
 factory CSSMatrixComponent
-factory CSSOKLCH
-factory CSSOKLab
-factory CSSParserAtRule
-factory CSSParserBlock
-factory CSSParserDeclaration
-factory CSSParserFunction
-factory CSSParserQualifiedRule
 factory CSSPerspective
-factory CSSRGB
 factory CSSRotate
 factory CSSScale
 factory CSSSkew
@@ -206,69 +95,32 @@ factory CSSTranslate
 factory CSSUnitValue
 factory CSSUnparsedValue
 factory CSSVariableReferenceValue
-factory ChannelMergerNode
-factory ChannelSplitterNode
 factory ClipboardEvent
 factory Comment
-factory ConstantSourceNode
-factory ConvolverNode
-factory DOMMatrix
-factory DOMMatrixReadOnly
-factory DOMPoint
-factory DOMPointReadOnly
-factory DOMQuad
-factory DOMRect
-factory DOMRectReadOnly
-factory DataCue
-factory DelayNode
 factory Document
 factory DocumentFragment
-factory DocumentTimeline
 factory DragEvent
-factory DynamicsCompressorNode
 factory EncodedAudioChunk
 factory EncodedVideoChunk
 factory Exception
 factory EyeDropper
 factory FaceDetector
 factory FencedFrameConfig
-factory FontFace
 factory FormData
 factory FragmentResult
-factory GPUInternalError
-factory GPUOutOfMemoryError
-factory GPUPipelineError
-factory GPUValidationError
-factory GainNode
 factory GamepadEvent
 factory Global
 factory GravitySensor
-factory GroupEffect
 factory Gyroscope
 factory HandwritingStroke
-factory IIRFilterNode
 factory IdleDetector
-factory ImageCapture
-factory ImageData
-factory ImageDecoder
 factory Instance
 factory IntersectionObserverEntry
 factory JsonLdProcessor
-factory KeyframeEffect
 factory LinearAccelerationSensor
 factory MLGraphBuilder
 factory Magnetometer
 factory ManagedMediaSource
-factory MediaElementAudioSourceNode
-factory MediaMetadata
-factory MediaRecorder
-factory MediaSource
-factory MediaStream
-factory MediaStreamAudioDestinationNode
-factory MediaStreamAudioSourceNode
-factory MediaStreamTrackAudioSourceNode
-factory MediaStreamTrackHandle
-factory MediaStreamTrackProcessor
 factory Memory
 factory MessageEvent
 factory Module
@@ -278,27 +130,11 @@ factory NDEFReader
 factory NDEFRecord
 factory Observable
 factory OfflineAudioContext
-factory OffscreenCanvas
-factory OscillatorNode
-factory PannerNode
-factory Path2D
-factory PeriodicWave
 factory PointerTimeline
 factory PressureObserver
 factory ProcessingInstruction
 factory Profiler
 factory ProximitySensor
-factory RTCEncodedAudioFrame
-factory RTCEncodedVideoFrame
-factory RTCError
-factory RTCIceCandidate
-factory RTCIceTransport
-factory RTCIdentityAssertion
-factory RTCPeerConnection
-factory RTCRtpSFrameDecryptor
-factory RTCRtpSFrameEncryptor
-factory RTCRtpScriptTransform
-factory RTCSessionDescription
 factory RdfDataset
 factory RdfGraph
 factory RdfLiteral
@@ -308,16 +144,6 @@ factory ReadableStreamBYOBReader
 factory ReadableStreamDefaultReader
 factory RelativeOrientationSensor
 factory RemoteDocument
-factory SFrameDecryptorStream
-factory SFrameEncryptorStream
-factory ScrollTimeline
-factory SequenceEffect
-factory ShadowAnimation
-factory SpeechGrammarList
-factory SpeechRecognition
-factory SpeechRecognitionPhrase
-factory SpeechSynthesisUtterance
-factory StereoPannerNode
 factory Table
 factory Tag
 factory Text
@@ -334,21 +160,5 @@ factory USBIsochronousOutTransferPacket
 factory USBIsochronousOutTransferResult
 factory USBOutTransferResult
 factory UncalibratedMagnetometer
-factory VTTCue
-factory VTTRegion
-factory VideoColorSpace
-factory VideoDecoder
-factory VideoEncoder
-factory VideoFrame
-factory VideoTrackGenerator
-factory ViewTimeline
-factory WaveShaperNode
-factory WorkletAnimation
 factory WritableStream
 factory WritableStreamDefaultWriter
-factory XRGPUBinding
-factory XRMediaBinding
-factory XRRay
-factory XRRigidTransform
-factory XRWebGLBinding
-factory XRWebGLLayer

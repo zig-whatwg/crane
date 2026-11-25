@@ -42,15 +42,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, session: *runtime.Instance) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &XRMediaBinding.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, session: *runtime.Instance) !void {
+    _ = instance;
     _ = session;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Operation: createCylinderLayer

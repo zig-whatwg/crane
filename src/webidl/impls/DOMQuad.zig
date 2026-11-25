@@ -67,6 +67,24 @@ fn createDOMPoint(ctx: runtime.Context, point_init: ?dictionaries.DOMPointInit) 
     return DOMPoint.call_constructor(ctx, x_opt, y_opt, z_opt, w_opt);
 }
 
+/// Populate a fresh DOMQuad's four DOMPoint vertices.
+fn fillPoints(
+    instance: *runtime.Instance,
+    p1_init: ?dictionaries.DOMPointInit,
+    p2_init: ?dictionaries.DOMPointInit,
+    p3_init: ?dictionaries.DOMPointInit,
+    p4_init: ?dictionaries.DOMPointInit,
+) !void {
+    const ctx = instance.ctx;
+    const state = getState(instance);
+
+    // Create the four DOMPoint instances
+    state.own.p1 = try createDOMPoint(ctx, p1_init);
+    state.own.p2 = try createDOMPoint(ctx, p2_init);
+    state.own.p3 = try createDOMPoint(ctx, p3_init);
+    state.own.p4 = try createDOMPoint(ctx, p4_init);
+}
+
 /// Initialize with DOMPointInit parameters
 pub fn initWithPoints(
     allocator: std.mem.Allocator,
@@ -81,15 +99,7 @@ pub fn initWithPoints(
     // frees it whole, and with it (deinit) every point made so far - the
     // ones not made yet are still zero.
     errdefer runtime.gc.releaseOwned(instance);
-
-    const state = getState(instance);
-
-    // Create the four DOMPoint instances
-    state.own.p1 = try createDOMPoint(ctx, p1_init);
-    state.own.p2 = try createDOMPoint(ctx, p2_init);
-    state.own.p3 = try createDOMPoint(ctx, p3_init);
-    state.own.p4 = try createDOMPoint(ctx, p4_init);
-
+    try fillPoints(instance, p1_init, p2_init, p3_init, p4_init);
     return instance;
 }
 
@@ -122,13 +132,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor implementation
 /// Spec: https://drafts.fxtf.org/geometry-1/#dom-domquad-domquad
 /// Creates a DOMQuad with four vertices from DOMPointInit dictionaries
-pub fn call_constructor(ctx: runtime.Context, p1: webidl.Opt(dictionaries.DOMPointInit), p2: webidl.Opt(dictionaries.DOMPointInit), p3: webidl.Opt(dictionaries.DOMPointInit), p4: webidl.Opt(dictionaries.DOMPointInit)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, p1: webidl.Opt(dictionaries.DOMPointInit), p2: webidl.Opt(dictionaries.DOMPointInit), p3: webidl.Opt(dictionaries.DOMPointInit), p4: webidl.Opt(dictionaries.DOMPointInit)) !void {
     const p1_init = if (p1.was_passed) p1.value else null;
     const p2_init = if (p2.was_passed) p2.value else null;
     const p3_init = if (p3.was_passed) p3.value else null;
     const p4_init = if (p4.was_passed) p4.value else null;
 
-    return initWithPoints(ctx.allocator, ctx, p1_init, p2_init, p3_init, p4_init);
+    try fillPoints(instance, p1_init, p2_init, p3_init, p4_init);
 }
 
 /// Getter for p1

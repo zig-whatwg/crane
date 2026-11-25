@@ -54,8 +54,9 @@ fn internalOf(instance: *runtime.Instance) !*InternalState {
 /// The VTTRegion() constructor: 1. a new WebVTT region; 2-9. its identifier
 /// the empty string, width 100, lines 3, region anchor (0, 100), viewport
 /// anchor (0, 100), scroll none (`InternalState`); 10. return it.
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    return VTTRegion.init(ctx.allocator, ctx);
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    // The generated constructor made it (WebIDL 3.7.1 step 1.8): no steps.
+    _ = instance;
 }
 
 /// WebVTT 9.2: "set to the new value" when it is not negative or more than
