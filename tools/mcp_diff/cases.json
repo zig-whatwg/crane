@@ -1178,7 +1178,7 @@
     },
     {
       "name": "emulate: user agent, media, viewport",
-      "about": "emulate applies every setting on every call and clears what a call leaves out, and a page tool's answer lists the page's emulation (McpResponse); the color scheme a clear leaves is the host's own (headless Chrome follows the OS appearance), compared with what the page saw before; network conditions, CPU throttling and geolocation are not supported by Crane yet (expected).",
+      "about": "emulate applies every setting on every call and clears what a call leaves out, and a page tool's answer lists the page's emulation (McpResponse); the color scheme a clear leaves is the host's own (headless Chrome follows the OS appearance), compared with what the page saw before; CPU throttling and geolocation are not supported by Crane yet (expected).",
       "calls": [
         {
           "tool": "navigate_page",
@@ -1263,6 +1263,94 @@
           "args": {
             "pageId": 1,
             "viewport": "400x300,wide"
+          }
+        }
+      ]
+    },
+    {
+      "name": "emulate: network conditions",
+      "about": "emulate networkConditions: Offline flips navigator.onLine, fires trusted offline/online events, and fails fetch() with ERR_INTERNET_DISCONNECTED; Slow 3G, Fast 3G, Slow 4G, and Fast 4G set the expected default navigation timeout text and restore online; an emulate call without networkConditions clears it.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { window.__netEvents = []; window.addEventListener('offline', e => window.__netEvents.push([e.type, e.isTrusted, navigator.onLine])); window.addEventListener('online', e => window.__netEvents.push([e.type, e.isTrusted, navigator.onLine])); return navigator.onLine; }"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Offline"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "async () => { let err = false; try { await fetch('/second.html', { cache: 'no-store' }); } catch (e) { err = true; } return [navigator.onLine, err, window.__netEvents]; }"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Slow 3G"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [navigator.onLine, window.__netEvents]"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Fast 3G"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Slow 4G"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Fast 4G"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "async () => (await fetch('/second.html', { cache: 'no-store' })).status"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
           }
         }
       ]
@@ -1782,11 +1870,6 @@
       "case": "history: back right after the first navigation",
       "call": 2,
       "reason": "Chrome navigates its startup URL (Puppeteer starts it with about:blank: an auto_toplevel entry), so its first navigation pushes and back reaches about:blank; Firefox 159 and Safari 27.2 keep the first tab's initial about:blank, which the first navigation replaces (WebDriver probe, chat.local 2026-11-24, tmp/probes/mcp1-startup/run.sh: history.length stays 1, back() stays), as Crane and HTML do: the browser majority (main's ruling, 2026-11-24)."
-    },
-    {
-      "case": "emulate: user agent, media, viewport",
-      "call": 9,
-      "reason": "Network conditions need Crane's network emulation (lane mcp1 batch 4b item 7); until then Crane's MCP server says it does not support networkConditions yet."
     },
     {
       "case": "emulate: user agent, media, viewport",
