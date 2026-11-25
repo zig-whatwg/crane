@@ -342,7 +342,7 @@ fn dialogBeforeToggleRetiresRealm() !void {
     event.releaseIfUnwrapped(generation);
     try std.testing.expectEqual(generation, runtime.SlabAllocator.generationOf(event));
     var old_state = try interfaces.ToggleEvent.get_oldState(event);
-    defer old_state.deinit(std.testing.allocator);
+    defer old_state.deinit(runtime.allocatorOf(event));
     try std.testing.expectEqualStrings("closed", old_state.asSlice());
 
     // Like ce_scope_agent_test, end this native fixture's realm explicitly.
