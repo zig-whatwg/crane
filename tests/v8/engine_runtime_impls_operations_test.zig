@@ -444,6 +444,20 @@ test "every protocol operation's V8 function compiles" {
             _ = &@field(v8.protocol, decl_name);
         }
     }
+    // Generic protocol operations (comptime/anytype) are instantiated
+    // explicitly so V8's implementations type-check here as well.
+    if (false) {
+        const ctx: protocol.Context = undefined;
+        const cb_fn: protocol.CallbackFunction = undefined;
+        const cb_iface: protocol.CallbackInterface = undefined;
+        const held_void: protocol.Held(void) = undefined;
+        _ = v8.protocol.invokeCallbackFunctionAs(void, .{}, ctx, &cb_fn, .undefined, .{}, .rethrow, std.testing.allocator) catch {};
+        _ = v8.protocol.invokeCallbackFunctionToPromise(ctx, &cb_fn, .undefined, .{}) catch {};
+        _ = v8.protocol.constructCallbackFunctionAs(void, .{}, ctx, &cb_fn, .{}, std.testing.allocator) catch {};
+        _ = v8.protocol.callUserObjectOperationAs(void, .{}, ctx, &cb_iface, "op", .undefined, .{}, .rethrow, std.testing.allocator) catch {};
+        _ = v8.protocol.convertFromJS(void, .{}, ctx, .jsUndefined, std.testing.allocator) catch {};
+        v8.protocol.releaseReturned(void, std.testing.allocator, held_void);
+    }
 }
 
 test "the protocol is bound to V8, with explicit native and emulated capabilities" {

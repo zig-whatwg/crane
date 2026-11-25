@@ -281,7 +281,7 @@ test "invokeCallbackFunctionAs: dictionary and union returns, and typed argument
     // Typed arguments: trailing missing webidl.Opt truncates arguments.length, middle missing passes undefined,
     // trailing []const JSValue appends variadic arguments.
     {
-        const cb = try Page.makeCallback(page.realm, "function(a, b, c) { return arguments.length + ':' + a + ':' + typeof b + ':' + c; }", page.realm);
+        const cb = try Page.makeCallback(page.realm, "(function(a, b, c) { return arguments.length + ':' + a + ':' + typeof b + ':' + c; })", page.realm);
         defer cb.release();
         const OptInt = webidl.Opt(i32);
         const out1 = try protocol.invokeCallbackFunctionAs(
@@ -477,7 +477,7 @@ test "constructCallbackFunctionAs: interface return checks type and Held.js keep
 
     // Returning a valid HTMLElement succeeds and survives GC while Held is live
     {
-        const cb = try Page.makeCallback(page.realm, "function MakeDiv() { return new Document().implementation.createHTMLDocument('').createElement('div'); }", page.realm);
+        const cb = try Page.makeCallback(page.realm, "(function MakeDiv() { return new Document().implementation.createHTMLDocument('').createElement('div'); })", page.realm);
         defer cb.release();
         const out = try protocol.constructCallbackFunctionAs(*runtime.Instance, .{ .interface = interfaces.HTMLElement }, page.realm, &cb, .{}, a);
         switch (out) {
@@ -495,7 +495,7 @@ test "constructCallbackFunctionAs: interface return checks type and Held.js keep
 
     // Returning a non-HTMLElement object throws TypeError
     {
-        const cb = try Page.makeCallback(page.realm, "function MakePlain() { return {}; }", page.realm);
+        const cb = try Page.makeCallback(page.realm, "(function MakePlain() { return {}; })", page.realm);
         defer cb.release();
         const out = try protocol.constructCallbackFunctionAs(*runtime.Instance, .{ .interface = interfaces.HTMLElement }, page.realm, &cb, .{}, a);
         switch (out) {

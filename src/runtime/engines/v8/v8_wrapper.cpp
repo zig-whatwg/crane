@@ -8966,6 +8966,19 @@ bool v8_Value_ToInt32(Global<Value>* value, Global<Context>* context, int32_t* o
     return true;
 }
 
+// ToNumber(V) for WebIDL numeric conversions: returns false with the exception
+// left PENDING (and its original throw site intact) when valueOf / toPrimitive
+// throws, or when the isolate is terminating.
+bool v8_Value_ToNumber(Global<Value>* value, Global<Context>* context, double* out) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Maybe<double> result = value->Get(isolate)->NumberValue(ctx);
+    if (result.IsNothing()) return false;
+    *out = result.FromJust();
+    return true;
+}
+
 uint32_t v8_Value_Uint32Value(Global<Value>* value, Global<Context>* context) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -19158,6 +19171,43 @@ Global<Value>* v8_Value_ToStringCatchingWithSite(
     if (!converted) return nullptr;
     *threw = false;
     return trackHandle(new Global<Value>(isolate, result));
+}
+
+/// Run `body(data)` in `context` under a TryCatch capturing the throw site
+/// (`errorInfoAtThrowSite`). Returns true iff `body` threw a catchable
+/// JavaScript exception; `*exception` (new Global, caller owns) and `*site`
+/// (caller frees with v8_FreeErrorInfo, may be null) receive the exception and
+/// its throw site. A terminating isolate is rethrown, not caught, and returns
+/// false with `*terminated = true`.
+bool v8_RunCatchingWithSite(
+    Isolate* isolate,
+    Global<Context>* context,
+    void (*body)(void*),
+    void* data,
+    Global<Value>** exception,
+    V8ErrorInfo** site,
+    bool* terminated
+) {
+    *exception = nullptr;
+    *site = nullptr;
+    *terminated = false;
+    if (!isolate || !context) return false;
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    TryCatch try_catch(isolate);
+    try_catch.SetCaptureMessage(true);
+    body(data);
+    if (!try_catch.HasCaught()) return false;
+    if (!try_catch.CanContinue() || try_catch.HasTerminated()) {
+        *terminated = true;
+        try_catch.ReThrow();
+        return false;
+    }
+    *exception = trackHandle(new Global<Value>(isolate, try_catch.Exception()));
+    *site = errorInfoAtThrowSite(isolate, ctx, try_catch);
+    try_catch.Reset();
+    return true;
 }
 
 /// ECMAScript Construct(`function`, `argv`) in `context` - newTarget the

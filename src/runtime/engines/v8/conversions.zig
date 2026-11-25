@@ -221,38 +221,14 @@ fn toNumber(context: *v8.Context, value: *v8.Value) ConversionError!f64 {
     if (!v8.v8_Value_IsObject(value)) return v8.v8_Value_NumberValue(value, context);
     // An object's runs its @@toPrimitive, valueOf or toString, and what they
     // throw is the abrupt completion of "? ToNumber(V)" (WebIDL 3.2.4
-    // ConvertToInt step 1, 3.2.5-3.2.8 step 1): the conversion's, so the
-    // operation, setter or constructor never runs, and script catches its
-    // own exception. NumberValue alone answered 0 with the exception left
-    // pending (FromMaybe(0)): the call ran with 0 - a setter stored it - and
-    // a call that then threw an error of its own threw that instead.
-    // Blink's ToRestrictedDouble/ToDouble return early on the
-    // ExceptionState the same way (bindings/core/v8/
-    // native_value_traits_impl.h, chromium 23520b2ec9fc).
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return v8.v8_Value_NumberValue(value, context);
-    var to_number: ObjectToNumber = .{ .value = value, .context = context };
-    var exception: ?*v8.Value = null;
-    if (v8.v8_RunCatching(isolate, ObjectToNumber.run, &to_number, &exception)) {
-        if (exception) |thrown| {
-            v8.v8_Isolate_ThrowException(isolate, thrown);
-            v8.v8_Global_Dispose(thrown);
-        }
-        return ConversionError.ExceptionPending;
-    }
-    return to_number.result;
+    // ConvertToInt step 1, 3.2.5-3.2.8 step 1): v8_Value_ToNumber leaves the
+    // exception pending with its original throw site intact (no inner TryCatch),
+    // so an enclosing FunctionCallback or v8_RunCatchingWithSite sees both the
+    // thrown value and where it was thrown.
+    var out: f64 = 0;
+    if (!v8.v8_Value_ToNumber(value, context, &out)) return ConversionError.ExceptionPending;
+    return out;
 }
-
-/// ToNumber of an object, run under `v8_RunCatching` (`toNumber`).
-const ObjectToNumber = struct {
-    value: *v8.Value,
-    context: *v8.Context,
-    result: f64 = 0,
-
-    fn run(data: ?*anyopaque) callconv(.c) void {
-        const self: *ObjectToNumber = @ptrCast(@alignCast(data.?));
-        self.result = v8.v8_Value_NumberValue(self.value, self.context);
-    }
-};
 
 /// WebIDL `long`: ToNumber, then ConvertToInt. These helpers used to reject
 /// anything that was not already a number, which made `el.colSpan = "3"` a
@@ -930,14 +906,10 @@ fn conversionErrorOf(err: anyerror) ConversionError {
 /// empty slice. A Symbol is ToString's TypeError; what a toString() throws
 /// is left pending.
 fn toStringBytes(allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) ConversionError![]u8 {
+    _ = isolate;
     if (v8.v8_Value_IsSymbol(value)) return ConversionError.TypeError;
-    const result = v8.v8_Value_ToString_Safe(value, context);
-    defer v8.v8_FreeToStringResult(result);
-    if (result.exception) |exception| {
-        v8.v8_Isolate_ThrowException(isolate, exception);
-        return ConversionError.ExceptionPending;
-    }
-    const string = result.value orelse return ConversionError.TypeError;
+    const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.ExceptionPending;
+    defer v8.v8_String_Dispose(string);
     const length = v8.v8_String_Utf8Length(string);
     if (length < 0) return ConversionError.StringError;
     if (length == 0) return @constCast(&[_]u8{});
@@ -2503,21 +2475,13 @@ fn convertValueAs(
         // https://webidl.spec.whatwg.org/#idl-USVString
         if (ElemType == u8) {
             // Check for Symbol - throws TypeError per WebIDL spec
-            if (v8.v8_Value_IsSymbol_Local(@ptrCast(value))) {
+            if (v8.v8_Value_IsSymbol(value)) {
                 return ConversionError.TypeError;
             }
-            // Use safe ToString that captures exceptions from toString() methods
-            // Per WebIDL § 3.2.1, if ToString throws, we must propagate the exception
-            const result = v8.v8_Value_ToString_Safe(value, context);
-            defer v8.v8_FreeToStringResult(result);
-
-            // If toString() threw an exception, rethrow it and signal caller not to throw again
-            if (result.exception) |exc| {
-                v8.v8_Isolate_ThrowException(isolate, exc);
-                return ConversionError.ExceptionPending;
-            }
-
-            const string = result.value orelse return ConversionError.TypeError;
+            // Per WebIDL § 3.2.1, if ToString throws, leave the exception
+            // pending with its original throw site intact.
+            const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.ExceptionPending;
+            defer v8.v8_String_Dispose(string);
             const length = v8.v8_String_Utf8Length(string);
             if (length < 0) return ConversionError.StringError;
             if (length == 0) return &[_]u8{};
@@ -2563,18 +2527,10 @@ fn convertValueAs(
         if (v8.v8_Value_IsSymbol(value)) {
             return ConversionError.TypeError;
         }
-        // Use safe ToString that captures exceptions from toString() methods
-        // Per WebIDL § 3.2.1, if ToString throws, we must propagate the exception
-        const result = v8.v8_Value_ToString_Safe(value, context);
-        defer v8.v8_FreeToStringResult(result);
-
-        // If toString() threw an exception, rethrow it and signal caller not to throw again
-        if (result.exception) |exc| {
-            v8.v8_Isolate_ThrowException(isolate, exc);
-            return ConversionError.ExceptionPending;
-        }
-
-        const string = result.value orelse return ConversionError.TypeError;
+        // Per WebIDL § 3.2.1, if ToString throws, leave the exception pending
+        // with its original throw site intact.
+        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.ExceptionPending;
+        defer v8.v8_String_Dispose(string);
         return try fromV8String(allocator, isolate, context, string);
     }
 
@@ -3744,7 +3700,7 @@ fn memberDefaultToV8(comptime M: type, comptime default: anytype, isolate: *v8.I
 /// other member pays nothing, and a held value of an agent with no world
 /// one predictable branch. OWNED by the caller when not null - released once
 /// the object holds it; null: `converted` itself goes in.
-fn memberAcrossWorlds(comptime M: type, value: M, isolate: *v8.Isolate, context: *v8.Context, converted: *v8.Value) ?*v8.Value {
+pub fn memberAcrossWorlds(comptime M: type, value: M, isolate: *v8.Isolate, context: *v8.Context, converted: *v8.Value) ?*v8.Value {
     if (comptime !holdsEngineValue(M)) return null;
     if (!isHeldHandle(M, value)) return null;
     const protocol_worlds = @import("protocol_worlds.zig");
