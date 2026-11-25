@@ -96,6 +96,17 @@ pub const KitPart = struct {
 
 /// What the neutral build asks about an adapter.
 pub const Facts = struct {
+    /// The cross-target checks this adapter offers: the root build makes a
+    /// step for each (`cross_checks`).
+    checks: []const CrossCheck = &.{},
+    /// A target this adapter answers for, for a check that needs one (the
+    /// option-ownership check configures under it); null for an adapter that
+    /// answers for none.
+    example_target: ?[]const u8 = null,
+    /// The object format of the systems this adapter answers for, and a
+    /// target whose objects have it, for the root build's tools that parse
+    /// objects (`object_format_fixtures`); null when it declares none.
+    object_format: ?ObjectFormatFixture = null,
     /// The words that name this platform or an operating system it answers
     /// for: what `zig build lint-build` looks for (its `--platform=` keys)
     /// in the root build.zig and the neutral files it imports, written as
@@ -154,6 +165,10 @@ pub fn defaultFor(target: std.Target) ?Platform {
 /// capabilities): darwin for macOS and iOS, linux for Linux. What the root
 /// build keeps of it once it is chosen (`chooseOs`).
 pub const OsSide = struct {
+    /// The adapter that answers for the target's OS; null when none does.
+    owner: ?Platform,
+    /// The names of the -D options it declared, in its order.
+    option_names: []const []const u8,
     /// The arguments a sub-build of the root build for another target of the
     /// same OS side takes from this one (check-ios's -Dios-sdk).
     forwarded: []const []const u8,
@@ -170,12 +185,51 @@ pub fn chooseOs(b: *std.Build, target: std.Build.ResolvedTarget, probe: *std.Bui
     inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |name| {
         const A = @field(adapters, name);
         if (A.ownsTarget(target.result)) {
+            // What the adapter declares is what the options map gains.
+            const declared_before = b.available_options_map.count();
             const options = A.declareOptions(b);
+            const option_names = b.allocator.dupe([]const u8, b.available_options_map.keys()[declared_before..]) catch @panic("OOM");
             A.resolve(b, target, options, probe);
-            return .{ .forwarded = A.forwarded(b, options) };
+            return .{ .owner = @field(Platform, name), .option_names = option_names, .forwarded = A.forwarded(b, options) };
         }
     }
-    return .{ .forwarded = &.{} };
+    return .{ .owner = null, .option_names = &.{}, .forwarded = &.{} };
+}
+
+/// The rule that an OS side's option belongs to it, run: for every OTHER
+/// listed adapter that names a target it answers for (`Facts.example_target`),
+/// one configure of this build root under that target with each option this
+/// build's OS side declared - the configure itself must refuse every one
+/// ("invalid option"), since only the adapter that answers for the target's
+/// OS declares its options (the integrator's ruling, 2026-11-24: -Dios-sdk
+/// exists only where darwin answers). Each of `dependants` depends on them.
+/// Nothing is compiled: the configure fails before any step runs. An OS side
+/// with no option has nothing another build could be given. The engine
+/// protocol's check, for the platform.
+pub fn addOptionOwnershipChecks(b: *std.Build, os_side: OsSide, dependants: []const *std.Build.Step) void {
+    if (os_side.option_names.len == 0) return;
+    const owner = os_side.owner orelse return;
+    inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |other| {
+        if (@field(adapters, other).facts.example_target) |other_target| {
+            if (@field(Platform, other) != owner) {
+                const check = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "--list-steps", b.fmt("-Dtarget={s}", .{other_target}) });
+                check.setName(b.fmt("the {t} OS side's options are refused under -Dtarget={s}", .{ owner, other_target }));
+                for (os_side.option_names) |option| {
+                    check.addArg(b.fmt("-D{s}=1", .{option}));
+                    check.expectStdErrMatch(b.fmt("invalid option: \"{s}\"", .{option}));
+                }
+                check.expectExitCode(1);
+                // The parent's local cache; the global one travels in the
+                // environment (the build command takes no --global-cache-dir).
+                check.addArg("--cache-dir");
+                check.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
+                check.setCwd(b.path("."));
+                // The sub-configure decides; this step always asks it.
+                check.has_side_effects = true;
+                for (dependants) |dependant| dependant.dependOn(&check.step);
+            }
+        }
+    }
 }
 
 /// What C compiled or translated for `target` needs beyond what Zig finds
@@ -230,6 +284,57 @@ pub fn addStandIns(b: *std.Build, module: *std.Build.Module, target: std.Build.R
         const A = @field(adapters, name);
         if (A.ownsTarget(target.result)) return A.addStandIns(b, module, target);
     }
+}
+
+/// A check of the root build for targets of another system than the
+/// machine's, which an adapter offers (`Facts.checks`): one top-level step,
+/// one `zig build <sub_step> -Dtarget=<target> <args> -j2` of the root per
+/// target, one after the other; nothing runs.
+pub const CrossCheck = struct {
+    /// The top-level step and its description.
+    step: []const u8,
+    description: []const u8,
+    /// The root build's step each sub-build runs.
+    sub_step: []const u8,
+    targets: []const []const u8,
+    /// The sub-build's arguments after its -Dtarget.
+    args: []const []const u8 = &.{},
+    /// Also pass the sub-build what this build's OS side forwards
+    /// (`OsSide.forwarded`).
+    forward_options: bool = false,
+};
+
+/// Every listed adapter's cross-target checks, in the list's order.
+pub const cross_checks: []const CrossCheck = checks: {
+    var checks: []const CrossCheck = &.{};
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| checks = checks ++ @field(adapters, name).facts.checks;
+    break :checks checks;
+};
+
+/// An object format, by the name the root build's fixtures use for it
+/// ("elf", "mach_o"), and a target triple whose objects have it.
+pub const ObjectFormatFixture = struct {
+    name: []const u8,
+    target: []const u8,
+};
+
+/// Every object format the listed adapters declare, sorted by name, so the
+/// fixtures are made in one order whatever the list's.
+pub const object_format_fixtures: []const ObjectFormatFixture = formats: {
+    var formats: []const ObjectFormatFixture = &.{};
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        const format = @field(adapters, name).facts.object_format orelse continue;
+        var at: usize = 0;
+        while (at < formats.len and std.mem.order(u8, formats[at].name, format.name) == .lt) at += 1;
+        formats = formats[0..at] ++ &[_]ObjectFormatFixture{format} ++ formats[at..];
+    }
+    break :formats formats;
+};
+
+/// Whether two targets are one system to run on: the same CPU architecture
+/// and operating system (the root build joins test executables only of one).
+pub fn sameSystem(a: std.Target, b: std.Target) bool {
+    return a.cpu.arch == b.cpu.arch and a.os.tag == b.os.tag;
 }
 
 /// What a binding asks of the adapter it binds (`bind`).
@@ -499,12 +604,12 @@ pub const lint_target_words: []const u8 = "os.tag,isDarwin,.abi ==";
 pub const Binding = struct {
     facade: *std.Build.Module,
     options: *std.Build.Module,
-    /// kit/curl's connection share (src/platform/kit/curl/share.zig), which
+    /// The kit's network connection share (src/platform/kit/curl/share.zig), which
     /// `fetch` imports for a Browser's network context until transfers move
     /// behind the platform's port. A module of its own that imports nothing:
     /// a graph whose `fetch` is compiled beside the old platform root (tests/
     /// platform/retained_old_platform.zig) must not reach the facade's files.
-    kit_curl_share: *std.Build.Module,
+    network_share: *std.Build.Module,
     /// kit/sfnt and kit/inflate, whose own test blocks the platform tests
     /// run (decision 20).
     kit_sfnt: *std.Build.Module,
@@ -524,13 +629,8 @@ pub const BindingOptions = struct {
     without: []const []const u8 = &.{},
     static: []const []const u8 = &.{},
     http2: bool,
-    libcurl: ?*std.Build.Step.Compile,
-    /// The mbedTLS libcurl links (StaticLibcurl.mbedtls): kit/curl's trust
-    /// store parses certificates with it and hands curl's TLS configuration
-    /// the chain. Null with a system libcurl, whose TLS library is its own.
-    mbedtls: ?*std.Build.Step.Compile = null,
-    brotli: ?kit.brotli.BrotliLibraries,
-    image_codecs: ?*std.Build.Step.Compile,
+    /// The C libraries the kit built for the graph (kit.libraries).
+    libraries: kit.Libraries,
     /// Register the facade by name (the public graph).
     public: bool = false,
     /// Today's bridges, which kit/posix wraps and the facade's TRANSITIONAL
@@ -579,10 +679,7 @@ pub fn binding(b: *std.Build, target: std.Build.ResolvedTarget, options: Binding
         .options = options_mod,
         .impl = impl,
         .without = options.without,
-        .brotli = options.brotli,
-        .image_codecs = options.image_codecs,
-        .libcurl = options.libcurl,
-        .mbedtls = options.mbedtls,
+        .libraries = options.libraries,
         .clock = options.clock,
         .host = options.host,
         .memory = options.memory,
@@ -608,7 +705,7 @@ pub fn binding(b: *std.Build, target: std.Build.ResolvedTarget, options: Binding
     } else true;
     // What the bound adapter's implementation links (platform_build.bind).
     bind(options.platform, impl, target, .{ .font_decoding = font_decoding_enabled });
-    return .{ .facade = facade, .options = options_mod, .kit_curl_share = parts.kit_curl_share, .kit_sfnt = parts.kit_sfnt, .kit_inflate = parts.kit_inflate, .kit_media_decoding = parts.kit_media_decoding, .c_time = parts.c_time };
+    return .{ .facade = facade, .options = options_mod, .network_share = parts.kit_curl_share, .kit_sfnt = parts.kit_sfnt, .kit_inflate = parts.kit_inflate, .kit_media_decoding = parts.kit_media_decoding, .c_time = parts.c_time };
 }
 
 /// The extra kit parts of the platform named `platform_name` for `target`:
@@ -699,6 +796,22 @@ test "the conformance bindings: each listed platform but the tests' own, then th
             } else return error.NotACapability;
         }
     }
+}
+
+test "the object-format fixtures: ELF from linux, then Mach-O from darwin, sorted by format" {
+    try testing.expectEqual(@as(usize, 2), object_format_fixtures.len);
+    try testing.expectEqualStrings("elf", object_format_fixtures[0].name);
+    try testing.expectEqualStrings("x86_64-linux-none", object_format_fixtures[0].target);
+    try testing.expectEqualStrings("mach_o", object_format_fixtures[1].name);
+    try testing.expectEqualStrings("aarch64-macos-none", object_format_fixtures[1].target);
+}
+
+test "the cross-target checks: darwin's check-ios, then linux's check-linux, in the list's order" {
+    try testing.expectEqual(@as(usize, 2), cross_checks.len);
+    try testing.expectEqualStrings("check-ios", cross_checks[0].step);
+    try testing.expect(cross_checks[0].forward_options);
+    try testing.expectEqualStrings("check-linux", cross_checks[1].step);
+    try testing.expectEqual(@as(usize, 2), cross_checks[1].targets.len);
 }
 
 test "a listed adapter's name is listed; a third party's and an unknown name are not" {

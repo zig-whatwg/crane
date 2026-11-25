@@ -1,0 +1,16 @@
+# Testing: A ratchet turned plain rule is proved red on a real site, not only on a fixture
+
+**Date**: 2026-11-24
+**Lesson**: When a lint's baseline reaches zero and it becomes a plain rule, keep one real violation in the tree until the conversion, and show the new tool failing on it through the real build step before that site goes.
+
+**Why**: A unit test of the verdict proves the tool's arithmetic on a fixture. It does not prove the path a real failure takes: the build passing the tool its keys, the scan reaching the file from its root through the imports it follows, the file's scope, the site printed. A cleanup that takes the last real site out before the conversion leaves only fixtures. A rule that looks at nothing then passes green for the wrong reason: a broken key list or import walk finds no name because it reads no file. A ratchet also hides a swap: a cleanup that removes many names and adds one keeps the key's count falling, so the new name gets through, and only the plain rule shows it.
+
+**What Happened**: Lane bp1's batch P4 took `zig build lint-build` (tools/lint_build_neutral.zig) from 211 occurrences of platform and library names, in build.zig and tests/wpt_runner/build_mode.zig, to zero, and made it a plain rule (tools/build_neutral_baseline.txt deleted). The integrator asked that the red run "show the tool failing on a real leftover site (not only a synthetic fixture), then green after that site goes". The cleanup commit (c4) kept one stale comment P3 had left beside the call that now asks the platform protocol, `// System frameworks (macOS)`. The conversion (c6) ran on chat2. The new unit tests failed 3 of 18 against a copy with the ratchet's verdicts and passed 18/18 against the real ones. Then `zig build lint-build -j2` on the real tree failed with two names, not one: the kept comment (`build.zig:3732 platform:macos comment`) and `build.zig:3774 platform:ios comment: // What this build's OS side forwards to a sub-build (-Dios-sdk).`. The second was a comment the same batch's c2 had written. The baseline allowed 17 `ios` occurrences in build.zig's comments, the batch removed them all, and this new one kept the count falling, so the ratchet let it through. `-- --update` was refused, and so was the baseline file when it was put back. With the kept line deleted, the rule still failed on c2's comment. Once that was reworded, the tree was green.
+
+**Fix**:
+1. In the cleanup that reaches zero, keep one real site (a comment is enough) and say in its commit that it is kept for the red.
+2. Convert the tool test-first: first a red copy with the ratchet's verdicts beside the files it imports, then the real tool.
+3. Run the real step on the tree with the site. It must fail and print the site's file, line and key, and it may print more than you kept.
+4. Delete the site, along with anything else it found, and run the step again: green. In the same commit, retire the baseline and make the tool refuse it if it comes back, and refuse `--update`, as lint-impls does for its own.
+
+**Takeaway**: **The last real violation is the plain rule's red test: spend it on the proof, not on the cleanup. A ratchet's falling count can hide a name the cleanup itself added, and only the plain rule finds it.**
