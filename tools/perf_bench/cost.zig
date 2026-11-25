@@ -351,6 +351,14 @@ pub const Pass = struct {
     tip_launches: u32 = 0,
     base_launches: u32 = 0,
 
+    /// Whether any row has a collected figure (the pass was run with
+    /// `--collected`). Every row is asked, not the headline's mean: a pass
+    /// of rows outside the headline (`--only=overhead`) has them too.
+    pub fn readCollected(p: *const Pass) bool {
+        for (p.rows) |*r| if (r.tip.of(.collected).len > 0 or r.base.of(.collected).len > 0) return true;
+        return false;
+    }
+
     pub fn row(p: *const Pass, workload: []const u8) ?*const Row {
         for (p.rows) |*r| if (std.mem.eql(u8, r.workload, workload)) return r;
         return null;
@@ -645,8 +653,7 @@ pub fn write(w: W, gpa: Allocator, default: *const Pass, memory: ?*const Pass, o
     try w.print("perf_bench cost: tip {s} against base {s}; the bar is {d:.2} (tip / base)\n", .{ default.tip_version, default.base_version, bar });
     try w.print("  default pass{s}{s}: {d} rows, {d} launches of the tip and {d} of the base\n", .{ if (options.default_name.len > 0) " " else "", options.default_name, default.rows.len, default.tip_launches, default.base_launches });
     if (memory) |p| {
-        const collected = try mean(gpa, p, .collected);
-        try w.print("  memory pass{s}{s}: {d} rows, {d} launches of the tip and {d} of the base; the collected figure {s}\n", .{ if (options.memory_name.len > 0) " " else "", options.memory_name, p.rows.len, p.tip_launches, p.base_launches, if (collected.n > 0) "was read" else "was not read (no --collected)" });
+        try w.print("  memory pass{s}{s}: {d} rows, {d} launches of the tip and {d} of the base; the collected figure {s}\n", .{ if (options.memory_name.len > 0) " " else "", options.memory_name, p.rows.len, p.tip_launches, p.base_launches, if (p.readCollected()) "was read" else "was not read (no --collected)" });
         if (!std.mem.eql(u8, p.tip_version, default.tip_version) or !std.mem.eql(u8, p.base_version, default.base_version)) {
             try w.print("  NOTE: the memory pass compares {s} against {s}: not the default pass's builds\n", .{ p.tip_version, p.base_version });
         }
@@ -1212,4 +1219,96 @@ test "a pair's verdict from its journals: one row cleared by levels, one by the 
     try testing.expectEqual(@as(usize, 0), s2.memory_not_cleared);
     try testing.expect(!s2.failed());
     try testing.expect(std.mem.endsWith(u8, out2.written(), "VERDICT: within the bar\n"));
+}
+
+// Rule (a)'s level grouping against its text (lane tool1, queue item 10,
+// 2026-11-24): docs/performance.md, "A lane's cost pair" - "two groups at
+// least 3% apart, two launches or more in each, each closer together than
+// half the gap between them". The launches are the two windows the queue
+// names; each test says which clause decides.
+
+fn tenths(comptime values: anytype) [values.len]u64 {
+    var out: [values.len]u64 = undefined;
+    inline for (values, 0..) |v, i| out[i] = v * (mib / 10);
+    return out;
+}
+
+test "rule (a)'s grouping, tab1's timers.message-channel: the tip between the base's two groups is one level by the text, and must be" {
+    const a = testing.allocator;
+    // The queue's ranges (the launches themselves were deleted with tab1's
+    // bins): base 22.7-23.2 MB x6 and 24.3-24.9 x3, tip 23.8-24.6 x9.
+    const base = tenths(.{ 227, 228, 229, 230, 231, 232, 243, 246, 249 });
+    const tip = tenths(.{ 238, 239, 240, 241, 242, 243, 244, 245, 246 });
+    const j = (try joint(a, &tip, &base)).?;
+    // The medians: 24.2 over 23.1.
+    try testing.expect(j.plain > 1.03);
+    // Both sides together: the widest gap between neighbours is 23.2 ->
+    // 23.8 MB, 0.6 MB, 2.6% of the lower group's median - under "at least
+    // 3% apart". One level, as the tool said.
+    try testing.expectEqual(@as(?Joint.Levels, null), j.levels);
+    // The base alone looks bimodal (1.1 MB apart, 4.8%), but its upper
+    // group is 0.6 MB wide, more than half that gap (and report.zig's own
+    // test, a quarter, refuses it too): one level by both texts.
+    try testing.expectEqual(@as(?report.Levels, null), try report.levelsOf(a, &base));
+    // Why the text must not group these: were the base's upper group and
+    // the tip one level, every tip launch would be on it (23.8 is nearer
+    // 24.6 than 22.95 in ratio) and the level against level would read
+    // within the bar - clearing a tip that sits on NEITHER of the base's
+    // levels. The user ruled on this row instead (2026-11-23).
+    try testing.expect(!nearerLow(229 * (mib / 10) + mib / 20, 246 * (mib / 10), 238 * (mib / 10)));
+}
+
+test "rule (a)'s grouping, cs1's observers.resize-construct: peak one level; collected bimodal but its upper mode too wide to be a level by the text" {
+    const a = testing.allocator;
+    // cs1's 9-launch pair, memory pass (chat.local
+    // ~/crane-work/cs1-c-bins/costpair-635d7dfd6, 2026-11-24), MB.
+    const tip_peak = tenths(.{ 658, 690, 693, 699, 699, 703, 712, 717, 744 });
+    const base_peak = tenths(.{ 588, 662, 670, 670, 677, 693, 745, 746, 767 });
+    const peak = (try joint(a, &tip_peak, &base_peak)).?;
+    try testing.expectApproxEqAbs(@as(f64, 1.033), peak.plain, 0.001);
+    // The widest gap is the base's lowest launch (58.8 -> 65.8): one launch
+    // below it, not "two launches or more in each". One level.
+    try testing.expectEqual(@as(?Joint.Levels, null), peak.levels);
+
+    const tip_collected = tenths(.{ 193, 193, 203, 258, 262, 271, 279, 283, 284 });
+    const base_collected = tenths(.{ 194, 204, 204, 204, 247, 271, 274, 283, 318 });
+    const collected = (try joint(a, &tip_collected, &base_collected)).?;
+    // 1.059 in the window's table, whose launches had more digits.
+    try testing.expectApproxEqAbs(@as(f64, 1.059), collected.plain, 0.003);
+    // Two modes by eye: 19.3-20.4 MB (7 launches) and 24.7-31.8 (11), 4.3
+    // MB apart (21%). The upper one spans 7.1 MB - not "closer together
+    // than half the gap" (2.15 MB) - so the text says one level, and the
+    // code reads it so.
+    try testing.expectEqual(@as(?Joint.Levels, null), collected.levels);
+    // Without its widest launch (the base's 31.8) the upper mode still
+    // spans 3.7 MB: the text's clause, not one stray launch, decides.
+    try testing.expectEqual(@as(?Joint.Levels, null), (try joint(a, &tip_collected, base_collected[0..8])).?.levels);
+
+    // The verdict the window printed: rule (a) has no levels to clear the
+    // peak by, and rule (b) reads the collected median, which the 9-launch
+    // sample put on different modes (tip median 26.2 high, base 24.7 high
+    // but the base has 4 of 9 low against the tip's 3).
+    const r: Reading = .{ .ratio = peak.plain, .tip_median = 69.9, .base_median = 67.7, .apart = false, .levels = peak.levels };
+    const c: Reading = .{ .ratio = collected.plain, .tip_median = 26.2, .base_median = 24.7, .apart = false, .levels = collected.levels };
+    try testing.expectEqual(Verdict.over, verdictOf(r, c, default_bar));
+}
+
+test "the memory pass's header says the collected figure was read when any row has it, in the headline or not" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    // A pass of the harness's floor alone (`--only=overhead`), which is not
+    // in the headline: lane tool1's dry window said "was not read" over
+    // records that carry it.
+    var records: std.ArrayList(journal.Record) = .empty;
+    for ([_]journal.EngineName{ .crane, .crane_base }) |name| try records.append(a, try testRecord(a, name, if (name == .crane) "tip1" else "base1", "overhead.empty", 0, 1, 1, 30 * mib, 31 * mib, 29 * mib));
+    const memory = try passOf(a, records.items);
+    try testing.expect(memory.readCollected());
+    var out: Io.Writer.Allocating = .init(a);
+    _ = try write(&out.writer, a, &memory, &memory, .{});
+    try testing.expect(std.mem.indexOf(u8, out.written(), "the collected figure was read") != null);
+    // And a pass with none says so.
+    for (records.items) |*r| r.memory.?.footprint_collected = null;
+    const plain = try passOf(a, records.items);
+    try testing.expect(!plain.readCollected());
 }

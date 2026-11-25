@@ -487,6 +487,53 @@ MallocLargeCache=0 MallocMaxMagazines=1 perf_bench run --suite=... --root=tests/
 perf_bench cost --default=<D> --memory=<M> [--bar=1.03]
 ```
 
+**A lane runs the pair with `perf_bench window`** (lane tool1, 2026-11-24), the one committed
+window runner (`tools/perf_bench/window.zig`); the per-lane `costwin.sh` copies are retired. It
+is the tip console's own `perf_bench`, queued as a timed window from the lane's mirror:
+
+```bash
+crane-pool.sh queue chat.local <mirror> cost --est <min> \
+  '<bins>/tip-<sha>/perf_bench window --tip=<bins>/tip-<sha> --tip-commit=<sha> \
+     --base=<bins>/main-<sha> --base-commit=<sha> --out=<bins>/costpair-<sha> \
+     --tree-head=.<lane>/tree.head --stop-file=<bins>/STOP-chat.local'
+```
+
+Each console dir is a frozen release console (repl, repl.modes, whatwg_snapshot.bin, SHA256SUMS
+over them, and BUILD_INFO naming its commit and `v8=<version>`). Before anything is measured the
+window refuses, with exit 2 and the reason: an `--out` that exists (an earlier run's records
+would be read as this window's; `--out-exists=move-aside` renames it with a stamp), a console
+that does not match its SHA256SUMS, is not the ReleaseSafe release build for `apple_m1`, or
+whose BUILD_INFO does not name the commit given, two sides that are one binary, a mirror whose
+`tree.head` is not the tip (`--tree-differs=<reason>` measures anyway and prints the reason), a
+host other than chat.local (`--any-host`: a mechanism run, never a figure), and a `perf_bench
+check` that fails. It writes the pins itself, then runs D (the default pass, `--runs=7`), M (the
+memory pass: `MallocLargeCache=0 MallocMaxMagazines=1`, `--collected`, `--memory-runs=9`) and C
+(`perf_bench cost`), each pass after a quiet-host gate. After each pass it counts the journal's
+records against runs x workloads x consoles, one per engine, workload and run, and prints the
+count on the pass's END line. A pass that is not whole, or that `perf_bench run` ended early, gets
+no verdict. Every START and END line has its time from the clock in 12-hour US Eastern. Exit: 0
+within the bar, 1 over it, 2 an input check, 3 a STOP file, 4 a pass incomplete, 5 the host never
+went quiet; `crane-pool.sh queue-wait` returns it. `--dry-run` makes every check, including the
+check launches, and keeps nothing.
+
+**A memory figure over the bar whose collected launches are bimodal is measured again before it
+goes to a ruling** (the integrator, 2026-11-24, from lane tool1's check of rule (a)): the memory
+pass alone, 15 launches a side, on that row's page - `perf_bench window ... --steps=M,C
+--memory-runs=15 --only=<page>` with a fresh `--out`. Nine launches put the median of a figure
+whose launches sit in two modes on either mode by chance: cs1's `observers.resize-construct`
+read 1.033 peak and 1.059 collected at 9 launches a side (the collected launches 19.3-20.4 MB
+in 7 and 24.7-31.8 MB in 11, on both sides) and 1.009 and 0.980 at 15. The rule's grouping
+reads such a collected figure as one level - its upper mode is wider than half the gap - so
+neither clearing applies at 9; the re-run, not a ruling, settles it.
+
+**A broken console fails fast** (perf1-guard, 2026-11-24: on 2026-11-23 a release console whose
+every script threw made every workload of two windows time out, for 7 h and for 5 h). `perf_bench
+check` launches `workloads/overhead.html` once in every pinned engine and fails, naming the
+engine and printing its output's last lines, when one gives no result within
+`--check-timeout-s` (60 s). `perf_bench run` stops when `--max-timeouts` launches of one engine
+in a row (3; 0: never) end in a timeout or a crash: its `STOPPED:` line names the engine, the
+timeouts and crashes, and the last launch, and it exits 4. A STOP file ending it early exits 3.
+
 **The memory pass is always run with `--collected`** (the integrator, 2026-11-17), so that
 clearing (b) below is available for every row: a row whose launches form no two tight groups -
 one stray launch far above a level is enough (lane impls8's window: one launch at 67.7 MB above a

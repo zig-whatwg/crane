@@ -1,6 +1,7 @@
 # Workflow: A timed window proves its subject runs before it measures, and bounds itself
 
 **Date**: 2026-11-24
+**Status** (2026-11-24, lane tool1): the smoke and the watchdog are in the tools now - `perf_bench check` launches `workloads/overhead.html` in every pinned engine and fails on no result, `perf_bench run --max-timeouts=3` stops after three launches of one engine in a row time out or crash (exit 4), and `perf_bench window` runs both (docs/performance.md, "A lane's cost pair"). The list and estimate advice stands.
 **Lesson**: A queued window must check that the thing it measures works at all, stop itself when nothing comes back, and carry an estimate that covers every step it runs - or it holds a pool host for hours and measures nothing.
 
 **Why**: A window's input checks (checksums, pins, list sizes) say the files are the right files, not that the binary runs. A window that fails slowly looks, from outside, like a window that is working: the keeper sees CPU and changing files. And a window's script is shared state - a list one step writes is read by others.
