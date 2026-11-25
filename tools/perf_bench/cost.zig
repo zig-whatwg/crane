@@ -351,6 +351,14 @@ pub const Pass = struct {
     tip_launches: u32 = 0,
     base_launches: u32 = 0,
 
+    /// Whether any row has a collected figure (the pass was run with
+    /// `--collected`). Every row is asked, not the headline's mean: a pass
+    /// of rows outside the headline (`--only=overhead`) has them too.
+    pub fn readCollected(p: *const Pass) bool {
+        for (p.rows) |*r| if (r.tip.of(.collected).len > 0 or r.base.of(.collected).len > 0) return true;
+        return false;
+    }
+
     pub fn row(p: *const Pass, workload: []const u8) ?*const Row {
         for (p.rows) |*r| if (std.mem.eql(u8, r.workload, workload)) return r;
         return null;
@@ -645,8 +653,7 @@ pub fn write(w: W, gpa: Allocator, default: *const Pass, memory: ?*const Pass, o
     try w.print("perf_bench cost: tip {s} against base {s}; the bar is {d:.2} (tip / base)\n", .{ default.tip_version, default.base_version, bar });
     try w.print("  default pass{s}{s}: {d} rows, {d} launches of the tip and {d} of the base\n", .{ if (options.default_name.len > 0) " " else "", options.default_name, default.rows.len, default.tip_launches, default.base_launches });
     if (memory) |p| {
-        const collected = try mean(gpa, p, .collected);
-        try w.print("  memory pass{s}{s}: {d} rows, {d} launches of the tip and {d} of the base; the collected figure {s}\n", .{ if (options.memory_name.len > 0) " " else "", options.memory_name, p.rows.len, p.tip_launches, p.base_launches, if (collected.n > 0) "was read" else "was not read (no --collected)" });
+        try w.print("  memory pass{s}{s}: {d} rows, {d} launches of the tip and {d} of the base; the collected figure {s}\n", .{ if (options.memory_name.len > 0) " " else "", options.memory_name, p.rows.len, p.tip_launches, p.base_launches, if (p.readCollected()) "was read" else "was not read (no --collected)" });
         if (!std.mem.eql(u8, p.tip_version, default.tip_version) or !std.mem.eql(u8, p.base_version, default.base_version)) {
             try w.print("  NOTE: the memory pass compares {s} against {s}: not the default pass's builds\n", .{ p.tip_version, p.base_version });
         }
@@ -1284,4 +1291,24 @@ test "rule (a)'s grouping, cs1's observers.resize-construct: peak one level; col
     const r: Reading = .{ .ratio = peak.plain, .tip_median = 69.9, .base_median = 67.7, .apart = false, .levels = peak.levels };
     const c: Reading = .{ .ratio = collected.plain, .tip_median = 26.2, .base_median = 24.7, .apart = false, .levels = collected.levels };
     try testing.expectEqual(Verdict.over, verdictOf(r, c, default_bar));
+}
+
+test "the memory pass's header says the collected figure was read when any row has it, in the headline or not" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    // A pass of the harness's floor alone (`--only=overhead`), which is not
+    // in the headline: lane tool1's dry window said "was not read" over
+    // records that carry it.
+    var records: std.ArrayList(journal.Record) = .empty;
+    for ([_]journal.EngineName{ .crane, .crane_base }) |name| try records.append(a, try testRecord(a, name, if (name == .crane) "tip1" else "base1", "overhead.empty", 0, 1, 1, 30 * mib, 31 * mib, 29 * mib));
+    const memory = try passOf(a, records.items);
+    try testing.expect(memory.readCollected());
+    var out: Io.Writer.Allocating = .init(a);
+    _ = try write(&out.writer, a, &memory, &memory, .{});
+    try testing.expect(std.mem.indexOf(u8, out.written(), "the collected figure was read") != null);
+    // And a pass with none says so.
+    for (records.items) |*r| r.memory.?.footprint_collected = null;
+    const plain = try passOf(a, records.items);
+    try testing.expect(!plain.readCollected());
 }
