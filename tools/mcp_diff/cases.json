@@ -1132,6 +1132,49 @@
           }
         }
       ]
+    },
+    {
+      "name": "pages: resize",
+      "about": "resize_page: the window restored to normal when it is not, then Browser.setContentsSize; the page's innerWidth and innerHeight follow.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "resize_page",
+          "args": {
+            "pageId": 1,
+            "width": 800,
+            "height": 600
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [innerWidth, innerHeight]"
+          }
+        },
+        {
+          "tool": "resize_page",
+          "args": {
+            "pageId": 1,
+            "width": 1024,
+            "height": 700
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [innerWidth, innerHeight]"
+          }
+        }
+      ]
     }
   ],
   "expected": [
