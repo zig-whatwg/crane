@@ -430,11 +430,22 @@ test "invokeCallbackFunctionAs: return conversion throws inside callback context
     }
 }
 
-test "invokeCallbackFunctionToPromise: always a new Promise (3.2.24), sync throw rejects, never throws" {
+test "invokeCallbackFunctionToPromise: PromiseResolve passes through same-realm Promise, wraps non-promise/cross-realm, sync throw rejects" {
     const page = try Page.open();
     defer page.close();
 
-    // Returning an existing Promise still yields a NEW Promise (3.2.24)
+    // Non-promise return is wrapped in a fulfilled Promise
+    {
+        const cb = try Page.makeCallback(page.realm, "() => 123", page.realm);
+        defer cb.release();
+        const p = try protocol.invokeCallbackFunctionToPromise(page.realm, &cb, .undefined, .{});
+        defer p.release();
+        // V8 PromiseState: 0 = pending, 1 = fulfilled, 2 = rejected.
+        try testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(@ptrCast(@alignCast(p.value.handle.ptr))));
+    }
+
+    // Same-realm %Promise% passes through unchanged (PromiseResolve: 0 extra
+    // microtask ticks, Chrome 157 + Firefox 159/161 2-of-3 browser majority).
     {
         const setup_res = try page.eval("globalThis.origPromise = Promise.resolve(123); globalThis.fnRetP = () => globalThis.origPromise; globalThis.fnRetP");
         const cb: protocol.CallbackFunction = .{ .function = setup_res, .context = page.realm };
@@ -443,8 +454,7 @@ test "invokeCallbackFunctionToPromise: always a new Promise (3.2.24), sync throw
         const p = try protocol.invokeCallbackFunctionToPromise(page.realm, &cb, .undefined, .{});
         defer p.release();
 
-        // Store p on globalThis and verify p instanceof Promise && p !== origPromise
-        const check_cb = try Page.makeCallback(page.realm, "(p) => (p instanceof Promise) && (p !== globalThis.origPromise)", page.realm);
+        const check_cb = try Page.makeCallback(page.realm, "(p) => (p instanceof Promise) && (p === globalThis.origPromise)", page.realm);
         defer check_cb.release();
         const check = try protocol.invokeCallbackFunctionAs(bool, .{}, page.realm, &check_cb, .undefined, .{p.borrow()}, .rethrow, testing.allocator);
         switch (check) {
@@ -457,6 +467,32 @@ test "invokeCallbackFunctionToPromise: always a new Promise (3.2.24), sync throw
                 return error.UnexpectedThrow;
             },
         }
+    }
+
+    // Cross-realm %Promise% is wrapped in a NEW %Promise% of F's associated realm.
+    {
+        const other = try page.openSecondRealm();
+        defer protocol.destroyWindowRealm(other, .global_detached);
+        const other_p = try Page.evalIn(other, "Promise.resolve(7)");
+        defer other_p.release();
+        const cb = try Page.makeCallback(page.realm, "(p) => p", page.realm);
+        defer cb.release();
+        const returned = try protocol.invokeCallbackFunctionToPromise(page.realm, &cb, .undefined, .{other_p.borrow()});
+        defer returned.release();
+        try testing.expect(!protocol.sameValue(page.realm, other_p.borrow(), returned.borrow()));
+    }
+
+    // Promise whose .constructor getter throws becomes a rejected Promise (never throws).
+    {
+        const cb = try Page.makeCallback(
+            page.realm,
+            "() => { const p = Promise.resolve(1); Object.defineProperty(p, 'constructor', { get() { throw new Error('ctor-boom'); } }); return p; }",
+            page.realm,
+        );
+        defer cb.release();
+        const p = try protocol.invokeCallbackFunctionToPromise(page.realm, &cb, .undefined, .{});
+        defer p.release();
+        try testing.expectEqual(@as(c_int, 2), ffi.v8_Promise_State(@ptrCast(@alignCast(p.value.handle.ptr))));
     }
 
     // Sync throw returns a rejected Promise (never throws)

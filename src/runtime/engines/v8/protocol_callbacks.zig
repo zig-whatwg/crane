@@ -1013,9 +1013,11 @@ pub fn invokeCallbackFunctionAs(
 }
 
 /// WebIDL "invoke a callback function" (3.12) for a callback returning a
-/// Promise type: step 13 wraps a normal return in a NEW `%Promise%` resolved
-/// with it (WebIDL 3.2.24); step 14.7-14.9 wraps an abrupt completion in a
-/// rejected `%Promise%`, both in F's associated realm.
+/// Promise type: step 13 converts a normal return via ECMAScript
+/// `PromiseResolve(%Promise%, V)` in F's associated realm (golden rule 2
+/// 2-of-3 Chrome+Firefox majority; see `engine_protocol.zig`); step 14.7-14.9
+/// wraps an abrupt completion (from the call or from `Get(V, "constructor")`)
+/// in a rejected `%Promise%` in F's associated realm.
 pub fn invokeCallbackFunctionToPromise(
     realm: Context,
     callback: *const engine.CallbackFunction,
@@ -1071,17 +1073,30 @@ pub fn invokeCallbackFunctionToPromise(
                 self.result = err;
                 return;
             };
-            // 13. Convert normal return to Promise<T> via WebIDL 3.2.24 inside
-            // prepared scopes: NewPromiseCapability(%Promise%) + Resolve(V).
+            // 13. Convert normal return via PromiseResolve(%Promise%, V) inside
+            // prepared scopes (same-realm %Promise% passes through unchanged,
+            // matching Chrome 157 + Firefox 159/161 across all 5 Promise
+            // callback APIs; non-promises, thenables, subclasses and
+            // cross-realm promises wrap in a new %Promise% of F's realm).
+            const at: struct {
+                isolate: *ffi.Isolate,
+                ctx: *ffi.Context,
+                pub fn context(s: @This()) *ffi.Context {
+                    return s.ctx;
+                }
+            } = .{ .isolate = self.isolate, .ctx = self.context };
             switch (raw) {
                 .thrown => |t| self.result = .{ .thrown = t },
                 .normal => |v| {
                     defer ffi.v8_Global_Dispose(v);
-                    const promise = settledPromiseInContext(self.context, v, true) catch |err| {
+                    const resolved = support.promiseResolve(at, v) catch |err| {
                         self.result = err;
                         return;
                     };
-                    self.result = .{ .resolved = promise };
+                    switch (resolved) {
+                        .normal => |promise| self.result = .{ .resolved = support.owned(promise) },
+                        .thrown => |exc| self.result = .{ .thrown = .{ .value = exc } },
+                    }
                 },
             }
         }

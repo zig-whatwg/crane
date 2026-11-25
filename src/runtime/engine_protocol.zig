@@ -2376,10 +2376,26 @@ pub inline fn invokeCallbackFunctionAs(
 
 /// WebIDL "invoke a callback function" (3.12) for a callback whose return type
 /// is `Promise<T>`: step 10 typed arguments; step 13 converts a normal result
-/// to a NEW promise via WebIDL 3.2.24 (`NewPromiseCapability(%Promise%)` +
-/// `Resolve(V)` in F's associated realm); step 14.7-14.9 converts an abrupt
-/// completion into a promise rejected with the thrown value in F's associated
-/// realm. Never returns a JS throw; the returned promise `Owned` is OWNED.
+/// via ECMAScript `PromiseResolve(%Promise%, V)` in F's associated realm;
+/// step 14.7-14.9 converts an abrupt completion (from the call or from
+/// `Get(V, "constructor")`) into a promise rejected with the thrown value in
+/// F's associated realm. Never returns a JS throw; the returned `Owned` is
+/// OWNED.
+///
+/// Deviation from WebIDL 3.2.24 text, stated (golden rule 2): WebIDL 3.2.24
+/// specifies `NewPromiseCapability(%Promise%)` + `[[Resolve]](V)` (always a
+/// new promise, adding 2 microtask ticks when `V` is already a `%Promise%`).
+/// Live probes of Chrome 157.0.8103.51 and Firefox 159.0.1/161.0 across all
+/// five Promise-returning callback APIs (`WritableStream` `write`,
+/// `NavigateEvent.intercept` `handler` and `precommitHandler`,
+/// `navigator.locks.request`, `document.startViewTransition`) show BOTH pass a
+/// same-realm `%Promise%` through unchanged (`delta = 0` microtask ticks,
+/// `thenGets = 0` during return conversion; Firefox performs `PromiseResolve`
+/// with `Get(V, "constructor")`, Chrome checks `IsPromise`), while Safari 27
+/// wraps in a new promise and fails all 8 variants of
+/// `navigation-api/ordering-and-transition/{navigate-same-document,reload,anchor-download,location-href}-intercept-reject.html`
+/// (wpt.fyi `cc74d2669f`), which Chrome and Firefox both pass. By golden rule
+/// 2 (2-of-3 browser majority), Crane converts with `PromiseResolve(%Promise%, V)`.
 pub inline fn invokeCallbackFunctionToPromise(
     realm: Context,
     callback: *const CallbackFunction,
