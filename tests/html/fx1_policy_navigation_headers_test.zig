@@ -14,7 +14,7 @@ fn copyHeaders(allocator: std.mem.Allocator) !void {
         try response.header_list.append("permissions-policy", "deferred-fetch-minimal=*");
         try response.header_list.append("Permissions-Policy-Report-Only", "deferred-fetch=*;report-to=one");
         try response.header_list.append("permissions-policy-report-only", "deferred-fetch-minimal=();report-to=two");
-        result = try navigation.resultFromResponse(allocator, "https://parent.test/frame", response, .{});
+        result = try navigation.resultFromResponse(allocator, "https://parent.test/frame", response);
     }
     defer result.deinit();
     // The response (and every field value it owned) has already been freed.

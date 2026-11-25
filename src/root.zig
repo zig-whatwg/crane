@@ -49,26 +49,3 @@ pub const debug = @import("debug.zig");
 // boundary"), and this module never had a "v8" import to re-export.
 pub const js_bindings = @import("js_bindings");
 pub const codegen = @import("codegen");
-
-test {
-    // Import all submodule tests
-    _ = infra;
-    _ = webidl;
-    _ = runtime;
-    _ = dom;
-    _ = encoding;
-    _ = url;
-    _ = console;
-    _ = streams;
-    _ = mimesniff;
-    _ = interfaces;
-    // impls tests are run through their individual modules, not exported publicly
-    _ = trusted_types;
-    _ = csp;
-    _ = websocket;
-    _ = permissions;
-    _ = browser;
-    _ = intl;
-    _ = js_bindings;
-    _ = codegen;
-}

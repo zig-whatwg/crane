@@ -49,7 +49,3 @@ pub const FetchedScript = script_fetch.FetchedScript;
 pub const WorkerScriptError = script_fetch.WorkerScriptError;
 pub const WorkerScriptFetchOptions = script_fetch.WorkerScriptFetchOptions;
 pub const isValidWorkerScriptType = script_fetch.isValidWorkerScriptType;
-
-test {
-    std.testing.refAllDecls(@This());
-}

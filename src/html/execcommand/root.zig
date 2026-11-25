@@ -988,6 +988,14 @@ fn fireInputEventWith(target: *Instance, comptime event_type: []const u8, input_
     return dom.fire_event.dispatchTrusted(target, event) catch true;
 }
 
+// The files whose own tests src-html runs (lane core1): Zig collects a
+// file's test blocks only when something analyzes its import.
+test {
+    _ = common;
+    _ = style_values;
+    _ = whitespace;
+}
+
 test "command names are ASCII case-insensitive" {
     try std.testing.expectEqual(Command.delete, Command.fromName("delete").?);
     try std.testing.expectEqual(Command.delete, Command.fromName("DELETE").?);

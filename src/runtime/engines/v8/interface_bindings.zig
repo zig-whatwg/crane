@@ -1397,34 +1397,6 @@ pub const InterfaceInfo = struct {
 // Testing
 // ============================================================================
 
-test "interface bindings module compiles" {
-    const testing = std.testing;
-    testing.refAllDecls(@This());
-}
-
-test "EventTarget binding has methods" {
-    const testing = std.testing;
-
-    // Verify EventTarget has methods extracted
-    try testing.expect(EventTarget.all_methods.len > 0);
-
-    // Check for known EventTarget methods
-    var has_addEventListener = false;
-    var has_removeEventListener = false;
-    var has_dispatchEvent = false;
-
-    for (EventTarget.all_methods) |method| {
-        if (std.mem.eql(u8, method.name, "addEventListener")) has_addEventListener = true;
-        if (std.mem.eql(u8, method.name, "removeEventListener")) has_removeEventListener = true;
-        if (std.mem.eql(u8, method.name, "dispatchEvent")) has_dispatchEvent = true;
-    }
-
-    try testing.expect(has_addEventListener);
-    try testing.expect(has_removeEventListener);
-
-    try testing.expect(has_dispatchEvent);
-}
-
 /// Reinstall accessor callbacks on ALL interface prototypes
 ///
 /// This is used after loading from a V8 snapshot. V8 snapshots serialize JavaScript

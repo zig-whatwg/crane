@@ -115,4 +115,5 @@ test {
     _ = engine;
     _ = ua_sheet;
     _ = matched_properties_cache;
+    _ = css_attributes;
 }

@@ -63,12 +63,3 @@ pub fn call_gc(ctx: runtime.Context) anyerror!runtime.JSValue {
     const p = try engine.createResolvedPromise(realm, runtime.JSValue.jsUndefined);
     return p.take();
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "TestUtils - module compiles" {
-    // Basic compile test - actual V8 tests need integration test infrastructure
-    _ = call_gc;
-}

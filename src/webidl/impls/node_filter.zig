@@ -10,6 +10,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
+const webidl = @import("webidl");
 
 /// A traverser's filter: the callback interface value the calls are made
 /// through, taken at the conversion, so that its callback context is the
@@ -60,7 +61,7 @@ pub fn call(stored: *anyopaque, node: *runtime.Instance) Error!u16 {
     // The callback's return type is `unsigned short`: ToNumber - which throws
     // for a Symbol or a BigInt - then ConvertToInt.
     const number = engine.convertToUnrestrictedDouble(realm, result.value) catch |err| return traverserError(err);
-    return convertToUnsignedShort(number);
+    return webidl.primitives.unsignedShortFromNumber(number);
 }
 
 /// What `call` fails with: the traversers' own errors.
@@ -77,15 +78,6 @@ fn traverserError(err: engine.Error) Error {
     };
 }
 
-/// WebIDL § 3.2.4 ConvertToInt for `unsigned short`, steps 6-10, of a number
-/// ToNumber produced: NaN, +-0 and +-Infinity give 0; anything else is
-/// truncated and wrapped modulo 2^16.
-fn convertToUnsignedShort(x: f64) u16 {
-    if (std.math.isNan(x) or std.math.isInf(x) or x == 0) return 0;
-    const wrapped = @mod(@trunc(x), 65536.0);
-    return @intFromFloat(wrapped);
-}
-
 /// The filter as script sees it - `nodeIterator.filter`, `treeWalker.filter`:
 /// the object createNodeIterator() or createTreeWalker() was given, as the
 /// getter's result - a hold of the binding's own, since the traverser keeps
@@ -100,15 +92,4 @@ pub fn release(stored: ?*anyopaque) void {
     const filter: *Filter = @ptrCast(@alignCast(stored orelse return));
     filter.callback.release();
     filter.allocator.destroy(filter);
-}
-
-test "ConvertToInt for unsigned short wraps modulo 2^16 and truncates toward zero" {
-    try std.testing.expectEqual(@as(u16, 0), convertToUnsignedShort(std.math.nan(f64)));
-    try std.testing.expectEqual(@as(u16, 0), convertToUnsignedShort(std.math.inf(f64)));
-    try std.testing.expectEqual(@as(u16, 0), convertToUnsignedShort(-0.0));
-    try std.testing.expectEqual(@as(u16, 1), convertToUnsignedShort(1.9));
-    try std.testing.expectEqual(@as(u16, 65535), convertToUnsignedShort(-1));
-    try std.testing.expectEqual(@as(u16, 65535), convertToUnsignedShort(-1.5));
-    try std.testing.expectEqual(@as(u16, 2), convertToUnsignedShort(65538));
-    try std.testing.expectEqual(@as(u16, 3), convertToUnsignedShort(3));
 }

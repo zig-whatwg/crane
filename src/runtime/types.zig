@@ -53,9 +53,3 @@ pub const Float32Array = @import("typedefs/TypedArrays.zig").Float32Array;
 pub const Float64Array = @import("typedefs/TypedArrays.zig").Float64Array;
 pub const BigInt64Array = @import("typedefs/TypedArrays.zig").BigInt64Array;
 pub const BigUint64Array = @import("typedefs/TypedArrays.zig").BigUint64Array;
-
-// Re-export tests
-test {
-    const std = @import("std");
-    std.testing.refAllDecls(@This());
-}

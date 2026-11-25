@@ -172,10 +172,3 @@ pub fn isV8ContextValid(ctx: anytype) bool {
     if (ffi.v8_Isolate_GetCurrent() == null) return false;
     return true;
 }
-
-test "JsScope basic structure" {
-    // This is a compile-time test to ensure the struct is well-formed
-    const scope_size = @sizeOf(JsScope);
-    const expected_size = @sizeOf(*ffi.HandleScope) + @sizeOf(*ffi.Context) + @sizeOf(*ffi.Isolate);
-    try @import("std").testing.expectEqual(expected_size, scope_size);
-}

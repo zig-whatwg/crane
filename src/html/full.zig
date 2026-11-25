@@ -52,20 +52,6 @@ pub const execcommand = @import("execcommand/root.zig");
 // This ensures Zig sees html_core as one module, not two modules owning same files
 const core = @import("html_core");
 
-// Event Loop (§8.1.7)
-pub const event_loop = core.event_loop;
-
-// Re-export commonly used types
-pub const EventLoop = core.EventLoop;
-pub const EventLoopType = core.EventLoopType;
-pub const Task = core.Task;
-pub const TaskSource = core.TaskSource;
-pub const Microtask = core.Microtask;
-pub const Timer = core.Timer;
-pub const TimerManager = core.TimerManager;
-pub const VisibilityState = core.VisibilityState;
-pub const RenderingCallbacks = core.RenderingCallbacks;
-
 // Parser (§13)
 pub const parser = core.parser;
 
@@ -82,21 +68,11 @@ pub const DoctypeToken = core.DoctypeToken;
 pub const CommentToken = core.CommentToken;
 pub const ParseError = core.ParseError;
 pub const ParseErrorCode = core.ParseErrorCode;
-pub const ParseErrorCollector = core.ParseErrorCollector;
 
 // Fragment parsing (§13.5 - innerHTML, DOMParser, etc.)
 pub const parseFragment = core.parseFragment;
-pub const parseHTMLFromString = core.parseHTMLFromString;
 pub const FragmentParseResult = core.FragmentParseResult;
 pub const FragmentParseOptions = core.FragmentParseOptions;
-
-// Document write support (§8.4 - document.write/writeln/open/close)
-pub const DocumentWriteState = core.DocumentWriteState;
-pub const DocumentWriteError = core.DocumentWriteError;
-pub const documentOpen = core.documentOpen;
-pub const documentWrite = core.documentWrite;
-pub const documentWriteln = core.documentWriteln;
-pub const documentClose = core.documentClose;
 
 // Custom Elements (requires webidl access for CustomElementDefinition)
 // Note: These modules are NOT available from html_core because they access

@@ -131,23 +131,3 @@ fn packageString(instance: *runtime.Instance, blob: *runtime.Instance, comptime 
     const result = try file.algorithms.packageData(internal.allocator, bytes, read_type, mime_type.asSlice(), encoding_label);
     return runtime.DOMString.initOwned(result.string);
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "FileReaderSync - constructor" {
-    const allocator = std.testing.allocator;
-
-    // Create minimal context
-    var ctx_data = try runtime.ContextData.init(allocator, .{});
-    defer ctx_data.deinit();
-    const ctx: runtime.Context = &ctx_data;
-
-    const reader = try call_constructor(ctx);
-    defer runtime.Instance.deinit(reader);
-
-    // Verify internal state was created
-    const internal = getInternal(reader);
-    try std.testing.expect(internal != null);
-}

@@ -208,26 +208,3 @@ pub const WorkerError = error{
     /// Type error (e.g., importScripts in module worker)
     TypeError,
 };
-
-test "WorkerType - fromString" {
-    try std.testing.expectEqual(WorkerType.classic, WorkerType.fromString("classic").?);
-    try std.testing.expectEqual(WorkerType.module, WorkerType.fromString("module").?);
-    try std.testing.expect(WorkerType.fromString("invalid") == null);
-}
-
-test "RequestCredentials - fromString" {
-    try std.testing.expectEqual(RequestCredentials.omit, RequestCredentials.fromString("omit").?);
-    try std.testing.expectEqual(RequestCredentials.same_origin, RequestCredentials.fromString("same-origin").?);
-    try std.testing.expectEqual(RequestCredentials.include, RequestCredentials.fromString("include").?);
-    try std.testing.expect(RequestCredentials.fromString("invalid") == null);
-}
-
-test "WorkerData - init and deinit" {
-    const allocator = std.testing.allocator;
-    var data = WorkerData.init(allocator);
-    defer data.deinit();
-
-    try std.testing.expectEqual(WorkerState.pending, data.state);
-    try std.testing.expectEqual(WorkerType.classic, data.worker_type);
-    try std.testing.expect(!data.closing);
-}

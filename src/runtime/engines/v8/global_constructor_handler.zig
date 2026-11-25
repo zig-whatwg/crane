@@ -75,9 +75,3 @@ pub fn registerExternalReferences() void {
     const ext_refs = @import("external_references.zig");
     ext_refs.registerPointer(@intFromPtr(&lazyConstructGetter));
 }
-
-const testing = std.testing;
-
-test "global_constructor_handler module compiles" {
-    testing.refAllDecls(@This());
-}

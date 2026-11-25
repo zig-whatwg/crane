@@ -304,7 +304,9 @@ const TestLaunch = struct {
 /// tests/<dir>/**/*_test.zig file, run by the launcher's verify mode from
 /// the file's directory executable - 10 times in one process and 5 times
 /// each alone; under -Dsanitize-thread, once - and any run that is not a
-/// pass fails the step. The files: -Dverify-files=<a,b,...> (repository-
+/// pass fails the step. A named src/**/*.zig file's inline tests are
+/// verified from every src/ module root's executable whose root's directory
+/// holds the file (`addSrcTestVerify`; lane core1). The files: -Dverify-files=<a,b,...> (repository-
 /// relative), or -Dverify-base=<git ref> for the *_test.zig files under
 /// tests/ that `git diff <ref>...HEAD` adds or changes - where there is a
 /// git checkout (a pool mirror has none: compute the list in the checkout
@@ -466,6 +468,12 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     if ((many_browsers and config.many_browsers == .report) or (launch.sanitize_thread and config.sanitize_thread == .report)) run.addArg("--report-only");
     launch.test_exes.append(b.allocator, test_exe) catch @panic("OOM");
     launch.test_runs.append(b.allocator, run) catch @panic("OOM");
+    // test-verify of a src/ file's inline tests, from the executable rooted
+    // in its module (addSrcTestVerify).
+    if (groups.len == 0) if (test_exe.root_module.root_source_file) |root| switch (root) {
+        .src_path => |p| if (p.owner == b and std.mem.startsWith(u8, p.sub_path, "src/")) addSrcTestVerify(b, launch, test_exe, name, std.fs.path.dirname(p.sub_path).?),
+        else => {},
+    };
     // -Dtest-filter: run-time selection, so the executable stays the cached
     // one.
     for (launch.filters) |pattern| run.addArg(b.fmt("--filter={s}", .{pattern}));
@@ -484,6 +492,71 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     // A fresh seed every run must run every time.
     if (std.mem.eql(u8, launch.seed, "random")) run.has_side_effects = true;
     return run;
+}
+
+/// tools/src_test_reach.zig: the src/ test blocks no test step runs (lane
+/// core1, 2026-11-24). `zig test` collects the tests of its root module's
+/// files only, and only from a file something analyzes: html_core's 320 inline
+/// tests ran nowhere (docs/lessons/testing-a-test-block-in-a-module-no-step-
+/// roots-never-runs.md). Which files are analyzed is the executables' to say,
+/// not the imports': every executable `addSuiteRun` was given whose root is
+/// in src/ lists its tests (`test_launcher <exe> --list`, cached with the
+/// executable), and the tool fails on any src/ file whose blocks none lists,
+/// but for tools/src_test_reach_baseline.txt's. Part of `test` where it makes
+/// every suite (`full`, no -Dtest-file); `check-src-tests` runs it alone, and
+/// `check-src-tests -- --update` lowers the baseline. `not_built`: src/
+/// directories this configuration compiles nothing of.
+fn addSrcTestReach(b: *std.Build, launch: *const TestLaunch, test_step: *std.Build.Step, full: bool, whole: bool, not_built: []const []const u8) void {
+    const module = b.createModule(.{
+        .root_source_file = b.path("tools/src_test_reach.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const own_tests = addSuiteRun(b, launch, b.addTest(.{ .root_module = module }), "tools-src_test_reach", null);
+    test_step.dependOn(&own_tests.step);
+    b.step("test-src-test-reach", "Run tools/src_test_reach.zig's own tests").dependOn(&own_tests.step);
+
+    const check_step = b.step("check-src-tests", "Fail on a src/ test block no test step runs (tools/src_test_reach.zig; -- --update lowers its baseline)");
+    if (!(full and whole)) {
+        check_step.dependOn(&b.addFail("check-src-tests: needs every suite - no -Dspec (or -Dspec=all) and no -Dtest-file").step);
+        return;
+    }
+    const exe = b.addExecutable(.{ .name = "src_test_reach", .root_module = module });
+    // The check `test` runs (never with --update), and the named step's,
+    // which takes `-- --update` or `-- --list`.
+    const check = b.addRunArtifact(exe);
+    check.setName("check src/ test blocks run");
+    const by_hand = b.addRunArtifact(exe);
+    for ([_]*std.Build.Step.Run{ check, by_hand }) |run| {
+        // It reads src/ and the baseline, which the build graph does not track.
+        run.has_side_effects = true;
+        run.setCwd(b.path("."));
+        for (not_built) |dir| run.addArg(b.fmt("--not-built={s}", .{dir}));
+    }
+    var listed: std.ArrayList(*std.Build.Step.Compile) = .empty;
+    for (launch.test_exes.items) |test_exe| {
+        const root = test_exe.root_module.root_source_file orelse continue;
+        const sub_path = switch (root) {
+            .src_path => |p| if (p.owner == b) p.sub_path else continue,
+            else => continue,
+        };
+        if (!std.mem.startsWith(u8, sub_path, "src/")) continue;
+        // One listing per executable.
+        if (std.mem.indexOfScalar(*std.Build.Step.Compile, listed.items, test_exe) != null) continue;
+        listed.append(b.allocator, test_exe) catch @panic("OOM");
+        const list = b.addRunArtifact(launch.launcher);
+        list.setName(b.fmt("list the tests of {s} ({s})", .{ test_exe.name, sub_path }));
+        list.addArtifactArg(test_exe);
+        list.addArg("--list");
+        const names = list.captureStdOut(.{});
+        const arg = b.fmt("--suite={s}=", .{std.fs.path.dirname(sub_path).?});
+        check.addPrefixedFileArg(arg, names);
+        by_hand.addPrefixedFileArg(arg, names);
+    }
+    by_hand.addPassthruArgs();
+    check_step.dependOn(&by_hand.step);
+    test_step.dependOn(&check.step);
 }
 
 /// The launcher arguments of the member suites of a one-binary executable
@@ -959,7 +1032,7 @@ fn addImplsBoundaryCase(b: *std.Build, step: *std.Build.Step, target: std.Build.
 fn testVerifySelection(b: *std.Build, build_probe: *std.Build.Step.Compile) *TestVerify {
     const v = b.allocator.create(TestVerify) catch @panic("OOM");
     v.* = .{ .step = b.step("test-verify", "Verify new and changed tests: each test of the files -Dverify-files=<a,b> (or -Dverify-base=<ref>: git diff <ref>...HEAD) 10 times in one process and 5 times alone; with -Dsanitize-thread, once") };
-    const files_option = b.option([]const u8, "verify-files", "test-verify: comma-separated tests/<dir>/**/*_test.zig files (repository-relative)");
+    const files_option = b.option([]const u8, "verify-files", "test-verify: comma-separated tests/<dir>/**/*_test.zig files, or src/**/*.zig files with inline tests (repository-relative)");
     const base = b.option([]const u8, "verify-base", "test-verify: the git ref whose diff (<ref>...HEAD) names the changed test files, where there is a git checkout");
     var files: std.ArrayList([]const u8) = .empty;
     if (files_option) |list| {
@@ -1049,6 +1122,48 @@ fn addTestVerifyIn(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     v.step.dependOn(&run.step);
 }
 
+/// `addTestVerify` for an executable rooted in src/ (lane core1): every
+/// verify file under its root's directory, `dir_path`, by its test names'
+/// prefix there ("parser.tokenizer.test."). A file there may be another
+/// module's - src/html holds html_core's root.zig and html's full.zig - so a
+/// prefix this executable has no test of is not a failure
+/// (`--verify-may-miss`): the module that owns the file verifies it, and
+/// tools/src_test_reach.zig holds that one runs every src/ test.
+fn addSrcTestVerify(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, dir_path: []const u8) void {
+    const v = launch.verify;
+    var prefixes: std.ArrayList([]const u8) = .empty;
+    for (v.files, v.matched) |file, *matched| {
+        if (!std.mem.endsWith(u8, file, ".zig")) continue;
+        if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len + 1 or file[dir_path.len] != '/') continue;
+        matched.* = true;
+        const rel = file[dir_path.len + 1 .. file.len - ".zig".len];
+        const dotted = b.allocator.dupe(u8, rel) catch @panic("OOM");
+        std.mem.replaceScalar(u8, dotted, '/', '.');
+        prefixes.append(b.allocator, b.fmt("{s}.test.", .{dotted})) catch @panic("OOM");
+    }
+    if (prefixes.items.len == 0) return;
+    const run = b.addRunArtifact(launch.launcher);
+    run.setName(b.fmt("test-verify {s}", .{name}));
+    run.addArtifactArg(test_exe);
+    run.addArg(b.fmt("--name={s}", .{name}));
+    for (prefixes.items) |prefix| run.addArg(b.fmt("--verify={s}", .{prefix}));
+    run.addArg("--verify-may-miss");
+    if (launch.sanitize_thread) {
+        run.addArgs(&.{ "--verify-batched=1", "--verify-alone=0", "--sanitize-thread" });
+        run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
+    }
+    if (launch.many_browsers) run.addArg("--many-browsers");
+    addGroupArgs(b, run, launch, &.{.{ .prefix = "", .config = suiteConfig(launch.engine, name), .plain = false }}, launch.many_browsers, false);
+    if (launch.jobs) |jobs| run.addArg(b.fmt("--jobs={d}", .{jobs}));
+    run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
+    run.addArg(b.fmt("--out=tmp/test-launch/{s}.verify{s}.jsonl", .{ name, if (launch.sanitize_thread) ".tsan" else "" }));
+    run.setCwd(b.path("."));
+    // A verification is a run, never a cache hit.
+    run.has_side_effects = true;
+    run.stdio = .inherit;
+    v.step.dependOn(&run.step);
+}
+
 /// The verify files no directory executable took fail the step, by name.
 fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
     if (!v.asked) {
@@ -1057,7 +1172,7 @@ fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
     }
     if (v.files.len == 0) return; // nothing changed: nothing to verify
     for (v.files, v.matched) |file, matched| {
-        if (!matched) v.step.dependOn(&b.addFail(b.fmt("test-verify: {s} is no test file of a suite this build makes (a tests/<dir>/**/*_test.zig file; select every suite: no -Dspec, or -Dspec=all)", .{file})).step);
+        if (!matched) v.step.dependOn(&b.addFail(b.fmt("test-verify: {s} is no test file of a suite this build makes (a tests/<dir>/**/*_test.zig file, or a src/**/*.zig file under a src/ module root's directory; select every suite: no -Dspec, or -Dspec=all)", .{file})).step);
     }
 }
 
@@ -1936,6 +2051,8 @@ pub fn build(b: *std.Build) void {
         "xhr",
         "xml",
         "wpt_runner",
+        "hr_time",
+        "webdriver",
     };
     if (spec_filter) |spec| {
         var is_valid = engine_spec != null and std.mem.eql(u8, spec, engine_spec.?);
@@ -2634,6 +2751,15 @@ pub fn build(b: *std.Build) void {
         };
     }
 
+    // src/hr_time's own tests (lane core1, 2026-11-24): no step rooted the
+    // module, so its test blocks never ran - a dependency's tests are never
+    // collected (docs/lessons/testing-a-test-block-in-a-module-no-step-roots-
+    // never-runs.md). A leaf over clock, process and host: a small compile.
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "hr_time")) {
+        const hr_time_tests = b.addTest(.{ .root_module = testing_graph.hr_time });
+        test_step.dependOn(&addSuiteRun(b, launch, hr_time_tests, "src-hr_time", null).step);
+    }
+
     if (test_streams) {
         // Note: Module tests for streams are skipped because they use refAllDecls on
         // engine-dependent code (interfaces/impls). The dedicated test files in tests/streams/
@@ -2789,6 +2915,16 @@ pub fn build(b: *std.Build) void {
         const run_html_tests = addSuiteRun(b, launch, html_tests, "src-html", null);
         test_step.dependOn(&run_html_tests.step);
 
+        // html_core's own tests (src/html/root.zig; lane core1, 2026-11-24).
+        // src-html roots full.zig, which imports html_core as a module, and a
+        // dependency's tests are never collected: its 320 test blocks ran
+        // nowhere (docs/lessons/testing-a-test-block-in-a-module-no-step-
+        // roots-never-runs.md). The 37 a triage kept run here. The module is
+        // its own executable's root, as `testing_graph.html` is src-html's, and
+        // not engine-linked, for the same reason (above).
+        const html_core_tests = b.addTest(.{ .root_module = testing_graph.html_core });
+        test_step.dependOn(&addSuiteRun(b, launch, html_core_tests, "src-html_core", null).step);
+
         // Add dedicated test files from tests/html/
         const html_imports = [_]std.Build.Module.Import{
             .{ .name = "host", .module = testing_graph.host },
@@ -2866,6 +3002,14 @@ pub fn build(b: *std.Build) void {
         const browser_tests = addModuleTestWithEngine(b, testing_graph.browser, target, tests_engine_link);
         const run_browser_tests = addSuiteRun(b, launch, browser_tests, "src-browser", null);
         test_step.dependOn(&run_browser_tests.step);
+    }
+
+    // src/webdriver's own tests (lane core1, 2026-11-24): no step rooted the
+    // module. Nothing imports it but the crane executable, and its tests are
+    // pure Zig, so it is its own executable's root, not engine-linked.
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "webdriver")) {
+        const webdriver_tests = b.addTest(.{ .root_module = testing_graph.webdriver });
+        test_step.dependOn(&addSuiteRun(b, launch, webdriver_tests, "src-webdriver", null).step);
     }
 
     // The Chrome DevTools Protocol remote end (src/devtools; -Dcdp): its unit
@@ -3164,6 +3308,13 @@ pub fn build(b: *std.Build) void {
         // and the facade's file cannot be in two modules of one compile.
         const test_adapter_tier = runtimeTier(b, target, testing_graph.runtime, b.path("tests/runtime/protocol_test_adapter.zig"));
         const runtime_tier_mod = test_adapter_tier.runtime;
+        // src/runtime's own tests (lane core1, 2026-11-24): tests/runtime
+        // imports the runtime as a module, and Zig never collects a
+        // dependency's tests, so none of its test blocks had run. The runtime
+        // tier - the runtime bound to the protocol's test adapter, with no
+        // engine behind it - is their executable's root; the tests a triage
+        // kept are engine-free.
+        test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = runtime_tier_mod }), "src-runtime", null).step);
         const test_adapter_engine_mod = test_adapter_tier.engine;
         // Every tests/runtime file sees the protocol bound to the runtime
         // tier's test adapter. And each other adapter with no engine behind
@@ -3200,10 +3351,9 @@ pub fn build(b: *std.Build) void {
     }
 
     // The engine adapter's own tests (its build file's `facts.tests`): the one
-    // directory whose tests need the adapter's module itself. Test blocks
-    // living inside the adapter's sources are NEVER run - `addTestFilesFromDir`
-    // only collects `tests/**/ *_test.zig` - so a test written next to the code
-    // it covers is a test that does not exist. Another listed adapter's test
+    // directory whose tests need the adapter's module itself. The test blocks
+    // inside the adapter's sources run in src-<adapter>, below (they ran
+    // nowhere until lane core1, 2026-11-24). Another listed adapter's test
     // directory is recorded as a suite (a build of that engine runs it), and
     // nothing of it is built here.
     for (engine_build.test_dirs) |dir| {
@@ -3211,6 +3361,15 @@ pub fn build(b: *std.Build) void {
         if (!own) recordSuiteDir(b, test_selection, dir);
     }
     if (engine.facts.tests) |engine_tests| if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, engine_tests.spec)) {
+        // The adapter's inline tests: its module is its own executable's root,
+        // as `testing_graph.html` is src-html's - the adapter is a dependency
+        // of itself (adapter -> impls -> engine -> adapter), so it cannot be
+        // cloned - and not engine-linked: its root's test block names only the
+        // files whose tests a triage kept, each pure Zig, so analysis never
+        // reaches an engine extern (lane core1).
+        const adapter_inline_tests = b.addTest(.{ .root_module = testing_graph.engine_impl });
+        test_step.dependOn(&addSuiteRun(b, launch, adapter_inline_tests, b.fmt("src-{s}", .{engine.facts.module_name}), null).step);
+
         // What the adapter's tests may import, by name (`Tests.imports`
         // takes them in its own order, which is part of their compile): the
         // testing graph's modules, the adapter's own module and this build's
@@ -3271,6 +3430,11 @@ pub fn build(b: *std.Build) void {
         const platform_tests = b.addTest(.{ .root_module = testing_graph.platform });
         check_storage_tests.dependOn(&platform_tests.step);
         const run_platform_tests = addSuiteRun(b, launch, platform_tests, "src-platform", null);
+        // The bound adapter's own tests and host.zig's (lane core1): each a
+        // module of its own, which no step rooted (the facade's executable
+        // never collects a dependency's tests).
+        test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = testing_graph.platform_adapter }), "src-platform_adapter", null).step);
+        test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = testing_graph.host }), "src-host", null).step);
         test_step.dependOn(&run_platform_tests.step);
 
         const platform_imports = [_]std.Build.Module.Import{
@@ -3411,8 +3575,9 @@ pub fn build(b: *std.Build) void {
             // The kit parts with test blocks of their own, once (they do
             // not depend on the platform they are bound with).
             if (binding.kit_tests) {
-                for ([_]*std.Build.Module{ bound.kit_sfnt, bound.kit_inflate, bound.kit_media_decoding }, [_][]const u8{ "kit_sfnt", "kit_inflate", "kit_media_decoding" }) |module, name| {
-                    const kit_tests = b.addTest(.{ .name = name, .root_module = module });
+                for (bound.kit_tested) |part| {
+                    const name = b.fmt("kit_{s}", .{part.name});
+                    const kit_tests = b.addTest(.{ .name = name, .root_module = part.module });
                     test_step.dependOn(&addSuiteRun(b, launch, kit_tests, name, null).step);
                 }
             }
@@ -5951,6 +6116,11 @@ pub fn build(b: *std.Build) void {
         if (check.generated_bin != .none) std.debug.panic("build.zig: {s} is compile-only; nothing may ask for its binary (targetCheckOf)", .{check.name});
     }
 
+    // Every src/ test block runs in some test step (tools/src_test_reach.zig):
+    // known here, once every suite exists - and only where `test` makes every
+    // suite. With -Dcdp=false nothing of src/devtools is compiled.
+    addSrcTestReach(b, launch, test_step, spec_filter == null or std.mem.eql(u8, spec_filter.?, "all"), test_selection.file == null, if (enable_cdp) &.{} else &.{"src/devtools"});
+
     // Every test executable runs through the launcher; and `test-launch` is
     // the launcher runs `test` makes. Both known here, once every step exists.
     if (test_selection.one) |one| finishOneBinary(b, launch, one, test_selection.inputs) catch |err| std.debug.panic("build.zig: the one test executable: {t}", .{err});
@@ -6249,6 +6419,8 @@ const CraneModules = struct {
     hr_time: *std.Build.Module,
     websocket: *std.Build.Module,
     platform: *std.Build.Module,
+    /// The bound platform adapter's own module (platform_build.Binding.adapter).
+    platform_adapter: *std.Build.Module,
     html_core: *std.Build.Module,
     html: *std.Build.Module,
     service_worker: *std.Build.Module,
@@ -7227,16 +7399,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .target = target,
     });
 
-    const streams_read_into_request_promise_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/read_into_request_promise.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "event_loop", .module = streams_event_loop_mod },
-            .{ .name = "async_promise", .module = streams_async_promise_mod },
-            .{ .name = "read_into_request", .module = streams_read_into_request_mod },
-        },
-    });
-
     const streams_pull_into_descriptor_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/pull_into_descriptor.zig"),
         .target = target,
@@ -7259,17 +7421,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "common", .module = streams_common_mod },
-        },
-    });
-
-    const streams_cross_realm_transform_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/cross_realm_transform.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "common", .module = streams_common_mod },
-            .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
-            .{ .name = "message_port", .module = streams_message_port_mod },
         },
     });
 
@@ -7308,7 +7459,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     streams_mod.addImport("view_construction", streams_view_construction_mod);
     streams_mod.addImport("async_iterator", streams_async_iterator_mod);
     streams_mod.addImport("message_port", streams_message_port_mod);
-    streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
     // Add unified interfaces module
     streams_mod.addImport("interfaces", interfaces_mod);
 
@@ -7324,7 +7474,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     impls_mod.addImport("streams_read_request", streams_read_request_mod);
     impls_mod.addImport("streams_write_request", streams_write_request_mod);
     impls_mod.addImport("streams_read_into_request", streams_read_into_request_mod);
-    impls_mod.addImport("streams_read_into_request_promise", streams_read_into_request_promise_mod);
     impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
     impls_mod.addImport("streams_internal", streams_message_port_mod);
 
@@ -7784,6 +7933,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     webdriver_mod.addImport("clock", clock_mod);
     webdriver_mod.addImport("host", host_mod);
     webdriver_mod.addImport("browser", browser_mod);
+    // A session id's random bits (protocol.generateSessionId).
+    webdriver_mod.addImport("platform", platform_mod);
 
     // The Chrome DevTools Protocol remote end (src/devtools; -Dcdp). Off, its
     // root is src/devtools/unavailable.zig, which imports nothing: the
@@ -7949,6 +8100,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .hr_time = hr_time_mod,
         .websocket = websocket_mod,
         .platform = platform_mod,
+        .platform_adapter = platform_binding.adapter,
         .platform_options = platform_options_mod,
         .c_time = platform_binding.c_time,
         .html_core = html_core_mod,

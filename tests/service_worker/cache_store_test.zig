@@ -266,3 +266,54 @@ test "a router rule's cache source looks in every cache of the storage key, in o
     // Another storage key's map holds none of it.
     try testing.expect((try f.storage.routerMatch(f.browser, testing.allocator, "https://b.test", null, .{ .url = "https://a.test/cache.txt" })) == null);
 }
+
+test "a cache deleted while a Cache object held it is purged when the next Browser on the profile starts" {
+    // Moved from src/service_worker/cache/store.zig, whose test blocks no
+    // test step runs (lane core1; the integrator's ruling): through the
+    // store's public API, where it read the store's keys.
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const base = try tmp.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
+    defer testing.allocator.free(base);
+    const directory = try std.fs.path.join(testing.allocator, &.{ base, "profile" });
+    defer testing.allocator.free(directory);
+    const no_events: platform.EventSink = .{ .context = null, .post = noEvent };
+    const req = request("https://a.test/r", "GET", &.{});
+    const ok = response(200, &.{}, "entry");
+    var kept: u64 = undefined;
+    var held: u64 = undefined;
+    {
+        const browser = try platform.createBrowserPlatform(testing.allocator, &.{ .profile_dir = platform.Str.from(directory) }, no_events);
+        defer platform.destroyBrowserPlatform(browser);
+        var storage = Storage.init(testing.allocator);
+        defer storage.deinit();
+        kept = try storage.openCache(browser, "k", "kept");
+        held = try storage.openCache(browser, "k", "held");
+        for ([_]u64{ kept, held }) |id| _ = try storage.batch(browser, id, &.{.{ .kind = .put, .request = &req, .response = &ok }});
+        try storage.retain(held);
+        try testing.expect(try storage.deleteCache(browser, "k", "held"));
+        // The Browser ends with the Cache object still holding it.
+    }
+    const browser = try platform.createBrowserPlatform(testing.allocator, &.{ .profile_dir = platform.Str.from(directory) }, no_events);
+    defer platform.destroyBrowserPlatform(browser);
+    var storage = Storage.init(testing.allocator);
+    defer storage.deinit();
+    // Until the purge the held cache's entry is still in the store.
+    const before = try storage.query(browser, testing.allocator, held, null, .{});
+    defer records.freeEntries(testing.allocator, before);
+    try testing.expectEqual(@as(usize, 1), before.len);
+    try storage.purgeEarlierBrowsers(browser);
+    const gone = try storage.query(browser, testing.allocator, held, null, .{});
+    defer records.freeEntries(testing.allocator, gone);
+    try testing.expectEqual(@as(usize, 0), gone.len);
+    const still = try storage.query(browser, testing.allocator, kept, null, .{});
+    defer records.freeEntries(testing.allocator, still);
+    try testing.expectEqual(@as(usize, 1), still.len);
+    const names = try storage.cacheNames(browser, testing.allocator, "k");
+    defer {
+        for (names) |name| testing.allocator.free(name);
+        testing.allocator.free(names);
+    }
+    try testing.expectEqual(@as(usize, 1), names.len);
+    try testing.expectEqualStrings("kept", names[0]);
+}

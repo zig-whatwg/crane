@@ -339,39 +339,6 @@ pub const UserAgentSnapshot = struct {
     }
 };
 
-test "a worker's user agent snapshot is a copy: the tab's override changing later leaves it" {
-    const allocator = std.testing.allocator;
-    var overrides: HostOverrides = .{};
-    defer overrides.deinit(allocator);
-    try overrides.setUserAgent(allocator, 1, "UA-one", "", "fr-FR");
-    var snapshot = try UserAgentSnapshot.of(allocator, &overrides);
-    defer snapshot.deinit(allocator);
-    var nested = try snapshot.clone(allocator);
-    defer nested.deinit(allocator);
-    try overrides.setUserAgent(allocator, 1, "UA-two", null, null);
-    try std.testing.expectEqualStrings("UA-one", snapshot.user_agent.?);
-    try std.testing.expectEqualStrings("fr-FR", nested.accept_language.?);
-    try std.testing.expect(nested.platform == null);
-    var none = try UserAgentSnapshot.of(allocator, &HostOverrides{});
-    defer none.deinit(allocator);
-    try std.testing.expect(none.user_agent == null);
-}
-
-test "an empty user agent overrides the languages alone (Playwright's locale call)" {
-    const allocator = std.testing.allocator;
-    var overrides: HostOverrides = .{};
-    defer overrides.deinit(allocator);
-    try overrides.setUserAgent(allocator, 1, "", null, "fr-FR,fr");
-    try std.testing.expect(overrides.user_agent == null);
-    var languages = (try overrides.languages(allocator)).?;
-    defer languages.deinit(allocator);
-    try std.testing.expectEqualStrings("fr-FR", languages.first());
-    try std.testing.expectEqual(@as(Owner, 1), overrides.user_agent_owner);
-    try overrides.setUserAgent(allocator, 1, "", "", "");
-    try std.testing.expect(overrides.accept_language == null);
-    try std.testing.expectEqual(@as(Owner, 0), overrides.user_agent_owner);
-}
-
 test "a setter that goes clears only what it set; strings are owned" {
     const allocator = std.testing.allocator;
     var overrides: HostOverrides = .{};

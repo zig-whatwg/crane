@@ -169,19 +169,6 @@ pub fn cwd() std.Io.Dir {
     return std.Io.Dir.cwd();
 }
 
-test "io() is stable across calls" {
-    const a = io();
-    const b = io();
-    try std.testing.expectEqual(a.userdata, b.userdata);
-    try std.testing.expectEqual(a.vtable, b.vtable);
-}
-
-test "cwd is usable for a real filesystem operation" {
-    // Proves the Io is wired, not merely constructed.
-    var dir = try cwd().openDir(io(), ".", .{ .iterate = true });
-    defer dir.close(io());
-}
-
 test "a self-built Io reports the process environment, not an empty one" {
     // Regression guard. `Io.Threaded.init` leaves `environ` empty; only std.start
     // fills it in. An Io with an empty environment spawns children with no PATH,

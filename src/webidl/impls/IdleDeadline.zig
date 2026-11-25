@@ -119,31 +119,5 @@ pub fn call_timeRemaining(instance: *runtime.Instance) anyerror!typedefs.DOMHigh
     // 3-5: deadline - now, never negative; both coarsened as the clock
     // performance.now() reads is (HR-TIME "coarsen time"; the privacy
     // section asks it of these estimates).
-    return remainingMillis(deadline_ns, now);
-}
-
-/// `deadline_ns - now_ns` in milliseconds, each coarsened, and 0 when the
-/// deadline has passed.
-fn remainingMillis(deadline_ns: i64, now_ns: i64) f64 {
-    const deadline = hr_time.coarsenTime(deadline_ns, false);
-    const now = hr_time.coarsenTime(now_ns, false);
-    if (deadline <= now) return 0;
-    return @as(f64, @floatFromInt(deadline - now)) / std.time.ns_per_ms;
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "remaining time is the coarsened deadline less the coarsened now, in milliseconds" {
-    const ms = std.time.ns_per_ms;
-    try std.testing.expectEqual(@as(f64, 10), remainingMillis(1_000 * ms + 10 * ms, 1_000 * ms));
-    // 100 microsecond resolution: 10.05 ms from a boundary reads 10.
-    try std.testing.expectEqual(@as(f64, 10), remainingMillis(1_000 * ms + 10 * ms + 50_000, 1_000 * ms));
-}
-
-test "a deadline that has passed leaves no time" {
-    const ms = std.time.ns_per_ms;
-    try std.testing.expectEqual(@as(f64, 0), remainingMillis(1_000 * ms, 1_000 * ms));
-    try std.testing.expectEqual(@as(f64, 0), remainingMillis(1_000 * ms, 2_000 * ms));
+    return hr_time.coarsen.coarsenedRemainingMillis(deadline_ns, now);
 }

@@ -36,7 +36,3 @@ pub fn registerNamespace(comptime NamespaceType: type) types.NamespaceBinding {
 pub fn registerInterface(comptime InterfaceType: type) types.InterfaceBinding {
     return metadata.extractInterfaceMetadata(InterfaceType);
 }
-
-test {
-    std.testing.refAllDecls(@This());
-}

@@ -44,38 +44,6 @@
 //! timer.clearTimeout(id);
 //! ```
 //!
-//! ## Typed Microtask API
-//!
-//! For type-safe microtasks, use SelfContainedCallback:
-//!
-//! ```zig
-//! const typed_callback = @import("runtime").typed_callback;
-//!
-//! const PromiseCtx = struct {
-//!     resolve_value: JSValue,
-//!     resolver: *PromiseResolver,
-//! };
-//!
-//! fn handleResolve(ctx: *PromiseCtx) void {
-//!     ctx.resolver.resolve(ctx.resolve_value);
-//! }
-//!
-//! // Create typed microtask
-//! var wrapper = try typed_callback.SelfContainedCallback(PromiseCtx, void).create(
-//!     allocator,
-//!     &handleResolve,
-//!     .{ .resolve_value = value, .resolver = resolver },
-//! );
-//!
-//! // Queue via event loop
-//! loop.queueMicrotask(.{
-//!     .callback = wrapper.getTrampolineCallback(),
-//!     .context = wrapper.toAnyopaque(),
-//! });
-//!
-//! // Note: wrapper will be invoked and should clean itself up in the callback
-//! ```
-//!
 //! ## Lifetime Contracts
 //!
 //! ### Microtask Callbacks
@@ -330,7 +298,6 @@ pub const V8EventLoop = struct {
 
         // Note: Timer state is preserved automatically since we stop polling.
         // When thawed, timers will continue from where they left off.
-        // For proper time adjustment, FrozenContextManager tracks freeze time.
     }
 
     /// Thaw the event loop after bfcache restoration
@@ -344,9 +311,6 @@ pub const V8EventLoop = struct {
         }
 
         self.frozen = false;
-
-        // Timer adjustment is handled by FrozenContextManager which knows
-        // how long the context was frozen.
     }
 
     /// Check if the event loop is currently frozen
@@ -565,36 +529,4 @@ fn microtaskTrampoline(data: ?*anyopaque) callconv(.c) void {
 
     // Call the original callback
     ctx.callback(ctx.context);
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-const testing = std.testing;
-
-// Note: These tests require V8 to be initialized and an isolate to be created.
-// They are integration tests that should be run with V8 available.
-
-test "V8EventLoop - basic initialization" {
-    // Skip if V8 not available
-    // This would need actual V8 setup
-    if (true) return error.SkipZigTest;
-
-    // const allocator = testing.allocator;
-    // const isolate = v8_ffi.v8_Isolate_New();
-    // defer v8_ffi.v8_Isolate_Dispose(isolate);
-    //
-    // var loop = V8EventLoop.init(isolate, allocator);
-    // defer loop.deinit();
-    //
-    // const ev_loop = loop.eventLoop();
-    // try testing.expect(ev_loop.ptr != null);
-}
-
-test "V8EventLoop - microtask execution" {
-    // Skip if V8 not available
-    if (true) return error.SkipZigTest;
-
-    // Integration test - would need V8 setup
 }

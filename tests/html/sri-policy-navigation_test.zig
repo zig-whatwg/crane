@@ -12,7 +12,7 @@ test "sri policy navigation keeps combined owned policy headers after the respon
         try response.header_list.append("Integrity-Policy", "blocked-destinations=(script)");
         try response.header_list.append("integrity-policy", "endpoints=(enforced)");
         try response.header_list.append("Integrity-Policy-Report-Only", "blocked-destinations=(script), endpoints=(observed)");
-        break :blk try navigation.resultFromResponse(a, "https://sri.test/page", response, .{});
+        break :blk try navigation.resultFromResponse(a, "https://sri.test/page", response);
     };
     defer result.deinit();
     const headers = result.headers orelse return error.MissingHeaders;
