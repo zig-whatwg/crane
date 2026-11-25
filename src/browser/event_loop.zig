@@ -804,7 +804,10 @@ pub const EventLoop = struct {
     /// next empty span comes of age, on any idle turn after it.
     fn decommitWhenIdle(self: *Self, did_work: bool) void {
         const h = self.heap orelse return;
-        if (did_work) return;
+        if (did_work) {
+            self.heap_decommit_due_ms = null;
+            return;
+        }
         if (self.runnableQueued() or self.sink.hasPosted() or self.deferredPending()) return;
         const since = self.memory_idle.idle_since_ns orelse return;
         const now_ns = realMonotonicNs();
