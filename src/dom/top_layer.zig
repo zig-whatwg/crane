@@ -203,6 +203,10 @@ pub const State = struct {
     /// probe::TopLayerElementsChanged. Pins alone are no membership.
     pub fn membersChanged(self: *State) void {
         if (inspector_probes.active()) inspector_probes.topLayerElementsChanged(self.owner);
+        // Top-layer membership changes :modal, :popover-open and :fullscreen
+        // with no DOM mutation: wake step 16 when CSS transitions/animations
+        // are declared so they start without relying on volatile styles.
+        if (@import("style/engine.zig").declaresAnimations(self.owner)) @import("update_the_rendering.zig").requestFrame(self.owner);
     }
 
     /// Keep a node for a synchronous algorithm. Promoting this entry to

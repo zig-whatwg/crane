@@ -42,16 +42,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, originalFrame: *runtime.Instance, options: webidl.Opt(dictionaries.RTCEncodedVideoFrameOptions)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &RTCEncodedVideoFrame.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, originalFrame: *runtime.Instance, options: webidl.Opt(dictionaries.RTCEncodedVideoFrameOptions)) !void {
+    _ = instance;
     _ = originalFrame;
     _ = options;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for type

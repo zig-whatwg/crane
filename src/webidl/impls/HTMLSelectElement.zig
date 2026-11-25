@@ -103,7 +103,10 @@ fn userValidity(instance: *runtime.Instance) bool {
 
 fn setUserValidity(instance: *runtime.Instance, value: bool) !void {
     const internal = if (value) try internalState(instance) else instance.getState(State).own._internal orelse return;
-    internal.user_validity = value;
+    if (internal.user_validity != value) {
+        internal.user_validity = value;
+        @import("dom").style.dynamicStateChanged(instance);
+    }
 }
 
 fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
@@ -248,7 +251,11 @@ fn pickerOpen(instance: *runtime.Instance) bool {
 
 fn setPickerOpen(instance: *runtime.Instance, open: bool) !void {
     if (!open and instance.getState(State).own._internal == null) return;
-    (try internalState(instance)).picker_open = open;
+    const internal = try internalState(instance);
+    if (internal.picker_open != open) {
+        internal.picker_open = open;
+        @import("dom").style.dynamicStateChanged(instance);
+    }
 }
 
 fn selectedcontentInterest(instance: *runtime.Instance) bool {
@@ -302,14 +309,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &HTMLSelectElement.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Indexed setter - sets option at index
@@ -549,6 +551,7 @@ pub fn call_remove__1(instance: *runtime.Instance, index: i32) anyerror!void {
 pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
     // HTML setCustomValidity steps 1–2: normalize newlines, then replace.
     try (try validationState(instance)).setCustomError(instance.ctx.allocator, @"error".asSlice());
+    @import("dom").style.dynamicStateChanged(instance);
 }
 
 /// Operation: checkValidity

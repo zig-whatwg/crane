@@ -35,16 +35,12 @@ pub const InternalState = struct {};
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 /// Note: Use ctx.allocator for all allocations to ensure consistency with deinit
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.AutofillEventInit)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.AutofillEventInit)) !void {
     // Create the instance through the generated construction chain.
-    const instance = try AutofillEvent.init(ctx.allocator, ctx);
-    errdefer AutofillEvent.deinit(instance);
-
+    _ = instance;
     _ = @"type";
     _ = eventInitDict;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for autofillValues

@@ -32,7 +32,8 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 ///
 /// `optional (SanitizerConfig or SanitizerPresets) configuration = "default"`,
 /// converted by the binding: not passed is the "default" preset.
-pub fn call_constructor(ctx: runtime.Context, configuration: webidl.Opt(typedefs.SanitizerConfigOrSanitizerPresets)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, configuration: webidl.Opt(typedefs.SanitizerConfigOrSanitizerPresets)) !void {
+    const ctx = instance.ctx;
     var converted = if (configuration.wasPassed())
         try model.Converted.fromTyped(ctx.allocator, configuration.getValue())
     else
@@ -41,11 +42,8 @@ pub fn call_constructor(ctx: runtime.Context, configuration: webidl.Opt(typedefs
     var config = try model.Config.fromConverted(ctx.allocator, ctx, &converted, true);
     errdefer config.deinit();
     const internal = try ctx.allocator.create(InternalState);
-    errdefer ctx.allocator.destroy(internal);
-    const instance = try interfaces.Sanitizer.init(ctx.allocator, ctx);
     internal.* = .{ .configuration = config, .result_arena = .init(ctx.allocator) };
     instance.getState(State).own._internal = internal;
-    return instance;
 }
 
 pub fn installHooks() void {

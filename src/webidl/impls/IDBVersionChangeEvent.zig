@@ -74,11 +74,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.IDBVersionChangeEventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &IDBVersionChangeEventInterface.vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.IDBVersionChangeEventInit)) !void {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -88,8 +84,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // DOM 2.5 inner event creation steps: inherited initialized flag,
     // timestamp, type, bubbles, cancelable and composed are the Event owner's.
     try dom.event_construction.innerEventCreationSteps(instance, @"type", dom.event_construction.eventInitFrom(dictionary.base));
-
-    return instance;
 }
 
 /// Getter for oldVersion - returns the previous version of the database

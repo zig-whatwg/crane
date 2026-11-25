@@ -168,15 +168,10 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 ///
 /// Spec: "The new XMLHttpRequest() constructor steps are:
 /// 1. Set this's upload object to a new XMLHttpRequestUpload object."
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try XMLHttpRequest.init(ctx.allocator, ctx);
-    errdefer XMLHttpRequest.deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
     // Step 1: Set upload object (TODO: when XMLHttpRequestUpload is implemented)
     // For now, the XHR state is initialized in init()
-
-    return instance;
 }
 
 /// Helper to get XHR state from instance

@@ -42,17 +42,12 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, session: *runtime.Instance, context: typedefs.XRWebGLRenderingContext, layerInit: webidl.Opt(dictionaries.XRWebGLLayerInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &XRWebGLLayer.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, session: *runtime.Instance, context: typedefs.XRWebGLRenderingContext, layerInit: webidl.Opt(dictionaries.XRWebGLLayerInit)) !void {
+    _ = instance;
     _ = session;
     _ = context;
     _ = layerInit;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for antialias

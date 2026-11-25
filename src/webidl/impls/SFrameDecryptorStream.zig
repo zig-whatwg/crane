@@ -35,15 +35,11 @@ pub const InternalState = struct {};
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 /// Note: Use ctx.allocator for all allocations to ensure consistency with deinit
-pub fn call_constructor(ctx: runtime.Context, options: dictionaries.SFrameTransformOptions) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, options: dictionaries.SFrameTransformOptions) !void {
     // Create the instance through the generated construction chain.
-    const instance = try SFrameDecryptorStream.init(ctx.allocator, ctx);
-    errdefer SFrameDecryptorStream.deinit(instance);
-
+    _ = instance;
     _ = options;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for readable

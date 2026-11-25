@@ -14,7 +14,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const MessageChannel = interfaces.MessageChannel;
-const MessagePortInterface = interfaces.MessagePort;
 
 // The channel the two ports share (its ends may later live on two
 // threads), and the hook that makes a MessagePort on an end of it.
@@ -141,11 +140,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: § 9.3.1 MessageChannel()
 ///
 /// Creates a new MessageChannel with two entangled MessagePort objects.
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &MessageChannel.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    const ctx = instance.ctx;
     var state = instance.getState(State);
 
     // "Set this's port 1 to a new MessagePort in this's relevant realm. Set
@@ -157,10 +153,12 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
         channel.end(1).discard();
         return err;
     };
-    errdefer MessagePortInterface.deinit(port1_instance);
+    // A port made here is the construction's until the channel holds it:
+    // freed whole (its destructor alone left its slot and State).
+    errdefer runtime.gc.releaseOwned(port1_instance);
     // `adopt` takes the end whatever happens.
     const port2_instance = try message_ports.adopt(ctx, channel.end(1));
-    errdefer MessagePortInterface.deinit(port2_instance);
+    errdefer runtime.gc.releaseOwned(port2_instance);
 
     // Store ports in state
     state.own.port1 = port1_instance;
@@ -169,8 +167,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     if (state.own._internal) |internal| {
         internal.initialized = true;
     }
-
-    return instance;
 }
 
 /// Getter for port1

@@ -866,7 +866,13 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     const origin: ?*OriginRecord = if (globalOfRealm(ctx)) |global| try @import("dom").global_settings.shareableOriginOf(global) else null;
     const instance = try Document.initWith(ctx.allocator, ctx, .{ .origin = origin, .ready_state = ._complete_ });
-    errdefer Document.deinit(instance);
+    // Until it is returned, the construction holds the node's creator's
+    // reference: a failed step frees it - uninserted, unwrapped - through
+    // Node's own teardown (dom.node_creation.releaseIfUnwrapped). Its deinit
+    // alone was a destructor, not a free: the slot and State stayed until
+    // the Browser ended (lane ctor1).
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    errdefer @import("dom").node_creation.releaseIfUnwrapped(instance, generation);
 
     // Set default values
     const internal = getInternal(instance) orelse return error.InvalidStateError;

@@ -77,14 +77,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try HTMLAreaElement.init(ctx.allocator, ctx);
-    errdefer HTMLAreaElement.deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for alt: reflects the alt content attribute.

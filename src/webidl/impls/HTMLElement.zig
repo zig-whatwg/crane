@@ -145,14 +145,10 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#htmlelement
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try HTMLElement.init(ctx.allocator, ctx);
-    errdefer HTMLElement.deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
     // HTMLElement constructor is typically not called directly
     // Elements are created via document.createElement()
-
-    return instance;
 }
 
 // =============================================================================

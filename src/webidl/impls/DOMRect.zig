@@ -74,8 +74,8 @@ fn rectOf(instance: *runtime.Instance) !geometry.Rect {
 /// 2. Set rect's variables x coordinate to x, y coordinate to y, width
 ///    dimension to width and height dimension to height.
 /// 3. Return rect.
-pub fn call_constructor(ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
-    return initWithDimensions(ctx, .{
+pub fn call_constructor(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !void {
+    try geometry_storage.setRect(instance, .{
         .x = if (x.was_passed) x.value else 0,
         .y = if (y.was_passed) y.value else 0,
         .width = if (width.was_passed) width.value else 0,

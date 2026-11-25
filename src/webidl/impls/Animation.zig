@@ -71,13 +71,10 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 }
 
 /// Constructor (6.4): Animation(effect, timeline).
-pub fn call_constructor(ctx: runtime.Context, effect: webidl.Opt(?*runtime.Instance), timeline: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
-    const instance = try Animation.init(ctx.allocator, ctx);
-    errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+pub fn call_constructor(instance: *runtime.Instance, effect: webidl.Opt(?*runtime.Instance), timeline: webidl.Opt(?*runtime.Instance)) !void {
     const new_effect: ?*runtime.Instance = if (effect.was_passed) effect.value else null;
     const new_timeline: animations.options.EffectOptions.TimelineMember = if (timeline.was_passed) .{ .value = timeline.value } else .missing;
     try animations.constructAnimation(instance, new_effect, new_timeline);
-    return instance;
 }
 
 /// Getter for id

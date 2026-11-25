@@ -47,9 +47,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// new MediaQueryListEvent(type, eventInitDict): DOM's inner event creation
 /// steps, each MediaQueryListEventInit member initializing the attribute of
 /// its name ("media" defaults to "", "matches" to false).
-pub fn call_constructor(ctx: runtime.Context, @"type": typedefs.CSSOMString, eventInitDict: webidl.Opt(dictionaries.MediaQueryListEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &MediaQueryListEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": typedefs.CSSOMString, eventInitDict: webidl.Opt(dictionaries.MediaQueryListEventInit)) !void {
+    const ctx = instance.ctx;
     const state = instance.getState(State);
     const init_dict = if (eventInitDict.was_passed) eventInitDict.value else dictionaries.MediaQueryListEventInit{ .base = .{} };
     // What deinit reads, should anything below fail.
@@ -70,7 +69,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": typedefs.CSSOMString, eve
     // The inherited Event internal state and its initialized flag: without
     // them dispatchEvent throws InvalidStateError.
     try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
-    return instance;
 }
 
 /// Getter for media.

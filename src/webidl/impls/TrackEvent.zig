@@ -32,9 +32,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     }
     interfaces.Event.deinit(instance);
 }
-pub fn call_constructor(ctx: runtime.Context, event_type: runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.TrackEventInit)) !*runtime.Instance {
-    const instance = try interfaces.TrackEvent.init(ctx.allocator, ctx);
-    errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+pub fn call_constructor(instance: *runtime.Instance, event_type: runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.TrackEventInit)) !void {
     const dictionary = if (eventInitDict.wasPassed()) eventInitDict.value else dictionaries.TrackEventInit{ .base = .{} };
     // DOM inner event creation steps, including inherited EventInit flags.
     try construction.innerEventCreationSteps(instance, event_type, construction.eventInitFrom(dictionary.base));
@@ -48,7 +46,6 @@ pub fn call_constructor(ctx: runtime.Context, event_type: runtime.DOMString, eve
         data.track = track;
         data.edge.hold(instance, track);
     }
-    return instance;
 }
 pub fn get_track(instance: *runtime.Instance) anyerror!?typedefs.VideoTrackOrAudioTrackOrTextTrack {
     const data = instance.getState(State).own._internal.?;

@@ -43,9 +43,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     interfaces.Event.deinit(instance);
 }
 
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CommandEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &CommandEvent.vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CommandEventInit)) !void {
+    const ctx = instance.ctx;
     const dict: dictionaries.CommandEventInit = eventInitDict.getOrDefault(.{ .base = .{} });
     // Interface dictionary conversion currently accepts any wrapped instance.
     if (dict.source) |source| if (source.stateAs(interfaces.Element.State) == null) return error.TypeError;
@@ -58,7 +57,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         engine.traceChild(instance, source, source_slot);
         internal.source_hold.set(source);
     }
-    return instance;
 }
 
 pub fn get_source(instance: *runtime.Instance) anyerror!?*runtime.Instance {

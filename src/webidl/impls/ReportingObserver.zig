@@ -74,25 +74,23 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, callback: callbacks.ReportingObserverCallback, options: webidl.Opt(dictionaries.ReportingObserverOptions)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, callback: callbacks.ReportingObserverCallback, options: webidl.Opt(dictionaries.ReportingObserverOptions)) !void {
+    const ctx = instance.ctx;
     // Reporting §4.1 constructor steps 1-3. The binding transfers callback.
     // A traced hold (refcount step 8): the observer's holder anchor keeps it
     // (`InternalState.traceHeldNodes`), as Blink traces it; nothing roots it.
     const owned_callback = callback.keepTraced();
-    const instance = init(ctx.allocator, State, &ReportingObserver.vtable, ctx) catch |err| {
-        owned_callback.release();
-        return err;
-    };
-    errdefer runtime.Instance.deinit(instance);
+    var callback_taken = false;
+    errdefer if (!callback_taken) owned_callback.release();
     const observer = try observerOf(instance);
     observer.callback = owned_callback;
+    callback_taken = true;
     const value: dictionaries.ReportingObserverOptions = if (options.was_passed) options.value else .{};
     observer.buffered = value.buffered orelse false;
     if (value.types) |types| {
         try observer.types.ensureTotalCapacity(ctx.allocator, types.len);
         for (types) |name| observer.types.appendAssumeCapacity(try ctx.allocator.dupe(u8, name.asSlice()));
     }
-    return instance;
 }
 
 /// Operation: observe

@@ -131,15 +131,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://url.spec.whatwg.org/#dom-url-url (lines 1794-1800)
-pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) !*runtime.Instance {
-    // Create instance
-    const instance = try init(ctx.allocator, State, &URL.vtable, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step frees it whole. Its own deinit is its destructor, not a
-    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    errdefer runtime.gc.releaseOwned(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) !void {
+    const ctx = instance.ctx;
     const state = instance.getState(State);
 
     // Step 1: Parse base URL if provided
@@ -210,8 +203,6 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, base: webi
 
     // Store URLSearchParams instance in URL's internal state
     internal.query_params_instance = query_params_instance;
-
-    return instance;
 }
 
 // ========================================================================

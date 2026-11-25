@@ -74,9 +74,8 @@ fn rectOf(instance: *runtime.Instance) geometry.Rect {
 /// 2. Set rect's variables x coordinate to x, y coordinate to y, width
 ///    dimension to width and height dimension to height.
 /// 3. Return rect.
-pub fn call_constructor(ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !void {
     // 1.
-    const instance = try init(ctx.allocator, State, &DOMRectReadOnly.vtable, ctx);
     // 2. (Every argument defaults to 0.)
     setRect(instance, .{
         .x = if (x.was_passed) x.value else 0,
@@ -85,7 +84,6 @@ pub fn call_constructor(ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(
         .height = if (height.was_passed) height.value else 0,
     });
     // 3.
-    return instance;
 }
 
 /// Getter for x: the x coordinate.
@@ -147,8 +145,9 @@ pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(dicti
         height_val = rect_init.height orelse 0.0;
     }
 
-    // Create new instance using constructor
-    return call_constructor(
+    // Create new instance using constructor (the generated one: it makes
+    // the object and runs the steps on it)
+    return interfaces.DOMRectReadOnly.call_constructor(
         ctx,
         webidl.Opt(f64).passed(x_val),
         webidl.Opt(f64).passed(y_val),

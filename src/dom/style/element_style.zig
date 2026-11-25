@@ -41,6 +41,31 @@ pub const Key = struct {
     }
 };
 
+/// Which document singletons (focus, hover, active, target) a cached style
+/// depended on during matching (Blink's Element AffectedByFocus /
+/// AffectedByHover / AffectedByActive / AffectedByTarget), plus whether this
+/// element itself was focused when resolved.
+///
+/// Fits in 1 byte beside `volatile` and `rendered` in existing alignment
+/// padding (ElementStyle stays pinned at 272 bytes).
+pub const SingletonDeps = packed struct(u8) {
+    /// Matching evaluated :focus-within, or evaluated :focus/:focus-visible
+    /// outside the subject's own focus bucket (combinator, :has(), :not(),
+    /// :is(), pseudo-element, :host, ::slotted).
+    any_focus: bool = false,
+    /// This element matched :focus when its style was resolved; a flip in
+    /// its own focus state invalidates it (so Buckets.focus rules apply
+    /// while focused and drop when blurred).
+    was_focused: bool = false,
+    /// Matching evaluated :hover.
+    any_hover: bool = false,
+    /// Matching evaluated :active.
+    any_active: bool = false,
+    /// Matching evaluated :target.
+    any_target: bool = false,
+    _pad: u3 = 0,
+};
+
 pub const Cached = struct {
     style: *ComputedStyle,
     /// The style without the animation and transition origins (the base
@@ -51,25 +76,50 @@ pub const Cached = struct {
     /// Null: `style` is the base style.
     base: ?*ComputedStyle = null,
     key: Key,
-    /// The style read per-element dynamic state (or inherited from one
-    /// that did): resolved again on every read (design 5.3).
+    /// The style read per-element dynamic state not covered by a state
+    /// invalidation hook (or inherited from one that did): resolved again on
+    /// every read (design 5.3).
     @"volatile": bool,
-    /// H-R3-ENGINE-KEY. The element's own animation component when resolved
-    /// (dom.animations.effect_stack.component): 0 with no effect, so a
-    /// running animation moves only its targets' keys.
-    animations: u64 = 0,
-    /// This style's serial (StyleEngine.nextSerial), and its flat-tree
-    /// parent's when it was resolved: a parent resolved again since - an
-    /// animated one, whose key moved alone - makes its children resolve
-    /// again too, so inheritance follows the animated value.
-    serial: u64 = 0,
-    parent_serial: u64 = 0,
+    /// Document singleton dependencies recorded while matching this style.
+    deps: SingletonDeps = .{},
     /// The element was being rendered when this style was resolved: no
     /// `display: none` on it or a flat-tree ancestor, and it has not been
     /// removed from the document since (its removing steps clear it). A
     /// style resolved while not rendered is no before-change style (CSS
     /// Transitions 1 section 3, CSS Transitions 2 section 3).
     rendered: bool = true,
+    /// H-R3-ENGINE-KEY. The element's own animation component when resolved
+    /// (dom.animations.effect_stack.component): 0 with no effect, so a
+    /// running animation moves only its targets' keys.
+    animations: u64 = 0,
+    /// This style's serial (StyleEngine), and its flat-tree parent's when it
+    /// was resolved: a parent resolved again since - an animated one or one
+    /// whose own focus changed - makes its children resolve again too, so
+    /// inheritance follows the new value. `base_serial` advances only on a
+    /// real style change event (not an animation-only tick), so children know
+    /// whether a parent's resolution is a CSS Transitions style change event.
+    /// Four u32s occupy the exact same 16 bytes as two u64s.
+    serial: u32 = 0,
+    base_serial: u32 = 0,
+    parent_serial: u32 = 0,
+    parent_base_serial: u32 = 0,
+
+    /// Whether this cached style's inputs still hold under `key` and
+    /// `is_focused_now` (Blink's AffectedBy* selective invalidation):
+    /// tree/generation/slot mismatches always invalidate; singleton moves
+    /// invalidate only when this style depended on that singleton (or this
+    /// element's own focus state flipped).
+    pub fn validFor(self: *const Cached, key: Key, is_focused_now: bool) bool {
+        if (self.key.tree_version != key.tree_version or
+            self.key.generation != key.generation or
+            self.key.slot_version != key.slot_version) return false;
+        if (self.deps.was_focused != is_focused_now) return false;
+        if (self.deps.any_focus and self.key.singletons[0] != key.singletons[0]) return false;
+        if (self.deps.any_hover and self.key.singletons[1] != key.singletons[1]) return false;
+        if (self.deps.any_active and (self.key.singletons[2] != key.singletons[2] or self.key.singletons[3] != key.singletons[3])) return false;
+        if (self.deps.any_target and self.key.singletons[4] != key.singletons[4]) return false;
+        return true;
+    }
 
     /// The before-change style this cached style gives the next style
     /// change event: its base style, or null when it has none.
@@ -391,4 +441,24 @@ test "the background hint's element types are not the font element (the hint slo
         try std.testing.expect(resource_loading.hasBackgroundHint(name));
     }
     try std.testing.expect(!resource_loading.hasBackgroundHint("font"));
+}
+
+test "Cached.validFor selectively invalidates only on recorded singleton dependencies or own focus flips" {
+    const base_key: Key = .{ .tree_version = 1, .generation = 2, .slot_version = 3, .singletons = .{ 10, 20, 30, 40, 50 } };
+    const style = try ComputedStyle.initial(std.testing.allocator);
+    defer style.release();
+    const cached: Cached = .{ .style = style, .key = base_key, .@"volatile" = false, .deps = .{} };
+    // Unrelated singleton changes keep an independent cached style valid.
+    const moved_all: Key = .{ .tree_version = 1, .generation = 2, .slot_version = 3, .singletons = .{ 11, 21, 31, 41, 51 } };
+    try std.testing.expect(cached.validFor(moved_all, false));
+    // Own focus flipping always invalidates.
+    try std.testing.expect(!cached.validFor(base_key, true));
+    // Tree, generation, or slot version always invalidates.
+    try std.testing.expect(!cached.validFor(.{ .tree_version = 2, .generation = 2, .slot_version = 3, .singletons = base_key.singletons }, false));
+    try std.testing.expect(!cached.validFor(.{ .tree_version = 1, .generation = 3, .slot_version = 3, .singletons = base_key.singletons }, false));
+    try std.testing.expect(!cached.validFor(.{ .tree_version = 1, .generation = 2, .slot_version = 4, .singletons = base_key.singletons }, false));
+    // Recording any_focus invalidates when singletons[0] changes, but not singletons[1..].
+    const focus_dep: Cached = .{ .style = style, .key = base_key, .@"volatile" = false, .deps = .{ .any_focus = true } };
+    try std.testing.expect(focus_dep.validFor(.{ .tree_version = 1, .generation = 2, .slot_version = 3, .singletons = .{ 10, 99, 99, 99, 99 } }, false));
+    try std.testing.expect(!focus_dep.validFor(.{ .tree_version = 1, .generation = 2, .slot_version = 3, .singletons = .{ 11, 20, 30, 40, 50 } }, false));
 }

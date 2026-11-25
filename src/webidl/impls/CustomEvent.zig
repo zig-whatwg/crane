@@ -77,11 +77,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// The CustomEvent(type, eventInitDict) constructor steps are:
 /// 1. Run the Event constructor steps (inherited)
 /// 2. Set this's detail attribute to eventInitDict["detail"]
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CustomEventInit)) !*runtime.Instance {
-    // Create instance
-    const instance = try init(ctx.allocator, State, &CustomEvent.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CustomEventInit)) !void {
+    const ctx = instance.ctx;
     // Get state
     const state = instance.getState(State);
 
@@ -109,8 +106,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // Without it dispatchEvent throws InvalidStateError, so the event can be
     // constructed but never dispatched. Same thing MouseEvent does by hand.
     try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
-
-    return instance;
 }
 
 /// Getter for detail

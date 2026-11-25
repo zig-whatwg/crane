@@ -135,14 +135,9 @@ fn canvasUsability(instance: *runtime.Instance) dom.image_sources.Usability {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try HTMLCanvasElement.init(ctx.allocator, ctx);
-    errdefer HTMLCanvasElement.deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for width: it reflects the width content attribute, default 300.

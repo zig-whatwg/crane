@@ -121,21 +121,24 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor: inner event creation steps, UIEventInit's members, then
 /// data, isComposing and inputType.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.InputEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &InputEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.InputEventInit)) !void {
     const dict: dictionaries.InputEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{} } };
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base.base));
     event_construction.initializeUIEvent(instance, event_construction.uiEventInitFrom(dict.base));
 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const allocator = internal.allocator;
-    const data: ?[]u8 = if (dict.data) |d| try allocator.dupe(u8, d.asSlice()) else null;
-    errdefer if (data) |d| allocator.free(d);
-    const input_type = try allocator.dupe(u8, if (dict.inputType) |t| t.asSlice() else "");
-    internal.clear();
-    internal.data = data;
-    internal.input_type = input_type;
+    {
+        // The copies are the steps' until `internal` holds them; from there
+        // its destructor frees them, so the errdefer ends with this block (a
+        // later failed step freed `data` twice).
+        const data: ?[]u8 = if (dict.data) |d| try allocator.dupe(u8, d.asSlice()) else null;
+        errdefer if (data) |d| allocator.free(d);
+        const input_type = try allocator.dupe(u8, if (dict.inputType) |t| t.asSlice() else "");
+        internal.clear();
+        internal.data = data;
+        internal.input_type = input_type;
+    }
     internal.is_composing = dict.isComposing orelse false;
     if (dict.dataTransfer) |data_transfer| {
         internal.data_transfer = dom.same_object.Link.to(data_transfer);
@@ -158,7 +161,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             engine.traceChild(instance, range, stored.slot());
         }
     }
-    return instance;
 }
 
 /// Getter for data. A copy: the binding frees what a USVString getter

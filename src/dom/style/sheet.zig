@@ -561,6 +561,16 @@ pub const Contents = struct {
         /// Rules whose subject compound has ::part() (CSS Shadow Parts
         /// 4.1), matched against the parts of the sheet's tree's hosts.
         part: std.ArrayList(u32) = .empty,
+        /// Blink RuleSet::AddRule / WebKit RuleSet::addRule dedicated
+        /// pseudo-class buckets: rules whose subject compound requires a
+        /// top-level :autofill, :focus/:focus-visible, :root, or
+        /// :link/:visited/:any-link stay out of `universal` (and out of
+        /// id/class/attribute/tag buckets for :autofill, :focus and :root),
+        /// so ordinary elements never evaluate them.
+        autofill: std.ArrayList(u32) = .empty,
+        focus: std.ArrayList(u32) = .empty,
+        root: std.ArrayList(u32) = .empty,
+        link: std.ArrayList(u32) = .empty,
 
         fn deinit(self: *Buckets, allocator: Allocator) void {
             inline for (.{ &self.id, &self.class, &self.tag, &self.attribute }) |map| {
@@ -572,6 +582,10 @@ pub const Contents = struct {
             self.pseudo.deinit(allocator);
             self.slotted.deinit(allocator);
             self.part.deinit(allocator);
+            self.autofill.deinit(allocator);
+            self.focus.deinit(allocator);
+            self.root.deinit(allocator);
+            self.link.deinit(allocator);
         }
     };
 
@@ -666,6 +680,13 @@ pub const Contents = struct {
     pub fn collectCandidates(self: *const Contents, element: ElementKeys, pseudo: bool, quirks: bool, out: *std.ArrayList(u32), allocator: Allocator) Allocator.Error!void {
         if (pseudo) return out.appendSlice(allocator, self.buckets.pseudo.items);
         try out.appendSlice(allocator, self.buckets.universal.items);
+        // Dedicated pseudo-class buckets (Blink RuleSet::AddRule):
+        // :autofill never matches until autofill state exists; :focus/:focus-visible
+        // match only when focused; :root only on the document element; :link/:visited
+        // only on link-capable elements with href.
+        if (element.is_focused and self.buckets.focus.items.len != 0) try out.appendSlice(allocator, self.buckets.focus.items);
+        if (element.is_root and self.buckets.root.items.len != 0) try out.appendSlice(allocator, self.buckets.root.items);
+        if (element.is_link and self.buckets.link.items.len != 0) try out.appendSlice(allocator, self.buckets.link.items);
         if (quirks) {
             inline for (.{ &self.buckets.id, &self.buckets.class }) |map| {
                 var it = map.valueIterator();
@@ -692,6 +713,9 @@ pub const ElementKeys = struct {
     local_name_lower: []const u8,
     /// Lowercased attribute local names.
     attribute_names: []const []const u8,
+    is_focused: bool = false,
+    is_root: bool = false,
+    is_link: bool = false,
 };
 
 const Compiler = struct {
@@ -865,7 +889,10 @@ const Compiler = struct {
     }
 
     /// File rule `index` under its subject compound's most selective simple
-    /// selector: an ID, else a class, else an attribute name, else a type.
+    /// selector: dedicated pseudo-class buckets (:autofill, :focus/:focus-visible,
+    /// :root) first (at most one element per document matches them, matching
+    /// Blink's RuleSet::AddRule and WebKit's RuleSet::addRule), else ID, class,
+    /// attribute name, type, :link/:visited/:any-link, or universal.
     fn bucket(self: *Compiler, index: u32, complex: *const selector.ComplexSelector) Allocator.Error!void {
         const a = self.contents.allocator;
         const b = &self.contents.buckets;
@@ -878,6 +905,9 @@ const Compiler = struct {
         var class: ?[]const u8 = null;
         var attribute: ?[]const u8 = null;
         var tag: ?[]const u8 = null;
+        var has_focus = false;
+        var has_root = false;
+        var has_link = false;
         for (complex.compound.simple_selectors) |*simple| switch (simple.*) {
             .Id => |s| id = id orelse s.id,
             .Class => |s| class = class orelse s.class_name,
@@ -885,11 +915,23 @@ const Compiler = struct {
                 attribute = attribute orelse s.lower_name;
             },
             .Type => |s| tag = tag orelse s.lower_name,
+            .PseudoClass => |p| switch (p.kind) {
+                .Autofill => return b.autofill.append(a, index),
+                .Focus, .FocusVisible => has_focus = true,
+                .Root => has_root = true,
+                .Link, .Visited, .AnyLink => has_link = true,
+                else => {},
+            },
             else => {},
         };
+        if (has_focus) return b.focus.append(a, index);
+        if (has_root) return b.root.append(a, index);
         const target: ?struct { map: *std.StringHashMapUnmanaged(std.ArrayList(u32)), key: []const u8 } =
             if (id) |k| .{ .map = &b.id, .key = k } else if (class) |k| .{ .map = &b.class, .key = k } else if (attribute) |k| .{ .map = &b.attribute, .key = k } else if (tag) |k| .{ .map = &b.tag, .key = k } else null;
-        const t = target orelse return b.universal.append(a, index);
+        const t = target orelse {
+            if (has_link) return b.link.append(a, index);
+            return b.universal.append(a, index);
+        };
         const slot = try t.map.getOrPut(a, t.key);
         if (!slot.found_existing) slot.value_ptr.* = .empty;
         try slot.value_ptr.append(a, index);
@@ -976,6 +1018,42 @@ test "::slotted() and ::part() rules are filed apart, with the pseudo-element th
     try testing.expect(contents.rules.items[2].pseudo == null);
     try testing.expectEqualStrings("after", contents.rules.items[3].pseudo.?);
     try testing.expectEqualStrings("before", contents.rules.items[4].pseudo.?);
+}
+
+test "dedicated pseudo-class buckets keep :autofill, :focus/:focus-visible, :root, and :link out of universal" {
+    const contents = try Contents.parse(testing.allocator,
+        \\:autofill { color: red }
+        \\input:autofill { color: red }
+        \\:focus-visible { outline: auto }
+        \\input.field:focus { color: blue }
+        \\:root { color: black }
+        \\:link { color: green }
+        \\:visited { color: purple }
+        \\:is(:focus, .a) { color: orange }
+    , .{});
+    defer contents.destroy();
+    try testing.expectEqual(@as(usize, 2), contents.buckets.autofill.items.len);
+    try testing.expectEqual(@as(usize, 2), contents.buckets.focus.items.len);
+    try testing.expectEqual(@as(usize, 1), contents.buckets.root.items.len);
+    try testing.expectEqual(@as(usize, 2), contents.buckets.link.items.len);
+    // Only :is(:focus, .a) remains universal.
+    try testing.expectEqual(@as(usize, 1), contents.buckets.universal.items.len);
+    // An ordinary unfocused non-root non-link input gets only universal (1 rule).
+    var out: std.ArrayList(u32) = .empty;
+    defer out.deinit(testing.allocator);
+    try contents.collectCandidates(.{ .id = "", .class_name = "field", .local_name_lower = "input", .attribute_names = &.{} }, false, false, &out, testing.allocator);
+    try testing.expectEqual(@as(usize, 1), out.items.len);
+    // Focusing it adds the 2 focus bucket rules.
+    out.clearRetainingCapacity();
+    try contents.collectCandidates(.{ .id = "", .class_name = "field", .local_name_lower = "input", .attribute_names = &.{}, .is_focused = true }, false, false, &out, testing.allocator);
+    try testing.expectEqual(@as(usize, 3), out.items.len);
+    // Root element gets root bucket; link element gets link bucket.
+    out.clearRetainingCapacity();
+    try contents.collectCandidates(.{ .id = "", .class_name = "", .local_name_lower = "html", .attribute_names = &.{}, .is_root = true }, false, false, &out, testing.allocator);
+    try testing.expectEqual(@as(usize, 2), out.items.len);
+    out.clearRetainingCapacity();
+    try contents.collectCandidates(.{ .id = "", .class_name = "", .local_name_lower = "a", .attribute_names = &.{"href"}, .is_link = true }, false, false, &out, testing.allocator);
+    try testing.expectEqual(@as(usize, 3), out.items.len);
 }
 
 test "@starting-style: its style rules are indexed in order, marked; its name-defining rules as if outside" {

@@ -79,15 +79,12 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor: inner event creation steps, UIEventInit's members, then data.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CompositionEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &CompositionEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CompositionEventInit)) !void {
     const dict: dictionaries.CompositionEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{} } };
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base.base));
     event_construction.initializeUIEvent(instance, event_construction.uiEventInitFrom(dict.base));
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     try internal.setData(if (dict.data) |d| d.asSlice() else "");
-    return instance;
 }
 
 /// Getter for data. A copy: the binding frees what a USVString getter

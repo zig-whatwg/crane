@@ -56,12 +56,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// rangeArg as the argument. 3. Set highlight's priority to 0. 4. Set
 /// highlight's type to highlight." The arguments are AbstractRanges already
 /// (the binding converted them), so step 2's add is the set entries' append.
-pub fn call_constructor(ctx: runtime.Context, initialRanges: []const *runtime.Instance) !*runtime.Instance {
-    const instance = try Highlight.init(ctx.allocator, ctx);
-    errdefer Highlight.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, initialRanges: []const *runtime.Instance) !void {
     const internal = try internalOf(instance);
     for (initialRanges) |range| try internal.ranges.add(range);
-    return instance;
 }
 
 pub fn get_priority(instance: *runtime.Instance) anyerror!i32 {

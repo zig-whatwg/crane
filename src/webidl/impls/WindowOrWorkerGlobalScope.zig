@@ -265,7 +265,11 @@ fn createImageBitmap(global: *runtime.Instance, image: typedefs.ImageBitmapSourc
             // 6, ImageData: 1-2. If its data's [[ViewedArrayBuffer]] is
             //    detached, an InvalidStateError.
             const realm = engine.currentRealm() orelse global.ctx;
-            const data = switch (try interfaces.ImageData.get_data(image_data)) {
+            const data_union = try interfaces.ImageData.get_data(image_data);
+            defer switch (data_union) {
+                .uint8clamped_array, .float16array => |array| engine.releaseValue(.{ .value = array }),
+            };
+            const data = switch (data_union) {
                 .uint8clamped_array => |array| array,
                 .float16array => return error.InvalidStateError,
             };

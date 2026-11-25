@@ -41,15 +41,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &CanMakePaymentEvent.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString) !void {
+    _ = instance;
     _ = @"type";
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Operation: respondWith

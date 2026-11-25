@@ -42,16 +42,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, items: runtime.JSValue, options: webidl.Opt(dictionaries.ClipboardItemOptions)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &ClipboardItem.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, items: runtime.JSValue, options: webidl.Opt(dictionaries.ClipboardItemOptions)) !void {
+    _ = instance;
     _ = items;
     _ = options;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for presentationStyle

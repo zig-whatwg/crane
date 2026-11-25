@@ -43,15 +43,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 /// Note: Use ctx.allocator for all allocations to ensure consistency with deinit
-pub fn call_constructor(ctx: runtime.Context, workerOrWorkerAndParameters: typedefs.WorkerOrWorkerAndParameters, options: webidl.Opt(runtime.JSValue), transfer: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
-    // Create instance through init() - use ctx.allocator for consistency with deinit
-    const instance = try init(ctx.allocator, State, &RTCRtpScriptTransform.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, workerOrWorkerAndParameters: typedefs.WorkerOrWorkerAndParameters, options: webidl.Opt(runtime.JSValue), transfer: webidl.Opt(runtime.JSValue)) !void {
+    _ = instance;
     _ = workerOrWorkerAndParameters;
     _ = options;
     _ = transfer;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }

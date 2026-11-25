@@ -5682,6 +5682,43 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_held_style_module }), "tools-lint_held_style", null).step);
 
     // ========================================================================
+    // LINT: a construction that fails frees its object whole
+    // ========================================================================
+    // WebIDL 3.7.1 makes the object, then runs the constructor steps with it
+    // as `this`; the generated call_constructor does that for an impl whose
+    // steps take the object, and frees it whole when a step fails (lane
+    // ctor1). tools/lint_constructors.zig flags, through std.zig.Ast, an impl
+    // constructor that still makes its own object (the factory form), one
+    // that releases the receiver the generated constructor frees, and a bare
+    // destructor (a destructor, not a free) in any constructor, against
+    // tools/constructors_baseline.txt, which only goes down (`-- --update`
+    // after converting some; `-- --list` prints every one).
+    const lint_constructors_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_constructors.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_constructors_exe = b.addExecutable(.{
+        .name = "lint_constructors",
+        .root_module = lint_constructors_module,
+    });
+    const lint_constructors_step = b.step("lint-constructors", "Fail on a WebIDL impl constructor that makes its own object (the factory form) or runs a bare destructor, beyond tools/constructors_baseline.txt, or that releases the receiver the generated constructor frees");
+    const lint_constructors = b.addRunArtifact(lint_constructors_exe);
+    // It reads src/webidl/impls/, which the build graph does not track.
+    lint_constructors.has_side_effects = true;
+    lint_constructors.setCwd(b.path("."));
+    lint_constructors.addPassthruArgs();
+    lint_constructors_step.dependOn(&lint_constructors.step);
+    // Part of `zig build test`: the check itself (never with --update) and
+    // the tool's own tests.
+    const lint_constructors_check = b.addRunArtifact(lint_constructors_exe);
+    lint_constructors_check.has_side_effects = true;
+    lint_constructors_check.setCwd(b.path("."));
+    test_step.dependOn(&lint_constructors_check.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_constructors_module }), "tools-lint_constructors", null).step);
+
+    // ========================================================================
     // LINT: arrays over 64 KiB on a function's stack
     // ========================================================================
     // An optimized build inlines a callee into its caller, whose prologue
