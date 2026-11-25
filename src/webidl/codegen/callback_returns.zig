@@ -35,10 +35,6 @@ pub const Conversion = enum {
 /// (callback, its IDL return type, how the value is converted today).
 pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u8, Conversion }{
     // --- A value type ---
-    // html/custom_elements/creation.zig create + validateConstructed
-    // (engine.convertToPlatformObject, then HTMLElement's checks);
-    // html/upgrade.zig constructForUpgrade compares identity only.
-    .{ "CustomElementConstructor", "HTMLElement", .hand },
     // impls/EventTarget.zig invokeIdlEventHandler (.nullable_dom_string).
     .{ "OnBeforeUnloadEventHandlerNonNull", "DOMString?", .protocol_typed },
 
