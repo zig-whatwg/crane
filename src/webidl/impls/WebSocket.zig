@@ -972,7 +972,8 @@ fn releaseEventIfUnwrapped(event: *runtime.Instance, generation: u64) void {
 /// 11. Let client be this's relevant settings object.
 /// 12. Run this step in parallel: Establish a WebSocket connection given urlRecord,
 ///     protocols, and client.
-pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(typedefs.DOMStringOrSequenceOfDOMString)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, url: runtime.USVString, protocols: webidl.Opt(typedefs.DOMStringOrSequenceOfDOMString)) !void {
+    const ctx = instance.ctx;
     // The binding converted the protocols union (WebIDL § 3.2.25) before the
     // constructor algorithm: its iterator and ToString calls may throw or
     // change the API base URL. Token validation is constructor step 9, after
@@ -982,17 +983,6 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
         for (values) |value| ctx.allocator.free(value);
         ctx.allocator.free(values);
     };
-
-    // "This": made first, so its relevant settings object answers step 1.
-    const instance = try WebSocket.init(ctx.allocator, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step (the SyntaxErrors of steps 3, 6, 7 and 9) frees it whole.
-    // Its own deinit is its destructor, not a free, and left its slot and
-    // State until the Browser ended (tests/v8/constructor_error_receiver_test.zig;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    // Nothing below registers it anywhere before its last step that can
-    // fail: the poll token, the keep-alive and the realm's list come after.
-    errdefer runtime.gc.releaseOwned(instance);
 
     // Steps 1-2. Parse url against this's relevant settings object's API base
     // URL. With no base, which is what this passed, every relative url - "",
@@ -1115,7 +1105,7 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
         // No timer means no event loop, so nothing could ever deliver an event.
         // Leave the socket in CONNECTING rather than pretending otherwise.
         log.warn("no timer interface in this realm; WebSocket to {s} cannot be pumped", .{url});
-        return instance;
+        return;
     };
     const token = try PollToken.create(tokenAllocator(), instance, timer);
     internal.poll = token;
@@ -1138,8 +1128,6 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // Its document's end makes it disappear (`makeDisappearIn`): its realm
     // keeps it on its list of sockets.
     instance.ctx.addObject(.web_sockets, instance) catch {};
-
-    return instance;
 }
 
 /// This's relevant settings object's API base URL, owned by `ctx.allocator`.

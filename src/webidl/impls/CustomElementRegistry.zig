@@ -220,15 +220,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#dom-customelementregistry
 ///
 /// new CustomElementRegistry() creates a scoped registry
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &CustomElementRegistry.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
     // Mark as scoped registry per spec
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.is_scoped = true;
-
-    return instance;
 }
 
 /// Operation: define(name, constructor, options)

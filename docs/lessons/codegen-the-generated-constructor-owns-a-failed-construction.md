@@ -1,0 +1,15 @@
+# Codegen: The generated constructor owns a failed construction
+
+**Date**: 2026-11-25
+**Lesson**: Generated `call_constructor` wrappers own object creation (WebIDL 3.7.1 steps 1.8-1.9) and hold the fresh object under `errdefer runtime.gc.releaseFailedConstruction(instance)`; impl constructor steps take `instance: *runtime.Instance` and return `!void`, never calling a bare destructor on failure.
+
+**Why**: Freeing a platform object requires both its destructor chain and its storage (`runtime.gc.releaseStorage`, see `architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md`). When ~370 impl constructors each created their own object from a copied stub (`const instance = try X.init(...); errdefer X.deinit(instance);`), any throwing constructor step ran only the destructor, leaving the slab slot and State allocated until the Browser ended. At the same time, an impl whose steps wrap the object before throwing (e.g., exposing a controller to a `start()` callback that then throws) must NOT free an already-wrapped object's storage while script holds a wrapper.
+
+**What Happened**: Lane hard1's bug-finding WPT sweeps caught live never-wrapped instances left at Browser ends after failed constructions (`encoding/` left 6,860 `TextDecoder` slots, `url/` left 4 `URLSearchParams` slots per run). Auditing all 450 WebIDL constructors found 365 bare destructor calls inside `call_constructor`, plus two manual `init` helpers (`BroadcastChannel.init`, `MessagePort.initWithEnd`) whose `errdefer interfaces.EventTarget.deinit(instance)` likewise dropped storage on OOM.
+
+**Fix**:
+1. Added `runtime.gc.releaseFailedConstruction(instance)`: frees destructor + storage when `instance_lifecycle.provablyUnwrapped` holds, and leaves the object whole to its wrapper when constructor steps wrapped it (and asserts in Debug that it is never given a refcounted Node).
+2. Updated `src/webidl/codegen/writer.zig` (`writeConstructorSteps`) and `generator.zig` so every generated `call_constructor` checks at comptime whether `Impl.call_constructor` takes `*runtime.Instance` first (the **this form**): if so, the generated wrapper creates `instance` via `init(ctx.allocator, ctx)`, guards it with `errdefer runtime.gc.releaseFailedConstruction(instance)`, runs the impl's steps, and returns `instance`. Factory-form impls (nodes, `initWith`/`construction_args` types, shared stream factories) keep taking `ctx` and own their own whole-free failure paths.
+3. Converted 411 constructors to the this form, fixed `init` OOM errdefers in `BroadcastChannel`, `MessagePort`, and `EventSource`, and added `tools/lint_constructors.zig` (`zig build lint-constructors`, part of `zig build test`) forbidding double-frees of the receiver, new factory-form constructors, and bare destructors (driven to 0).
+
+**Takeaway**: **Put WebIDL 3.7.1 object creation and failure cleanup once in the generated constructor (`call_constructor(instance: *runtime.Instance, ...) !void` + `errdefer runtime.gc.releaseFailedConstruction`), never repeated in 450 impls — and enforce the invariant with `lint-constructors`.**

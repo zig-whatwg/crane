@@ -67,10 +67,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Note: Per [Exposed=(DedicatedWorker,SharedWorker)], this should only
 /// be constructible in Worker contexts. The V8 binding layer enforces this.
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &FileReaderSync.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    const ctx = instance.ctx;
     // Create internal state
     const internal = try ctx.allocator.create(InternalState);
     errdefer ctx.allocator.destroy(internal);
@@ -81,8 +79,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
     const state = instance.getState(State);
     state.own._internal = internal;
-
-    return instance;
 }
 
 /// Get internal state from instance using shared accessor

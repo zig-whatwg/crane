@@ -43,7 +43,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor (User Timing 2.2.1)
-pub fn call_constructor(ctx: runtime.Context, markName: runtime.DOMString, markOptions: webidl.Opt(dictionaries.PerformanceMarkOptions)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, markName: runtime.DOMString, markOptions: webidl.Opt(dictionaries.PerformanceMarkOptions)) !void {
+    // 2. A new PerformanceMark in the current global object's realm:
+    // `instance`, which the generated constructor made (WebIDL 3.7.1 step
+    // 1.8) and frees whole when a step fails (lane ctor1).
+    const ctx = instance.ctx;
     const name = markName.asSlice();
     // 1. On a Window, a PerformanceTiming attribute's name is a SyntaxError.
     if (ctx.isWindow() and performance_timeline.isPerformanceTimingAttribute(name)) return error.SyntaxError;
@@ -57,8 +61,8 @@ pub fn call_constructor(ctx: runtime.Context, markName: runtime.DOMString, markO
     } else performance_timeline.now(ctx) orelse 0;
 
     // 7-8. detail: null, or StructuredDeserialize(StructuredSerialize(detail))
-    // in the current realm - done before the entry exists, so that a
-    // DataCloneError makes none. (StructuredSerializeForStorage: the same
+    // in the current realm - before the entry is initialized, so that a
+    // DataCloneError leaves none. (StructuredSerializeForStorage: the same
     // but for SharedArrayBuffer, which a non-isolated realm has not got.)
     var detail: ?engine.Owned = null;
     defer if (detail) |d| d.release();
@@ -70,13 +74,9 @@ pub fn call_constructor(ctx: runtime.Context, markName: runtime.DOMString, markO
         }
     }
 
-    // 2. A new PerformanceMark in the current global object's realm.
-    const instance = try init(ctx.allocator, State, &PerformanceMark.vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
     // 3-4, 6. name, entryType "mark", duration 0 (no end time).
     try performance_timeline.initializeEntry(instance, start_time, .mark, name, 0);
     if (detail) |d| engine.traceValue(instance, d.value, detail_slot);
-    return instance;
 }
 
 /// Getter for detail: the value it was set to, or null.

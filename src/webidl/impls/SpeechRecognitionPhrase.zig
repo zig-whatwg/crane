@@ -42,16 +42,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, phrase: runtime.DOMString, boost: webidl.Opt(f32)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &SpeechRecognitionPhrase.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, phrase: runtime.DOMString, boost: webidl.Opt(f32)) !void {
+    _ = instance;
     _ = phrase;
     _ = boost;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for phrase

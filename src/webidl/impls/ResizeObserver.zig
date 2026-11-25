@@ -135,13 +135,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// this to Document.[[resizeObservers]]": the observers a document runs are
 /// those of its realm that observe something (`runSteps`), so an observer
 /// joins its Browser's list when it starts observing.
-pub fn call_constructor(ctx: runtime.Context, callback: callbacks.ResizeObserverCallback) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &ResizeObserver.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, callback: callbacks.ResizeObserverCallback) !void {
     const internal = getInternal(instance);
     internal.self_instance = instance;
     internal.callback = callback.keep();
-    return instance;
 }
 
 /// observe(target, options)

@@ -75,10 +75,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#promiserejectionevent
 /// The event constructing steps (DOM "inner event creation steps"): the Event
 /// attributes from EventInit, then promise and reason from the dictionary.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.PromiseRejectionEventInit) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &PromiseRejectionEvent.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: dictionaries.PromiseRejectionEventInit) !void {
+    const ctx = instance.ctx;
     const state = instance.getState(State);
 
     const internal = try runtime.arenaOf(instance).create(InternalState);
@@ -102,8 +100,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     // Without the initialized flag dispatchEvent throws InvalidStateError.
     try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
-
-    return instance;
 }
 
 /// This event's own hold on `value` (borrowed), or null for undefined - the

@@ -42,20 +42,17 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.ImageDecoderInit) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, init_data: dictionaries.ImageDecoderInit) !void {
+    // The generated constructor made `instance` (WebIDL 3.7.1 step 1.8)
+    // and frees it whole when a step fails (lane ctor1).
+    const ctx = instance.ctx;
     // WebCodecs ImageDecoder constructor step 1: "If init is not valid
     // ImageDecoderInit, throw a TypeError." Firefox 160 throws it for a type
     // "invalid" (webidl/ecmascript-binding/allow-shared.https.html), as the
     // spec says; Chrome 157 does not.
     if (!isValidImageDecoderInit(ctx, &init_data)) return error.TypeError;
 
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &ImageDecoder.vtable, ctx);
-    errdefer deinit(instance);
-
     // TODO: Implement the constructor's remaining steps (the decoder).
-
-    return instance;
 }
 
 /// WebCodecs "valid ImageDecoderInit" steps 1, 4 and 5: a valid image MIME

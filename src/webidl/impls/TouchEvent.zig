@@ -117,9 +117,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor: "constructor(DOMString type, optional TouchEventInit
 /// eventInitDict = {})" - DOM's inner event creation steps, UIEventInit's
 /// and EventModifierInit's members, and the three lists.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.TouchEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &TouchEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.TouchEventInit)) !void {
+    const ctx = instance.ctx;
     const event_init: dictionaries.TouchEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{ .base = .{} } } };
     const modifier_init = event_init.base;
     const ui_init = modifier_init.base;
@@ -173,7 +172,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             listed += 1;
         }
     }
-    return instance;
 }
 
 /// Whether `touch` is in a list before list `list`'s `index`.

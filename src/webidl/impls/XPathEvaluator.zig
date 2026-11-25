@@ -7,8 +7,9 @@ pub const State = interfaces.XPathEvaluator.State;
 pub const InternalState = struct {};
 pub const ImplError = error{ SyntaxError, NamespaceError, TypeError, NotSupportedError, OutOfMemory };
 
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    return interfaces.XPathEvaluator.init(ctx.allocator, ctx);
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    // The generated constructor made it (WebIDL 3.7.1 step 1.8): no steps.
+    _ = instance;
 }
 
 /// Operation: createNSResolver

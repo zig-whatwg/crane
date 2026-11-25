@@ -128,20 +128,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// tmp/probes/bind1-nullmember/report-g3.txt, 2026-11-24). The hand
 /// conversion this replaced ran in step 2, after that callback
 /// (crane/bind1-g3-conversion-order.html).
-pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptURLOrUSVString, options: webidl.Opt(typedefs.DOMStringOrSharedWorkerOptions)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, scriptURL: typedefs.TrustedScriptURLOrUSVString, options: webidl.Opt(typedefs.DOMStringOrSharedWorkerOptions)) !void {
+    const ctx = instance.ctx;
     const allocator = ctx.allocator;
     // 1. "Let compliantScriptURL be the result of invoking the get trusted
     // type compliant string algorithm with TrustedScriptURL, this's relevant
     // global object, scriptURL, "SharedWorker constructor", and "script"."
     const compliant_script_url = try @import("dom").trusted_types.compliantStringForRealm(allocator, .script_url, ctx, scriptURL, "SharedWorker constructor");
     defer allocator.free(compliant_script_url);
-
-    const instance = try init(allocator, State, &SharedWorker.vtable, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step frees it whole. Its own deinit is its destructor, not a
-    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    errdefer runtime.gc.releaseOwned(instance);
 
     // 2. If options is a DOMString, it is a WorkerOptions whose name is
     // options; otherwise it is the dictionary.
@@ -168,9 +162,12 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     errdefer if (inside_end_owned) inside_end.discard();
     // `adopt` takes the outside end whatever happens.
     const outside_port = try message_ports.adopt(ctx, channel.end(0));
+    var outside_port_owned = true;
+    errdefer if (outside_port_owned) runtime.gc.releaseOwned(outside_port);
     const internal = try allocator.create(InternalState);
     internal.* = .{ .port = outside_port, .allocator = allocator };
     instance.getState(State).own._internal = internal;
+    outside_port_owned = false;
     internal.port_edge.hold(instance, outside_port);
 
     // The constructor origin: the outside settings' origin, serialized.
@@ -221,8 +218,6 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         .creation_time_ns = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime()),
         .blob_entry = entry_for_steps,
     });
-
-    return instance;
 }
 
 /// What the shared worker manager's steps, and the start of the worker they

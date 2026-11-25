@@ -1300,48 +1300,41 @@ fn generateImplFile(
     _ = before_ops;
     _ = after_ops;
 
-    // Generate call_constructor if interface has WebIDL constructor
+    // Generate call_constructor if interface has WebIDL constructor: the
+    // constructor steps, given the object the generated constructor made
+    // (WebIDL 3.7.1 steps 1.8-1.9; it frees the object whole if they fail -
+    // lane ctor1, tools/lint_constructors.zig).
     if (own_constructors.items.len > 0) {
-        try w.writeAll("/// Constructor implementation\n");
-        try w.writeAll("/// This is called when the interface is constructed from JavaScript\n");
-        try w.writeAll("/// Note: Use ctx.allocator for all allocations to ensure consistency with deinit\n");
+        try w.writeAll("/// The constructor steps, with `instance` as this: the generated\n");
+        try w.writeAll("/// constructor made it (WebIDL 3.7.1 step 1.8) and frees it whole when a\n");
+        try w.writeAll("/// step fails - never release it here.\n");
 
         // If multiple constructors (overloaded), accept ConstructorArgs union
         if (own_constructors.items.len > 1) {
-            try w.print("pub fn call_constructor(ctx: runtime.Context, args: interfaces.{s}.ConstructorArgs) !*runtime.Instance {{\n", .{interface.name});
-            try w.writeAll("    // Create instance through init() - use ctx.allocator for consistency with deinit\n");
-            try w.print("    const instance = try init(ctx.allocator, State, &{s}.vtable, ctx);\n", .{interface.name});
-            try w.writeAll("    errdefer deinit(instance);\n");
-            try w.writeAll("\n");
+            try w.print("pub fn call_constructor(instance: *runtime.Instance, args: interfaces.{s}.ConstructorArgs) !void {{\n", .{interface.name});
+            try w.writeAll("    _ = instance;\n");
             try w.writeAll("    _ = args;\n");
             try w.writeAll("    // TODO: Implement constructor logic for each overload\n");
             try w.writeAll("    // Use: switch (args) { .VariantName => |variant_args| { ... } }\n");
-            try w.writeAll("\n");
-            try w.writeAll("    return instance;\n");
             try w.writeAll("}\n\n");
         } else {
             // Single constructor - use direct parameters
             const ctor = own_constructors.items[0];
-            try w.print("pub fn call_constructor(ctx: runtime.Context", .{});
+            try w.print("pub fn call_constructor(instance: *runtime.Instance", .{});
             for (ctor.arguments) |arg| {
                 try w.writeAll(", ");
                 try writeEscapedImplParamName(w, arg.name);
                 try w.writeAll(": ");
                 try writeParamType(w, arg, type_reg);
             }
-            try w.writeAll(") !*runtime.Instance {\n");
-            try w.writeAll("    // Create instance through init() - use ctx.allocator for consistency with deinit\n");
-            try w.print("    const instance = try init(ctx.allocator, State, &{s}.vtable, ctx);\n", .{interface.name});
-            try w.writeAll("    errdefer deinit(instance);\n");
-            try w.writeAll("\n");
+            try w.writeAll(") !void {\n");
+            try w.writeAll("    _ = instance;\n");
             for (ctor.arguments) |arg| {
                 try w.writeAll("    _ = ");
                 try writeEscapedImplParamName(w, arg.name);
                 try w.writeAll(";\n");
             }
             try w.writeAll("    // TODO: Implement constructor logic with parameters\n");
-            try w.writeAll("\n");
-            try w.writeAll("    return instance;\n");
             try w.writeAll("}\n\n");
         }
     }

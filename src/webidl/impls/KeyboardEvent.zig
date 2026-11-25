@@ -120,9 +120,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor: inner event creation steps, the UIEventInit members, then
 /// EventModifierInit's and KeyboardEventInit's.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.KeyboardEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &KeyboardEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.KeyboardEventInit)) !void {
     const dict: dictionaries.KeyboardEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{ .base = .{} } } };
     const modifier_init = dict.base;
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(modifier_init.base.base));
@@ -137,7 +135,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     internal.char_code = dict.charCode orelse 0;
     internal.key_code = dict.keyCode orelse 0;
     internal.modifiers = modifiersOf(modifier_init);
-    return instance;
 }
 
 /// The modifiers an EventModifierInit sets: ctrlKey is "Control", and each

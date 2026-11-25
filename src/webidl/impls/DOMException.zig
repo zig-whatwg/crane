@@ -76,14 +76,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Per WebIDL spec:
 /// - message: Optional message string, defaults to ""
 /// - name: Optional name string, defaults to "Error"
-pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMString), name: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &DOMException.vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMString), name: webidl.Opt(runtime.DOMString)) !void {
     // WebIDL §2.8.1 constructor steps 1-2, shared with derived exceptions.
     try initializeException(instance, if (name.was_passed) name.value.asSlice() else "Error", if (message.was_passed) message.value.asSlice() else "");
-    return instance;
 }
 
 pub fn installHooks() void {

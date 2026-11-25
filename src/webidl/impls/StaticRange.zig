@@ -148,7 +148,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///    then throw an "InvalidNodeTypeError" DOMException.
 /// 2. Set this's start to (init["startContainer"], init["startOffset"])
 ///    and end to (init["endContainer"], init["endOffset"]).
-pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.StaticRangeInit) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, init_data: dictionaries.StaticRangeInit) !void {
+    // The generated constructor made `instance` (WebIDL 3.7.1 step 1.8)
+    // and frees it whole when a step fails (lane ctor1).
     // Step 1: Check for invalid node types (DocumentType=10, Attr=2)
     // The dictionary's Node members arrive converted, as Instances.
     const start_instance: *runtime.Instance = init_data.startContainer;
@@ -166,15 +168,9 @@ pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.StaticRang
         }
     }
 
-    // Create instance
-    const instance = try init(ctx.allocator, State, &StaticRange.vtable, ctx);
-    errdefer deinit(instance);
-
     // Step 2: Set start and end boundary points
     try setStart(instance, start_instance, init_data.startOffset);
     try setEnd(instance, end_instance, init_data.endOffset);
-
-    return instance;
 }
 
 // =============================================================================

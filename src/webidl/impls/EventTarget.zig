@@ -658,11 +658,8 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-eventtarget
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try EventTarget.init(ctx.allocator, ctx);
-    errdefer EventTarget.deinit(instance);
-
-    return instance;
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
 }
 
 /// Initialize an EventTarget's internal state, in its own State: a block of

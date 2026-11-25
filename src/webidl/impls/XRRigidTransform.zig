@@ -42,16 +42,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, position: webidl.Opt(dictionaries.DOMPointInit), orientation: webidl.Opt(dictionaries.DOMPointInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &XRRigidTransform.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, position: webidl.Opt(dictionaries.DOMPointInit), orientation: webidl.Opt(dictionaries.DOMPointInit)) !void {
+    _ = instance;
     _ = position;
     _ = orientation;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for position

@@ -42,16 +42,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, packets: runtime.JSValue, data: webidl.Opt(?runtime.JSValue)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &USBIsochronousInTransferResult.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, packets: runtime.JSValue, data: webidl.Opt(?runtime.JSValue)) !void {
+    _ = instance;
     _ = packets;
     _ = data;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for data

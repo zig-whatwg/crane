@@ -132,13 +132,11 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 ///
 /// "The FileReader() constructor, when invoked, must return a new FileReader
 /// object" - its state "empty", its result and error null.
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try FileReader.init(ctx.allocator, ctx);
-    errdefer FileReader.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    const ctx = instance.ctx;
     const internal = try InternalState.init(ctx.allocator);
     internal.reader = instance;
     instance.getState(State).own._internal = internal;
-    return instance;
 }
 
 /// The readyState getter steps: 0 for "empty", 1 for "loading", 2 for

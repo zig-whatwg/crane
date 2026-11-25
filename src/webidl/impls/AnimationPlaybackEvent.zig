@@ -25,15 +25,12 @@ pub const InternalState = struct {};
 
 /// Constructor: DOM "inner event creation steps" with the EventInit part,
 /// then currentTime and timelineTime from the dictionary (null by default).
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.AnimationPlaybackEventInit)) !*runtime.Instance {
-    const instance = try AnimationPlaybackEvent.init(ctx.allocator, ctx);
-    errdefer AnimationPlaybackEvent.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.AnimationPlaybackEventInit)) !void {
     const dict: dictionaries.AnimationPlaybackEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{} };
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
     const state = instance.getState(State);
     state.own.currentTime = timeOf(dict.currentTime);
     state.own.timelineTime = timeOf(dict.timelineTime);
-    return instance;
 }
 
 /// A time as the event keeps it: a number, or null. (A CSSNumericValue is

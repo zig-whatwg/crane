@@ -110,9 +110,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor: DOM "inner event creation steps" for the Event part, then
 /// each ToggleEventInit member (oldState and newState default to "", source
 /// to null).
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ToggleEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &ToggleEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ToggleEventInit)) !void {
     const dict: dictionaries.ToggleEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{} };
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
     const internal = getInternal(instance) orelse return error.InvalidStateError;
@@ -128,7 +126,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         engine.traceChild(instance, element, source_slot);
         internal.source_hold.set(element);
     }
-    return instance;
 }
 
 /// Getter for oldState. A copy: the binding frees what a string getter

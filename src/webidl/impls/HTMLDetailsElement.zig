@@ -148,10 +148,8 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 }
 
 /// Constructor implementation
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try HTMLDetailsElement.init(ctx.allocator, ctx);
-    errdefer HTMLDetailsElement.deinit(instance);
-    return instance;
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
 }
 
 // ============================================================================

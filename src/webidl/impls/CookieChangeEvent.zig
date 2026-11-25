@@ -82,11 +82,8 @@ fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 /// The CookieChangeEvent(type, eventInitDict) constructor steps are:
 /// 1. Set this's changed attribute to eventInitDict["changed"]
 /// 2. Set this's deleted attribute to eventInitDict["deleted"]
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CookieChangeEventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try CookieChangeEvent.init(ctx.allocator, ctx);
-    errdefer CookieChangeEvent.deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CookieChangeEventInit)) !void {
+    const ctx = instance.ctx;
     const internal = getInternalState(instance) orelse return error.NotImplemented;
 
     // DOM "inner event creation steps" and the constructor's step 2, the
@@ -132,8 +129,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             }
         }
     }
-
-    return instance;
 }
 
 // ============================================================================

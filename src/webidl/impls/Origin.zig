@@ -41,8 +41,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 }
 
 /// Constructor step 1: a new opaque origin, unique to this object until copied.
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    return interfaces.Origin.init(ctx.allocator, ctx);
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    // The generated constructor made it (WebIDL 3.7.1 step 1.8): no steps.
+    _ = instance;
 }
 
 fn recordOf(instance: *runtime.Instance) !*OriginRecord {

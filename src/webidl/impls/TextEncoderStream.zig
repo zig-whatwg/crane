@@ -40,9 +40,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     }
 }
 
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &Interface.vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    const ctx = instance.ctx;
     const internal = instance.getState(State).own._internal.?;
     const realm = try js.Realm.ofContext(ctx);
     const codec = try ctx.allocator.create(Codec);
@@ -53,7 +52,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // This object keeps its TransformStream (Blink: the codec stream traces
     // its transform_), which its readable and writable keep back.
     engine.traceChild(instance, transform_stream, js.slot.transform_stream);
-    return instance;
 }
 
 pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {

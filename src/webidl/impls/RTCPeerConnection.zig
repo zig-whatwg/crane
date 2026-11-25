@@ -133,12 +133,9 @@ fn blocksBfcache(realm: runtime.Context) ?@import("dom").bfcache.Blocked {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, configuration: webidl.Opt(dictionaries.RTCConfiguration)) !*runtime.Instance {
-    // Create instance through init(): the internal slots in their initial
+pub fn call_constructor(instance: *runtime.Instance, configuration: webidl.Opt(dictionaries.RTCConfiguration)) !void {
     // states (WebRTC 4.4.1.1 constructor steps).
-    const instance = try init(ctx.allocator, State, &RTCPeerConnection.vtable, ctx);
-    errdefer deinit(instance);
-
+    const ctx = instance.ctx;
     _ = configuration;
     // One of its Browser's peer connections, until its deinit.
     if (ctx.browserScope()) |scope| {
@@ -146,8 +143,6 @@ pub fn call_constructor(ctx: runtime.Context, configuration: webidl.Opt(dictiona
     }
     keepWhileOpen(instance);
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for localDescription
