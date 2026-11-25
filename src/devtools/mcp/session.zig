@@ -477,7 +477,7 @@ pub const Session = struct {
         if (session_id.len != 0) for (self.pages.items) |universe_page| {
             const universe = universe_page.debugger_session_id orelse continue;
             if (!std.mem.eql(u8, universe, session_id)) continue;
-            return universe_page.logpoints.debuggerEvent(self.allocator, method, p);
+            return universe_page.logpoints.debuggerEvent(self.allocator, method, p, universe_page.url, &self.paths);
         };
         // A page session's events.
         const page = self.pageBySession(session_id) orelse return;
