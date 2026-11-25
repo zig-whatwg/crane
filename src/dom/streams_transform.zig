@@ -35,7 +35,17 @@ pub const Stream = struct {
     controller: ?*runtime.Instance = null,
     readable: ?*runtime.Instance = null,
     writable: ?*runtime.Instance = null,
-    /// The startPromise both sides' start algorithms return.
+    /// The startPromise both sides' start algorithms return - BORROWED from
+    /// the constructor for InitializeTransformStream's duration (`initialize`),
+    /// null after. It is no internal slot of the stream (Streams 6.2.2):
+    /// InitializeTransformStream step 1's start algorithm closes over it, and
+    /// each side runs that algorithm once, in its setup. Kept here for the
+    /// stream's life (a strong handle), a startPromise that never settled -
+    /// start() threw, or returned a promise that never settles - kept itself
+    /// alive through the stream, whose sides' start reactions hold their
+    /// controllers until it settles: the whole stream, eight platform
+    /// objects, stayed until the realm ended (lane ctor1,
+    /// tests/v8/ctor1_transform_stream_start_test.zig).
     start_promise: ?Deferred = null,
     /// HTML [[Detached]]: set once the stream is transferred
     /// (StructuredSerializeWithTransfer step 5.6).
@@ -43,7 +53,6 @@ pub const Stream = struct {
 
     pub fn deinit(self: *Stream) void {
         if (self.backpressure_change_promise) |d| d.deinit();
-        if (self.start_promise) |d| d.deinit();
         self.allocator.destroy(self);
     }
 };
@@ -321,7 +330,8 @@ pub fn newStream(ctx: runtime.Context) !*runtime.Instance {
 
 /// InitializeTransformStream(stream, startPromise, writableHighWaterMark,
 /// writableSizeAlgorithm, readableHighWaterMark, readableSizeAlgorithm).
-/// `start_promise` becomes the stream's.
+/// `start_promise` is borrowed: both sides' setups run the start algorithm
+/// that returns it (step 1) here, and the stream keeps it no longer.
 pub fn initialize(
     realm: Realm,
     stream_instance: *runtime.Instance,
@@ -332,7 +342,11 @@ pub fn initialize(
     readable_size: sw.SizeAlgorithm,
 ) !void {
     const stream = streamSlots(stream_instance);
+    // Step 1: Let startAlgorithm be an algorithm that returns startPromise -
+    // run by each side's setup below, once (`startAlgorithm`), and never
+    // after.
     stream.start_promise = start_promise;
+    defer stream.start_promise = null;
     // Both sides keep this stream (their controllers trace it, `attachSide`)
     // and it keeps both: each side's start reaction holds its controller
     // until a microtask at the soonest, so the new stream is its maker's by
@@ -820,8 +834,10 @@ pub fn setUp(realm: Realm, ctx: runtime.Context, transformer: Transformer) !*run
     const stream_instance = try newStream(ctx);
     const stream_generation = runtime.SlabAllocator.generationOf(stream_instance);
     errdefer stream_instance.releaseIfUnwrapped(stream_generation);
-    // Step 8: Let startPromise be a promise resolved with undefined.
+    // Step 8: Let startPromise be a promise resolved with undefined - this
+    // algorithm's own, as the constructor's is (`initialize` borrows it).
     const start = try Deferred.initResolved(realm);
+    defer start.deinit();
     // Step 9: InitializeTransformStream(stream, startPromise, 1, size 1, 0, size 1).
     try initialize(realm, stream_instance, start, 1, .one, 0, .one);
     // Steps 10-11: a new controller with the given algorithms.
