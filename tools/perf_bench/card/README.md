@@ -7,7 +7,7 @@ for both cards, so they cannot drift apart.
 
 | File | What it is |
 |------|------------|
-| `base.png` | 1200x630: the card without its numbers - title, "Round", the progress line ("Since round 0:", time and memory, their `%` signs), the four browser columns, the two rows and their `%` signs, footer |
+| `base.png` | 1200x630: the card without its numbers - title, "Round", the progress line ("Since round 0:", time and memory, their `%` signs), the five browser columns (Chrome, Firefox, Safari, Lightpanda, Ladybird), the two rows and their `%` signs, footer |
 | `source.html` | the page it is drawn from, in the WPT site's faces (`../../wpt_site/assets/fonts/`) |
 
 The positions in `source.html` (`COLUMN_RIGHT`, `TIME_BASELINE`, `MEMORY_BASELINE`,
@@ -19,8 +19,9 @@ The positions in `source.html` (`COLUMN_RIGHT`, `TIME_BASELINE`, `MEMORY_BASELIN
 
 Made 2026-11-05 with Google Chrome 156 on macOS, device scale factor 1, headless (it takes no
 focus); remade 2026-11-06 (lane perfr1, the progress line) with Google Chrome 156.0.8078.49 on the
-pool host chat2, never on the Mac (wait for the page server to answer before Chrome loads the page:
-a Chrome started first fails the load and leaves base.png as it was). From `tools/`:
+pool host chat2, and 2026-11-25 (lane lad1, the fifth column for Ladybird) with Google Chrome
+156.0.8078.80 on chat2, never on the Mac (wait for the page server to answer before Chrome loads the
+page: a Chrome started first fails the load and leaves base.png as it was). From `tools/`:
 
 ```bash
 python3 -m http.server 8742 --bind 127.0.0.1 &          # fonts do not load from file://

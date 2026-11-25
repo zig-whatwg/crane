@@ -14,7 +14,14 @@
 //!   lightpanda  `serve` (its CDP server), driven over CDP (cdp.zig);
 //!   safari      safaridriver, driven over WebDriver (webdriver.zig): Safari
 //!               has no headless mode, and its WebKit processes are launchd's
-//!               children, so the process set names them.
+//!               children, so the process set names them;
+//!   ladybird    Ladybird Alpha's bundled WebDriver (`--headless --listen-address
+//!               127.0.0.1 --port <port> --profile-path <profile>`), driven over
+//!               WebDriver (webdriver.zig), its profile's `config/Settings.json`
+//!               turning off update checks, background networking and crash
+//!               report sending; every child process (Ladybird, WebContent,
+//!               RequestServer, Compositor, ProcessReaper, ...) stays under
+//!               WebDriver's tree.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -37,7 +44,7 @@ pub const Pin = struct {
     /// build_mode.zig `writeCpu`): "apple_m1".
     target_cpu: ?[]const u8 = null,
     v8: ?[]const u8 = null,
-    /// safaridriver (Safari).
+    /// safaridriver (Safari) or Ladybird's bundled WebDriver (Ladybird).
     webdriver: ?[]const u8 = null,
     /// When the setup script installed or checked it.
     installed: ?[]const u8 = null,
@@ -134,7 +141,7 @@ pub fn parsePin(arena: Allocator, text: []const u8) (PinError || Allocator.Error
         // repl.modes), so a pin cannot put one build under the other's name.
         if (!std.mem.eql(u8, pin.optimize.?, craneModes(pin.name))) return error.PinWrongBuild;
     }
-    if (pin.name == .safari and pin.webdriver == null) return error.PinMissingWebDriver;
+    if ((pin.name == .safari or pin.name == .ladybird) and pin.webdriver == null) return error.PinMissingWebDriver;
     return pin;
 }
 
@@ -146,7 +153,7 @@ pub fn craneModes(name: Name) []const u8 {
         // The base is an earlier build of the same release build.
         .crane, .crane_base, .crane_control => "root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc",
         .crane_fast => "root ReleaseFast, Crane modules ReleaseFast, C libraries ReleaseFast, sanitize_c off, libc malloc",
-        .chrome, .firefox, .safari, .lightpanda => unreachable,
+        .chrome, .firefox, .safari, .lightpanda, .ladybird => unreachable,
     };
 }
 
@@ -233,11 +240,29 @@ pub const firefox_flags = [_][]const u8{ "--headless", "--no-remote" };
 /// Safari's app: one per launch (`Launch.app_names`).
 pub const safari_app_names = [_][]const u8{"Safari"};
 
+/// Ladybird's per-profile config/Settings.json: no background networking,
+/// no content blocker subscription downloads, no rolling-channel update
+/// checks, and no crash report prompts/sending (keys verified from Ladybird
+/// Alpha 2026.47.8's LibWebView Settings.cpp and about:settings scripts).
+pub const ladybird_settings_json =
+    \\{
+    \\  "backgroundNetworking": {
+    \\    "enabled": false,
+    \\    "features": {
+    \\      "contentBlockerSubscriptionUpdates": false,
+    \\      "updateChecks": false
+    \\    }
+    \\  },
+    \\  "crashReportSending": "never"
+    \\}
+    \\
+;
+
 /// `name`'s app, outside its launched tree (`Launch.app_names`).
 pub fn appNames(name: Name) []const []const u8 {
     return switch (name) {
         .safari => &safari_app_names,
-        .crane, .crane_fast, .crane_base, .crane_control, .chrome, .firefox, .lightpanda => &.{},
+        .crane, .crane_fast, .crane_base, .crane_control, .chrome, .firefox, .lightpanda, .ladybird => &.{},
     };
 }
 
@@ -245,7 +270,7 @@ pub fn appNames(name: Name) []const []const u8 {
 pub fn setNames(name: Name) []const []const u8 {
     return switch (name) {
         .safari => &safari_process_names,
-        .crane, .crane_fast, .crane_base, .crane_control, .chrome, .firefox, .lightpanda => &.{},
+        .crane, .crane_fast, .crane_base, .crane_control, .chrome, .firefox, .lightpanda, .ladybird => &.{},
     };
 }
 
@@ -266,7 +291,7 @@ pub fn driveOf(name: Name) Drive {
     return switch (name) {
         .crane, .crane_fast, .crane_base, .crane_control, .chrome, .firefox => .argv,
         .lightpanda => .cdp,
-        .safari => .webdriver,
+        .safari, .ladybird => .webdriver,
     };
 }
 
@@ -388,6 +413,12 @@ pub fn launchWith(arena: Allocator, pin: Pin, url: []const u8, profile: []const 
             try argv.appendSlice(arena, &.{ pin.webdriver.?, "-p", port_text });
             try flags.appendSlice(arena, &.{ "safaridriver", "-p", "<port>" });
             return .{ .argv = argv.items, .flags = flags.items, .drive = .webdriver, .names = setNames(.safari), .app_names = appNames(.safari) };
+        },
+        .ladybird => {
+            const port_text = try std.fmt.allocPrint(arena, "{d}", .{port});
+            try argv.appendSlice(arena, &.{ pin.webdriver.?, "--headless", "--listen-address", "127.0.0.1", "--port", port_text, "--profile-path", profile });
+            try flags.appendSlice(arena, &.{ "WebDriver", "--headless", "--listen-address", "127.0.0.1", "--port", "<port>", "--profile-path", "<profile>" });
+            return .{ .argv = argv.items, .flags = flags.items, .drive = .webdriver };
         },
     }
 }
@@ -553,6 +584,7 @@ test "a retained page: Chrome's page may ask for a collection and read its JS he
         Pin{ .name = .firefox, .version = "159", .build = "b", .binary = "/f/firefox", .sha256 = sha },
         Pin{ .name = .lightpanda, .version = "n", .build = "b", .binary = "/l/lightpanda", .sha256 = sha },
         Pin{ .name = .safari, .version = "27.2", .build = "b", .binary = "/s", .sha256 = sha, .webdriver = "/usr/bin/safaridriver" },
+        Pin{ .name = .ladybird, .version = "2026.47.8", .build = "b", .binary = "/lb/Ladybird", .sha256 = sha, .webdriver = "/lb/WebDriver" },
     }) |pin| {
         const x = try launch(a, pin, url, "/p/2", 9333);
         const y = try launchWith(a, pin, url, "/p/2", 9333, .{ .collect = true });
@@ -703,4 +735,68 @@ test "a pin set's Crane builds share one CPU target; the drift control keeps its
     try checkPinSet(&.{ tip, fast, base, native_control });
     // Still one pin per engine.
     try testing.expectError(error.PinDuplicateEngine, checkPinSet(&.{ tip, control, control }));
+}
+
+test "Ladybird's pin needs WebDriver and launches WebDriver headless with a fresh profile" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const pin_text =
+        \\name=ladybird
+        \\version=2026.47.8
+        \\build=Ladybird Alpha (official macOS arm64 dmg, commit 0be55a57cc07)
+        \\binary=/b/Ladybird.app/Contents/MacOS/Ladybird
+        \\webdriver=/b/Ladybird.app/Contents/MacOS/WebDriver
+        \\sha256=abababababababababababababababababababababababababababababababab
+    ;
+    const pin = try parsePin(a, pin_text);
+    try testing.expectEqualStrings("2026.47.8", pin.version);
+    try testing.expectEqualStrings("/b/Ladybird.app/Contents/MacOS/WebDriver", pin.webdriver.?);
+    try testing.expectEqual(Drive.webdriver, driveOf(pin.name));
+
+    // Without webdriver= a Ladybird pin is refused, like Safari's.
+    const no_wd = try std.mem.replaceOwned(u8, a, pin_text, "webdriver=/b/Ladybird.app/Contents/MacOS/WebDriver\n", "");
+    try testing.expectError(error.PinMissingWebDriver, parsePin(a, no_wd));
+
+    // Launched via WebDriver headless, bound to loopback, with a fresh profile dir.
+    const url = "http://127.0.0.1:8000/workloads/dom.html?perf=t";
+    const l = try launch(a, pin, url, "/p/lb", 4445);
+    try expectStrings(&.{
+        "/b/Ladybird.app/Contents/MacOS/WebDriver",
+        "--headless",
+        "--listen-address",
+        "127.0.0.1",
+        "--port",
+        "4445",
+        "--profile-path",
+        "/p/lb",
+    }, l.argv);
+    try expectStrings(&.{
+        "WebDriver",
+        "--headless",
+        "--listen-address",
+        "127.0.0.1",
+        "--port",
+        "<port>",
+        "--profile-path",
+        "<profile>",
+    }, l.flags);
+    try testing.expectEqual(Drive.webdriver, l.drive);
+    // Every Ladybird child (Ladybird, WebContent, RequestServer, Compositor,
+    // ProcessReaper, ImageDecoder) stays under WebDriver's tree: no named
+    // out-of-tree processes needed.
+    try testing.expectEqual(@as(usize, 0), l.names.len);
+    try testing.expectEqual(@as(usize, 0), l.app_names.len);
+    try testing.expect(!l.stdin_pipe);
+    try testing.expectEqual(@as(?[]const u8, null), l.cwd);
+    // Settings.json written into each fresh profile disables update checks,
+    // background networking and crash report sending, and is valid JSON.
+    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, a, ladybird_settings_json, .{});
+    const bg = parsed.object.get("backgroundNetworking").?.object;
+    try testing.expect(!bg.get("enabled").?.bool);
+    try testing.expect(!bg.get("features").?.object.get("updateChecks").?.bool);
+    try testing.expect(!bg.get("features").?.object.get("contentBlockerSubscriptionUpdates").?.bool);
+    try testing.expectEqualStrings("never", parsed.object.get("crashReportSending").?.string);
+    _ = sha;
 }
