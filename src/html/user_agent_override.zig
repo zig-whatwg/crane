@@ -30,8 +30,30 @@ fn read(client: *anyopaque) http_fetch.UserAgentOverride {
     if (std.mem.eql(u8, global.vtable.name, "Window")) {
         const bc = @import("dom").browser_state.browsingContextOf(global) orelse return .{};
         const overrides = &bc.getTop().host_overrides;
-        return .{ .user_agent = overrides.user_agent, .accept_language = overrides.accept_language };
+        return .{ .user_agent = overrides.user_agent, .accept_language = overrides.accept_language, .extra_headers = overrides.extra_headers };
     }
     const snapshot = worker_host.userAgentOverrideOfRealm(global.ctx) orelse return .{};
     return .{ .user_agent = snapshot.user_agent, .accept_language = snapshot.accept_language };
+}
+
+/// The override of the tab `navigable` is in - its top-level traversable's
+/// - for a navigation's request to copy as it is made
+/// (InternalRequest.setOverrideSnapshot; Chrome applies DevTools overrides
+/// to a navigation once, at its start, keyed by its frame:
+/// devtools_instrumentation.cc ApplyNetworkRequestOverrides). BORROWED
+/// until the tab's overrides next change; on the navigable's thread.
+pub fn ofNavigable(navigable: *@import("dom").browser_state.BrowsingContext) http_fetch.UserAgentOverride {
+    const overrides = &navigable.getTop().host_overrides;
+    return .{ .user_agent = overrides.user_agent, .accept_language = overrides.accept_language, .extra_headers = overrides.extra_headers };
+}
+
+/// The override a request whose client is `realm`'s global sends, for a
+/// request made now and fetched elsewhere to copy (a dedicated or shared
+/// worker's script request, made on its creator's thread): a Window's
+/// tab's, or a worker's copy of its tab's user agent (no extra headers - a
+/// worker's own requests carry none of the page session's). BORROWED, as
+/// `ofNavigable`; on `realm`'s thread.
+pub fn ofRealm(realm: runtime.Context) http_fetch.UserAgentOverride {
+    const record = realm.getRealm() orelse return .{};
+    return read(record.global_object orelse return .{});
 }

@@ -2689,6 +2689,9 @@ const SharedConnect = struct {
             .blob_entry = if (self.blob_entry) |*entry| entry else null,
             .reserved_client = reserved_client,
             .service_worker = @import("dom").service_worker_clients.routeOfReserved(reserved_client),
+            // The outside settings' user agent override, which the request
+            // copies.
+            .user_agent_override = @import("user_agent_override.zig").ofRealm(self.owner_realm),
         }) catch return self.fireError();
         defer fetched.deinit();
 

@@ -120,6 +120,14 @@ pub const WorkerScriptFetchOptions = struct {
     /// owns the handle. Null: no service worker sees the fetch.
     reserved_client: ?*anyopaque = null,
     service_worker: ?fetch.internal.ServiceWorkerRoute = null,
+    /// The outside settings' user agent override
+    /// (user_agent_override.ofRealm): a Window's tab's, a worker creator's
+    /// copy of its tab's user agent. The request copies it as it is made
+    /// (InternalRequest.override_snapshot) - a dedicated worker's script is
+    /// fetched on the worker's thread, where the tab cannot be read - as
+    /// Chrome's browser process applies DevTools' overrides to the worker's
+    /// main script request. BORROWED for the call. Empty: none.
+    user_agent_override: fetch.algorithms.http_fetch.UserAgentOverride = .{},
 
     pub const CredentialsMode = enum {
         omit,
@@ -482,6 +490,10 @@ pub fn workerScriptRequest(
     } else if (options.referrer_source) |source| {
         if (source.len > 0) internal_request.setReferrerUrl(source) catch return WorkerScriptError.OutOfMemory;
     }
+    // The outside settings' user agent override, copied now (user agent
+    // data, not a step).
+    const client_override = options.user_agent_override;
+    internal_request.setOverrideSnapshot(client_override.user_agent, client_override.accept_language, client_override.extra_headers) catch return WorkerScriptError.OutOfMemory;
     return internal_request;
 }
 
