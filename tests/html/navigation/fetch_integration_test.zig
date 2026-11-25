@@ -30,7 +30,7 @@ test "resultFromResponse - a redirect chain that crosses origins marks the resul
     try across.addUrl("http://a.test/start");
     try across.addUrl("https://b.test/redirect");
     try across.addUrl("http://a.test/final");
-    var crossed = try resultFromResponse(allocator, "http://a.test/start", across, .{});
+    var crossed = try resultFromResponse(allocator, "http://a.test/start", across);
     defer crossed.deinit();
     try std.testing.expect(crossed.has_cross_origin_redirects);
     try std.testing.expectEqualStrings("http://a.test/final", crossed.final_url);
@@ -41,7 +41,7 @@ test "resultFromResponse - a redirect chain that crosses origins marks the resul
     within.status = 200;
     try within.addUrl("http://a.test/start");
     try within.addUrl("http://a.test/next");
-    var same = try resultFromResponse(allocator, "http://a.test/start", within, .{});
+    var same = try resultFromResponse(allocator, "http://a.test/start", within);
     defer same.deinit();
     try std.testing.expect(!same.has_cross_origin_redirects);
 }
@@ -63,7 +63,7 @@ test "resultFromResponse - the content type is Fetch's extracted MIME type: the 
     try response.addUrl("http://a.test/page");
     try response.header_list.append("Content-Type", "application/json");
     try response.header_list.append("Content-Type", "text/html");
-    var result = try resultFromResponse(allocator, "http://a.test/page", response, .{});
+    var result = try resultFromResponse(allocator, "http://a.test/page", response);
     defer result.deinit();
     try std.testing.expectEqualStrings("text/html", result.content_type.?);
 
@@ -75,7 +75,7 @@ test "resultFromResponse - the content type is Fetch's extracted MIME type: the 
     charset.status = 200;
     try charset.addUrl("http://a.test/page");
     try charset.header_list.append("Content-Type", "text/html;charset=gbk, x");
-    var kept = try resultFromResponse(allocator, "http://a.test/page", charset, .{});
+    var kept = try resultFromResponse(allocator, "http://a.test/page", charset);
     defer kept.deinit();
     try std.testing.expectEqualStrings("text/html;charset=gbk", kept.content_type.?);
 
@@ -85,7 +85,7 @@ test "resultFromResponse - the content type is Fetch's extracted MIME type: the 
     none.status = 200;
     try none.addUrl("http://a.test/page");
     try none.header_list.append("Content-Type", "nonsense");
-    var missing = try resultFromResponse(allocator, "http://a.test/page", none, .{});
+    var missing = try resultFromResponse(allocator, "http://a.test/page", none);
     defer missing.deinit();
     try std.testing.expect(missing.content_type == null);
 }

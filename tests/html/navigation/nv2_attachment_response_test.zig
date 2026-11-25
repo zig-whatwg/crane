@@ -13,7 +13,7 @@ test "a navigation fetch preserves Content-Disposition after its response is fre
     try response.addUrl("http://example.test/download");
     try response.header_list.append("Content-Type", "text/html");
     try response.header_list.append("Content-Disposition", "attachment; filename=page.html");
-    var result = try navigation_fetch.resultFromResponse(allocator, "http://example.test/download", response, .{});
+    var result = try navigation_fetch.resultFromResponse(allocator, "http://example.test/download", response);
     defer result.deinit();
     response.deinit();
     response_owned = false;

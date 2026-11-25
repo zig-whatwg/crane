@@ -56,9 +56,6 @@ pub const NavigationFetchResult = struct {
     /// Whether this is a network error (couldn't reach server)
     is_network_error: bool,
 
-    /// Whether cross-origin
-    is_cross_origin: bool,
-
     /// HTML "was created via cross-origin redirects": a hop of the fetch's
     /// redirect chain went to a URL whose origin was not the previous URL's.
     has_cross_origin_redirects: bool = false,
@@ -112,7 +109,6 @@ pub const NavigationFetchResult = struct {
             .body = null,
             .ok = false,
             .is_network_error = true,
-            .is_cross_origin = false,
             .headers = null,
         };
     }
@@ -483,7 +479,7 @@ pub fn fetchNavigationResource(
     options: NavigationFetchOptions,
 ) NavigationFetchError!NavigationFetchResult {
     const internal_request = try navigationRequest(allocator, url, options);
-    return fetchRequestNow(allocator, url, internal_request, options);
+    return fetchRequestNow(allocator, url, internal_request);
 }
 
 /// Step 3 of a navigation fetch for `request` - which the caller built with
@@ -497,7 +493,6 @@ pub fn fetchRequestNow(
     allocator: Allocator,
     url: []const u8,
     request: *fetch.internal.InternalRequest,
-    options: NavigationFetchOptions,
 ) NavigationFetchError!NavigationFetchResult {
     var fetch_result = fetch.algorithms.fetch(allocator, request, .{}) catch |err| {
         request.deinit();
@@ -512,7 +507,7 @@ pub fn fetchRequestNow(
 
     const response = fetch_result.response;
     defer response.deinit();
-    return resultFromResponse(allocator, url, response, options);
+    return resultFromResponse(allocator, url, response);
 }
 
 /// Steps 1-2 of a navigation fetch: the request for `url`, with the
@@ -636,7 +631,6 @@ pub fn resultFromResponse(
     allocator: Allocator,
     url: []const u8,
     response: *fetch.internal.InternalResponse,
-    options: NavigationFetchOptions,
 ) NavigationFetchError!NavigationFetchResult {
     var result = NavigationFetchResult.init(allocator);
     errdefer result.deinit();
@@ -679,9 +673,6 @@ pub fn resultFromResponse(
             return NavigationFetchError.OutOfMemory;
         };
     }
-
-    // Determine cross-origin status
-    result.is_cross_origin = isCrossOrigin(options.origin, url);
 
     // "Populate a session history entry": "If locationURL's origin is not
     // the same as currentURL's origin, then set hasCrossOriginRedirects to
@@ -790,32 +781,6 @@ pub fn isXmlResponse(content_type: ?[]const u8) bool {
 /// before this is asked.)
 pub fn shouldNavigationProceed(status: u16) bool {
     return status != 204 and status != 205;
-}
-
-/// Determine if a navigation is cross-origin
-pub fn isCrossOrigin(source_origin: ?[]const u8, target_url: []const u8) bool {
-    const src = source_origin orelse return true; // No origin = cross-origin
-
-    // Extract origin from target URL (scheme + host + port)
-    const target_origin = extractOrigin(target_url) orelse return true;
-
-    return !std.mem.eql(u8, src, target_origin);
-}
-
-/// Extract origin from a URL string (scheme://host:port)
-fn extractOrigin(url: []const u8) ?[]const u8 {
-    // Find scheme separator
-    const scheme_end = std.mem.indexOf(u8, url, "://") orelse return null;
-
-    // Find path start (after host)
-    const after_scheme = url[scheme_end + 3 ..];
-    const path_start = std.mem.indexOf(u8, after_scheme, "/");
-
-    if (path_start) |ps| {
-        return url[0 .. scheme_end + 3 + ps];
-    } else {
-        return url;
-    }
 }
 
 // =============================================================================
