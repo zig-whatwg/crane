@@ -375,7 +375,7 @@ test "M1: a freed general large run gives its pages back at once, past one empty
 test "M2: general blocks take the eighths classes - 16-byte steps to 512 B, then eight per doubling - not the State blocks' 258" {
     // Fewer classes, fewer partly filled spans per Browser: what each
     // general class in use keeps committed (the pair's fixed-cost rows).
-    try testing.expectEqual(@as(usize, 72), heap.classes.GeneralClasses.count);
+    try testing.expectEqual(@as(usize, 72), heap.GeneralClasses.count);
     var scope = BrowserScope.init(testing.allocator);
     defer scope.deinit();
     const engine = try generalEngine(&scope);

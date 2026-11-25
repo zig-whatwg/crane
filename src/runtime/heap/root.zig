@@ -57,6 +57,20 @@ pub const general = @import("general.zig");
 
 const BrowserHeap = browser_heap.BrowserHeap;
 const Classes = classes.Classes;
+/// The classes general blocks take (batch B, M2): the eighths scheme - 16-byte
+/// steps to 512 B, then eight per doubling to 16 KiB, 72 classes - not the
+/// State blocks' quantum16 (258): every general class in use keeps a partly
+/// filled span committed, per partition, per Browser.
+pub const GeneralClasses = classes.SizeClasses(.eighths);
+
+/// The general class of a request, or null past the largest (a large run).
+fn generalClassOf(size: usize, alignment: usize) ?usize {
+    const n = classes.requestBytes(size, alignment);
+    if (n > GeneralClasses.max_size) return null;
+    const class = GeneralClasses.of(n);
+    std.debug.assert(alignment <= classes.natural_alignment or GeneralClasses.bytes(class) % alignment == 0);
+    return class;
+}
 const layout = browser_heap.layout;
 
 const KiB: usize = 1024;
@@ -327,6 +341,11 @@ const Bucket = struct {
     slots: u16 = 0,
     run: u16 = 1,
     kind: BucketKind = .class,
+    /// A general bucket (batch B): the bytes partition's, or one of the
+    /// objects partition's past its State buckets.
+    general: bool = false,
+    /// Its spans in the empty tier now (committed, no block in use).
+    empty_count: u32 = 0,
     /// Blocks allocated (not quarantined) now, and issued over the heap's
     /// life.
     live: u32 = 0,
@@ -391,7 +410,7 @@ comptime {
 const node_groups = node_kinds * random_buckets;
 const node_bucket_count = node_groups * Classes.count + max_run_spans;
 const objects_state_count = Classes.count + 1 + max_run_spans;
-const objects_bucket_count = objects_state_count + Classes.count + max_run_spans;
+const objects_bucket_count = objects_state_count + GeneralClasses.count + max_run_spans;
 /// The first general objects bucket (batch B).
 const general_objects_base: usize = objects_state_count;
 
@@ -400,7 +419,7 @@ const general_objects_base: usize = objects_state_count;
 fn generalBucket(pid: PartitionId, class: ?usize, run: usize) u16 {
     return switch (pid) {
         .node => unreachable,
-        .objects => @intCast(if (class) |c| general_objects_base + c else general_objects_base + Classes.count + run - 1),
+        .objects => @intCast(if (class) |c| general_objects_base + c else general_objects_base + GeneralClasses.count + run - 1),
         .bytes => if (class) |c| @intCast(c) else largeBucket(.bytes, run),
     };
 }
@@ -413,7 +432,7 @@ fn isGeneralBucket(pid: PartitionId, index: usize) bool {
         .bytes => true,
     };
 }
-const bytes_bucket_count = Classes.count + max_run_spans;
+const bytes_bucket_count = GeneralClasses.count + max_run_spans;
 const instance_bucket: u16 = Classes.count;
 
 fn nodeBucket(kind: NodeKind, k: usize, class: usize) u16 {
@@ -424,7 +443,7 @@ fn largeBucket(pid: PartitionId, run: usize) u16 {
     const base: usize = switch (pid) {
         .node => node_groups * Classes.count,
         .objects => Classes.count + 1,
-        .bytes => Classes.count,
+        .bytes => GeneralClasses.count,
     };
     return @intCast(base + run - 1);
 }
@@ -535,7 +554,7 @@ pub const AgentCache = struct {
     /// The agent's thread: the one whose calls take the cache unlocked. 0
     /// once detached.
     owner: std.atomic.Value(std.Thread.Id),
-    stacks: [2][Classes.count]Stack = @splat(@splat(.{})),
+    stacks: [2][GeneralClasses.count]Stack = @splat(@splat(.{})),
     /// Blocks the stacks hold now (objects, bytes): out of their spans and
     /// counted live in their buckets, but no one's - the stats subtract them.
     held: [2]std.atomic.Value(usize) = .{ .init(0), .init(0) },
@@ -768,9 +787,18 @@ pub const Engine = struct {
     }
 
     fn bucketShape(pid: PartitionId, index: usize) Bucket {
-        // The objects partition's general buckets: shaped as the bytes
-        // partition's are.
-        if (pid == .objects and index >= general_objects_base) return bucketShape(.bytes, index - general_objects_base);
+        // General buckets (the bytes partition's, and the objects
+        // partition's past its State buckets): the general classes, then
+        // the large runs.
+        if (pid == .bytes or (pid == .objects and index >= general_objects_base)) {
+            const local = if (pid == .bytes) index else index - general_objects_base;
+            if (local < GeneralClasses.count) {
+                const bytes = GeneralClasses.bytes(local);
+                return .{ .block_bytes = @intCast(bytes), .fill_bytes = @intCast(bytes), .slots = @intCast(span_bytes / bytes), .kind = .class, .general = true };
+            }
+            const run = local - GeneralClasses.count + 1;
+            return .{ .block_bytes = @intCast(run * span_bytes), .fill_bytes = @intCast(run * span_bytes), .slots = 1, .run = @intCast(run), .kind = .large, .general = true };
+        }
         const class_end: usize = switch (pid) {
             .node => node_groups * Classes.count,
             .objects, .bytes => Classes.count,
@@ -1034,6 +1062,10 @@ pub const Engine = struct {
         const c = self.chunk(p, e.chunk);
         const bit = @as(u64, 1) << @intCast(e.ordinal);
         const t = @backingInt(tier);
+        const was = c.masks[t] & bit != 0;
+        if (tier == .empty and was != on) {
+            if (on) b.empty_count += 1 else b.empty_count -= 1;
+        }
         if (on) {
             c.masks[t] |= bit;
             if (b.hints[t] == no_chunk or e.chunk < b.hints[t]) b.hints[t] = e.chunk;
@@ -1282,7 +1314,7 @@ pub const Engine = struct {
         std.Io.Threaded.mutexLockUncancelable(&p.mutex);
         defer std.Io.Threaded.mutexUnlock(&p.mutex);
         if (bytes > huge_threshold_bytes) return self.allocHuge(p, bytes);
-        const bi = generalBucket(pid, classes.classOf(size, alignment), runOf(bytes));
+        const bi = generalBucket(pid, generalClassOf(size, alignment), runOf(bytes));
         return self.allocIn(p, bi, size, null, return_address | site_general_tag);
     }
 
@@ -1303,7 +1335,7 @@ pub const Engine = struct {
         const e = self.entry(offset / span_bytes);
         if (e.bucket == huge_bucket and e.state != .run_tail and e.state != .unopened) return self.freeHuge(p, offset, bytes);
         if (bytes > huge_threshold_bytes) return self.violation(if (e.state == .active) .wrong_size else .invalid_free, address);
-        const want = generalBucket(pid, classes.classOf(size, alignment), runOf(bytes));
+        const want = generalBucket(pid, generalClassOf(size, alignment), runOf(bytes));
         self.freeIn(p, offset, want, false, size, null);
     }
 
@@ -1407,7 +1439,7 @@ pub const Engine = struct {
     /// its stack for the class, refilled from the spans under the lock when
     /// empty. A large run or a huge block takes the shared path.
     pub fn cacheAlloc(self: *Engine, cache: *AgentCache, pid: PartitionId, size: usize, alignment: usize, return_address: usize) Error![*]u8 {
-        const class = classes.classOf(size, alignment) orelse return self.allocGeneral(pid, size, alignment, return_address);
+        const class = generalClassOf(size, alignment) orelse return self.allocGeneral(pid, size, alignment, return_address);
         const pi = cacheIndex(pid);
         const stack = &cache.stacks[pi][class];
         if (stack.count == 0) try self.refill(cache, pid, class);
@@ -1437,7 +1469,7 @@ pub const Engine = struct {
     /// is held by the quarantine instead (the shared path); a large run or a
     /// huge block takes the shared path.
     pub fn cacheFree(self: *Engine, cache: *AgentCache, ptr: [*]u8, size: usize, alignment: usize) void {
-        const class = classes.classOf(size, alignment) orelse return self.freeGeneral(ptr, size, alignment);
+        const class = generalClassOf(size, alignment) orelse return self.freeGeneral(ptr, size, alignment);
         const address = @intFromPtr(ptr);
         const offset = self.offsetOf(address) orelse return self.violation(.other_heap, address);
         const pid = self.partitionOfOffset(offset) orelse return self.violation(.invalid_free, address);
@@ -1570,8 +1602,8 @@ pub const Engine = struct {
         const new_bytes = classes.requestBytes(new_size, alignment);
         if (old_bytes > huge_threshold_bytes or new_bytes > huge_threshold_bytes)
             return old_bytes > huge_threshold_bytes and new_bytes > huge_threshold_bytes and runOf(old_bytes) == runOf(new_bytes);
-        const old_class = classes.classOf(old_size, alignment);
-        const new_class = classes.classOf(new_size, alignment);
+        const old_class = generalClassOf(old_size, alignment);
+        const new_class = generalClassOf(new_size, alignment);
         if (old_class) |o| return if (new_class) |n| o == n else false;
         return new_class == null and runOf(old_bytes) == runOf(new_bytes);
     }
@@ -1932,6 +1964,15 @@ pub const Engine = struct {
         if (e.used == 0) {
             self.setTier(p, b, e, .empty, true);
             p.stats.spans_empty += 1;
+            // M1 (batch B): a general large run gives its pages back at once
+            // past the one empty run its bucket keeps for its next block -
+            // a growing buffer walks many run lengths, and each would keep
+            // its run committed until idle decommit (libc gives a large
+            // block back at its free).
+            if (b.general and b.kind == .large and b.empty_count > 1) {
+                self.releaseSpan(p, b, @intCast(index), false);
+                return;
+            }
             // The bug-finding run makes it inaccessible at once - unless it
             // is the span the bucket allocates from next (no lower span has
             // room): a block made and freed alone would otherwise retire and
