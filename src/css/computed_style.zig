@@ -43,6 +43,7 @@
 //! Spec: https://drafts.csswg.org/cssom-1/#resolved-values
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const properties = @import("properties.zig");
 const values = @import("style_values.zig");
@@ -371,6 +372,17 @@ pub const ComputedStyle = struct {
     /// color scheme, the box context, these) share one: a byte more pads
     /// every style by a word (tests/css/css1_highlight_inheritance_test.zig).
     flags: Flags = .{},
+    /// Its holders: whoever made it (an element's style cache, a resolution's
+    /// own) and each caller reading it now (dom.style.HeldStyle) - so a style
+    /// a caller reads outlives the cache entry a later read replaces it in
+    /// (lane cs1: Blink kept ComputedStyle refcounted, scoped_refptr<const
+    /// ComputedStyle>, until it moved it to Oilpan, whose stack scanning keeps a
+    /// style a frame reads alive). One byte, in the word the fields above share
+    /// (tests/css/css1_highlight_inheritance_test.zig): holds live inside a
+    /// native call and never cross into script (runtime.native_holds), and
+    /// `retain` refuses past 255, where the holder takes a `clone`. Not
+    /// atomic: a style never crosses threads (the module comment).
+    refs: u8 = 1,
     /// CSS Variables 1 §2: the element's custom properties, computed; shared
     /// by reference with the parent's when this cascade changed none (one
     /// reference held). Null: none has a value.
@@ -431,7 +443,31 @@ pub const ComputedStyle = struct {
         return self;
     }
 
+    /// The sole holder's end: whoever made the style, with no other holder
+    /// left. Debug: a style someone else still holds (`refs` above one) is a
+    /// panic - the owner of a style others may hold releases it (`release`).
+    /// Otherwise it is `release`, so a mistaken destroy stays memory-safe.
     pub fn destroy(self: *ComputedStyle) void {
+        if (builtin.mode == .debug and self.refs != 1) std.debug.panic("ComputedStyle.destroy: {d} other holder(s) still read this style (dom.style.HeldStyle) - its owner releases it", .{self.refs -| 1});
+        self.release();
+    }
+
+    /// One more holder, unless the count is full (255): false, and the
+    /// holder takes a `clone` instead, a holder of its own.
+    pub fn retain(self: *ComputedStyle) bool {
+        if (self.refs == std.math.maxInt(u8)) return false;
+        self.refs += 1;
+        return true;
+    }
+
+    /// A holder is done; the last one frees the style.
+    pub fn release(self: *ComputedStyle) void {
+        std.debug.assert(self.refs > 0);
+        self.refs -= 1;
+        if (self.refs == 0) self.free();
+    }
+
+    fn free(self: *ComputedStyle) void {
         var it = self.held.iterator(.{});
         while (it.next()) |g| Group.of(self.slots[g]).release();
         if (self.custom) |c| c.release();
@@ -451,6 +487,7 @@ pub const ComputedStyle = struct {
         const copy = try allocator.create(ComputedStyle);
         copy.* = self.*;
         copy.allocator = allocator;
+        copy.refs = 1;
         var it = self.held.iterator(.{});
         while (it.next()) |g| Group.of(self.slots[g]).refs += 1;
         if (self.custom) |c| c.retain();

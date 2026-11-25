@@ -6,6 +6,7 @@
     {"page": "workloads/attributes.html", "kind": "timed", "timeout_s": 600, "workloads": ["dom.create-element", "dom.getter-loop", "dom.setter-loop", "dom.method-loop", "dom.event-ctor", "dom.event-ctor-dict", "dom.set-get-attribute", "dom.class-list"]},
     {"page": "workloads/tree.html", "kind": "timed", "timeout_s": 600, "workloads": ["dom.build-tree", "dom.insert-remove", "dom.text-content", "dom.clone-node"]},
     {"page": "workloads/query.html", "kind": "timed", "timeout_s": 600, "workloads": ["dom.query-selector", "dom.query-selector-all", "dom.matches", "dom.get-elements-by-class"]},
+    {"page": "workloads/style.html", "kind": "timed", "timeout_s": 600, "workloads": ["style.computed-read", "style.computed-read-form", "style.inner-text", "style.focus-loop"]},
     {"page": "workloads/innerhtml.html", "kind": "timed", "timeout_s": 600, "workloads": ["dom.inner-html-set", "dom.inner-html-get", "dom.insert-adjacent-html"]},
     {"page": "workloads/events.html", "kind": "timed", "timeout_s": 600, "workloads": ["events.dispatch", "events.add-remove-listener", "events.custom-event"]},
     {"page": "workloads/observers.html", "kind": "timed", "timeout_s": 600, "workloads": ["observers.mutation-construct", "observers.mutation-deliver", "observers.resize-construct", "observers.intersection-construct"]},

@@ -124,6 +124,17 @@ pub const BrowserDomain = struct {
         });
     }
 
+    /// Chrome's BrowserHandler::SetContentsSize
+    /// (chrome/browser/devtools/protocol/browser_handler.cc; reproduced):
+    /// the window's bounds grown by the difference between the asked
+    /// contents size and the current one - a headless window's rect is its
+    /// contents - on the tab's Browser thread, its checks in Chrome's order
+    /// (the window's state before the arguments).
+    pub fn setContentsSize(session: *Session, params: B.setContentsSize.Params, reply: Reply(B.setContentsSize)) !void {
+        const target = windowTarget(session, params.windowId) orelse return session.fail("Browser window not found");
+        try WindowTask.post(target, .{ .set_contents = .{ .reply = reply, .width = params.width, .height = params.height } }, .{});
+    }
+
     fn narrow(value: ?i64) ?i32 {
         const v = value orelse return null;
         return @intCast(std.math.clamp(v, std.math.minInt(i32), std.math.maxInt(i32)));
@@ -150,6 +161,13 @@ const WindowTask = struct {
         get_for_target: Reply(B.getWindowForTarget),
         get_bounds: Reply(B.getWindowBounds),
         set: Reply(B.setWindowBounds),
+        set_contents: SetContents,
+    };
+
+    const SetContents = struct {
+        reply: Reply(B.setContentsSize),
+        width: ?i64,
+        height: ?i64,
     };
 
     fn post(target: *targets.Target, reply: Answer, change: viewport.WindowChange) !void {
@@ -179,12 +197,37 @@ const WindowTask = struct {
                 };
                 reply.ok(.{});
             },
+            .set_contents => |c| setContents(b, task.tab, c),
         }
+    }
+
+    fn setContents(b: *host_bridge.Browser, tab: host_bridge.TabId, c: SetContents) void {
+        const reply = c.reply;
+        const window = viewport.windowBounds(b.scope, tab) orelse return reply.fail(.server_error, "Browser window not found");
+        if (window.rect.width <= 0 or window.rect.height <= 0) return reply.fail(.server_error, "Active contents not found");
+        if (window.state != .normal) return reply.fail(.server_error, "Restore window to normal state before setting content size");
+        if (c.width == null and c.height == null) return reply.fail(.invalid_params, "At least one of 'width' or 'height' must be specified");
+        if (c.width) |w| if (w <= 0) return reply.fail(.invalid_params, "Contents 'width' must be a positive value");
+        if (c.height) |h| if (h <= 0) return reply.fail(.invalid_params, "Contents 'height' must be a positive value");
+        // The window's bounds plus the difference: its contents are its rect.
+        const width_diff: i64 = if (c.width) |w| w - window.rect.width else 0;
+        const height_diff: i64 = if (c.height) |h| h - window.rect.height else 0;
+        if (width_diff != 0 or height_diff != 0) {
+            viewport.setWindowBounds(b.scope, tab, .{
+                .width = BrowserDomain.narrow(window.rect.width + width_diff),
+                .height = BrowserDomain.narrow(window.rect.height + height_diff),
+            }) catch |err| return switch (err) {
+                error.NoSuchTab => reply.fail(.server_error, "Browser window not found"),
+                error.NotNormal => reply.fail(.server_error, "Restore window to normal state before setting content size"),
+            };
+        }
+        reply.ok(.{});
     }
 
     fn drop(context: ?*anyopaque) void {
         const task: *WindowTask = @ptrCast(@alignCast(context.?));
         switch (task.reply) {
+            .set_contents => |c| c.reply.fail(.server_error, "Browser window not found"),
             inline else => |reply| reply.fail(.server_error, "Browser window not found"),
         }
         task.side.allocator.destroy(task);

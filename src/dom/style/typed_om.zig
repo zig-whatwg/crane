@@ -867,7 +867,9 @@ pub const PropertyMap = struct {
         };
     }
 
-    pub fn computed(self: *const PropertyMap) !?*const css.computed_style.ComputedStyle {
+    /// The computed map's element's style, HELD: release it
+    /// (dom.style.HeldStyle).
+    pub fn heldStyle(self: *const PropertyMap) !?style_engine.HeldStyle {
         if (self.kind != .computed) return null;
         const owner = self.owner.get() orelse return null;
         if (!try style_engine.hasComputedStyle(owner)) return null;
@@ -936,15 +938,16 @@ fn propertyName(name: []const u8) !css.typed_om.property_names.Name {
 }
 
 /// Snapshot borrowed assignments with the stable ComputedStyle.get accessor.
-/// Never index the storage that cascadefast2 owns.
-fn readAssignments(map: *const PropertyMap, property: properties.Property, output: []properties.Assignment) !?[]const properties.Assignment {
+/// Never index the storage that cascadefast2 owns. A computed map's are
+/// borrowed from `computed`, the style its caller holds while it uses them.
+fn readAssignments(map: *const PropertyMap, computed: ?*const css.computed_style.ComputedStyle, property: properties.Property, output: []properties.Assignment) !?[]const properties.Assignment {
     const longhands: []const properties.Longhand = switch (property) {
         .longhand => |l| &.{l},
         .shorthand => |s| s.longhands(),
     };
     if (map.kind == .computed) {
-        const computed = try map.computed() orelse return null;
-        for (longhands, 0..) |longhand, index| output[index] = .{ .longhand = longhand, .value = .{ .value = computed.get(longhand) } };
+        const style = computed orelse return null;
+        for (longhands, 0..) |longhand, index| output[index] = .{ .longhand = longhand, .value = .{ .value = style.get(longhand) } };
         return output[0..longhands.len];
     }
     const block = try map.block() orelse return null;
@@ -974,7 +977,9 @@ pub fn mapGetAll(instance: *runtime.Instance, name: []const u8) !Reified {
     switch (property) {
         .custom => |custom_name| {
             if (map.kind == .computed) {
-                const computed = try map.computed() orelse return result;
+                const computed_hold = try map.heldStyle() orelse return result;
+                defer computed_hold.release();
+                const computed = computed_hold.style;
                 const text = computed.customValue(custom_name) orelse return result;
                 if (computed.registered) |snapshot| if (snapshot.find(custom_name)) |registration| {
                     try reifyRegistered(&result, custom_name, &registration.syntax, text.bytes);
@@ -989,7 +994,10 @@ pub fn mapGetAll(instance: *runtime.Instance, name: []const u8) !Reified {
         },
         .ordinary => |ordinary| {
             var storage: [properties.max_assignments]properties.Assignment = undefined;
-            const assignments = try readAssignments(map, ordinary, &storage) orelse return result;
+            // A computed map's values stay held while they are reified.
+            const held = if (map.kind == .computed) try map.heldStyle() else null;
+            defer if (held) |h| h.release();
+            const assignments = try readAssignments(map, if (held) |h| h.style else null, ordinary, &storage) orelse return result;
             try reifyAssignments(&result, ordinary, assignments, map.kind == .computed);
         },
     }
@@ -1002,11 +1010,15 @@ pub fn mapHas(instance: *runtime.Instance, name: []const u8) !bool {
     return switch (property) {
         .ordinary => |ordinary| blk: {
             var storage: [properties.max_assignments]properties.Assignment = undefined;
-            break :blk try readAssignments(map, ordinary, &storage) != null;
+            const held = if (map.kind == .computed) try map.heldStyle() else null;
+            defer if (held) |h| h.release();
+            break :blk try readAssignments(map, if (held) |h| h.style else null, ordinary, &storage) != null;
         },
         .custom => |custom_name| blk: {
             if (map.kind == .computed) {
-                const computed = try map.computed() orelse return false;
+                const computed_hold = try map.heldStyle() orelse return false;
+                defer computed_hold.release();
+                const computed = computed_hold.style;
                 break :blk computed.customValue(custom_name) != null;
             }
             const block = try map.block() orelse return false;
@@ -1018,7 +1030,9 @@ pub fn mapHas(instance: *runtime.Instance, name: []const u8) !bool {
 pub fn mapSize(instance: *runtime.Instance) !u32 {
     const map = try mapOf(instance);
     if (map.kind == .computed) {
-        const computed = try map.computed() orelse return 0;
+        const computed_hold = try map.heldStyle() orelse return 0;
+        defer computed_hold.release();
+        const computed = computed_hold.style;
         const names = try computed.customNames(instance.ctx.allocator);
         defer instance.ctx.allocator.free(names);
         return @intCast(properties.Longhand.count + names.len);
@@ -1395,7 +1409,9 @@ pub fn mapEntries(instance: *runtime.Instance) !IterableSnapshot {
             try result.append(instance, entry.name());
         return result;
     }
-    const computed = try map.computed() orelse return result;
+    const computed_hold = try map.heldStyle() orelse return result;
+    defer computed_hold.release();
+    const computed = computed_hold.style;
     var names: std.ArrayList([]const u8) = .empty;
     defer names.deinit(allocator);
     inline for (@typeInfo(properties.Longhand).@"enum".field_values) |field_value| {

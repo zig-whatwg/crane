@@ -266,6 +266,11 @@ pub const DeferredTeardown = struct {
     /// path of an event dispatch in flight. Pushed and removed by their
     /// frames; walked in a full collection's atomic pause (`traceStackRoots`).
     stack_roots: ?*StackRoot = null,
+    /// Debug: the holds native frames on the agent's stack own now - a held
+    /// computed style (dom.style.HeldStyle) - which no script entry and no
+    /// event-loop turn may find live (runtime.native_holds; lane cs1).
+    /// `void` outside Debug.
+    native_holds: @import("native_holds.zig").Count = @import("native_holds.zig").zero,
     /// What the queue owes the next safe point (see `algorithm_depth`). One
     /// byte, which the agent's adapter also writes (`owedWord`).
     owed: Owed = .{},

@@ -1132,6 +1132,140 @@
           }
         }
       ]
+    },
+    {
+      "name": "pages: resize",
+      "about": "resize_page: the window restored to normal when it is not, then Browser.setContentsSize; the page's innerWidth and innerHeight follow.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "resize_page",
+          "args": {
+            "pageId": 1,
+            "width": 800,
+            "height": 600
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [innerWidth, innerHeight]"
+          }
+        },
+        {
+          "tool": "resize_page",
+          "args": {
+            "pageId": 1,
+            "width": 1024,
+            "height": 700
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [innerWidth, innerHeight]"
+          }
+        }
+      ]
+    },
+    {
+      "name": "emulate: user agent, media, viewport",
+      "about": "emulate applies every setting on every call and clears what a call leaves out, and a page tool's answer lists the page's emulation (McpResponse); the color scheme a clear leaves is the host's own (headless Chrome follows the OS appearance), compared with what the page saw before; network conditions, CPU throttling and geolocation are not supported by Crane yet (expected).",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { window.hostDark = matchMedia('(prefers-color-scheme: dark)').matches; return 1; }"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "userAgent": "Agent/1",
+            "colorScheme": "dark",
+            "prefersReducedMotion": "reduce",
+            "viewport": "400x300x2"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [navigator.userAgent, matchMedia('(prefers-color-scheme: dark)').matches, matchMedia('(prefers-reduced-motion: reduce)').matches, innerWidth, innerHeight, devicePixelRatio]"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "viewport": "500x400"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [navigator.userAgent === 'Agent/1', matchMedia('(prefers-color-scheme: dark)').matches === window.hostDark, innerWidth === 500]"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Slow 3G"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "cpuThrottlingRate": 4
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "geolocation": "52.5,13.4"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "viewport": "400x300,wide"
+          }
+        }
+      ]
     }
   ],
   "expected": [
@@ -1174,6 +1308,21 @@
       "case": "history: back right after the first navigation",
       "call": 2,
       "reason": "Chrome navigates its startup URL (Puppeteer starts it with about:blank: an auto_toplevel entry), so its first navigation pushes and back reaches about:blank; Firefox 159 and Safari 27.2 keep the first tab's initial about:blank, which the first navigation replaces (WebDriver probe, chat.local 2026-11-24, tmp/probes/mcp1-startup/run.sh: history.length stays 1, back() stays), as Crane and HTML do: the browser majority (main's ruling, 2026-11-24)."
+    },
+    {
+      "case": "emulate: user agent, media, viewport",
+      "call": 9,
+      "reason": "Network conditions need Crane's network emulation (lane mcp1 batch 4b item 7); until then Crane's MCP server says it does not support networkConditions yet."
+    },
+    {
+      "case": "emulate: user agent, media, viewport",
+      "call": 10,
+      "reason": "CPU throttling needs Crane's throttler (lane mcp1 batch 4b item 6, design first); until then Crane's MCP server says it does not support cpuThrottlingRate yet."
+    },
+    {
+      "case": "emulate: user agent, media, viewport",
+      "call": 11,
+      "reason": "Geolocation needs Crane's Geolocation API (a 0.1 spec item main queued, 2026-11-24); until then Crane's MCP server says it does not support geolocation yet."
     }
   ]
 }

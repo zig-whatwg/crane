@@ -473,29 +473,37 @@ fn backgroundHintCache() !void {
     defer result.release();
     const realm = browser.getRealm() orelse return error.NoRealm;
     const table = engine.convertToPlatformObject(realm, result.borrow()) orelse return error.NoElement;
-    const first = (try dom.style.computedStyle(table, null)) orelse return error.NoStyle;
-    const urls = first.get(.background_image).resourceUrls();
-    try std.testing.expectEqual(@as(usize, 1), urls.len);
-    try std.testing.expectEqualStrings("http://127.0.0.1:65533/first/hint.png", urls[0].url);
-    try std.testing.expect(urls[0].source.?.referrer == null);
-    try std.testing.expectEqualStrings("http://127.0.0.1:65533/first/", urls[0].source.?.base_url);
+    {
+        // Held while read; released before script runs again (a hold never
+        // crosses into script: runtime.native_holds).
+        const first = (try dom.style.computedStyle(table, null)) orelse return error.NoStyle;
+        defer first.release();
+        const urls = first.style.get(.background_image).resourceUrls();
+        try std.testing.expectEqual(@as(usize, 1), urls.len);
+        try std.testing.expectEqualStrings("http://127.0.0.1:65533/first/hint.png", urls[0].url);
+        try std.testing.expect(urls[0].source.?.referrer == null);
+        try std.testing.expectEqualStrings("http://127.0.0.1:65533/first/", urls[0].source.?.base_url);
+    }
     const state = dom.style.element_style.existingOf(table) orelse return error.NoState;
     const cached = state.backgroundHint() orelse return error.NoHint;
     const unrelated = try browser.evaluateScript("cr1Table.setAttribute('data-cr1', 'changed'); true");
     unrelated.release();
-    _ = try dom.style.computedStyle(table, null);
+    try dom.style.engine.resolveStyle(table, null);
     try std.testing.expect(state.backgroundHint().? == cached);
     const changed = try browser.evaluateScript("document.querySelector('base').href = 'http://127.0.0.1:65533/second/'; true");
     changed.release();
-    const second = (try dom.style.computedStyle(table, null)) orelse return error.NoStyle;
-    try std.testing.expectEqualStrings("http://127.0.0.1:65533/second/hint.png", second.get(.background_image).resourceUrls()[0].url);
+    {
+        const second = (try dom.style.computedStyle(table, null)) orelse return error.NoStyle;
+        defer second.release();
+        try std.testing.expectEqualStrings("http://127.0.0.1:65533/second/hint.png", second.style.get(.background_image).resourceUrls()[0].url);
+    }
     const removed = try browser.evaluateScript("cr1Table.removeAttribute('background'); true");
     removed.release();
     try std.testing.expect(state.backgroundHint() == null);
     const plain = try browser.evaluateScript("globalThis.cr1Plain = document.createElement('div'); cr1Plain.setAttribute('background','ignored.png'); document.body.append(cr1Plain); cr1Plain");
     defer plain.release();
     const div = engine.convertToPlatformObject(realm, plain.borrow()) orelse return error.NoElement;
-    _ = try dom.style.computedStyle(div, null);
+    try dom.style.engine.resolveStyle(div, null);
     try std.testing.expect(dom.style.element_style.existingOf(div).?.backgroundHint() == null);
 }
 
@@ -664,19 +672,31 @@ fn fontTextParent() !void {
     defer assigned.release();
     const assigned_instance = engine.convertToPlatformObject(realm, assigned.borrow()) orelse return error.NoText;
     const assigned_node = dom.instance_bridge.getNodeBase(assigned_instance) orelse return error.NoText;
-    const assigned_style = (try dom.style.engine.fontStyleForText(assigned_node)) orelse return error.NoAssignedStyle;
-    try std.testing.expectEqual(@as(f64, 700), assigned_style.get(.font_weight).number);
+    {
+        // Held while read, released before script runs again.
+        const assigned_style = (try dom.style.engine.fontStyleForText(assigned_node)) orelse return error.NoAssignedStyle;
+        defer assigned_style.release();
+        try std.testing.expectEqual(@as(f64, 700), assigned_style.style.get(.font_weight).number);
+    }
     inline for (.{ "document.getElementById('unused').firstChild", "document.getElementById('none').firstChild", "document.getElementById('host').shadowRoot.firstChild.firstChild" }) |expression| {
         const value = try browser.evaluateScript(expression);
         defer value.release();
         const instance = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoText;
         const node = dom.instance_bridge.getNodeBase(instance) orelse return error.NoText;
-        try std.testing.expect(try dom.style.engine.fontStyleForText(node) == null);
+        try std.testing.expect(!try selectsFontStyle(node));
     }
     const shadow = try browser.evaluateScript("document.getElementById('shadow').shadowRoot.firstChild");
     defer shadow.release();
     const shadow_instance = engine.convertToPlatformObject(realm, shadow.borrow()) orelse return error.NoText;
-    try std.testing.expect(try dom.style.engine.fontStyleForText(dom.instance_bridge.getNodeBase(shadow_instance).?) != null);
+    try std.testing.expect(try selectsFontStyle(dom.instance_bridge.getNodeBase(shadow_instance).?));
+}
+
+/// Whether `node`'s text has a font style (dom.style.engine.fontStyleForText),
+/// the hold released at once.
+fn selectsFontStyle(node: *dom.NodeBase) !bool {
+    const held = (try dom.style.engine.fontStyleForText(node)) orelse return false;
+    defer held.release();
+    return true;
 }
 
 test "font text inherits through the flat tree and excludes unassigned and hidden text" {
@@ -700,7 +720,7 @@ fn skippedFontText() !void {
         const value = try browser.evaluateScript("document.getElementById('" ++ id ++ "').firstChild");
         defer value.release();
         const instance = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoText;
-        try std.testing.expect(try dom.style.engine.fontStyleForText(dom.instance_bridge.getNodeBase(instance).?) == null);
+        try std.testing.expect(!try selectsFontStyle(dom.instance_bridge.getNodeBase(instance).?));
     }
 }
 

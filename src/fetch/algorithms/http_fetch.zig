@@ -1442,7 +1442,15 @@ fn userAgentOf(request: *const InternalRequest) []const u8 {
 pub const UserAgentOverride = struct {
     user_agent: ?[]const u8 = null,
     accept_language: ?[]const u8 = null,
+    /// The tab's DevTools extra headers (CDP Network.setExtraHTTPHeaders),
+    /// which every request of its documents carries - set by FetchJob.start
+    /// before main fetch, so before CORS (lane mcp1). None for a worker
+    /// client: Chrome's page session does not reach a worker's requests.
+    extra_headers: []const ExtraHeader = &.{},
 };
+
+/// One DevTools extra header.
+pub const ExtraHeader = internal_request.ExtraHeader;
 
 /// Reads the override of the tab a Window client (`traversable`: the
 /// request's traversable for user prompts, a Window standing for its
@@ -1463,8 +1471,15 @@ pub fn installUserAgentOverrideReader(reader: UserAgentOverrideReader) void {
     user_agent_override_reader.install(reader);
 }
 
-/// `request`'s tab's override, if it has one.
+/// `request`'s tab's override, if it has one: the copy it was made with (a
+/// navigation's, a worker script's: InternalRequest.override_snapshot), or
+/// else its client's tab's, read now.
 pub fn userAgentOverrideOf(request: *const InternalRequest) UserAgentOverride {
+    if (request.override_snapshot) |snapshot| return .{
+        .user_agent = snapshot.user_agent,
+        .accept_language = snapshot.accept_language,
+        .extra_headers = snapshot.extra_headers,
+    };
     const reader = user_agent_override_reader.get() orelse return .{};
     return switch (request.traversable_for_user_prompts) {
         .traversable => |traversable| reader(traversable),
