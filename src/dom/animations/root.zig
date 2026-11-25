@@ -283,10 +283,10 @@ pub fn commitStyles(animation: *model.Animation) !void {
     defer commit.deinit();
     loop_registry.commit = &commit;
     registry.valuesChanged(target.ctx);
-    const read = style_engine.computedStyle(target, null);
+    const read = style_engine.resolveStyle(target, null);
     loop_registry.commit = null;
     registry.valuesChanged(target.ctx);
-    _ = try read;
+    try read;
     if (commit.values.count() == 0 and commit.customs.items.len == 0) return;
     // 3, 5.5-5.6.
     const declaration = switch (kind) {

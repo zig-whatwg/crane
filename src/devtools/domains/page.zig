@@ -648,6 +648,78 @@ pub fn reload(session: *PageSession, params: P.reload.Params) !P.reload.Result {
     return .{};
 }
 
+/// Chrome's PageHandler::GetNavigationHistory
+/// (content/browser/devtools/protocol/page_handler.cc): the tab's
+/// NavigationController entries - here, each step of the traversable's
+/// joint session history with the browser's record of it
+/// (Browser.navigationHistory; joint_history.NavigationEntryRecord) - and
+/// the current one's index.
+pub fn getNavigationHistory(session: *PageSession, params: P.getNavigationHistory.Params) !P.getNavigationHistory.Result {
+    _ = params;
+    const browser = session.browser orelse return session.fail("Not attached to an active page");
+    const arena = session.arena.?;
+    const history = browser.navigationHistory(session.tab, arena) catch |err| switch (err) {
+        error.OutOfMemory => return err,
+        else => return session.fail("Not attached to an active page"),
+    };
+    const entries = try arena.alloc(P.NavigationEntry, history.entries.len);
+    for (history.entries, entries) |e, *out| out.* = .{
+        .id = @intCast(e.id),
+        .url = e.url,
+        .userTypedURL = e.user_typed_url,
+        .title = e.title,
+        .transitionType = switch (e.transition) {
+            .link => .link,
+            .typed => .typed,
+            .auto_toplevel => .auto_toplevel,
+            .form_submit => .form_submit,
+            .reload => .reload,
+        },
+    };
+    return .{ .currentIndex = @intCast(history.current), .entries = entries };
+}
+
+/// Chrome's PageHandler::NavigateToHistoryEntry: the entry with that id,
+/// gone to as NavigationController::GoToIndex goes - the browser's own
+/// back/forward, HTML "traverse the history by a delta" by the difference
+/// of the two indexes (Browser.traverseHistoryByDelta); InvalidParams "No
+/// entry with passed id" when the tab has none.
+pub fn navigateToHistoryEntry(session: *PageSession, params: P.navigateToHistoryEntry.Params) !P.navigateToHistoryEntry.Result {
+    const browser = session.browser orelse return session.fail("Not attached to an active page");
+    const arena = session.arena.?;
+    const history = browser.navigationHistory(session.tab, arena) catch |err| switch (err) {
+        error.OutOfMemory => return err,
+        else => return session.fail("Not attached to an active page"),
+    };
+    for (history.entries, 0..) |e, index| {
+        if (@as(i64, @intCast(e.id)) != params.entryId) continue;
+        const delta: i32 = @intCast(@as(i64, @intCast(index)) - @as(i64, @intCast(history.current)));
+        // The current entry: Chrome's NavigateToExistingPendingEntry drops
+        // a back/forward navigation to the last committed entry (and stops
+        // loading - Crane has no browser-UI stop yet: TODO(mcp1) when one
+        // lands); the answer is success.
+        if (delta == 0) return .{};
+        _ = browser.traverseHistoryByDelta(session.tab, delta) catch return session.fail("Not attached to an active page");
+        return .{};
+    }
+    return session.failWithCode(.invalid_params, "No entry with passed id");
+}
+
+/// Chrome's PageHandler::ResetNavigationHistory: every entry but the
+/// committed one goes (NavigationController::PruneAllButLastCommitted;
+/// Browser.pruneNavigationHistory), or "History cannot be pruned" when it
+/// cannot now.
+pub fn resetNavigationHistory(session: *PageSession, params: P.resetNavigationHistory.Params) !P.resetNavigationHistory.Result {
+    _ = params;
+    const browser = session.browser orelse return session.fail("Not attached to an active page");
+    const pruned = browser.pruneNavigationHistory(session.tab) catch |err| switch (err) {
+        error.OutOfMemory => return err,
+        else => return session.fail("Not attached to an active page"),
+    };
+    if (!pruned) return session.fail("History cannot be pruned");
+    return .{};
+}
+
 /// Close the tab, prompting to unload (Chrome: Page.close runs beforeunload,
 /// where Target.closeTarget does not).
 pub fn close(session: *PageSession, params: P.close.Params) !P.close.Result {

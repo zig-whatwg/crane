@@ -167,6 +167,9 @@ pub const FlattenedState = @import("field_merger.zig").FlattenedState;
 
 // GC integration
 pub const gc = @import("gc_integration.zig");
+/// The holds native frames take on what script must not see change (a
+/// held computed style), counted and checked in Debug (lane cs1).
+pub const native_holds = @import("native_holds.zig");
 /// The wrapper's counted reference (refcount design 2.1): which types count
 /// (`VTable.counted`) and how the adapter takes and releases the reference.
 pub const lifetime = @import("lifetime.zig");

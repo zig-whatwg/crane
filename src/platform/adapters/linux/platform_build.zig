@@ -21,6 +21,23 @@ pub fn kitParts(target: std.Target) []const KitPart {
 
 pub const facts: platform_build.Facts = .{
     .words = &.{"linux"},
+    .example_target = "x86_64-linux-gnu",
+    // The tools that read ELF objects test against one made for Linux.
+    .object_format = .{ .name = "elf", .target = "x86_64-linux-none" },
+    .checks = &.{
+        // check-target for both Linux targets, one after the other.
+        // -Dwpt-runner-optimize=Debug: the runner check then shares the
+        // testing graph's C libraries instead of building a ReleaseSafe set of
+        // its own for a binary that is never linked (build_mode.zig,
+        // ownCLibraries).
+        .{
+            .step = "check-linux",
+            .description = "check-target for aarch64-linux-gnu and x86_64-linux-gnu, -Dplatform=linux (cross-compiled; nothing runs)",
+            .sub_step = "check-target",
+            .targets = &.{ "aarch64-linux-gnu", "x86_64-linux-gnu" },
+            .args = &.{ "-Dplatform=linux", "-Dwpt-runner-optimize=Debug" },
+        },
+    },
 };
 
 /// No -D options of its own.

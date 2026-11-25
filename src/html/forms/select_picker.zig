@@ -32,14 +32,18 @@ pub fn isListbox(select: *Instance) bool {
 }
 
 pub fn baseAppearance(select: *Instance) bool {
-    const style = (dom.style.computedStyle(select, null) catch null) orelse return false;
+    const style_hold = (dom.style.computedStyle(select, null) catch null) orelse return false;
+    defer style_hold.release();
+    const style = style_hold.style;
     return style.keyword(.appearance) == .base_select;
 }
 
 pub fn baseOptions(select: *Instance) bool {
     if (!baseAppearance(select)) return false;
     if (isListbox(select)) return true;
-    const picker = (dom.style.computedStyle(select, "picker") catch null) orelse return false;
+    const picker_hold = (dom.style.computedStyle(select, "picker") catch null) orelse return false;
+    defer picker_hold.release();
+    const picker = picker_hold.style;
     return picker.keyword(.appearance) == .base_select;
 }
 
@@ -47,7 +51,9 @@ pub fn optionFocusable(option: *Instance) bool {
     const select = ownerSelect(option) orelse return false;
     if (associated.isDisabled(select) or options.isDisabled(option) or !baseOptions(select)) return false;
     if (!isListbox(select) and !dom.form_controls.pickerOpen(select)) return false;
-    const style = (dom.style.computedStyle(option, null) catch null) orelse return false;
+    const style_hold = (dom.style.computedStyle(option, null) catch null) orelse return false;
+    defer style_hold.release();
+    const style = style_hold.style;
     return style.keyword(.visibility) == .visible and (dom.style.isBeingRendered(option) catch false);
 }
 
@@ -374,7 +380,9 @@ fn arrowDirection(select: *Instance, key: []const u8) i2 {
     if (keyIs(key, "ArrowUp")) return -1;
     if (keyIs(key, "ArrowDown")) return 1;
     if (!keyIs(key, "ArrowLeft") and !keyIs(key, "ArrowRight")) return 0;
-    const style = (dom.style.computedStyle(select, null) catch null) orelse return 0;
+    const style_hold = (dom.style.computedStyle(select, null) catch null) orelse return 0;
+    defer style_hold.release();
+    const style = style_hold.style;
     const next_right = switch (style.keyword(.writing_mode)) {
         .vertical_lr, .sideways_lr => true,
         .vertical_rl, .sideways_rl => false,

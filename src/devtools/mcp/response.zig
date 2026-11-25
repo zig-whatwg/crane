@@ -79,6 +79,9 @@ pub const Response = struct {
                 for (opened.items) |p| try out.append(self.arena, try pageLabel(self.arena, p));
             }
         }
+        // The page's emulation, in McpResponse's order (network conditions,
+        // geolocation and CPU throttling are never set: Crane refuses them).
+        if (self.page) |page| try emulationLines(self.arena, &page.emulation, &out);
         if (self.page) |page| if (!page.closed) if (page.dialog) |dialog| {
             const default_value = if (std.mem.eql(u8, dialog.type, "prompt"))
                 try std.fmt.allocPrint(self.arena, " (default value: \"{s}\")", .{dialog.default_prompt})
@@ -125,6 +128,22 @@ pub const Response = struct {
 /// formatPage's text: `<id>: <title> (<url>)`, or `<id>: <url>` with no
 /// title - none, or a placeholder (McpPage.getTitle); truncateTitle cuts
 /// the title to 50 code units, its "..." included.
+/// McpResponse.format's emulation lines for the page: its viewport as
+/// JSON.stringify writes McpPage's `{...defaults, ...viewport}` (a scale
+/// the text left out is an undefined key, which JSON drops), its user
+/// agent, then the media features.
+fn emulationLines(arena: Allocator, emulation: *const session_mod.Emulation, out: *std.ArrayList([]const u8)) !void {
+    if (emulation.viewport) |v| {
+        const scale = if (v.scale) |s| try std.fmt.allocPrint(arena, "\"deviceScaleFactor\":{d},", .{s}) else "";
+        try out.append(arena, try std.fmt.allocPrint(arena, "Emulating viewport: {{{s}\"isMobile\":{},\"hasTouch\":{},\"isLandscape\":{},\"width\":{d},\"height\":{d}}}", .{ scale, v.mobile, v.touch, v.landscape, v.width, v.height }));
+    }
+    if (emulation.user_agent) |ua| try out.append(arena, try std.fmt.allocPrint(arena, "Emulating user agent: {s}", .{ua}));
+    if (emulation.color_scheme) |value| try out.append(arena, try std.fmt.allocPrint(arena, "Emulating color scheme: {s}", .{value}));
+    if (emulation.forced_colors) |value| try out.append(arena, try std.fmt.allocPrint(arena, "Emulating forced-colors: {s}", .{value}));
+    if (emulation.prefers_contrast) |value| try out.append(arena, try std.fmt.allocPrint(arena, "Emulating prefers-contrast: {s}", .{value}));
+    if (emulation.prefers_reduced_motion) |value| try out.append(arena, try std.fmt.allocPrint(arena, "Emulating prefers-reduced-motion: {s}", .{value}));
+}
+
 pub fn pageLabel(arena: Allocator, page: *const Page) ![]const u8 {
     // The target's title as it is (document.title already collapsed it).
     const title = if (isPlaceholderTitle(page.title, page.url)) "" else page.title;

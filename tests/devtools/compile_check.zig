@@ -35,6 +35,11 @@ test {
     _ = @import("mcp1_title_timing_test.zig");
     _ = @import("mcp1_snapshot_test.zig");
     _ = @import("mcp1_target_title_test.zig");
+    _ = @import("mcp1_history_test.zig");
+    _ = @import("mcp1_history_tool_test.zig");
+    _ = @import("mcp1_resize_test.zig");
+    _ = @import("mcp1_extra_headers_test.zig");
+    _ = @import("mcp1_emulate_test.zig");
     _ = @import("mcp1_stdio_test.zig");
     _ = @import("mcp1_paths_test.zig");
 }

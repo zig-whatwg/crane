@@ -55,19 +55,24 @@ pub const Alignment = enum {
 pub fn alignmentValue(node_in: *Instance) !Alignment {
     // Step 1: up past non-elements and elements displayed inline or none.
     var current: ?*Instance = node_in;
-    var style: ?*const @import("css").computed_style.ComputedStyle = null;
+    // The style of the element the walk stops at, held past the loop.
+    var style: ?dom.style.HeldStyle = null;
+    defer if (style) |held| held.release();
     while (current) |c| : (current = try common.parent(c)) {
         if (!common.isElement(c)) continue;
+        // held-style: kept past the loop for the element the walk stops at (the defer above); released here otherwise.
         const s = (dom.style.computedStyle(c, null) catch null) orelse continue;
-        const display = s.display();
-        if (display.box == .none) continue;
-        if (display.box == .normal and display.outer == .inline_ and display.inner == .flow) continue;
+        const display = s.style.display();
+        if (display.box == .none or (display.box == .normal and display.outer == .inline_ and display.inner == .flow)) {
+            s.release();
+            continue;
+        }
         style = s;
         break;
     }
     // Step 2.
     const element = current orelse return .left;
-    const computed = style orelse return .left;
+    const computed = (style orelse return .left).style;
     // Steps 3-6.
     return switch (computed.keyword(.text_align)) {
         .start => if (form_associated.directionality(element) == .rtl) .right else .left,

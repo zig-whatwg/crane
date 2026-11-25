@@ -24,6 +24,37 @@ const log = std.log.scoped(.mcp);
 pub const command_timeout_ms: u32 = 30_000;
 
 /// A dialog open on a page (Page.javascriptDialogOpening).
+/// McpPage.emulationSettings, the settings Crane applies (network
+/// conditions, CPU throttling and geolocation are not supported yet).
+/// Strings OWNED.
+pub const Emulation = struct {
+    viewport: ?Viewport = null,
+    user_agent: ?[]u8 = null,
+    color_scheme: ?[]u8 = null,
+    forced_colors: ?[]u8 = null,
+    prefers_contrast: ?[]u8 = null,
+    prefers_reduced_motion: ?[]u8 = null,
+
+    /// viewportTransform's object spread over McpPage's defaults.
+    pub const Viewport = struct {
+        width: i64,
+        height: i64,
+        /// Null when the text named none: zod keeps the undefined key,
+        /// which the spread over the default of 1 then carries.
+        scale: ?f64 = null,
+        mobile: bool = false,
+        landscape: bool = false,
+        touch: bool = false,
+    };
+
+    pub fn deinit(self: *Emulation, allocator: Allocator) void {
+        inline for (.{ "user_agent", "color_scheme", "forced_colors", "prefers_contrast", "prefers_reduced_motion" }) |field| {
+            if (@field(self, field)) |s| allocator.free(s);
+        }
+        self.* = .{};
+    }
+};
+
 pub const Dialog = struct {
     /// alert, confirm, prompt or beforeunload. OWNED.
     type: []u8,
@@ -114,8 +145,23 @@ pub const Page = struct {
     dialog: ?Dialog = null,
     /// Page.loadEventFired seen since the last `expectLoad`.
     load_fired: bool = false,
+    /// A main-frame Page.navigatedWithinDocument seen since it was last
+    /// cleared: what ends Puppeteer's waitForNavigation for a same-document
+    /// navigation (LifecycleWatcher's sameDocumentNavigation).
+    same_document_navigated: bool = false,
     /// McpPage.init's focus emulation was asked for.
     focus_emulated: bool = false,
+    /// The emulate tool's state Puppeteer keeps per page: a user agent
+    /// override applied (NetworkManager #userAgentOverrideApplied), a
+    /// viewport override active and its mobile and touch
+    /// (EmulationManager's viewport state, #emulatingMobile, #hasTouch).
+    user_agent_emulated: bool = false,
+    viewport_emulated: bool = false,
+    emulating_mobile: bool = false,
+    emulating_touch: bool = false,
+    /// McpPage.emulationSettings: what the last emulate call set, which
+    /// McpResponse prints for a page tool's answer ("Emulating ...").
+    emulation: Emulation = .{},
     /// The main frame's id (Page.frameNavigated without a parentId).
     main_frame_id: ?[]u8 = null,
     /// The frames' execution contexts Puppeteer keeps (FrameManager
@@ -154,6 +200,7 @@ pub const Page = struct {
         self.contexts.deinit(allocator);
         self.dropSnapshot(allocator);
         self.uids.deinit(allocator);
+        self.emulation.deinit(allocator);
     }
 
     /// Replace the page's snapshot (null: none).
@@ -454,6 +501,14 @@ pub const Session = struct {
             const kind = str(p.get("navigationType"));
             if (std.mem.eql(u8, method, "Page.frameStartedNavigating") and (std.mem.eql(u8, kind, "sameDocument") or std.mem.eql(u8, kind, "historySameDocument"))) return;
             w.navigation_started = true;
+            return;
+        }
+        if (std.mem.eql(u8, method, "Page.navigatedWithinDocument")) {
+            // The main frame's URL moves (Puppeteer's Frame
+            // _navigatedWithinDocument, which page.url() reads).
+            if (!std.mem.eql(u8, str(p.get("frameId")), page.mainFrameId())) return;
+            try replace(self.allocator, &page.url, str(p.get("url")));
+            page.same_document_navigated = true;
             return;
         }
         if (std.mem.eql(u8, method, "Page.frameNavigated")) {
