@@ -12,11 +12,11 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const Element = @import("interfaces").Element;
-const IterationCompositeOperation = @import("enums").IterationCompositeOperation;
+const UnrestrictedDoubleOrKeyframeEffectOptions = @import("typedefs").UnrestrictedDoubleOrKeyframeEffectOptions;
 const CSSOMString = @import("typedefs").CSSOMString;
+const IterationCompositeOperation = @import("enums").IterationCompositeOperation;
 const GroupEffect = @import("interfaces").GroupEffect;
 const EffectTiming = @import("dictionaries").EffectTiming;
-const KeyframeEffectOptions = @import("dictionaries").KeyframeEffectOptions;
 const ComputedEffectTiming = @import("dictionaries").ComputedEffectTiming;
 const CompositeOperation = @import("enums").CompositeOperation;
 const OptionalEffectTiming = @import("dictionaries").OptionalEffectTiming;
@@ -199,11 +199,11 @@ pub const KeyframeEffect = struct {
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor(target, keyframes, options)
-        Element_object_union: struct {
+        Element_object_UnrestrictedDoubleOrKeyframeEffectOptions: struct {
             pub const webidl_arguments = true;
             target: ?*runtime.Instance,
             keyframes: ?runtime.JSValue,
-            options: webidl.Opt(runtime.JSValue),
+            options: webidl.Opt(UnrestrictedDoubleOrKeyframeEffectOptions),
         },
         /// constructor(source)
         KeyframeEffect: *runtime.Instance,
@@ -213,7 +213,7 @@ pub const KeyframeEffect = struct {
     /// ConstructorArgs, in its order, for the overload resolution algorithm
     /// (webidl.overload_resolution) the binding runs to pick the variant.
     pub const constructor_overloads = &[_]webidl.overload_resolution.Overload{
-        .{ .function = "Element_object_union", .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Element")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Element.State) } else .other)}, .nullable = true }, .{ .kinds = &.{.object}, .nullable = true }, .{ .kinds = &.{ .numeric, .dictionary }, .optionality = .optional } } },
+        .{ .function = "Element_object_UnrestrictedDoubleOrKeyframeEffectOptions", .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Element")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Element.State) } else .other)}, .nullable = true }, .{ .kinds = &.{.object}, .nullable = true }, .{ .kinds = &.{ .numeric, .dictionary }, .optionality = .optional } } },
         .{ .function = "KeyframeEffect", .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "KeyframeEffect")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").KeyframeEffect.State) } else .other)} }} },
     };
 
@@ -229,7 +229,7 @@ pub const KeyframeEffect = struct {
     /// argument converts to (ConstructorArgs variant - "" for a sole
     /// constructor -, argument index, interface).
     pub const constructor_interface_arguments = .{
-        .{ "Element_object_union", 0, "Element" },
+        .{ "Element_object_UnrestrictedDoubleOrKeyframeEffectOptions", 0, "Element" },
         .{ "KeyframeEffect", 0, "KeyframeEffect" },
     };
 

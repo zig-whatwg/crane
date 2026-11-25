@@ -12,13 +12,13 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const HIDCollectionInfo = @import("dictionaries").HIDCollectionInfo;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const Observable = @import("interfaces").Observable;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Event = @import("interfaces").Event;
 const BufferSource = @import("typedefs").BufferSource;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 

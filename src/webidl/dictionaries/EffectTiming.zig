@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const EffectTiming = struct {
@@ -16,15 +17,11 @@ pub const EffectTiming = struct {
     delay: ?f64 = null,
     endDelay: ?f64 = null,
     playbackRate: ?f64 = null,
-    duration: ?runtime.JSValue = null,
+    duration: ?typedefs.UnrestrictedDoubleOrCSSNumericValueOrDOMString = null,
 
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "iterationStart", "delay", "endDelay", "playbackRate" };
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{"duration"};
 
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.

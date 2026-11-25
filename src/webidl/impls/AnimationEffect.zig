@@ -85,7 +85,7 @@ pub fn call_updateTiming(instance: *runtime.Instance, timing: webidl.Opt(diction
     const allocator = instance.ctx.allocator;
     var easing_text: std.ArrayList(u8) = .empty;
     defer easing_text.deinit(allocator);
-    const input = try animations.options.fromOptionalEffectTiming(instance.ctx, timing.getOrDefault(.{}), &easing_text, allocator);
+    const input = try animations.options.fromOptionalEffectTiming(timing.getOrDefault(.{}), &easing_text, allocator);
     try animations.options.updateTiming(effect, input);
     // CSS Animations 2 section 2: on a CSSAnimation's effect, the members
     // set here are no longer taken from animation-*.
@@ -131,7 +131,7 @@ pub fn call_getTiming(instance: *runtime.Instance) anyerror!dictionaries.EffectT
         .fill = animations.options.fillEnum(t.fill),
         .iterationStart = t.iteration_start,
         .iterations = t.iterations,
-        .duration = if (t.duration) |d| .{ .number = d } else runtime.JSValue.fromStringRef("auto"),
+        .duration = if (t.duration) |d| .{ .double = d } else .{ .domstring = runtime.DOMString.initInterned("auto") },
         .direction = animations.options.directionEnum(t.direction),
         .easing = runtime.DOMString.initInterned(t.easing.text),
         .playbackRate = 1,
@@ -154,7 +154,7 @@ pub fn call_getComputedTiming(instance: *runtime.Instance) anyerror!dictionaries
             .iterationStart = t.iteration_start,
             .iterations = t.iterations,
             // The iteration duration: "auto" is zero.
-            .duration = .{ .number = t.iterationDuration() },
+            .duration = .{ .double = t.iterationDuration() },
             .direction = animations.options.directionEnum(t.direction),
             .easing = runtime.DOMString.initInterned(t.easing.text),
             .playbackRate = 1,

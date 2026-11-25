@@ -972,11 +972,12 @@ fn releaseEventIfUnwrapped(event: *runtime.Instance, generation: u64) void {
 /// 11. Let client be this's relevant settings object.
 /// 12. Run this step in parallel: Establish a WebSocket connection given urlRecord,
 ///     protocols, and client.
-pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
-    // WebIDL § 3.2.25 converts the protocols union before the constructor
-    // algorithm runs. Its iterator/ToString may throw or change the API base
-    // URL. Token validation is constructor step 9, after URL validation.
-    var requested_protocols = try parseProtocols(ctx, ctx.allocator, protocols);
+pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(typedefs.DOMStringOrSequenceOfDOMString)) !*runtime.Instance {
+    // The binding converted the protocols union (WebIDL § 3.2.25) before the
+    // constructor algorithm: its iterator and ToString calls may throw or
+    // change the API base URL. Token validation is constructor step 9, after
+    // URL validation.
+    var requested_protocols = try parseProtocols(ctx.allocator, protocols);
     defer if (requested_protocols) |values| {
         for (values) |value| ctx.allocator.free(value);
         ctx.allocator.free(values);
@@ -1187,11 +1188,12 @@ fn relevantWindow(instance: *runtime.Instance) ?*runtime.Instance {
 /// `CreateWebSocket(false, false)` must send no Sec-WebSocket-Protocol header
 /// at all.
 fn parseProtocols(
-    ctx: runtime.Context,
     allocator: std.mem.Allocator,
-    protocols: webidl.Opt(runtime.JSValue),
+    protocols: webidl.Opt(typedefs.DOMStringOrSequenceOfDOMString),
 ) !?[][]const u8 {
-    if (!protocols.was_passed) return null;
+    // `optional (DOMString or sequence<DOMString>) protocols = []`: not
+    // passed (undefined included) is the empty sequence.
+    if (!protocols.wasPassed()) return null;
 
     var list: std.ArrayList([]const u8) = .empty;
     errdefer {
@@ -1199,7 +1201,21 @@ fn parseProtocols(
         list.deinit(allocator);
     }
 
-    try collectProtocolStrings(ctx, allocator, &list, protocols.value);
+    // Constructor step 8 (HTML's "If protocols is a string, set protocols to
+    // a sequence consisting of just that string"): copies, the binding's
+    // strings being borrowed for the call.
+    switch (protocols.getValue()) {
+        .domstring => |string| {
+            const copy = try allocator.dupe(u8, string.asSlice());
+            errdefer allocator.free(copy);
+            try list.append(allocator, copy);
+        },
+        .domstring_sequence => |strings| for (strings) |string| {
+            const copy = try allocator.dupe(u8, string.asSlice());
+            errdefer allocator.free(copy);
+            try list.append(allocator, copy);
+        },
+    }
 
     if (list.items.len == 0) {
         list.deinit(allocator);
@@ -1221,62 +1237,6 @@ fn validateProtocols(protocols: []const []const u8) !void {
             if (std.mem.eql(u8, earlier, value)) return error.SyntaxError;
         }
     }
-}
-
-/// Pull the strings out of the protocols argument.
-///
-/// `protocols` is `(DOMString or sequence<DOMString>)`, and reaches an impl as
-/// an unconverted JSValue, so this is WebIDL's union conversion (§ 3.2.25):
-/// an object with an @@iterator is the sequence, any other object is
-/// converted to the DOMString, and a primitive the binding has already made
-/// a string of arrives as one.
-fn collectProtocolStrings(
-    ctx: runtime.Context,
-    allocator: std.mem.Allocator,
-    list: *std.ArrayList([]const u8),
-    value: runtime.JSValue,
-) !void {
-    // WebIDL § 3.2.25, union conversion: anything that is not an object is
-    // converted to the union's DOMString. The binding has already done that for
-    // a string - it arrives here as `.string` - and this used to return on any
-    // non-handle, so `new WebSocket(url, "/echo")` sent no protocol at all
-    // instead of throwing the SyntaxError step 9 requires.
-    switch (value) {
-        .string, .boolean, .null, .number => {
-            const string = switch (value) {
-                .string => |s| try allocator.dupe(u8, s.data),
-                .boolean => |b| try allocator.dupe(u8, if (b) "true" else "false"),
-                .null => try allocator.dupe(u8, "null"),
-                // ECMAScript Number::toString, including exponent formatting.
-                .number => try engine.convertToDOMString(ctx, value, allocator),
-                else => unreachable,
-            };
-            errdefer allocator.free(string);
-            return list.append(allocator, string);
-        },
-        .handle => {},
-        // `undefined` is the omitted argument's default: the empty sequence.
-        .undefined, .instance => return,
-    }
-    // WebIDL union step 11 only probes objects for an @@iterator. A handle
-    // can also be a primitive BigInt or Symbol; those select DOMString.
-    if (engine.typeOf(ctx, value) == .object) {
-        if (try engine.convertToSequenceOfDOMStrings(ctx, value, allocator)) |strings| {
-            defer allocator.free(strings);
-            var taken: usize = 0;
-            errdefer for (strings[taken..]) |string| allocator.free(string);
-            for (strings) |string| {
-                try list.append(allocator, string);
-                taken += 1;
-            }
-            return;
-        }
-    }
-
-    // The remaining union member: DOMString, including primitive handles.
-    const string = try engine.convertToDOMString(ctx, value, allocator);
-    errdefer allocator.free(string);
-    try list.append(allocator, string);
 }
 
 /// An HTTP token, per RFC 9110 § 5.6.2. Empty is not a token.
@@ -1456,13 +1416,16 @@ pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: we
 ///    then send data using the WebSocket.
 /// 4. Otherwise, discard data.
 /// 5. Increase this's bufferedAmount by the byte length of data.
-pub fn call_send(instance: *runtime.Instance, data: runtime.JSValue) anyerror!void {
+pub fn call_send(instance: *runtime.Instance, data: typedefs.BufferSourceOrBlobOrUSVString) anyerror!void {
+    // `data` is converted before this runs (WebIDL § 3.2.25, by the
+    // binding): its ToString can throw or call close(), so it precedes the
+    // ready-state check - and the two returns below, which the hand
+    // conversion this replaced came after. Chrome 157, Firefox 159 and
+    // Safari 27 all call the argument's toString while CONNECTING and after
+    // close() (probe tmp/probes/bind1-nullmember/report-g3.txt, 2026-11-24).
     const internal = getInternal(instance) orelse return;
     const connection = internal.connection orelse return;
 
-    // WebIDL § 3.2.25 converts the union before send's method steps. ToString
-    // can throw or call close(), so it must precede the ready-state check.
-    // Blink's DOMWebSocket::send likewise receives already-converted values.
     var scratch: ?[]const u8 = null;
     defer if (scratch) |s| internal.allocator.free(s);
 
@@ -1507,76 +1470,46 @@ const Payload = struct {
 
 /// The bytes a `send` argument stands for, and whether they are a text frame.
 ///
-/// `send` takes `(BufferSource or Blob or USVString)`, and the argument
-/// reaches the impl unconverted, so this is WebIDL's union conversion
-/// (§ 3.2.25): a Blob is binary; an ArrayBuffer or a view of one is binary;
-/// ANYTHING else - null, a number, a function, the window - is converted to a
-/// USVString with ToString and sent as text. `ws.send(null)` sends "null".
-/// This used to send an empty frame for anything that was not a string or a
-/// buffer, and `interfaces/WebSocket/send/010.html` round-trips ten of them.
+/// `data` is `(BufferSource or Blob or USVString)` as the binding converted
+/// it (WebIDL § 3.2.25): a Blob (or a File) is binary; an ArrayBuffer or a
+/// view of one is binary; ANYTHING else - null, a number, a function, the
+/// window - was converted to a USVString with ToString and is sent as text:
+/// `ws.send(null)` sends "null" (`interfaces/WebSocket/send/010.html`
+/// round-trips ten such values).
 ///
 /// `scratch` receives an allocation whenever one was made; the connection
 /// copies what it queues.
 fn payloadOf(
     instance: *runtime.Instance,
     internal: *InternalState,
-    data: runtime.JSValue,
+    data: typedefs.BufferSourceOrBlobOrUSVString,
     scratch: *?[]const u8,
 ) !Payload {
     const allocator = internal.allocator;
-
     switch (data) {
-        // A string that the binding layer already converted for us.
-        .string => |s| return .{ .bytes = s.data, .is_text = true },
-        .null => return .{ .bytes = "null", .is_text = true },
-        .undefined => return .{ .bytes = "undefined", .is_text = true },
-        .boolean => |b| return .{ .bytes = if (b) "true" else "false", .is_text = true },
-        .number => {
-            const text = try engine.convertToUSVString(instance.ctx, data, allocator);
-            scratch.* = text;
-            return .{ .bytes = text, .is_text = true };
-        },
-        // Not what the binding makes of an argument; nothing to send.
-        .instance => return .{ .bytes = "", .is_text = true },
-        .handle => {},
-    }
-    const ctx = instance.ctx;
-
-    // A platform object implementing Blob (or File, which is one).
-    if (engine.convertToPlatformObject(ctx, data)) |object| {
-        if (isBlob(object)) {
-            // "If data is a Blob: let data be the raw data represented by
-            // data" - a binary frame. A Blob's bytes never change, and the
-            // hook Blob installs (dom.blob_bytes) hands them over in place,
-            // so they are read now: this frame queues behind the frames sent
-            // before it and ahead of those sent after, which is the order
-            // the spec's read preserves. Copied - the queue outlives the
-            // call.
+        // The string is BORROWED from the binding for the call.
+        .usvstring => |text| return .{ .bytes = text, .is_text = true },
+        // "If data is a Blob: let data be the raw data represented by data"
+        // - a binary frame. A Blob's bytes never change, and the hook Blob
+        // installs (dom.blob_bytes) hands them over in place, so they are
+        // read now: this frame queues behind the frames sent before it and
+        // ahead of those sent after, which is the order the spec's read
+        // preserves. Copied - the queue outlives the call.
+        .blob => |object| {
             const bytes = try allocator.dupe(u8, @import("dom").blob_bytes.bytesOf(object) orelse "");
             scratch.* = bytes;
             return .{ .bytes = bytes, .is_text = false };
-        }
+        },
+        // An ArrayBuffer, or the bytes a view describes of its buffer (NOT
+        // the whole buffer - the point of
+        // `Send-binary-arraybufferview-*-offset-length`).
+        .buffer_source => |source| {
+            const object = source.jsValue(runtime.JSValue) orelse return error.TypeError;
+            const bytes = (try engine.getCopyOfBufferSourceBytes(instance.ctx, object, allocator)) orelse return error.TypeError;
+            scratch.* = bytes;
+            return .{ .bytes = bytes, .is_text = false };
+        },
     }
-
-    // An ArrayBuffer, or the bytes a view describes of its buffer (NOT the
-    // whole buffer - the point of `Send-binary-arraybufferview-*-offset-length`).
-    if (try engine.getCopyOfBufferSourceBytes(ctx, data, allocator)) |bytes| {
-        scratch.* = bytes;
-        return .{ .bytes = bytes, .is_text = false };
-    }
-
-    // Everything else is the USVString member: ToString, which throws for a
-    // Symbol and propagates whatever a `toString` throws.
-    const text = try engine.convertToUSVString(ctx, data, allocator);
-    scratch.* = text;
-    return .{ .bytes = text, .is_text = true };
-}
-
-/// Is `object` a Blob (or a File, which is one)? Its vtable names its
-/// interface.
-fn isBlob(object: *runtime.Instance) bool {
-    const name = object.vtable.name;
-    return std.mem.eql(u8, name, "Blob") or std.mem.eql(u8, name, "File");
 }
 
 // =============================================================================

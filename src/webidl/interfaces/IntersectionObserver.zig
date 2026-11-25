@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Document = @import("interfaces").Document;
 const Element = @import("interfaces").Element;
+const ElementOrDocument = @import("typedefs").ElementOrDocument;
 const IntersectionObserverCallback = @import("callbacks").IntersectionObserverCallback;
 const IntersectionObserverInit = @import("dictionaries").IntersectionObserverInit;
 const IntersectionObserverEntry = @import("interfaces").IntersectionObserverEntry;
@@ -206,7 +206,7 @@ pub const IntersectionObserver = struct {
         return try IntersectionObserverImpl.call_constructor(ctx, callback, options);
     }
 
-    pub fn get_root(instance: *runtime.Instance) anyerror!?runtime.JSValue {
+    pub fn get_root(instance: *runtime.Instance) anyerror!?ElementOrDocument {
         return try IntersectionObserverImpl.get_root(instance);
     }
 

@@ -12,13 +12,13 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const OrientationType = @import("enums").OrientationType;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
 const Event = @import("interfaces").Event;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
 const OrientationLockType = @import("enums").OrientationLockType;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const EventHandler = @import("typedefs").EventHandler;
 const Observable = @import("interfaces").Observable;
 

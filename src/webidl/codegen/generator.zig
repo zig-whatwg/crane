@@ -2997,6 +2997,15 @@ fn dictionaryMemberKeepsPresence(dictionary_name: []const u8, member: types.Dict
     // While Document.createElement read the object by hand it saw that; the
     // typed dictionary must carry it (lane bind1 batch B, B5).
     if (std.mem.eql(u8, dictionary_name, "ElementCreationOptions") and std.mem.eql(u8, member.name, "customElementRegistry")) return true;
+    // Web Animations 1 6.8 animate() step 3: "If options is a
+    // KeyframeAnimationOptions object, let timeline be the timeline member of
+    // options or, if timeline member of options is missing, the default
+    // document timeline of the node document of the element" - a present null
+    // is no timeline. Chrome 157, Firefox 159 and Safari 27 agree
+    // (tmp/probes/bind1-nullmember/report-g3.txt). While options.zig read the
+    // object by hand it saw that; the typed dictionary must carry it (lane
+    // bind1 batch B, B5).
+    if (std.mem.eql(u8, dictionary_name, "KeyframeAnimationOptions") and std.mem.eql(u8, member.name, "timeline")) return true;
     // A dictionary the platform RETURNS whose steps set a nullable member to
     // null: the object script gets has the property, valued null (WebIDL
     // 3.2.18 converts every present member). getComputedTiming() (Web
@@ -3184,9 +3193,6 @@ pub fn writeDictionary(
     try writer.writeObjectMembers(w, dictionary.members, ir);
     // Which members keep a present null as `.null` (the converter reads it).
     try writer.writeAnyMembers(w, dictionary.members);
-    // Which inline union members (typed runtime.JSValue) keep a present
-    // null as `.null` for the impl's union conversion.
-    try writer.writeJsvalueUnionMembers(w, dictionary.members, ir);
     // Each optional member's IDL default: written to script when unset.
     try writer.writeMemberDefaults(w, dictionary.members, ir);
     // Which optional members' present null is the value null.

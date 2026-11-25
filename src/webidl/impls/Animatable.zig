@@ -9,6 +9,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
+const typedefs = @import("typedefs");
 const webidl = @import("webidl");
 const animations = @import("dom").animations;
 const Animatable = interfaces.Animatable;
@@ -36,9 +37,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: animate (6.8): a new KeyframeEffect and Animation for this
-/// element, played.
+/// element, played. `options` is converted by the binding (WebIDL 3.2.25),
+/// before the keyframes are read.
 /// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-animate
-pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(typedefs.UnrestrictedDoubleOrKeyframeAnimationOptions)) anyerror!*runtime.Instance {
     return animations.animate(instance, keyframes, if (options.was_passed) options.value else null);
 }
 
