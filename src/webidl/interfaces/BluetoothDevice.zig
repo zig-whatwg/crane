@@ -14,14 +14,14 @@ const EventTarget = @import("interfaces").EventTarget;
 const BluetoothDeviceEventHandlers = @import("mixins").BluetoothDeviceEventHandlers;
 const CharacteristicEventHandlers = @import("mixins").CharacteristicEventHandlers;
 const ServiceEventHandlers = @import("mixins").ServiceEventHandlers;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
 const BluetoothRemoteGATTServer = @import("interfaces").BluetoothRemoteGATTServer;
 const WatchAdvertisementsOptions = @import("dictionaries").WatchAdvertisementsOptions;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 

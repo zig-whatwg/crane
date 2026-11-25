@@ -40,6 +40,7 @@ const CanvasTextBaseline = @import("enums").CanvasTextBaseline;
 const CanvasGradient = @import("interfaces").CanvasGradient;
 const CanvasLineCap = @import("enums").CanvasLineCap;
 const CanvasPattern = @import("interfaces").CanvasPattern;
+const DOMStringOrCanvasGradientOrCanvasPattern = @import("typedefs").DOMStringOrCanvasGradientOrCanvasPattern;
 const UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit = @import("typedefs").UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit;
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const CanvasTextRendering = @import("enums").CanvasTextRendering;

@@ -3,18 +3,15 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const enums = @import("enums");
+const webidl = @import("webidl");
+const typedefs = @import("typedefs");
 
 pub const BasePropertyIndexedKeyframe = struct {
     /// A WebIDL dictionary (the binding's dictionary rules read this marker).
     pub const webidl_dictionary = true;
-    offset: ?runtime.JSValue = null,
-    easing: ?runtime.JSValue = null,
-    composite: ?runtime.JSValue = null,
-
-    /// Inline union members typed runtime.JSValue: one present with the
-    /// value null converts to `.null`, for the impl to convert by the union.
-    pub const jsvalue_union_members = .{ "easing", "composite" };
+    offset: webidl.Opt(?typedefs.DoubleOrSequenceOfNullableDouble) = .notPassed(),
+    easing: ?typedefs.DOMStringOrSequenceOfDOMString = null,
+    composite: ?typedefs.CompositeOperationOrAutoOrSequenceOfCompositeOperationOrAuto = null,
 
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.

@@ -5,7 +5,7 @@
 //! callback's return type. Codegen generates no invocation yet, so an impl
 //! converts by hand - and nothing said which callbacks those are: the
 //! createParserOptions callback's `SetHTMLUnsafeOptions?` was found only when
-//! its dictionary's union left codegen's `unions_converted_by_impl`.
+//! its dictionary's union left codegen's table of hand-converted unions.
 //! `callback_returns_converted_by_impl` is that list, at its true size: this
 //! test reads every generated callback (src/webidl/callbacks/, which
 //! `codegen-check` keeps equal to the IDL) and requires the list to be

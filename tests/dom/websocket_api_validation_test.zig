@@ -30,18 +30,18 @@ test "WebSocket validates URL and protocols without leaking partial state" {
         try std.testing.expectError(error.SyntaxError, interfaces.WebSocket.call_constructor(
             &ctx,
             url,
-            .passed(runtime.JSValue.fromStringRef("chat")),
+            .passed(.{ .domstring = runtime.DOMString.initInterned("chat") }),
         ));
     }
     for ([_][]const u8{ "", "a b", "a\x00b", "a/b", "a,b", "\xc3\xa9" }) |protocol| {
         try std.testing.expectError(error.SyntaxError, interfaces.WebSocket.call_constructor(
             &ctx,
             "ws://example.test/",
-            .passed(runtime.JSValue.fromStringRef(protocol)),
+            .passed(.{ .domstring = runtime.DOMString.initInterned(protocol) }),
         ));
     }
 
-    const socket = try interfaces.WebSocket.call_constructor(&ctx, "https://EXAMPLE.test:443/echo", .passed(runtime.JSValue.fromStringRef("chat")));
+    const socket = try interfaces.WebSocket.call_constructor(&ctx, "https://EXAMPLE.test:443/echo", .passed(.{ .domstring = runtime.DOMString.initInterned("chat") }));
     defer interfaces.WebSocket.deinit(socket);
     const url = try interfaces.WebSocket.get_url(socket);
     defer allocator.free(url);
@@ -66,6 +66,6 @@ test "WebSocket close validation precedes state changes and counts UTF-8 bytes" 
     try interfaces.WebSocket.call_close(socket, .passed(1000), .passed(repeat("\xc3\xa9", 61) ++ "x"));
     try std.testing.expectEqual(@as(u16, 2), try interfaces.WebSocket.get_readyState(socket));
     try std.testing.expectError(error.InvalidAccessError, interfaces.WebSocket.call_close(socket, .passed(1001), .notPassed()));
-    try interfaces.WebSocket.call_send(socket, runtime.JSValue.fromStringRef("\xc3\xa9"));
+    try interfaces.WebSocket.call_send(socket, .{ .usvstring = "\xc3\xa9" });
     try std.testing.expectEqual(@as(u64, 2), try interfaces.WebSocket.get_bufferedAmount(socket));
 }

@@ -1,8 +1,9 @@
 //! The timing dictionaries of the Web Animations API (6.5.1, 6.6.4, 6.8):
 //! "update the timing properties of an animation effect" (6.5.4), and the
 //! (unrestricted double or KeyframeEffectOptions / KeyframeAnimationOptions)
-//! argument of the KeyframeEffect constructor and animate(), which the
-//! binding hands over unconverted.
+//! argument of the KeyframeEffect constructor and animate(), as the binding
+//! converted it (lane bind1 batch B, B5 group 3b: they were read from the
+//! object by hand until then).
 //!
 //! Spec: https://drafts.csswg.org/web-animations-1/#the-effecttiming-dictionaries
 const std = @import("std");
@@ -10,12 +11,13 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const enums = @import("enums");
 const interfaces = @import("interfaces");
+const dictionaries = @import("dictionaries");
+const typedefs = @import("typedefs");
 const timing_mod = @import("timing.zig");
 const easing_mod = @import("easing.zig");
 const model = @import("model.zig");
 
 const Allocator = std.mem.Allocator;
-const JSValue = runtime.JSValue;
 
 /// An OptionalEffectTiming: each member present or not. `easing` is
 /// BORROWED for the call.
@@ -74,7 +76,7 @@ pub fn updateTiming(effect: *model.Effect, input: OptionalTiming) error{ TypeErr
 }
 
 /// The OptionalEffectTiming the binding converted (updateTiming).
-pub fn fromOptionalEffectTiming(realm: runtime.Context, dict: anytype, easing_buffer: *std.ArrayList(u8), allocator: Allocator) !OptionalTiming {
+pub fn fromOptionalEffectTiming(dict: dictionaries.OptionalEffectTiming, easing_buffer: *std.ArrayList(u8), allocator: Allocator) !OptionalTiming {
     var input: OptionalTiming = .{
         .delay = dict.delay,
         .end_delay = dict.endDelay,
@@ -83,7 +85,7 @@ pub fn fromOptionalEffectTiming(realm: runtime.Context, dict: anytype, easing_bu
         .iterations = dict.iterations,
         .direction = if (dict.direction) |d| @fromBackingInt(@intCast(@backingInt(d))) else null,
     };
-    if (dict.duration) |value| input.duration = try durationOf(realm, value, allocator);
+    if (dict.duration) |value| input.duration = durationOf(value);
     if (dict.easing) |text| {
         try easing_buffer.appendSlice(allocator, text.asSlice());
         input.easing = easing_buffer.items;
@@ -91,21 +93,31 @@ pub fn fromOptionalEffectTiming(realm: runtime.Context, dict: anytype, easing_bu
     return input;
 }
 
-/// The (unrestricted double or CSSNumericValue or DOMString) `duration`.
-fn durationOf(realm: runtime.Context, value: JSValue, allocator: Allocator) !Duration {
-    switch (engine.typeOf(realm, value)) {
-        .number => return .{ .number = try engine.convertToUnrestrictedDouble(realm, value) },
-        .object => {
-            // A CSSNumericValue: Crane's document timelines take a time in
-            // milliseconds as a number only (Web Animations 2 6.5.1 converts
-            // a time-typed value; Typed OM values are not supported here).
-            if (engine.convertToPlatformObject(realm, value) != null) return .invalid;
+/// The `duration` member as the binding converted it: EffectTiming's
+/// (unrestricted double or CSSNumericValue or DOMString) or
+/// OptionalEffectTiming's (unrestricted double or DOMString). A string is
+/// "auto" or invalid (a TypeError in "update the timing properties", 6.5.4
+/// step 3); so is ToString of any other value, an object's included
+/// (WebIDL 3.2.25 puts the string arm before the numeric one: Chrome 157,
+/// Firefox 159 and Safari 27 call an object's toString and throw for
+/// 'bogus', '5' and true - probe tmp/probes/bind1-nullmember/report-g3.txt).
+fn durationOf(value: anytype) Duration {
+    switch (value) {
+        inline else => |arm, tag| {
+            const name = @tagName(tag);
+            if (comptime std.mem.eql(u8, name, "double")) {
+                return .{ .number = arm };
+            } else if (comptime std.mem.eql(u8, name, "domstring")) {
+                return if (std.mem.eql(u8, arm.asSlice(), "auto")) .auto else .invalid;
+            } else if (comptime std.mem.eql(u8, name, "cssnumeric_value")) {
+                // A CSSNumericValue: Crane's document timelines take a time
+                // in milliseconds as a number only (Web Animations 2 6.5.1
+                // converts a time-typed value; Typed OM values are not
+                // supported here).
+                return .invalid;
+            } else @compileError("duration arm " ++ name ++ " has no meaning here");
         },
-        else => {},
     }
-    const text = try engine.convertToDOMString(realm, value, allocator);
-    defer allocator.free(text);
-    return if (std.mem.eql(u8, text, "auto")) .auto else .invalid;
 }
 
 /// What the KeyframeEffect constructor and animate() read from their
@@ -123,6 +135,16 @@ pub const EffectOptions = struct {
     /// KeyframeAnimationOptions only.
     id: ?[]u8 = null,
     timeline: TimelineMember = .missing,
+    /// HELD: the timeline member's object, from conversion until deinit.
+    /// The binding's dictionary member is a bare instance - the handle the
+    /// member was read into is gone when conversion returns - and animate()
+    /// runs script before it gives the timeline to the new Animation, whose
+    /// traced edge keeps it from then on: "process a keyframes argument"
+    /// (the keyframes' getters and iterators, a collection included) in the
+    /// KeyframeEffect constructor's steps (step 2 of animate()). A getter
+    /// that deletes `options.timeline` and collects would free it under
+    /// animate() (tests/html/bind1_animation_timeline_hold_test.zig).
+    timeline_hold: ?engine.Owned = null,
 
     pub const TimelineMember = union(enum) { missing, value: ?*runtime.Instance };
 
@@ -130,125 +152,92 @@ pub const EffectOptions = struct {
         if (self.easing_text) |text| allocator.free(text);
         if (self.pseudo_element) |text| allocator.free(text);
         if (self.id) |text| allocator.free(text);
+        if (self.timeline_hold) |hold| hold.release();
         self.* = .{};
     }
 };
 
-/// Convert `options` - (unrestricted double or KeyframeEffectOptions), or
-/// with `animation_options` (unrestricted double or
-/// KeyframeAnimationOptions) - by WebIDL's union and dictionary conversions:
-/// members read in order, each converted as it is read.
-pub fn effectOptions(realm: runtime.Context, options: ?JSValue, allocator: Allocator, animation_options: bool) !EffectOptions {
+/// The options argument as the binding converted it -
+/// `(unrestricted double or KeyframeEffectOptions)` for the KeyframeEffect
+/// constructor, `(unrestricted double or KeyframeAnimationOptions)` for
+/// animate() (WebIDL 3.2.25: undefined, null and any object are the
+/// dictionary, anything else the double) - null when it was not passed (the
+/// default dictionary). Its members were converted in WebIDL's order
+/// (EffectTiming's, then KeyframeEffectOptions', then
+/// KeyframeAnimationOptions', each in lexicographic order), before any step:
+/// Chrome 157, Firefox 159 and Safari 27 all run the option getters before
+/// reading the keyframes (probe tmp/probes/bind1-nullmember/report-g3.txt).
+pub fn effectOptions(options: anytype, allocator: Allocator) !EffectOptions {
     var out: EffectOptions = .{};
     errdefer out.deinit(allocator);
-    // A missing argument is the default dictionary.
     const value = options orelse return out;
-    const kind = engine.typeOf(realm, value);
-    // WebIDL union: null, undefined and objects are the dictionary; a Number,
-    // or anything else (by ToNumber), the unrestricted double.
-    if (kind != .undefined and kind != .null and kind != .object) {
-        const duration = try engine.convertToUnrestrictedDouble(realm, value);
-        out.timing.duration = .{ .number = duration };
-        return out;
+    switch (value) {
+        .double => |duration| out.timing.duration = .{ .number = duration },
+        inline else => |dictionary| if (@TypeOf(dictionary) == dictionaries.KeyframeAnimationOptions)
+            try readAnimationOptions(&out, dictionary, allocator)
+        else
+            try readEffectOptions(&out, dictionary, allocator),
     }
-    if (kind != .object) return out;
-    const Reader = struct {
-        realm: runtime.Context,
-        object: JSValue,
-        fn get(self: @This(), name: []const u8) !?engine.Owned {
-            const member = try engine.getProperty(self.realm, self.object, name);
-            if (engine.typeOf(self.realm, member.borrow()) == .undefined) {
-                member.release();
-                return null;
-            }
-            return member;
+    return out;
+}
+
+/// KeyframeAnimationOptions into `out`.
+fn readAnimationOptions(out: *EffectOptions, dictionary: dictionaries.KeyframeAnimationOptions, allocator: Allocator) !void {
+    try readEffectOptions(out, dictionary.base, allocator);
+    // KeyframeAnimationOptions: id, rangeEnd, rangeStart, timeline,
+    // trigger.
+    if (dictionary.id) |id| out.id = try allocator.dupe(u8, id.asSlice());
+    // rangeEnd, rangeStart: checked as Web Animations 2 §6.1 says
+    // (`rangeOption`); view and scroll timelines' ranges have no effect
+    // on a document timeline.
+    if (dictionary.rangeEnd) |range| try rangeOption(range, allocator);
+    if (dictionary.rangeStart) |range| try rangeOption(range, allocator);
+    // 6.8 animate() step 3: the timeline member, or with it missing the
+    // default document timeline (a present null is no timeline).
+    if (dictionary.timeline.was_passed) {
+        if (dictionary.timeline.value) |timeline| {
+            // Held in its relevant realm, where its wrapper is.
+            out.timeline_hold = try engine.retainValue(timeline.ctx, runtime.JSValue.fromInstance(timeline));
         }
-    };
-    const reader: Reader = .{ .realm = realm, .object = value };
-    // EffectTiming (with Web Animations 2's partial), in lexicographic
-    // order: delay, direction, duration, easing, endDelay, fill,
-    // iterationStart, iterations, playbackRate.
-    if (try reader.get("delay")) |m| {
-        defer m.release();
-        out.timing.delay = try restrictedDouble(realm, m.borrow());
+        out.timeline = .{ .value = dictionary.timeline.value };
     }
-    if (try reader.get("direction")) |m| {
-        defer m.release();
-        out.timing.direction = try enumOf(timing_mod.Direction, realm, m.borrow(), &.{ "normal", "reverse", "alternate", "alternate-reverse" });
-    }
-    if (try reader.get("duration")) |m| {
-        defer m.release();
-        out.timing.duration = try durationOf(realm, m.borrow(), allocator);
-    }
-    if (try reader.get("easing")) |m| {
-        defer m.release();
-        out.easing_text = try engine.convertToDOMString(realm, m.borrow(), allocator);
+    // `trigger` (Animation Triggers 1, in the pinned IDL) is converted
+    // by the binding - an object that is no AnimationTrigger is a
+    // TypeError - and not used: Chrome 157, Firefox 159 and Safari 27
+    // never read it (none ships animation triggers, so none counts
+    // toward a majority; golden rule 2 leaves the IDL's; probe
+    // tmp/probes/bind1-nullmember/report-g3.txt).
+}
+
+/// KeyframeEffectOptions into `out`.
+fn readEffectOptions(out: *EffectOptions, dictionary: dictionaries.KeyframeEffectOptions, allocator: Allocator) !void {
+    // EffectTiming (with Web Animations 2's partial): playbackRate is
+    // converted (a TypeError when not finite: a `double`) and not applied -
+    // level 1 timing.
+    const timing = dictionary.base;
+    out.timing.delay = timing.delay;
+    out.timing.direction = if (timing.direction) |d| directionOf(d) else null;
+    if (timing.duration) |duration| out.timing.duration = durationOf(duration);
+    if (timing.easing) |text| {
+        out.easing_text = try allocator.dupe(u8, text.asSlice());
         out.timing.easing = out.easing_text;
     }
-    if (try reader.get("endDelay")) |m| {
-        defer m.release();
-        out.timing.end_delay = try restrictedDouble(realm, m.borrow());
-    }
-    if (try reader.get("fill")) |m| {
-        defer m.release();
-        out.timing.fill = try enumOf(timing_mod.FillMode, realm, m.borrow(), &.{ "none", "forwards", "backwards", "both", "auto" });
-    }
-    if (try reader.get("iterationStart")) |m| {
-        defer m.release();
-        out.timing.iteration_start = try restrictedDouble(realm, m.borrow());
-    }
-    if (try reader.get("iterations")) |m| {
-        defer m.release();
-        out.timing.iterations = try engine.convertToUnrestrictedDouble(realm, m.borrow());
-    }
-    if (try reader.get("playbackRate")) |m| {
-        defer m.release();
-        // Web Animations 2's effect playback rate: converted (a TypeError
-        // when not finite), not applied - level 1 timing.
-        _ = try restrictedDouble(realm, m.borrow());
-    }
+    out.timing.end_delay = timing.endDelay;
+    out.timing.fill = if (timing.fill) |f| fillOf(f) else null;
+    out.timing.iteration_start = timing.iterationStart;
+    out.timing.iterations = timing.iterations;
     // KeyframeEffectOptions: composite, iterationComposite, pseudoElement.
-    if (try reader.get("composite")) |m| {
-        defer m.release();
-        out.composite = try enumOf(model.Composite, realm, m.borrow(), &.{ "replace", "add", "accumulate" });
-    }
-    if (try reader.get("iterationComposite")) |m| {
-        defer m.release();
-        out.iteration_accumulate = try enumOf(enum { replace, accumulate }, realm, m.borrow(), &.{ "replace", "accumulate" }) == .accumulate;
-    }
-    if (try reader.get("pseudoElement")) |m| {
-        defer m.release();
-        if (engine.typeOf(realm, m.borrow()) != .null) out.pseudo_element = try engine.convertToDOMString(realm, m.borrow(), allocator);
-    }
-    if (!animation_options) return out;
-    // KeyframeAnimationOptions: id, rangeEnd, rangeStart, timeline, trigger.
-    if (try reader.get("id")) |m| {
-        defer m.release();
-        out.id = try engine.convertToDOMString(realm, m.borrow(), allocator);
-    }
-    // rangeEnd, rangeStart: converted and checked as Web Animations 2 §6.1
-    // says (`rangeOption`); view and scroll timelines' ranges have no effect
-    // on a document timeline.
-    if (try reader.get("rangeEnd")) |m| {
-        defer m.release();
-        try rangeOption(realm, m.borrow(), allocator);
-    }
-    if (try reader.get("rangeStart")) |m| {
-        defer m.release();
-        try rangeOption(realm, m.borrow(), allocator);
-    }
-    if (try reader.get("timeline")) |m| {
-        defer m.release();
-        if (engine.typeOf(realm, m.borrow()) == .null) {
-            out.timeline = .{ .value = null };
-        } else {
-            const instance = engine.convertToPlatformObject(realm, m.borrow()) orelse return error.TypeError;
-            if (instance.stateAs(interfaces.AnimationTimeline.State) == null) return error.TypeError;
-            out.timeline = .{ .value = instance };
-        }
-    }
-    if (try reader.get("trigger")) |m| m.release();
-    return out;
+    if (dictionary.composite) |composite| out.composite = @fromBackingInt(@intCast(@backingInt(composite)));
+    if (dictionary.iterationComposite) |operation| out.iteration_accumulate = operation == ._accumulate_;
+    if (dictionary.pseudoElement) |pseudo| out.pseudo_element = try allocator.dupe(u8, pseudo.asSlice());
+}
+
+fn fillOf(fill: enums.FillMode) timing_mod.FillMode {
+    return @fromBackingInt(@intCast(@backingInt(fill)));
+}
+
+fn directionOf(direction: enums.PlaybackDirection) timing_mod.Direction {
+    return @fromBackingInt(@intCast(@backingInt(direction)));
 }
 
 /// Web Animations 2 KeyframeAnimationOptions rangeStart / rangeEnd:
@@ -264,54 +253,39 @@ pub fn effectOptions(realm: runtime.Context, options: ?JSValue, allocator: Alloc
 /// gating its rejection for Interop 2026 -
 /// web-animations/interfaces/Animation/animation-range-invalid.html, Firefox
 /// and Safari Technology Preview 11/11: golden rule 2's newer behaviour).
-fn rangeOption(realm: runtime.Context, value: JSValue, allocator: Allocator) !void {
+fn rangeOption(value: typedefs.TimelineRangeOffsetOrCSSNumericValueOrCSSKeywordValueOrDOMString, allocator: Allocator) !void {
     var text: std.ArrayList(u8) = .empty;
     defer text.deinit(allocator);
-    if (engine.typeOf(realm, value) == .object) if (engine.convertToPlatformObject(realm, value)) |instance| {
-        if (instance.stateAs(interfaces.CSSKeywordValue.State) != null) {
+    switch (value) {
+        .csskeyword_value => |instance| {
             const keyword = try interfaces.CSSKeywordValue.get_value(instance);
             defer instance.ctx.allocator.free(keyword);
             if (!std.mem.eql(u8, keyword, "normal")) return error.TypeError;
-            return;
-        }
-        if (instance.stateAs(interfaces.CSSNumericValue.State) != null) {
+        },
+        .cssnumeric_value => |instance| {
             const serialized = try @import("../style/typed_om.zig").serializeNumeric(instance);
             defer instance.ctx.allocator.free(serialized);
             try text.appendSlice(allocator, serialized);
             return checkRangeText(allocator, text.items, true);
-        }
-    };
-    if (engine.typeOf(realm, value) == .object) {
+        },
         // TimelineRangeOffset: rangeName (CSSOMString?), offset
-        // (CSSNumericValue).
-        const name = try engine.getProperty(realm, value, "rangeName");
-        defer name.release();
-        switch (engine.typeOf(realm, name.borrow())) {
-            .undefined, .null => {},
-            else => {
-                const decoded = try engine.convertToDOMString(realm, name.borrow(), allocator);
-                defer allocator.free(decoded);
-                if (!isTimelineRangeName(decoded)) return error.TypeError;
-                try text.appendSlice(allocator, decoded);
-            },
-        }
-        const offset = try engine.getProperty(realm, value, "offset");
-        defer offset.release();
-        if (engine.typeOf(realm, offset.borrow()) != .undefined) {
-            const instance = engine.convertToPlatformObject(realm, offset.borrow()) orelse return error.TypeError;
-            if (instance.stateAs(interfaces.CSSNumericValue.State) == null) return error.TypeError;
+        // (CSSNumericValue) - any other object, a platform object of
+        // another interface included (WebIDL 3.2.25 step 11).
+        .timeline_range_offset => |offset| {
+            if (offset.rangeName) |name| {
+                if (!isTimelineRangeName(name.asSlice())) return error.TypeError;
+                try text.appendSlice(allocator, name.asSlice());
+            }
+            const instance = offset.offset orelse return;
             const serialized = try @import("../style/typed_om.zig").serializeNumeric(instance);
             defer instance.ctx.allocator.free(serialized);
             if (text.items.len != 0) try text.append(allocator, ' ');
             try text.appendSlice(allocator, serialized);
             return checkRangeText(allocator, text.items, true);
-        }
-        return;
+        },
+        // The DOMString arm (ToString of anything else).
+        .domstring => |string| return checkRangeText(allocator, string.asSlice(), false),
     }
-    // The union's DOMString arm (ToString of anything else).
-    const string = try engine.convertToDOMString(realm, value, allocator);
-    defer allocator.free(string);
-    return checkRangeText(allocator, string, false);
 }
 
 /// Scroll Animations 1 <timeline-range-name>.
@@ -349,28 +323,6 @@ fn checkRangeText(allocator: Allocator, text: []const u8, offset_only: bool) !vo
         }
         items += 1;
     }
-}
-
-/// WebIDL `double`: ToNumber, and a TypeError when not finite.
-fn restrictedDouble(realm: runtime.Context, value: JSValue) !f64 {
-    const number = try engine.convertToUnrestrictedDouble(realm, value);
-    if (!std.math.isFinite(number)) return error.TypeError;
-    return number;
-}
-
-/// A WebIDL enumeration: ToString, then one of `names` (in the enum's
-/// order), else a TypeError.
-fn enumOf(comptime E: type, realm: runtime.Context, value: JSValue, comptime names: []const []const u8) !E {
-    var buffer: [32]u8 = undefined;
-    var fixed = std.heap.FixedBufferAllocator.init(&buffer);
-    const text = engine.convertToDOMString(realm, value, fixed.allocator()) catch |err| switch (err) {
-        error.OutOfMemory => return error.TypeError,
-        else => return err,
-    };
-    inline for (names, 0..) |name, i| {
-        if (std.mem.eql(u8, text, name)) return @fromBackingInt(@intCast(i));
-    }
-    return error.TypeError;
 }
 
 /// KeyframeEffect "pseudo-element parsing" (6.6): null stays null; a valid,

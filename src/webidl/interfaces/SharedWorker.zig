@@ -12,17 +12,17 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AbstractWorker = @import("mixins").AbstractWorker;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const EventHandler = @import("typedefs").EventHandler;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const TrustedScriptURLOrUSVString = @import("typedefs").TrustedScriptURLOrUSVString;
+const DOMStringOrSharedWorkerOptions = @import("typedefs").DOMStringOrSharedWorkerOptions;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const SharedWorkerOptions = @import("dictionaries").SharedWorkerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
-const MessagePort = @import("interfaces").MessagePort;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const DOMString = @import("typedefs").DOMString;
-const EventHandler = @import("typedefs").EventHandler;
+const MessagePort = @import("interfaces").MessagePort;
 
 pub const SharedWorker = struct {
     pub const Meta = struct {
@@ -183,7 +183,7 @@ pub const SharedWorker = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, scriptURL: TrustedScriptURLOrUSVString, options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, scriptURL: TrustedScriptURLOrUSVString, options: webidl.Opt(DOMStringOrSharedWorkerOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SharedWorkerImpl.call_constructor(ctx, scriptURL, options);
     }
