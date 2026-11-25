@@ -243,8 +243,25 @@ fn check(allocator: Allocator, arena: Allocator, client: *cdp.Client, server: *R
     try testing.expectEqualStrings(try std.mem.join(arena, "\n", &chrome_157), all);
 }
 
-/// What Chrome for Testing 157.0.8103.78 answered (not recorded yet).
-const chrome_157 = [_][]const u8{};
+/// What Chrome for Testing 157.0.8103.78 answered (recorded on chat.local
+/// with CRANE_CDP_TRACE_CHROME_PORT, 2026-11-24), one line each: "" for a
+/// setExtraHTTPHeaders that succeeded. The headers join a request before
+/// CORS (the cross-origin fetch's preflight names x-test); a dedicated
+/// worker's own fetch does not carry the page session's headers.
+const chrome_157 = [_][]const u8{
+    "",
+    "navigate: GET 127.0.0.1/page.html x-test=one acrh=- referer=-",
+    "same-origin: GET 127.0.0.1/same x-test=one acrh=- referer=/page.html",
+    "cross-origin: GET localhost/cross x-test=one acrh=- referer=/ | OPTIONS localhost/cross x-test=- acrh=x-test referer=/",
+    "worker: GET 127.0.0.1/from-worker x-test=- acrh=- referer=/worker.js | GET 127.0.0.1/worker.js x-test=one acrh=- referer=/page.html",
+    "",
+    "referer: GET 127.0.0.1/ref x-test=- acrh=- referer=/ref",
+    "-32602 Invalid header name",
+    "-32602 Invalid header value",
+    "-32602 Invalid header value, string expected",
+    "",
+    "cleared: GET 127.0.0.1/cleared x-test=- acrh=- referer=/page.html",
+};
 
 test "Network.setExtraHTTPHeaders: which requests carry the headers and where - before CORS, as Chrome's" {
     var gpa: LeakChecked = .init;
