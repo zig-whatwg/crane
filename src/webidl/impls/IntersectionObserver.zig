@@ -18,6 +18,7 @@ const engine = @import("engine");
 const IntersectionObserver = interfaces.IntersectionObserver;
 const same_object = @import("dom").same_object;
 const dom = @import("dom");
+const margin = dom.intersection_margin;
 const clock = @import("clock");
 const browser_object_lists = @import("dom").browser_object_lists;
 
@@ -83,11 +84,12 @@ pub const InternalState = struct {
     /// keep per observe() would hold the observer until its realm ended.
     kept_alive: bool = false,
 
-    /// Root margin values [top, right, bottom, left] in pixels
-    root_margin: [4]f64 = .{ 0, 0, 0, 0 },
+    /// [[rootMargin]]: top, right, bottom, left - whole pixels or
+    /// percentages, as "parse a margin" left them.
+    root_margin: margin.Margins = margin.zero,
 
-    /// Scroll margin values [top, right, bottom, left] in pixels
-    scroll_margin: [4]f64 = .{ 0, 0, 0, 0 },
+    /// [[scrollMargin]], likewise.
+    scroll_margin: margin.Margins = margin.zero,
 
     /// Minimum delay between notifications in milliseconds
     delay: i32 = 0,
@@ -95,8 +97,32 @@ pub const InternalState = struct {
     /// Whether to compute visibility
     track_visibility: bool = false,
 
-    /// Root element or document (null for implicit viewport root)
-    root: ?*runtime.Instance = null,
+    /// The root the constructor was given - an Element or a Document - or
+    /// nothing for an implicit root observer. A WEAK link (a pointer and
+    /// the slab generation it was taken at, read through
+    /// dom.refcount.weakLinkLive - the document registries' link): the
+    /// observer does not keep its root, and `root` reads null once the root
+    /// was collected.
+    ///
+    /// That is what Chrome and Safari do (golden rule 2: two of three; read
+    /// 2026-11-24). Blink: `UntracedMember<Node> root_` - "We use
+    /// UntracedMember<> here to do custom weak processing" - with `Node*
+    /// root() const { return root_.Get(); }` (third_party/blink/renderer/
+    /// core/intersection_observer/intersection_observer.h); Chrome 157 with
+    /// gc() exposed answers null for `observer.root` once nothing else holds
+    /// the root, even while the observer observes one of its children
+    /// (probe tmp/probes/bind1-nullmember/report-g3.txt). WebKit:
+    /// `WeakPtr<ContainerNode, WeakPtrImplWithEventTargetData> m_root`,
+    /// `root() const { return m_root.get(); }` and `rootDestroyed()`
+    /// (Source/WebCore/page/IntersectionObserver.h; Safari exposes no gc()
+    /// and the probe could not make it collect, so this is its source, not
+    /// a measurement). Firefox differs: `RefPtr<nsINode> mRoot`
+    /// (dom/base/DOMIntersectionObserver.h), strong and cycle-collected, so
+    /// its `root` never reads null - also from its source: the probe cannot
+    /// force a collection there either. Source evidence stands in where a
+    /// probe cannot collect (the integrator, 2026-11-24). The spec says only
+    /// "the root provided to the IntersectionObserver constructor".
+    root: ?same_object.Link = null,
 
     /// The observer instance (for callback invocation)
     self_instance: ?*runtime.Instance = null,
@@ -213,108 +239,118 @@ pub fn deinit(instance: *runtime.Instance) void {
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Constructor implementation
-/// Creates an IntersectionObserver with the given callback and options
+/// new IntersectionObserver(callback, options): "initialize a new
+/// IntersectionObserver" (3.2.1).
 ///
-/// Spec: https://w3c.github.io/IntersectionObserver/#dom-intersectionobserver-intersectionobserver
+/// Spec: https://w3c.github.io/IntersectionObserver/#initialize-a-new-intersectionobserver
+///
+/// `options` is converted by the binding before these steps: `root` is the
+/// (Element or Document)? union and `threshold` the (double or
+/// sequence<double>) one - a `double` that is NaN or infinite, and a root
+/// that is neither, threw a TypeError there. What Chrome 157, Firefox 159
+/// and Safari 27 do with each step is in
+/// tmp/probes/bind1-nullmember/report-g3.txt (2026-11-24): a bad margin's
+/// SyntaxError comes before a bad threshold's RangeError, thresholds come
+/// back sorted, and `root` reads back the object given.
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionObserverCallback, options: webidl.Opt(dictionaries.IntersectionObserverInit)) !*runtime.Instance {
+    const opts = if (options.was_passed) options.value else dictionaries.IntersectionObserverInit{};
+
+    // 3. "Attempt to parse a margin from options.rootMargin. If a list is
+    //    returned, set this's internal [[rootMargin]] slot to that.
+    //    Otherwise, throw a SyntaxError exception." (default "0px")
+    const root_margin = margin.parse(if (opts.rootMargin) |text| text.asSlice() else "0px") orelse return error.SyntaxError;
+    // 4. The same from options.scrollMargin, into [[scrollMargin]].
+    const scroll_margin = margin.parse(if (opts.scrollMargin) |text| text.asSlice() else "0px") orelse return error.SyntaxError;
+
+    // 5. "Let thresholds be a list equal to options.threshold." (default 0)
+    var single: [1]f64 = .{0};
+    const given: []const f64 = if (opts.threshold) |threshold| switch (threshold) {
+        .double => |value| one: {
+            single[0] = value;
+            break :one &single;
+        },
+        // The binding's sequence, borrowed for the call; copied below.
+        .double_sequence => |many| many,
+    } else &single;
+    // 6. "If any value in thresholds is less than 0.0 or greater than 1.0,
+    //    throw a RangeError exception."
+    for (given) |value| if (value < 0.0 or value > 1.0) return error.RangeError;
+
+    // 1. "Let this be a new IntersectionObserver object". Made after the
+    //    steps that throw: nothing above is observable through `this`.
     const instance = try init(ctx.allocator, State, &IntersectionObserver.vtable, ctx);
     errdefer deinit(instance);
 
     const internal = getInternal(instance);
     internal.self_instance = instance;
 
-    // Set this's internal [[callback]] slot to callback: the binding hands
-    // the converted function over, and the observer keeps it (OWNED) with
-    // its callback context - a traced hold (refcount step 8): the observer's
-    // holder anchor keeps it once the binding wraps `this`; until then the
-    // call's argument does.
+    // 2. "Set this's internal [[callback]] slot to callback": the binding
+    //    hands the converted function over, and the observer keeps it
+    //    (OWNED) with its callback context - a traced hold (refcount step
+    //    8): the observer's holder anchor keeps it once the binding wraps
+    //    `this`; until then the call's argument does.
     internal.callback = callback.keepTraced();
 
-    // Parse options
-    const opts = if (options.was_passed) options.value else dictionaries.IntersectionObserverInit{};
+    internal.root_margin = root_margin;
+    internal.scroll_margin = scroll_margin;
 
-    // Parse thresholds
-    // Default threshold is [0]
-    if (opts.threshold) |threshold_value| {
-        // threshold can be a single number or sequence
-        // For now, handle it as a JSValue that could be either
-        _ = threshold_value;
-        // Default to [0] for simplicity
-        try internal.thresholds.append(internal.allocator, 0.0);
-    } else {
-        // Default threshold is 0
-        try internal.thresholds.append(internal.allocator, 0.0);
-    }
+    // 7. "Sort thresholds in ascending order."
+    try internal.thresholds.appendSlice(internal.allocator, given);
+    std.mem.sort(f64, internal.thresholds.items, {}, std.sort.asc(f64));
+    // 8. "If thresholds is empty, append 0 to thresholds."
+    if (internal.thresholds.items.len == 0) try internal.thresholds.append(internal.allocator, 0.0);
+    // 9. "The thresholds attribute getter will return this sorted
+    //    thresholds list."
 
-    // Store configuration in state
+    // 10. "Let delay be the value of options.delay."
+    var delay = opts.delay orelse 0;
+    // 11. "If options.trackVisibility is true and delay is less than 100,
+    //     set delay to 100."
+    internal.track_visibility = opts.trackVisibility orelse false;
+    if (internal.track_visibility and delay < 100) delay = 100;
+    // 12-13. [[delay]] and [[trackVisibility]].
+    internal.delay = delay;
     const state = instance.getState(State);
-    state.own.delay = opts.delay orelse 0;
-    state.own.trackVisibility = opts.trackVisibility orelse false;
-
-    // Parse rootMargin (default "0px")
-    if (opts.rootMargin) |margin_str| {
-        _ = margin_str; // TODO: Parse margin string
-    }
+    state.own.delay = delay;
+    state.own.trackVisibility = internal.track_visibility;
     state.own.rootMargin = runtime.DOMString.initEmpty();
-
-    // Parse scrollMargin (default "0px")
-    if (opts.scrollMargin) |margin_str| {
-        _ = margin_str; // TODO: Parse margin string
-    }
     state.own.scrollMargin = runtime.DOMString.initEmpty();
 
-    // Store delay and trackVisibility
-    internal.delay = opts.delay orelse 0;
-    internal.track_visibility = opts.trackVisibility orelse false;
+    // The root attribute: "the root provided to the IntersectionObserver
+    // constructor, or null if none was provided" (2.2).
+    if (opts.root) |root| switch (root) {
+        inline else => |node| internal.root = same_object.Link.to(node),
+    };
 
-    // If trackVisibility is true and delay < 100, set delay to 100
-    if (internal.track_visibility and internal.delay < 100) {
-        internal.delay = 100;
-        state.own.delay = 100;
-    }
-
+    // 14. "Return this."
     return instance;
 }
 
-/// Getter for root
-/// Returns the root Element or Document, or null for implicit viewport root
-pub fn get_root(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    const internal = getInternal(instance);
-    // A platform object: the binding converts it to its wrapper.
-    if (internal.root) |root| return runtime.JSValue.fromInstance(root);
-    return null;
+/// The observer's root while it is alive; null for an implicit root
+/// observer and once the root was collected (`InternalState.root`).
+fn rootOf(internal: *const InternalState) ?*runtime.Instance {
+    const link = internal.root orelse return null;
+    return if (dom.refcount.weakLinkLive(link.instance, link.generation)) link.instance else null;
 }
 
-/// Getter for rootMargin
-/// Returns the root margin as a string (e.g., "0px 0px 0px 0px")
+/// Getter for root: the root the constructor was given; null when none was,
+/// and once that root was collected (a weak link: `InternalState.root`).
+pub fn get_root(instance: *runtime.Instance) anyerror!?typedefs.ElementOrDocument {
+    const root = rootOf(getInternal(instance)) orelse return null;
+    return dom.union_values.ofInstance(typedefs.ElementOrDocument, root);
+}
+
+/// Getter for rootMargin: [[rootMargin]] serialized (2.2) - "not guaranteed
+/// to be identical to the options.rootMargin passed to the constructor".
 pub fn get_rootMargin(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance);
-    // Format: "Tpx Rpx Bpx Lpx"
-    var buf: [128]u8 = undefined;
-    const result = std.fmt.bufPrint(&buf, "{d}px {d}px {d}px {d}px", .{
-        internal.root_margin[0],
-        internal.root_margin[1],
-        internal.root_margin[2],
-        internal.root_margin[3],
-    }) catch return runtime.DOMString.initEmpty();
-
-    return runtime.DOMString.initDupe(instance.ctx.allocator, result) catch return runtime.DOMString.initEmpty();
+    const text = try margin.serialize(instance.ctx.allocator, getInternal(instance).root_margin);
+    return runtime.DOMString.initOwned(text);
 }
 
-/// Getter for scrollMargin
-/// Returns the scroll margin as a string
+/// Getter for scrollMargin: [[scrollMargin]] serialized, likewise.
 pub fn get_scrollMargin(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance);
-    var buf: [128]u8 = undefined;
-    const result = std.fmt.bufPrint(&buf, "{d}px {d}px {d}px {d}px", .{
-        internal.scroll_margin[0],
-        internal.scroll_margin[1],
-        internal.scroll_margin[2],
-        internal.scroll_margin[3],
-    }) catch return runtime.DOMString.initEmpty();
-
-    return runtime.DOMString.initDupe(instance.ctx.allocator, result) catch return runtime.DOMString.initEmpty();
+    const text = try margin.serialize(instance.ctx.allocator, getInternal(instance).scroll_margin);
+    return runtime.DOMString.initOwned(text);
 }
 
 /// Getter for thresholds: "return this's internal [[thresholds]] slot" as a
@@ -572,7 +608,7 @@ const Held = struct {
 /// top-level traversable the observer's Window's document is in. Null for
 /// an observer of a realm with no Window (nothing renders there).
 fn observingDocument(internal: *InternalState) ?*runtime.Instance {
-    if (internal.root) |root| return (interfaces.Node.get_ownerDocument(root) catch null) orelse root;
+    if (rootOf(internal)) |root| return (interfaces.Node.get_ownerDocument(root) catch null) orelse root;
     const record = internal.ctx.realm orelse return null;
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
     if (global.vtable != &interfaces.Window.vtable) return null;
@@ -765,11 +801,23 @@ fn computeIntersections(internal: *InternalState) !void {
         const viewport_width: f64 = 800;
         const viewport_height: f64 = 600;
 
-        // Create root bounds (viewport with margins applied)
-        const root_x: f64 = 0 - internal.root_margin[3]; // left margin
-        const root_y: f64 = 0 - internal.root_margin[0]; // top margin
-        const root_width: f64 = viewport_width + internal.root_margin[1] + internal.root_margin[3];
-        const root_height: f64 = viewport_height + internal.root_margin[0] + internal.root_margin[2];
+        // The root bounds: this stand-in viewport, with no margin.
+        // TODO(renderer): the root intersection rectangle, [[rootMargin]]
+        // applied, is geometry the renderer answers (docs/platform-protocol.md
+        // 6.9). [[rootMargin]] is parsed, validated and serialized
+        // (`rootMargin`), and not applied to a rectangle that is not real:
+        // until lane bind1 it was never parsed, so this rectangle never had
+        // one, and applying one now moves results that need real boxes
+        // (intersection-observer/root-margin-rounding.html). When it is
+        // applied: Chrome 157, Firefox 159 and Safari 27 all resolve a top or
+        // bottom percentage against the root's HEIGHT and a left or right
+        // one against its WIDTH (probe tmp/probes/bind1-nullmember/
+        // report-g3.txt, 2026-11-24), where the spec's text says the width
+        // for all four.
+        const root_x: f64 = 0;
+        const root_y: f64 = 0;
+        const root_width: f64 = viewport_width;
+        const root_height: f64 = viewport_height;
 
         // Compute intersection rectangle
         const intersect_left = @max(target_x, root_x);

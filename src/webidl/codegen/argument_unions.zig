@@ -175,9 +175,6 @@ pub const unions_converted_by_impl = [_]struct { []const u8, []const u8, []const
     // css (CSSStyleSheet's constructor, typed OM's mapSet)
     // dom (element creation options, importNode, view transitions)
     // events and observers (EventTarget's options; lane rc8 is in these files)
-    .{ "IntersectionObserver", "root", "" },
-    .{ "IntersectionObserverInit", "root", "" },
-    .{ "IntersectionObserverInit", "threshold", "" },
     // forms (options.add's `before`, setFormValue, the form's named getter)
     // HTMLAllCollection (its legacy caller and named getter bind `item` and
     // `namedItem` through a special path that takes the JSValue)

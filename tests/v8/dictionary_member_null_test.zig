@@ -51,9 +51,12 @@ const dictionaries = struct {
     /// SanitizerConfig or SanitizerPresets) sanitizer = "default"`, an inline
     /// union with a generated type (lane bind1 B5).
     const SetHTMLOptions = @FieldType(@typeInfo(@TypeOf(interfaces.Element.call_setHTML)).@"fn".param_types[2].?, "value");
+    /// effect.updateTiming(timing)'s `timing`: `(unrestricted double or
+    /// DOMString) duration`, an inline union still typed runtime.JSValue
+    /// (codegen's `unions_converted_by_impl`).
+    const OptionalEffectTiming = @FieldType(@typeInfo(@TypeOf(interfaces.AnimationEffect.call_updateTiming)).@"fn".param_types[1].?, "value");
     /// new IntersectionObserver(callback, options)'s `options`: `(double or
-    /// sequence<double>) threshold = 0`, an inline union still typed
-    /// runtime.JSValue (codegen's `unions_converted_by_impl`).
+    /// sequence<double>) threshold = 0`, a generated union (lane bind1 B5).
     const IntersectionObserverInit = @FieldType(@typeInfo(@TypeOf(interfaces.IntersectionObserver.call_constructor)).@"fn".param_types[2].?, "value");
 };
 
@@ -338,17 +341,46 @@ test "an inline union member typed JSValue keeps a present null apart from absen
     // by the union's type. Where the impl still converts the JSValue (a
     // position codegen's `unions_converted_by_impl` lists), it must see the
     // null: codegen lists the member in `jsvalue_union_members`.
-    // IntersectionObserverInit's threshold is one until its area retires;
-    // then this case moves to another listed member, and goes with the last.
+    // OptionalEffectTiming's duration is one until the animations area
+    // retires (the last); this case goes with it.
     // hasdecl: a generated dictionary (src/webidl/dictionaries/); codegen
     // writes `pub const jsvalue_union_members` into each one with such a member.
-    try testing.expect(@hasDecl(dictionaries.IntersectionObserverInit, "jsvalue_union_members"));
+    try testing.expect(@hasDecl(dictionaries.OptionalEffectTiming, "jsvalue_union_members"));
+    const e = try env();
+    const present = try eval("({ duration: null })");
+    defer ffi.v8_Value_Dispose(present);
+    const given = try conversions.fromV8Value(dictionaries.OptionalEffectTiming, testing.allocator, e.isolate, e.context, present);
+    try testing.expect(given.duration != null);
+    try testing.expect(given.duration.? == .null);
+
+    const absent = try eval("({ duration: undefined })");
+    defer ffi.v8_Value_Dispose(absent);
+    const omitted = try conversions.fromV8Value(dictionaries.OptionalEffectTiming, testing.allocator, e.isolate, e.context, absent);
+    try testing.expect(omitted.duration == null);
+}
+
+test "IntersectionObserverInit {threshold: null} is the union's double member, 0; a sequence keeps its order; undefined is not present" {
+    defer test_agent.close();
+    // 3.2.25 step 17: null is no sequence (step 11 needs an Object) and the
+    // union has a numeric member, so it converts to the double 0 - Chrome,
+    // Firefox and Safari all answer thresholds [0] for {threshold: null}.
+    // The member has a generated union type since lane bind1 B5 (it was
+    // runtime.JSValue, and the constructor discarded it).
+    // hasdecl: a generated dictionary; codegen writes the `pub` declaration
+    // only while a member is typed runtime.JSValue - its absence is the claim.
+    try testing.expect(!@hasDecl(dictionaries.IntersectionObserverInit, "jsvalue_union_members"));
     const e = try env();
     const present = try eval("({ threshold: null })");
     defer ffi.v8_Value_Dispose(present);
     const given = try conversions.fromV8Value(dictionaries.IntersectionObserverInit, testing.allocator, e.isolate, e.context, present);
-    try testing.expect(given.threshold != null);
-    try testing.expect(given.threshold.? == .null);
+    try testing.expect(given.threshold.? == .double);
+    try testing.expectEqual(@as(f64, 0), given.threshold.?.double);
+
+    const list = try eval("({ threshold: [0.5, 0] })");
+    defer ffi.v8_Value_Dispose(list);
+    const many = try conversions.fromV8Value(dictionaries.IntersectionObserverInit, testing.allocator, e.isolate, e.context, list);
+    defer testing.allocator.free(many.threshold.?.double_sequence);
+    try testing.expectEqualSlices(f64, &.{ 0.5, 0 }, many.threshold.?.double_sequence);
 
     const absent = try eval("({ threshold: undefined })");
     defer ffi.v8_Value_Dispose(absent);
