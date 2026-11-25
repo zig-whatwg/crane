@@ -1266,6 +1266,372 @@
           }
         }
       ]
+    },
+    {
+      "name": "logpoints: script URLs",
+      "about": "set_logpoints on served scripts and an inline script (no source maps): binding, a line with no code moving to the next possible location, a column, the console output, replacing the set, surviving a reload, the parse, compile and lookup errors, a location with no code, an expression that throws, and the empty set.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/logpoints.html"
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js:4 'sum', sum",
+              "logpoints.html:7 'tripled', tripled",
+              "logpoints.js:6 'blank'",
+              "logpoints.js:3:9 'column', x"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [window.run(2), window.inline(3)]"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js:4 'sum again', sum"
+            ]
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "reload"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => window.run(5)"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "missing.js:1 x"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js:4 sum)"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js 1"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js:0 x"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js:4 'kept'",
+              "logpoints.js:30 'past the end'"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "logpoints.js:4 (() => { throw new Error('boom') })()"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => window.run(1)"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": []
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "logpoints: lookups, documents, pauses",
+      "about": "set_logpoints' lookups: an ambiguous path suffix, no match with sources of the same file name, a document with no script, a script gone after a navigation; and a debugger statement that does not pause (the DevTools universe skips all pauses).",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/logpoints-dup.html"
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "same.js:1 'x'"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "c/same.js:1 'x'"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "lp-a/same.js:1 'a'"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { debugger; return window.a() + window.b(); }"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "title.html:1 'doc'"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "lp-a/same.js:1 'a'"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "logpoints: source maps",
+      "about": "set_logpoints through external source maps: binding an original source file by path suffix, moving a generated script location to its original source, deduplicating generated and original locations that normalize to one line, reporting an unmapped original line, logging on execution, and surviving a reload.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/lp-sm/page.html"
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "src/calc.ts:4 'total', total",
+              "bundle.js:2:54 'out', out"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => window.calcRun(4)"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "src/calc.ts:4 'first', total",
+              "bundle.js:1:49 'second', total"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "src/calc.ts:4 'kept', total",
+              "src/calc.ts:1 'comment'"
+            ]
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "type": "reload"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => window.calcRun(6)"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "logpoints: inline, same-url, indexed, and shared maps",
+      "about": "set_logpoints with inline data: source maps, a transpiled file served at its original source URL (source map preferred), an XSSI-prefixed index map with sections and sourceRoot, one original source mapped across two bundles, and a script whose source map returns 404.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/lp-sm/page.html"
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "src/inline.ts:5 'res', res",
+              "same-url.js:6 'y', y",
+              "sec-a.ts:4 'a', r",
+              "sec-b.ts:5 'b', r",
+              "shared.ts:3 't', t",
+              "broken-map.js:1:46 'z', z"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [window.inlineMapped(5), window.viteFn(3), window.secA(10), window.secB(20), window.c1(7), window.c2(8), window.brokenMapFn(9)]"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": [
+              "same-url.js:1 'unmapped-same-url'"
+            ]
+          }
+        },
+        {
+          "tool": "set_logpoints",
+          "args": {
+            "pageId": 1,
+            "logpoints": []
+          }
+        }
+      ]
     }
   ],
   "expected": [

@@ -620,6 +620,12 @@ pub const Binding = struct {
     /// <time.h> translated (kit.cImport), which kit/posix imports as `c_time`;
     /// tests/platform takes the same module (one per header set per graph).
     c_time: *std.Build.Module,
+    /// The kit parts whose own test blocks the platform tests run (kit
+    /// `Modules.tested`).
+    kit_tested: []const kit.Tested,
+    /// The bound adapter's own module, whose test blocks the root of a test
+    /// executable collects (lane core1).
+    adapter: *std.Build.Module,
 };
 
 pub const BindingOptions = struct {
@@ -705,7 +711,8 @@ pub fn binding(b: *std.Build, target: std.Build.ResolvedTarget, options: Binding
     } else true;
     // What the bound adapter's implementation links (platform_build.bind).
     bind(options.platform, impl, target, .{ .font_decoding = font_decoding_enabled });
-    return .{ .facade = facade, .options = options_mod, .network_share = parts.kit_curl_share, .kit_sfnt = parts.kit_sfnt, .kit_inflate = parts.kit_inflate, .kit_media_decoding = parts.kit_media_decoding, .c_time = parts.c_time };
+    const kit_tested = b.allocator.dupe(kit.Tested, &parts.tested) catch @panic("OOM");
+    return .{ .facade = facade, .options = options_mod, .network_share = parts.kit_curl_share, .kit_sfnt = parts.kit_sfnt, .kit_inflate = parts.kit_inflate, .kit_media_decoding = parts.kit_media_decoding, .c_time = parts.c_time, .kit_tested = kit_tested, .adapter = impl };
 }
 
 /// The extra kit parts of the platform named `platform_name` for `target`:

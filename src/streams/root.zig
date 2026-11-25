@@ -107,31 +107,3 @@ pub const QueueWithSizes = internal.QueueWithSizes;
 pub const Value = internal.Value;
 pub const JSValue = internal.common.JSValue;
 pub const Promise = internal.common.Promise;
-
-test {
-    // Run all tests from imported modules
-    std.testing.refAllDecls(@This());
-    std.testing.refAllDecls(internal.common);
-    std.testing.refAllDecls(internal.QueueWithSizes);
-    std.testing.refAllDecls(internal.ReadRequest);
-    std.testing.refAllDecls(internal.ReadIntoRequest);
-    std.testing.refAllDecls(internal.PullIntoDescriptor);
-    std.testing.refAllDecls(internal.WriteRequest);
-    std.testing.refAllDecls(internal.algorithms.queuing);
-    std.testing.refAllDecls(internal.view_construction);
-    std.testing.refAllDecls(ByteLengthQueuingStrategy);
-    std.testing.refAllDecls(CountQueuingStrategy);
-    std.testing.refAllDecls(ReadableStreamDefaultController);
-    std.testing.refAllDecls(WritableStreamDefaultController);
-    std.testing.refAllDecls(TransformStreamDefaultController);
-    std.testing.refAllDecls(ReadableStreamBYOBRequest);
-    std.testing.refAllDecls(ReadableByteStreamController);
-    std.testing.refAllDecls(ReadableStream);
-    // Note: ReadableStreamGenericReader is a mixin - tested via interfaces that use it
-    std.testing.refAllDecls(ReadableStreamDefaultReader);
-    std.testing.refAllDecls(ReadableStreamBYOBReader);
-    std.testing.refAllDecls(WritableStream);
-    std.testing.refAllDecls(WritableStreamDefaultWriter);
-    std.testing.refAllDecls(TransformStream);
-    // Note: GenericTransformStream is a mixin - tested via interfaces that use it
-}

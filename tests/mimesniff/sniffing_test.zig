@@ -9,7 +9,9 @@ const mimesniff = @import("mimesniff");
 test "identifyUnknownMimeType - HTML detection" {
     const allocator = std.testing.allocator;
 
-    const resource_header = "<!DOCTYPE HTML >"; // Space before > is tag-terminating
+    // "<!DOCTYPE HTML" then a tag-terminating byte: SP or ">" (mimesniff §3;
+    // tests/mimesniff/core1_tag_terminating_byte_test.zig takes every row with each).
+    const resource_header = "<!DOCTYPE HTML>";
     const computed = try mimesniff.identifyUnknownMimeType(allocator, resource_header, true);
 
     if (computed) |mt| {

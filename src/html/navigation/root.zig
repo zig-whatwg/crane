@@ -46,10 +46,8 @@ pub const fetchNavigationResource = fetch_integration.fetchNavigationResource;
 pub const NavigationFetchResult = fetch_integration.NavigationFetchResult;
 pub const NavigationFetchOptions = fetch_integration.NavigationFetchOptions;
 pub const NavigationFetchError = fetch_integration.NavigationFetchError;
-pub const isHtmlResponse = fetch_integration.isHtmlResponse;
 pub const isXmlResponse = fetch_integration.isXmlResponse;
 pub const shouldNavigationProceed = fetch_integration.shouldNavigationProceed;
-pub const isCrossOrigin = fetch_integration.isCrossOrigin;
 
 pub const XFrameOptions = security_policies.XFrameOptions;
 pub const isFramingAllowed = security_policies.isFramingAllowed;

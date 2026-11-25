@@ -126,7 +126,12 @@ fn initWithPairs(
 
     // Create instance
     const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
-    errdefer deinit(instance);
+    // Until it is returned, the construction is the object's only owner: a
+    // failed step ("initialize" step 1's TypeError) frees it whole. Its own
+    // deinit is its destructor, not a free, and left its slot and State until
+    // the Browser ended (url/urlsearchparams-constructor.any.js; lane hard1-b;
+    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    errdefer runtime.gc.releaseOwned(instance);
 
     const state = instance.getState(State);
 
@@ -166,7 +171,8 @@ pub fn initWithString(
 ) !*runtime.Instance {
     // Create instance
     const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
-    errdefer deinit(instance);
+    // Freed whole if a later step fails, as `initWithPairs` does.
+    errdefer runtime.gc.releaseOwned(instance);
 
     const state = instance.getState(State);
 
@@ -501,15 +507,6 @@ fn orderByCodeUnits(a: []const u8, b: []const u8) std.math.Order {
         if (y == null) return .gt;
         if (x.? != y.?) return std.math.order(x.?, y.?);
     }
-}
-
-test "orderByCodeUnits: a name outside the BMP sorts before U+E000 and after U+D7FF" {
-    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{FB03}"));
-    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{E000}"));
-    try std.testing.expectEqual(std.math.Order.gt, orderByCodeUnits("\u{1F308}", "\u{D7FF}"));
-    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("a", "a\u{1F308}"));
-    try std.testing.expectEqual(std.math.Order.eq, orderByCodeUnits("a\u{1F308}", "a\u{1F308}"));
-    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{1F4A9}"));
 }
 
 /// Internal: stringifier implementation

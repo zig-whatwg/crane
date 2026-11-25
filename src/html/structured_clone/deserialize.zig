@@ -56,6 +56,8 @@ fn structuredDeserializeInternal(
 
     // Create the value
     const value = try allocator.create(JSValue);
+    // The one destroy of `value` on every throwing path below: a path that
+    // destroyed it itself as well freed it twice (lane core1).
     errdefer allocator.destroy(value);
 
     // Steps 5-24: Handle each serialized type
@@ -105,48 +107,40 @@ fn structuredDeserializeInternal(
 
         .array_buffer => {
             const ab = serialized.data.array_buffer;
-            const ab_value = try allocator.create(JSValue.ArrayBufferValue);
-            ab_value.* = .{
+            value.* = .{ .array_buffer = .{
                 .data = try allocator.dupe(u8, ab.data),
                 .detached = false,
-            };
-            value.* = .{ .array_buffer = ab_value.* };
+            } };
         },
 
         .resizable_array_buffer => {
             const rab = serialized.data.resizable_array_buffer;
-            const ab_value = try allocator.create(JSValue.ArrayBufferValue);
-            ab_value.* = .{
+            value.* = .{ .array_buffer = .{
                 .data = try allocator.dupe(u8, rab.data),
                 .detached = false,
                 .max_byte_length = rab.max_byte_length,
-            };
-            value.* = .{ .array_buffer = ab_value.* };
+            } };
         },
 
         .shared_array_buffer => {
             const sab = serialized.data.shared_array_buffer;
-            const ab_value = try allocator.create(JSValue.ArrayBufferValue);
             // For SharedArrayBuffer, we share the same data (not copy)
             // In real implementation, this would use shared memory
-            ab_value.* = .{
+            value.* = .{ .array_buffer = .{
                 .data = try allocator.dupe(u8, sab.data),
                 .detached = false,
                 .shared = true,
-            };
-            value.* = .{ .array_buffer = ab_value.* };
+            } };
         },
 
         .growable_shared_array_buffer => {
             const gsab = serialized.data.growable_shared_array_buffer;
-            const ab_value = try allocator.create(JSValue.ArrayBufferValue);
-            ab_value.* = .{
+            value.* = .{ .array_buffer = .{
                 .data = try allocator.dupe(u8, gsab.data),
                 .detached = false,
                 .max_byte_length = gsab.max_byte_length,
                 .shared = true,
-            };
-            value.* = .{ .array_buffer = ab_value.* };
+            } };
         },
 
         .array_buffer_view => {
@@ -180,7 +174,7 @@ fn structuredDeserializeInternal(
                     value.* = .{ .typed_array = ta.* };
                 }
             } else {
-                allocator.destroy(value);
+                // The errdefer at the allocation destroys `value`.
                 return CloneError.DeserializeError;
             }
         },
@@ -352,10 +346,7 @@ fn structuredDeserializeInternal(
 
         // The engine's own serialization - the engine deserializes it
         // (structuredDeserializeWithTransfer), not this walker
-        .engine_serialized => {
-            allocator.destroy(value);
-            return CloneError.DeserializeError;
-        },
+        .engine_serialized => return CloneError.DeserializeError,
 
         // Transferable-only types - should not appear in regular deserialization
         .message_port,
@@ -365,10 +356,7 @@ fn structuredDeserializeInternal(
         .offscreen_canvas,
         .audio_data,
         .video_frame,
-        => {
-            allocator.destroy(value);
-            return CloneError.DeserializeError;
-        },
+        => return CloneError.DeserializeError,
 
         // Types requiring special handling
         .file_list,
@@ -377,11 +365,8 @@ fn structuredDeserializeInternal(
         .dom_matrix_readonly,
         .dom_quad,
         .crypto_key,
-        => {
-            // These would need more complex deserialization
-            allocator.destroy(value);
-            return CloneError.DeserializeError;
-        },
+        // These would need more complex deserialization
+        => return CloneError.DeserializeError,
     }
 
     // Step 23: Store in memory
@@ -463,74 +448,6 @@ pub fn freeJSValue(allocator: Allocator, value: *JSValue) void {
 // Tests
 // ============================================================================
 
-test "structuredDeserialize - primitives" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    // Test boolean
-    {
-        const value = JSValue{ .boolean = true };
-        const serialized = try serialize.structuredSerialize(allocator, &value);
-        defer {
-            serialized.deinit();
-            allocator.destroy(serialized);
-        }
-
-        const deserialized = try structuredDeserialize(allocator, serialized);
-        defer freeJSValue(allocator, deserialized);
-
-        try testing.expectEqual(true, deserialized.boolean);
-    }
-
-    // Test number
-    {
-        const value = JSValue{ .number = 42.5 };
-        const serialized = try serialize.structuredSerialize(allocator, &value);
-        defer {
-            serialized.deinit();
-            allocator.destroy(serialized);
-        }
-
-        const deserialized = try structuredDeserialize(allocator, serialized);
-        defer freeJSValue(allocator, deserialized);
-
-        try testing.expectEqual(@as(f64, 42.5), deserialized.number);
-    }
-
-    // Test string
-    {
-        const value = JSValue{ .string = "hello world" };
-        const serialized = try serialize.structuredSerialize(allocator, &value);
-        defer {
-            serialized.deinit();
-            allocator.destroy(serialized);
-        }
-
-        const deserialized = try structuredDeserialize(allocator, serialized);
-        defer freeJSValue(allocator, deserialized);
-
-        try testing.expectEqualStrings("hello world", deserialized.string);
-    }
-}
-
-test "structuredDeserialize - Date" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    const timestamp: f64 = 1700000000000;
-    const value = JSValue{ .date = timestamp };
-    const serialized = try serialize.structuredSerialize(allocator, &value);
-    defer {
-        serialized.deinit();
-        allocator.destroy(serialized);
-    }
-
-    const deserialized = try structuredDeserialize(allocator, serialized);
-    defer freeJSValue(allocator, deserialized);
-
-    try testing.expectEqual(timestamp, deserialized.date);
-}
-
 test "structuredDeserialize - Error" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -573,4 +490,103 @@ test "structuredDeserialize - ArrayBuffer roundtrip" {
 
     try testing.expectEqualSlices(u8, &data, deserialized.array_buffer.data);
     try testing.expectEqual(false, deserialized.array_buffer.detached);
+}
+
+test "a record the walker cannot deserialize is a DeserializeError, its value freed once" {
+    // Each of these paths destroyed the value it had made and then returned
+    // into the errdefer that destroys it again: a double free (lane core1,
+    // the pattern fc5b7d6cc fixed in serialize.zig).
+    const testing = std.testing;
+    const allocator = testing.allocator;
+    const records = [_]SerializedValue{
+        // A view with no buffer.
+        .{ .type = .array_buffer_view, .allocator = allocator, .data = .{ .array_buffer_view = .{
+            .constructor = .Uint8Array,
+            .buffer_serialized = null,
+            .byte_length = 0,
+            .byte_offset = 0,
+            .array_length = 0,
+        } } },
+        // The engine's own serialization (structuredDeserializeWithTransfer's).
+        .{ .type = .engine_serialized, .allocator = allocator, .data = .{ .engine_serialized = .{
+            .serialized_bytes = &.{},
+            .transferred_arraybuffers = &.{},
+        } } },
+        // A transferable-only type.
+        .{ .type = .message_port, .allocator = allocator, .data = .{ .message_port = {} } },
+        // A type the walker does not deserialize yet.
+        .{ .type = .crypto_key, .allocator = allocator, .data = .{ .crypto_key = {} } },
+    };
+    for (&records) |*record| try testing.expectError(CloneError.DeserializeError, structuredDeserialize(allocator, record));
+}
+
+/// Whether the walker frees the graphs it makes once per value - the JSC
+/// adapter lane's to land: the ownership of the JSValues the walk makes
+/// depends on how that adapter represents and roots them (the integrator,
+/// 2026-11-24, lane core1's B9). Flip it with the fix; the test below then
+/// runs, and must pass.
+const graph_ownership_landed = false;
+
+test "a deserialized graph frees each value once: a shared reference, a cycle, a view's buffer (known red until the JSC adapter lane)" {
+    // TODO(JSC adapter lane): B9, found by lane core1 (2026-11-24). Every
+    // case crashes or leaks today, so the test is skipped until
+    // `graph_ownership_landed` flips:
+    // - freeJSValue frees a graph as a tree. A value reached twice
+    //   deserializes to one *JSValue (the walk's memory), which freeJSValue
+    //   frees once per reference: a double free. A cycle recurses without end.
+    //   A view's buffer JSValue (the array_buffer_view arm's buffer_value) is
+    //   never freed.
+    // - Its serialize-side twin: SerializedValue.deinit (types.zig) frees a
+    //   record reached twice, twice, and recurses on a cycle.
+    // - HTML §2.7.8 step 5.3: "Let dataHolder be memory[transferable]" - the
+    //   step-2.4 record IS the data holder, owned by the result. transfer.zig
+    //   builds a TransferDataHolder of its own instead (lane core1's B5 point
+    //   5, and B10: a serialized graph that references a transferred buffer
+    //   would point at a destroyed record). Unreachable until a JSValue's
+    //   memory identity can be a transferable's - the adapter defines that.
+    if (!graph_ownership_landed) return error.SkipZigTest;
+    const testing = std.testing;
+    const allocator = testing.allocator;
+    // A value reached twice: one string, two properties.
+    {
+        const inner = JSValue{ .string = "shared" };
+        const properties = [_]JSValue.ObjectValue.ObjectProperty{ .{ .key = "a", .value = &inner }, .{ .key = "b", .value = &inner } };
+        const outer = JSValue{ .object = .{ .properties = &properties } };
+        const serialized = try serialize.structuredSerialize(allocator, &outer);
+        defer {
+            serialized.deinit();
+            allocator.destroy(serialized);
+        }
+        const copy = try structuredDeserialize(allocator, serialized);
+        defer freeJSValue(allocator, copy);
+        try testing.expectEqual(copy.object.properties[0].value, copy.object.properties[1].value);
+    }
+    // A cycle: an object that holds itself.
+    {
+        var self_holding: JSValue = undefined;
+        const properties = [_]JSValue.ObjectValue.ObjectProperty{.{ .key = "self", .value = &self_holding }};
+        self_holding = .{ .object = .{ .properties = &properties } };
+        const serialized = try serialize.structuredSerialize(allocator, &self_holding);
+        defer {
+            serialized.deinit();
+            allocator.destroy(serialized);
+        }
+        const copy = try structuredDeserialize(allocator, serialized);
+        defer freeJSValue(allocator, copy);
+        try testing.expectEqual(@as(*const JSValue, copy), copy.object.properties[0].value);
+    }
+    // A view: its buffer goes with it.
+    {
+        const bytes = [_]u8{ 1, 2, 3, 4 };
+        const buffer = JSValue.ArrayBufferValue{ .data = &bytes };
+        const view = JSValue{ .typed_array = .{ .buffer = &buffer, .constructor = .Uint8Array, .byte_offset = 0, .byte_length = 4, .array_length = 4 } };
+        const serialized = try serialize.structuredSerialize(allocator, &view);
+        defer {
+            serialized.deinit();
+            allocator.destroy(serialized);
+        }
+        const copy = try structuredDeserialize(allocator, serialized);
+        defer freeJSValue(allocator, copy);
+        try testing.expectEqualSlices(u8, &bytes, copy.typed_array.buffer.data);
+    }
 }

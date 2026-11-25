@@ -591,20 +591,18 @@ pub fn memberInterface(comptime T: type, comptime name: []const u8) ?type {
     }
 }
 
-/// Whether dictionary `T` lists member `name` in `any_members` - or in
-/// `jsvalue_union_members`, an inline union typed runtime.JSValue: for both,
-/// a present null is `.null`, a value for the impl (WebIDL 3.2.18: only
-/// undefined is not present; 3.2.25 converts a union's null by its arms -
-/// SetHTMLOptions `{sanitizer: null}` is an empty SanitizerConfig, which read
-/// as absent took the default preset).
+/// Whether dictionary `T` lists member `name` in `any_members`: a present
+/// null is `.null`, a value for the impl (WebIDL 3.2.18: only undefined is
+/// not present). Until lane bind1's batch B ended, codegen also listed here
+/// the inline unions it typed runtime.JSValue (`jsvalue_union_members`);
+/// every union is named and converted by the binding now (3.2.25 converts a
+/// union's null by its arms - SetHTMLOptions `{sanitizer: null}` is an empty
+/// SanitizerConfig).
 fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
     comptime {
-        for ([_][]const u8{ "any_members", "jsvalue_union_members" }) |table| {
-            if (@hasDecl(T, table)) {
-                for (@field(T, table)) |member| {
-                    if (std.mem.eql(u8, member, name)) return true;
-                }
-            }
+        if (!@hasDecl(T, "any_members")) return false;
+        for (T.any_members) |member| {
+            if (std.mem.eql(u8, member, name)) return true;
         }
         return false;
     }
@@ -632,8 +630,8 @@ fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
 /// `performance.measure("m", {start: null})` names the mark "null", and an
 /// IntersectionObserverInit's `{threshold: null}` is [0] in all three
 /// (probe tmp/probes/bind1-nullmember, 2026-11-23). Such members read null
-/// as not present once lane bind1's B2 typed them (187de50e1): while they
-/// were runtime.JSValue the impl saw the null (`jsvalue_union_members`).
+/// as not present once lane bind1's B2 typed them (187de50e1); while they
+/// were runtime.JSValue the impl saw the null.
 ///
 /// False by default: a required member (it converts null by its type
 /// already), a nullable member, `any`, a `webidl.Opt` member (its presence
@@ -667,7 +665,10 @@ pub fn presentNullConvertsByType(comptime T: type, comptime field: Zig017Field) 
             // A sequence<T>, FrozenArray<T> or record<K, V> (a slice of
             // entries): the slice branch of fromV8ValueAs throws for a value
             // that is not an Object. ([]const u8 is a string type, above.)
-            .pointer => |pointer| pointer.size == .slice,
+            // A boxed dictionary (a member whose type is its own
+            // dictionary): null converts to the dictionary with no member,
+            // as it does for any dictionary (3.2.18 step 1).
+            .pointer => |pointer| pointer.size == .slice or (pointer.size == .one and interface_mod.isDictionaryType(pointer.child)),
             else => false,
         };
     }
@@ -3108,6 +3109,21 @@ fn convertValueAs(
     if (type_info == .pointer and type_info.pointer.size == .one) {
         const ChildType = type_info.pointer.child;
         const child_info = @typeInfo(ChildType);
+
+        // A BOXED dictionary member: codegen types a member whose type is
+        // its own dictionary as a pointer (a struct cannot contain itself;
+        // the dictionary's `boxed_members` - RouterCondition's `not`). It
+        // converts as its dictionary, into a box made with the argument's
+        // allocator; `interface.freeConvertedArg` frees the pointee's
+        // members and then the box, with the dictionary. A failure inside
+        // frees what the pointee's conversion made (its own errdefer) and
+        // the box here.
+        if (comptime interface_mod.isDictionaryType(ChildType)) {
+            const boxed = allocator.create(ChildType) catch return ConversionError.OutOfMemory;
+            errdefer allocator.destroy(boxed);
+            boxed.* = try fromV8Value(ChildType, allocator, isolate, context, value);
+            return boxed;
+        }
 
         // Check if child type is a struct (like ArrayBuffer)
         if (child_info == .@"struct") {
@@ -5611,11 +5627,6 @@ pub fn iterateAsRecordPairs(
 // ============================================================================
 // Tests
 // ============================================================================
-
-test "conversion module compiles" {
-    const testing = std.testing;
-    testing.refAllDecls(@This());
-}
 
 // Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
 // (comptime-only element types, so every call is evaluated at comptime).

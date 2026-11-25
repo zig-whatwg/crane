@@ -152,8 +152,13 @@ test "a pipe read to its end keeps nothing once script drops it" {
 /// reference of 16 (and a strong Global of 32 beside it while pending
 /// activity keeps it); a wrapper the binding drew an edge on - every stream,
 /// reader, writer and controller here - by ONE Global made in the cache's
-/// record, weak or strong. The graph was 39 Globals (1,248 B) and is 1,232 B.
-const unread_pipe_through_hold = 1232;
+/// record, weak or strong. The graph was 39 Globals (1,248 B), then 1,232 B,
+/// and is 1,200 B since lane ctor1: the TextDecoderStream's TransformStream
+/// no longer keeps the startPromise of its setup (Streams 9.3 "set up a
+/// TransformStream" step 8) - one Global, 32 B - past that setup
+/// (docs/lessons/architecture-a-promise-kept-past-its-algorithm-keeps-what-
+/// waits-on-it.md).
+const unread_pipe_through_hold = 1200;
 
 test "DECLARED: an unread pipeThrough is held by its pending pipe until its realm ends" {
     var page: rounds_lib.Page = undefined;

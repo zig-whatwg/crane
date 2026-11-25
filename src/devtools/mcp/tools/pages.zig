@@ -408,7 +408,3 @@ fn waitForLoad(ctx: *Context, page: *Page, timeout: u32) !void {
     };
     if (!try ctx.session.waitUntil(timeout, Loaded{ .page = page }, Loaded.done)) return ctx.fail("Navigation timeout of {d} ms exceeded", .{timeout});
 }
-
-test {
-    _ = client_mod;
-}

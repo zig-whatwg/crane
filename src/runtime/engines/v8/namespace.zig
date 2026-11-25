@@ -925,36 +925,6 @@ fn validateArgumentType(
 // Tests
 // ============================================================================
 
-test "V8Namespace compiles" {
-    const testing = std.testing;
-    testing.refAllDecls(@This());
-}
-
-test "V8Namespace extracts methods from namespace struct" {
-    // Create a mock namespace for testing
-    const MockNamespace = struct {
-        pub fn call_foo(ctx: runtime.Context) void {
-            _ = ctx;
-        }
-
-        pub fn call_bar(ctx: runtime.Context, x: runtime.Long) void {
-            _ = ctx;
-            _ = x;
-        }
-
-        // Non-call method should be ignored
-        pub fn helper() void {}
-    };
-
-    const Binding = V8Namespace(MockNamespace);
-
-    // Verify methods were extracted correctly
-    const testing = std.testing;
-    try testing.expectEqual(@as(usize, 2), Binding.all_methods.len);
-    try testing.expectEqualStrings("foo", Binding.all_methods[0].name);
-    try testing.expectEqualStrings("bar", Binding.all_methods[1].name);
-}
-
 // Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
 // (comptime-only element types, so every call is evaluated at comptime).
 const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };

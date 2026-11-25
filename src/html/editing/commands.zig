@@ -252,74 +252,6 @@ pub const Command = enum {
         return string_to_command.get(std.ascii.lowerString(buffer[0..name.len], name));
     }
 
-    /// Convert to string command name
-    pub fn toString(self: Command) []const u8 {
-        return switch (self) {
-            .bold => "bold",
-            .italic => "italic",
-            .underline => "underline",
-            .strikeThrough => "strikeThrough",
-            .subscript => "subscript",
-            .superscript => "superscript",
-            .removeFormat => "removeFormat",
-            .fontName => "fontName",
-            .fontSize => "fontSize",
-            .foreColor => "foreColor",
-            .backColor => "backColor",
-            .hiliteColor => "hiliteColor",
-            .justifyLeft => "justifyLeft",
-            .justifyCenter => "justifyCenter",
-            .justifyRight => "justifyRight",
-            .justifyFull => "justifyFull",
-            .insertOrderedList => "insertOrderedList",
-            .insertUnorderedList => "insertUnorderedList",
-            .indent => "indent",
-            .outdent => "outdent",
-            .insertParagraph => "insertParagraph",
-            .insertLineBreak => "insertLineBreak",
-            .insertHorizontalRule => "insertHorizontalRule",
-            .formatBlock => "formatBlock",
-            .createLink => "createLink",
-            .unlink => "unlink",
-            .insertImage => "insertImage",
-            .insertHTML => "insertHTML",
-            .insertText => "insertText",
-            .copy => "copy",
-            .cut => "cut",
-            .paste => "paste",
-            .undo => "undo",
-            .redo => "redo",
-            .selectAll => "selectAll",
-            .delete => "delete",
-            .forwardDelete => "forwardDelete",
-            .enableAbsolutePositionEditor => "enableAbsolutePositionEditor",
-            .enableInlineTableEditing => "enableInlineTableEditing",
-            .enableObjectResizing => "enableObjectResizing",
-            .defaultParagraphSeparator => "defaultParagraphSeparator",
-            .styleWithCSS => "styleWithCSS",
-            .useCSS => "useCSS",
-        };
-    }
-
-    /// Check if command requires a value parameter
-    pub fn requiresValue(self: Command) bool {
-        return switch (self) {
-            .fontName,
-            .fontSize,
-            .foreColor,
-            .backColor,
-            .hiliteColor,
-            .formatBlock,
-            .createLink,
-            .insertImage,
-            .insertHTML,
-            .insertText,
-            .defaultParagraphSeparator,
-            => true,
-            else => false,
-        };
-    }
-
     /// Check if command is a formatting toggle
     pub fn isToggle(self: Command) bool {
         return switch (self) {
@@ -477,29 +409,4 @@ test "Command.fromString" {
     try testing.expect(Command.fromString("contentReadOnly") == null);
     try testing.expect(Command.fromString("bold ") == null);
     try testing.expect(Command.fromString("enableabsolutepositioneditorx") == null);
-}
-
-test "Command.toString" {
-    const testing = std.testing;
-
-    try testing.expectEqualStrings("bold", Command.bold.toString());
-    try testing.expectEqualStrings("strikeThrough", Command.strikeThrough.toString());
-}
-
-test "Command.requiresValue" {
-    const testing = std.testing;
-
-    try testing.expect(Command.fontName.requiresValue());
-    try testing.expect(Command.createLink.requiresValue());
-    try testing.expect(!Command.bold.requiresValue());
-    try testing.expect(!Command.undo.requiresValue());
-}
-
-test "Command.isToggle" {
-    const testing = std.testing;
-
-    try testing.expect(Command.bold.isToggle());
-    try testing.expect(Command.italic.isToggle());
-    try testing.expect(!Command.fontName.isToggle());
-    try testing.expect(!Command.copy.isToggle());
 }

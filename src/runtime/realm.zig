@@ -8,7 +8,9 @@
 //! - RealmInfo struct for context metadata
 //! - Realm struct for full realm implementation with V8 context and intrinsics
 //! - Intrinsics struct for caching JavaScript built-in constructors
-//! - Exposure checking for WebIDL [Exposed] attributes
+//!
+//! Bindings check WebIDL [Exposed] through src/webidl/helpers.zig's
+//! GlobalScope.matchesExposure.
 //!
 //! ## Specification References
 //! - HTML Realms: https://html.spec.whatwg.org/multipage/webappapis.html#concept-realm
@@ -19,8 +21,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-// Import environment settings object (circular reference avoided via opaque pointers)
-const EnvironmentSettingsObject = @import("environment_settings.zig").EnvironmentSettingsObject;
 const Agent = @import("engine_types.zig").Agent;
 
 /// JavaScript execution context type
@@ -65,27 +65,6 @@ pub const ContextType = enum {
     }
 };
 
-/// WebIDL [Exposed] attribute values
-///
-/// Maps to WebIDL extended attribute:
-/// - [Exposed=Window]
-/// - [Exposed=Worker]
-/// - [Exposed=(Window,Worker)]
-/// - [Exposed=*]
-pub const Exposure = enum {
-    /// Exposed only in Window context
-    window,
-
-    /// Exposed only in Worker contexts (all worker types)
-    worker,
-
-    /// Exposed in both Window and Worker contexts
-    window_and_worker,
-
-    /// Exposed in all contexts
-    all,
-};
-
 /// Realm information for a JavaScript execution context
 ///
 /// Contains metadata about the current Realm, used for:
@@ -98,7 +77,6 @@ pub const RealmInfo = struct {
 
     // Future fields:
     // origin: ?Origin,           // Security origin
-    // settings_object: ?*EnvironmentSettingsObject,
     // global_object: ?*anyopaque,  // Reference to global (Window, Worker, etc.)
 
     const Self = @This();
@@ -150,83 +128,11 @@ pub const RealmInfo = struct {
     pub fn isWorklet(self: Self) bool {
         return self.context_type == .worklet;
     }
-
-    /// Check if an API with given exposure is available in this context
-    ///
-    /// Per WebIDL spec, [Exposed] attribute determines availability:
-    /// - [Exposed=Window] -> only in Window
-    /// - [Exposed=Worker] -> only in Workers
-    /// - [Exposed=(Window,Worker)] -> both
-    /// - [Exposed=*] -> all contexts
-    pub fn isExposedTo(self: Self, exposure: Exposure) bool {
-        return switch (exposure) {
-            .window => self.isWindow(),
-            .worker => self.isWorker(),
-            .window_and_worker => self.isWindow() or self.isWorker(),
-            .all => true,
-        };
-    }
-
-    /// Get human-readable context name
-    pub fn contextName(self: Self) []const u8 {
-        return self.context_type.name();
-    }
 };
 
 // ============================================================================
 // Tests
 // ============================================================================
-
-test "ContextType - names" {
-    const testing = std.testing;
-
-    try testing.expectEqualStrings("Window", ContextType.window.name());
-    try testing.expectEqualStrings("DedicatedWorkerGlobalScope", ContextType.dedicated_worker.name());
-    try testing.expectEqualStrings("ServiceWorkerGlobalScope", ContextType.service_worker.name());
-}
-
-test "RealmInfo - factory methods" {
-    const testing = std.testing;
-
-    const window = RealmInfo.forWindow();
-    try testing.expect(window.isWindow());
-    try testing.expect(!window.isWorker());
-
-    const worker = RealmInfo.forDedicatedWorker();
-    try testing.expect(!worker.isWindow());
-    try testing.expect(worker.isWorker());
-
-    const service = RealmInfo.forServiceWorker();
-    try testing.expect(service.isWorker());
-}
-
-test "RealmInfo - exposure checking" {
-    const testing = std.testing;
-
-    const window = RealmInfo.forWindow();
-    try testing.expect(window.isExposedTo(.window));
-    try testing.expect(!window.isExposedTo(.worker));
-    try testing.expect(window.isExposedTo(.window_and_worker));
-    try testing.expect(window.isExposedTo(.all));
-
-    const worker = RealmInfo.forDedicatedWorker();
-    try testing.expect(!worker.isExposedTo(.window));
-    try testing.expect(worker.isExposedTo(.worker));
-    try testing.expect(worker.isExposedTo(.window_and_worker));
-    try testing.expect(worker.isExposedTo(.all));
-}
-
-test "RealmInfo - worklet not exposed to worker" {
-    const testing = std.testing;
-
-    const worklet = RealmInfo.forWorklet();
-    try testing.expect(!worklet.isWindow());
-    try testing.expect(!worklet.isWorker());
-    try testing.expect(!worklet.isExposedTo(.window));
-    try testing.expect(!worklet.isExposedTo(.worker));
-    try testing.expect(!worklet.isExposedTo(.window_and_worker));
-    try testing.expect(worklet.isExposedTo(.all));
-}
 
 // ============================================================================
 // Full Realm Implementation (Phase 1a: Cross-Realm Support)
@@ -374,11 +280,6 @@ pub const Realm = struct {
     /// Opaque pointer to BrowsingContext*
     browsing_context: ?*anyopaque,
 
-    /// Environment settings object for this realm
-    /// Provides origin, API base URL, policies, etc.
-    /// This is created lazily when needed.
-    settings_object: ?*EnvironmentSettingsObject,
-
     const Self = @This();
 
     /// Realm initialization options
@@ -423,7 +324,6 @@ pub const Realm = struct {
                 .unknown => RealmInfo.forTesting(),
             },
             .browsing_context = options.browsing_context,
-            .settings_object = null, // Lazily created when needed
         };
 
         return realm;
@@ -434,11 +334,6 @@ pub const Realm = struct {
     /// Note: V8 handles (context, global, intrinsics) must be disposed
     /// by the V8-specific code before calling this.
     pub fn deinit(self: *Self) void {
-        // Free environment settings object if we created it
-        if (self.settings_object) |settings| {
-            settings.deinit();
-        }
-
         self.intrinsics.deinit();
         self.allocator.destroy(self);
     }
@@ -523,167 +418,4 @@ pub const Realm = struct {
     pub fn isWorklet(self: *const Self) bool {
         return self.info.isWorklet();
     }
-
-    /// Check if an API with given exposure is available in this realm
-    pub fn isExposedTo(self: *const Self, exposure: Exposure) bool {
-        return self.info.isExposedTo(exposure);
-    }
-
-    /// Get human-readable context name
-    pub fn contextName(self: *const Self) []const u8 {
-        return self.info.contextName();
-    }
-
-    // ========================================================================
-    // Environment Settings Object
-    // ========================================================================
-
-    /// Get or create the environment settings object for this realm
-    ///
-    /// Per HTML §8.1.5, each realm has an associated environment settings object.
-    /// This is created lazily on first access.
-    pub fn getSettingsObject(self: *Self) !*EnvironmentSettingsObject {
-        if (self.settings_object) |settings| {
-            return settings;
-        }
-
-        // Create a new settings object for this realm
-        const settings = try EnvironmentSettingsObject.init(self.allocator, .{
-            .realm = self,
-            // Other options will be set based on the context type
-        });
-        errdefer settings.deinit();
-
-        self.settings_object = settings;
-        return settings;
-    }
-
-    /// Get the settings object if already created (no allocation)
-    pub fn getExistingSettingsObject(self: *const Self) ?*EnvironmentSettingsObject {
-        return self.settings_object;
-    }
-
-    /// Set a pre-created settings object
-    ///
-    /// This takes ownership of the settings object.
-    /// Any existing settings object will be freed.
-    pub fn setSettingsObject(self: *Self, settings: *EnvironmentSettingsObject) void {
-        if (self.settings_object) |old| {
-            old.deinit();
-        }
-        self.settings_object = settings;
-    }
 };
-
-// ============================================================================
-// Realm Tests
-// ============================================================================
-
-test "Intrinsics - init creates unpopulated intrinsics" {
-    const intrinsics = Intrinsics.init();
-    try std.testing.expect(!intrinsics.isPopulated());
-    try std.testing.expect(intrinsics.type_error == null);
-    try std.testing.expect(intrinsics.object == null);
-}
-
-test "Realm - init creates realm with default values" {
-    const allocator = std.testing.allocator;
-
-    const realm = try Realm.init(allocator, .{});
-    defer realm.deinit();
-
-    try std.testing.expect(realm.isWindow()); // Default is window
-    try std.testing.expect(realm.engine_realm == null);
-    try std.testing.expect(realm.agent == null);
-    try std.testing.expect(realm.global_object == null);
-    try std.testing.expect(!realm.hasIntrinsics());
-}
-
-test "Realm - init with worker context type" {
-    const allocator = std.testing.allocator;
-
-    const realm = try Realm.init(allocator, .{
-        .context_type = .dedicated_worker,
-    });
-    defer realm.deinit();
-
-    try std.testing.expect(!realm.isWindow());
-    try std.testing.expect(realm.isWorker());
-    try std.testing.expectEqual(ContextType.dedicated_worker, realm.getContextType());
-}
-
-test "Realm - exposure checking" {
-    const allocator = std.testing.allocator;
-
-    // Window realm
-    const window_realm = try Realm.init(allocator, .{
-        .context_type = .window,
-    });
-    defer window_realm.deinit();
-
-    try std.testing.expect(window_realm.isExposedTo(.window));
-    try std.testing.expect(!window_realm.isExposedTo(.worker));
-    try std.testing.expect(window_realm.isExposedTo(.window_and_worker));
-    try std.testing.expect(window_realm.isExposedTo(.all));
-
-    // Worker realm
-    const worker_realm = try Realm.init(allocator, .{
-        .context_type = .dedicated_worker,
-    });
-    defer worker_realm.deinit();
-
-    try std.testing.expect(!worker_realm.isExposedTo(.window));
-    try std.testing.expect(worker_realm.isExposedTo(.worker));
-    try std.testing.expect(worker_realm.isExposedTo(.window_and_worker));
-    try std.testing.expect(worker_realm.isExposedTo(.all));
-}
-
-test "Realm - set and get global object" {
-    const allocator = std.testing.allocator;
-
-    const realm = try Realm.init(allocator, .{});
-    defer realm.deinit();
-
-    // Initially null
-    try std.testing.expect(realm.getGlobalObject() == null);
-
-    // Set a dummy global object
-    var dummy: u64 = 0x12345678;
-    realm.setGlobalObject(@ptrCast(&dummy));
-
-    // Should be retrievable
-    try std.testing.expect(realm.getGlobalObject() != null);
-}
-
-test "Realm - set and get browsing context" {
-    const allocator = std.testing.allocator;
-
-    const realm = try Realm.init(allocator, .{});
-    defer realm.deinit();
-
-    // Initially null
-    try std.testing.expect(realm.getBrowsingContext() == null);
-
-    // Set a dummy browsing context
-    var dummy: u64 = 0xDEADBEEF;
-    realm.setBrowsingContext(@ptrCast(&dummy));
-
-    // Should be retrievable
-    try std.testing.expect(realm.getBrowsingContext() != null);
-}
-
-test "Realm - contextName returns correct name" {
-    const allocator = std.testing.allocator;
-
-    const window = try Realm.init(allocator, .{ .context_type = .window });
-    defer window.deinit();
-    try std.testing.expectEqualStrings("Window", window.contextName());
-
-    const worker = try Realm.init(allocator, .{ .context_type = .dedicated_worker });
-    defer worker.deinit();
-    try std.testing.expectEqualStrings("DedicatedWorkerGlobalScope", worker.contextName());
-
-    const service = try Realm.init(allocator, .{ .context_type = .service_worker });
-    defer service.deinit();
-    try std.testing.expectEqualStrings("ServiceWorkerGlobalScope", service.contextName());
-}

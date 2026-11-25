@@ -47,7 +47,3 @@ pub const extractInterfaceMetadata = metadata.extractInterfaceMetadata;
 // Re-export registration functions
 pub const registerNamespace = registry.registerNamespace;
 pub const registerInterface = registry.registerInterface;
-
-test {
-    std.testing.refAllDecls(@This());
-}

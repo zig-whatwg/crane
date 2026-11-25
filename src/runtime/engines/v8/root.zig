@@ -202,21 +202,13 @@ pub const pointer_tag = @import("pointer_tag.zig");
 pub const AnyopaqueTag = pointer_tag.AnyopaqueTag;
 pub const TaggedPointer = pointer_tag.TaggedPointer;
 pub const tagPointer = pointer_tag.tagPointer;
-pub const tagConstPointer = pointer_tag.tagConstPointer;
 pub const untagPointer = pointer_tag.untagPointer;
-pub const isTaggedPointer = pointer_tag.isTagged;
-pub const getPointerTag = pointer_tag.getTag;
 
 /// Type-Safe JavaScript Value Representation
 /// Use JSValue instead of *const anyopaque for type safety
 pub const js_value = @import("js_value.zig");
 pub const JSValue = js_value.JSValue;
 pub const OptionalJSValue = js_value.OptionalJSValue;
-
-/// Type-Safe Stored Error for Stream Implementations
-/// Use StoredError instead of stored_error: ?*anyopaque
-pub const stored_error = @import("stored_error.zig");
-pub const StoredError = stored_error.StoredError;
 
 /// V8 Array Creation Utilities
 /// High-level functions for creating V8 Arrays from Zig data
@@ -288,12 +280,6 @@ pub const protocol_agents = @import("protocol_agents.zig");
 /// end's first step through it (`releaseRealm`).
 pub const node_wrappers = @import("node_wrappers.zig");
 
-/// Bfcache (Back-Forward Cache) Frozen Context Manager
-pub const frozen_context_manager = @import("frozen_context_manager.zig");
-pub const FrozenContextManager = frozen_context_manager.FrozenContextManager;
-pub const FrozenContext = frozen_context_manager.FrozenContext;
-pub const FrozenTimer = frozen_context_manager.FrozenTimer;
-
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;
@@ -321,7 +307,13 @@ pub const initializeShadowRealmSupport = shadow_realm.initializeShadowRealmSuppo
 pub const deinitializeShadowRealmSupport = shadow_realm.deinitializeShadowRealmSupport;
 pub const disposeShadowRealmsByInitiator = shadow_realm.disposeByInitiator;
 
-test "v8 module compiles" {
-    const testing = @import("std").testing;
-    testing.refAllDecls(@This());
+// The adapter's own tests, for src-<adapter> (build.zig): the files whose
+// tests pin what nothing else does, by name. Never refAllDecls - the
+// adapter's declarations reach the engine's externs, and that executable
+// links no engine (lane core1).
+test {
+    _ = pointer_tag;
+    _ = cross_origin;
+    _ = @import("protocol_agents.zig");
+    _ = @import("protocol_repl.zig");
 }

@@ -371,7 +371,7 @@ pub const NameId = enum(u32) {
 
 /// The known attribute local names in no namespace. Distinct (the perfect
 /// hash cannot be built otherwise). Lane perf3 D1's table (moved here from
-/// html/parser/attribute_name_intern.zig, which forwards to it):
+/// html/parser/attribute_name_intern.zig, since deleted):
 /// - HTML's attribute index (HTML "Index" > "Attributes", both lists) and
 ///   the event handler content attributes of GlobalEventHandlers,
 ///   WindowEventHandlers and DocumentAndElementEventHandlers (specs/idl);

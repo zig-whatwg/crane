@@ -21,7 +21,6 @@ const same_object = @import("same_object.zig");
 const KeptChild = same_object.KeptChild;
 const OriginRecord = @import("origin_record.zig").OriginRecord;
 const SandboxingFlagSet = @import("sandboxing.zig").SandboxingFlagSet;
-const StylesheetBlockingTracker = html_core.StylesheetBlockingTracker;
 const dom_document_scripts = @import("document_scripts.zig");
 const dom_document_modules = @import("document_modules.zig");
 const DocumentRareData = @import("document_rare_data.zig").DocumentRareData;
@@ -486,13 +485,6 @@ pub const InternalState = struct {
     /// Used to dispose V8/JSC module handles without compile-time dependency
     dispose_module_fn: ?dom_document_modules.ModuleDisposeFn,
 
-    // === Stylesheet Blocking (HTML Standard §14.3.3) ===
-
-    /// Stylesheet blocking tracker
-    /// Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
-    /// Tracks pending stylesheets to block script execution until CSS loads.
-    stylesheet_tracker: StylesheetBlockingTracker,
-
     // === Selection API (Selection API spec) ===
 
     /// The document's selection object (lazily created, [SameObject]) and
@@ -628,8 +620,6 @@ pub const InternalState = struct {
             // Module disposal (set when engine is configured)
             .dispose_module_fn = null,
             .policy_container = fetch.internal.PolicyContainer.init(allocator),
-            // Stylesheet blocking tracker
-            .stylesheet_tracker = StylesheetBlockingTracker.init(allocator),
             // Adopted style sheets (ObservableArray exotic object)
             .adopted_style_sheets = @import("style/root.zig").adopted.AdoptedSheets.init(allocator),
             .tree_index = @import("tree_ordered_map.zig").Maps.init(allocator, .document),
@@ -746,9 +736,6 @@ pub const InternalState = struct {
             if (rare.sequential_start.get()) |range| rare.sequential_start.releaseOwned(range);
             rare.destroy(self.allocator);
         }
-
-        // Stylesheet blocking tracker
-        self.stylesheet_tracker.deinit();
 
         // The objects this document handed out as the same object for its
         // whole life: each is severed from it here (see `KeptChild`).

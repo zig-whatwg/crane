@@ -11,15 +11,15 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const Observable = @import("interfaces").Observable;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Event = @import("interfaces").Event;
 const BufferSource = @import("typedefs").BufferSource;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
 const MediaKeyStatusMap = @import("interfaces").MediaKeyStatusMap;
 const MediaKeySessionClosedReason = @import("enums").MediaKeySessionClosedReason;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 

@@ -19,8 +19,8 @@
 //! `new Response('', {headers: null})` is a TypeError, `performance.measure(
 //! 'm', {start: null})` names the mark "null", `new IntersectionObserver(f,
 //! {threshold: null})` has thresholds [0], in all three). It read as not
-//! present once B2 typed such members: while they were runtime.JSValue the
-//! impl saw the null (`jsvalue_union_members`).
+//! present once B2 typed such members; while they were runtime.JSValue the
+//! impl saw the null.
 //!
 //! The predicate's default is pinned: a member the converter cannot convert
 //! null for by its own rule keeps reading null as not present.
@@ -51,9 +51,12 @@ const dictionaries = struct {
     /// SanitizerConfig or SanitizerPresets) sanitizer = "default"`, an inline
     /// union with a generated type (lane bind1 B5).
     const SetHTMLOptions = @FieldType(@typeInfo(@TypeOf(interfaces.Element.call_setHTML)).@"fn".param_types[2].?, "value");
+    /// effect.updateTiming(timing)'s `timing`: `(unrestricted double or
+    /// DOMString) duration`, a generated union (lane bind1 B5, the last
+    /// area: it was runtime.JSValue, converted by dom/animations/options.zig).
+    const OptionalEffectTiming = @FieldType(@typeInfo(@TypeOf(interfaces.AnimationEffect.call_updateTiming)).@"fn".param_types[1].?, "value");
     /// new IntersectionObserver(callback, options)'s `options`: `(double or
-    /// sequence<double>) threshold = 0`, an inline union still typed
-    /// runtime.JSValue (codegen's `unions_converted_by_impl`).
+    /// sequence<double>) threshold = 0`, a generated union (lane bind1 B5).
     const IntersectionObserverInit = @FieldType(@typeInfo(@TypeOf(interfaces.IntersectionObserver.call_constructor)).@"fn".param_types[2].?, "value");
 };
 
@@ -332,23 +335,55 @@ test "MessageEventInit {ports: null} is a TypeError; {transfer: undefined} stays
     try testing.expect(options.transfer == null);
 }
 
-test "an inline union member typed JSValue keeps a present null apart from absent" {
+test "OptionalEffectTiming {duration: null} is the union's string member, \"null\"; a number is the double; undefined is not present" {
     defer test_agent.close();
-    // WebIDL 3.2.18: only undefined is "not present"; a present null converts
-    // by the union's type. Where the impl still converts the JSValue (a
-    // position codegen's `unions_converted_by_impl` lists), it must see the
-    // null: codegen lists the member in `jsvalue_union_members`.
-    // IntersectionObserverInit's threshold is one until its area retires;
-    // then this case moves to another listed member, and goes with the last.
-    // hasdecl: a generated dictionary (src/webidl/dictionaries/); codegen
-    // writes `pub const jsvalue_union_members` into each one with such a member.
-    try testing.expect(@hasDecl(dictionaries.IntersectionObserverInit, "jsvalue_union_members"));
+    // 3.2.25 step 15: null is no Number, and the union has a string member,
+    // so it converts to "null" - which "update the timing properties"
+    // (Web Animations 1 6.5.4 step 3) rejects: updateTiming({duration: null})
+    // is a TypeError in Chrome, Firefox and Safari (probe
+    // tmp/probes/bind1-nullmember/report-g3.txt). The member has a generated
+    // union type since lane bind1 B5; until then it was the last
+    // runtime.JSValue member and the impl converted it.
+    const e = try env();
+    const present = try eval("({ duration: null })");
+    defer ffi.v8_Value_Dispose(present);
+    const given = try conversions.fromV8Value(dictionaries.OptionalEffectTiming, testing.allocator, e.isolate, e.context, present);
+    var duration = given.duration.?;
+    defer if (duration == .domstring) duration.domstring.deinit(testing.allocator);
+    try testing.expect(given.duration.? == .domstring);
+    try testing.expectEqualStrings("null", given.duration.?.domstring.asSlice());
+
+    const number = try eval("({ duration: 250 })");
+    defer ffi.v8_Value_Dispose(number);
+    const timed = try conversions.fromV8Value(dictionaries.OptionalEffectTiming, testing.allocator, e.isolate, e.context, number);
+    try testing.expect(timed.duration.? == .double);
+    try testing.expectEqual(@as(f64, 250), timed.duration.?.double);
+
+    const absent = try eval("({ duration: undefined })");
+    defer ffi.v8_Value_Dispose(absent);
+    const omitted = try conversions.fromV8Value(dictionaries.OptionalEffectTiming, testing.allocator, e.isolate, e.context, absent);
+    try testing.expect(omitted.duration == null);
+}
+
+test "IntersectionObserverInit {threshold: null} is the union's double member, 0; a sequence keeps its order; undefined is not present" {
+    defer test_agent.close();
+    // 3.2.25 step 17: null is no sequence (step 11 needs an Object) and the
+    // union has a numeric member, so it converts to the double 0 - Chrome,
+    // Firefox and Safari all answer thresholds [0] for {threshold: null}.
+    // The member has a generated union type since lane bind1 B5 (it was
+    // runtime.JSValue, and the constructor discarded it).
     const e = try env();
     const present = try eval("({ threshold: null })");
     defer ffi.v8_Value_Dispose(present);
     const given = try conversions.fromV8Value(dictionaries.IntersectionObserverInit, testing.allocator, e.isolate, e.context, present);
-    try testing.expect(given.threshold != null);
-    try testing.expect(given.threshold.? == .null);
+    try testing.expect(given.threshold.? == .double);
+    try testing.expectEqual(@as(f64, 0), given.threshold.?.double);
+
+    const list = try eval("({ threshold: [0.5, 0] })");
+    defer ffi.v8_Value_Dispose(list);
+    const many = try conversions.fromV8Value(dictionaries.IntersectionObserverInit, testing.allocator, e.isolate, e.context, list);
+    defer testing.allocator.free(many.threshold.?.double_sequence);
+    try testing.expectEqualSlices(f64, &.{ 0.5, 0 }, many.threshold.?.double_sequence);
 
     const absent = try eval("({ threshold: undefined })");
     defer ffi.v8_Value_Dispose(absent);
@@ -364,9 +399,6 @@ test "SetHTMLOptions {sanitizer: null} is the union's SanitizerConfig member, em
     // (crane/san-options-null.html). The member has a generated union type
     // since lane bind1 B5 (it was runtime.JSValue, converted by
     // html/sanitizer.zig), so the binding converts the null.
-    // hasdecl: a generated dictionary; codegen writes the `pub` declaration
-    // only while a member is typed runtime.JSValue - its absence is the claim.
-    try testing.expect(!@hasDecl(dictionaries.SetHTMLOptions, "jsvalue_union_members"));
     const e = try env();
     const present = try eval("({ sanitizer: null })");
     defer ffi.v8_Value_Dispose(present);

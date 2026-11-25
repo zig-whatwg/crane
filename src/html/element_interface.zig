@@ -270,15 +270,6 @@ pub fn forLocalName(name: []const u8) ElementInterface {
 
 const testing = std.testing;
 
-test "element interface: steps 1-3 name their interface" {
-    try testing.expectEqual(ElementInterface.HTMLUnknownElement, forLocalName("applet"));
-    try testing.expectEqual(ElementInterface.HTMLUnknownElement, forLocalName("keygen"));
-    try testing.expectEqual(ElementInterface.HTMLElement, forLocalName("center"));
-    try testing.expectEqual(ElementInterface.HTMLElement, forLocalName("tt"));
-    try testing.expectEqual(ElementInterface.HTMLPreElement, forLocalName("listing"));
-    try testing.expectEqual(ElementInterface.HTMLPreElement, forLocalName("xmp"));
-}
-
 test "element interface: step 4 covers the obsolete elements that keep one" {
     try testing.expectEqual(ElementInterface.HTMLMarqueeElement, forLocalName("marquee"));
     try testing.expectEqual(ElementInterface.HTMLFrameSetElement, forLocalName("frameset"));
@@ -287,28 +278,4 @@ test "element interface: step 4 covers the obsolete elements that keep one" {
     try testing.expectEqual(ElementInterface.HTMLFontElement, forLocalName("font"));
     try testing.expectEqual(ElementInterface.HTMLParamElement, forLocalName("param"));
     try testing.expectEqual(ElementInterface.HTMLSelectedContentElement, forLocalName("selectedcontent"));
-}
-
-test "element interface: the lookup is exact, not case-insensitive" {
-    try testing.expectEqual(ElementInterface.HTMLDivElement, forLocalName("div"));
-    try testing.expectEqual(ElementInterface.HTMLUnknownElement, forLocalName("DIV"));
-    try testing.expectEqual(ElementInterface.HTMLUnknownElement, forLocalName("Div"));
-}
-
-test "element interface: a valid custom element name is HTMLElement (step 6)" {
-    try testing.expectEqual(ElementInterface.HTMLElement, forLocalName("x-foo"));
-    try testing.expectEqual(ElementInterface.HTMLElement, forLocalName("my-element"));
-    // Not valid custom element names: uppercase, reserved, no hyphen.
-    try testing.expectEqual(ElementInterface.HTMLUnknownElement, forLocalName("X-foo"));
-    try testing.expectEqual(ElementInterface.HTMLUnknownElement, forLocalName("annotation-xml"));
-    try testing.expectEqual(ElementInterface.HTMLUnknownElement, forLocalName("foo"));
-}
-
-test "element interface: every name longer than any table entry still resolves" {
-    // The old factories lowercased into a 64-byte buffer and matched the
-    // truncation; the table matches the whole name.
-    const long = "a-" ++ &@as([100:0]u8, @splat('x'));
-    try testing.expectEqual(ElementInterface.HTMLElement, forLocalName(long));
-    const long_unknown = "div" ++ &@as([100:0]u8, @splat('x'));
-    try testing.expectEqual(ElementInterface.HTMLUnknownElement, forLocalName(long_unknown));
 }

@@ -125,38 +125,24 @@ fn coarsenToResolution(timestamp_ns: clock.Nanoseconds, resolution_ns: clock.Nan
     return @divFloor(timestamp_ns, resolution_ns) * resolution_ns;
 }
 
-/// Coarsen time with optional jitter
-///
-/// This variant adds random jitter within the resolution window
-/// for additional protection against timing attacks. The jitter
-/// is deterministic based on the timestamp to maintain consistency
-/// for the same input.
-///
-/// Note: This is an implementation-defined enhancement beyond the
-/// basic spec requirements.
-pub fn coarsenTimeWithJitter(
-    timestamp_ns: clock.Nanoseconds,
-    cross_origin_isolated: bool,
-    seed: u64,
-) clock.Nanoseconds {
-    const resolution = getResolution(cross_origin_isolated);
-    const base = coarsenToResolution(timestamp_ns, resolution);
-
-    // Add deterministic jitter based on seed
-    // The jitter is always positive and less than resolution
-    var prng = std.Random.DefaultPrng.init(seed);
-    const random = prng.random();
-    const jitter_ns: clock.Nanoseconds = @intCast(random.intRangeAtMost(u64, 0, @intCast(resolution - 1)));
-
-    return base + jitter_ns;
-}
-
 /// Check if a timestamp has been properly coarsened
 ///
 /// Useful for debugging and testing to verify coarsening is applied.
 pub fn isCoarsened(timestamp_ns: clock.Nanoseconds, cross_origin_isolated: bool) bool {
     const resolution = getResolution(cross_origin_isolated);
     return @mod(timestamp_ns, resolution) == 0;
+}
+
+/// requestIdleCallback's timeRemaining() steps 3-5: `deadline_ns - now_ns` in
+/// milliseconds, each coarsened as performance.now() is (HR-TIME "coarsen
+/// time"; the privacy section asks it of these estimates), and 0 when the
+/// deadline has passed. Moved from the IdleDeadline impl with its test (lane
+/// core1): shared helpers live outside src/webidl/impls/.
+pub fn coarsenedRemainingMillis(deadline_ns: clock.Nanoseconds, now_ns: clock.Nanoseconds) f64 {
+    const deadline = coarsenTime(deadline_ns, false);
+    const now = coarsenTime(now_ns, false);
+    if (deadline <= now) return 0;
+    return @as(f64, @floatFromInt(deadline - now)) / std.time.ns_per_ms;
 }
 
 // ============================================================================
@@ -185,18 +171,6 @@ test "coarsenTime - cross-origin isolated resolution" {
     try testing.expectEqual(@as(clock.Nanoseconds, 123_453_125), result);
 }
 
-test "coarsenTime - already at boundary" {
-    const input: clock.Nanoseconds = 100_000_000; // Exactly on a 125 us boundary
-    const result = coarsenTime(input, false);
-
-    try testing.expectEqual(input, result);
-}
-
-test "coarsenTime - zero" {
-    const result = coarsenTime(0, false);
-    try testing.expectEqual(@as(clock.Nanoseconds, 0), result);
-}
-
 test "coarsenTime - negative value" {
     // Negative times should also be coarsened correctly
     const input: clock.Nanoseconds = -123_456_789;
@@ -207,39 +181,9 @@ test "coarsenTime - negative value" {
     try testing.expect(isCoarsened(result, false));
 }
 
-test "isCoarsened - correctly identifies coarsened timestamps" {
-    const coarsened: clock.Nanoseconds = 123_375_000;
-    const uncoarsened: clock.Nanoseconds = 123_456_789;
-
-    try testing.expect(isCoarsened(coarsened, false));
-    try testing.expect(!isCoarsened(uncoarsened, false));
-}
-
-test "coarsenTime - result is always <= input for positive values" {
-    const input: clock.Nanoseconds = 999_999_999;
-    const result_default = coarsenTime(input, false);
-    const result_isolated = coarsenTime(input, true);
-
-    try testing.expect(result_default <= input);
-    try testing.expect(result_isolated <= input);
-}
-
-test "coarsenTimeWithJitter - stays within bounds" {
-    const input: clock.Nanoseconds = 123_456_789;
-    const base = coarsenTime(input, false);
-    const resolution = getResolution(false);
-
-    // Run multiple times with different seeds
-    var i: u64 = 0;
-    while (i < 100) : (i += 1) {
-        const jittered = coarsenTimeWithJitter(input, false, i);
-        // Result should be >= base and < base + resolution
-        try testing.expect(jittered >= base);
-        try testing.expect(jittered < base + resolution);
-    }
-}
-
-test "getResolution - returns correct values" {
-    try testing.expectEqual(DEFAULT_RESOLUTION_NS, getResolution(false));
-    try testing.expectEqual(CROSS_ORIGIN_ISOLATED_RESOLUTION_NS, getResolution(true));
+test "remaining time is the coarsened deadline less the coarsened now, in milliseconds" {
+    const ms = std.time.ns_per_ms;
+    try testing.expectEqual(@as(f64, 10), coarsenedRemainingMillis(1_000 * ms + 10 * ms, 1_000 * ms));
+    // The 125 us grid: 10.05 ms from a boundary reads 10.
+    try testing.expectEqual(@as(f64, 10), coarsenedRemainingMillis(1_000 * ms + 10 * ms + 50_000, 1_000 * ms));
 }

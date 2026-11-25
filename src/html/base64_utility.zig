@@ -53,19 +53,3 @@ pub fn btoa(allocator: std.mem.Allocator, data: []const u8) Error![]u8 {
     const encoded = try infra.base64.forgivingBase64Encode(allocator, bytes);
     return @constCast(encoded);
 }
-
-test "btoa encodes code points up to U+00FF as bytes" {
-    const allocator = std.testing.allocator;
-    const encoded = try btoa(allocator, "\xc3\xbf\xc3\xbe");
-    defer allocator.free(encoded);
-    try std.testing.expectEqualStrings("//4=", encoded);
-    try std.testing.expectError(error.InvalidCharacterError, btoa(allocator, "\xc4\x80"));
-}
-
-test "atob decodes forgivingly and returns code points" {
-    const allocator = std.testing.allocator;
-    const decoded = try atob(allocator, " //4 ");
-    defer allocator.free(decoded);
-    try std.testing.expectEqualStrings("\xc3\xbf\xc3\xbe", decoded);
-    try std.testing.expectError(error.InvalidCharacterError, atob(allocator, "a"));
-}

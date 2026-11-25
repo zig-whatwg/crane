@@ -16,14 +16,17 @@
 //!   run with `--collected`, each workload's footprint read once more after
 //!   a full collection the page asked for (`footprint_collected`).
 //!
-//! THE RULE (AGENTS.md; the user, 2026-11-15 and 2026-11-17): a memory row
-//! is judged on the steady figure and the peak of the MEMORY pass - the
-//! tip's median over the base's, over all its launches - and only there.
-//! A figure above the bar may be CLEARED, with every launch's value
-//! printed, when
+//! THE RULE (AGENTS.md; the user, 2026-11-15, 2026-11-17 and 2026-11-25):
+//! a memory row is judged on the steady figure and the peak of the MEMORY
+//! pass - the tip's median over the base's, over all its launches - and
+//! only there. A figure above the bar may be CLEARED, with every launch's
+//! value printed, when
 //! (a) both sides reached a common level and each such level's tip / base
 //!     ratio is within the bar, or
-//! (b) the row's collected figure is within the bar.
+//! (b) the row's collected figure is within the bar - or, when the
+//!     collected launches of both sides form two modes (`jointCollected`),
+//!     both sides reached a shared mode and each shared mode's tip / base
+//!     ratio is within the bar, as (a) does for steady and peak.
 //! A figure above the bar that neither clears is OVER (`Verdict`), and the
 //! command then exits 1. The collected figure never replaces steady and
 //! peak: it is read only to clear a row they put over the bar.
@@ -162,11 +165,26 @@ fn nearerLow(low: u64, high: u64, v: u64) bool {
 /// both sides, 1.1 MB apart, and 1.035 by the medians).
 pub const joint_tightness = 2;
 
-/// The two levels of both sides' launches, `all`: report.zig's test
-/// (`levelsOf`: split at the widest gap between neighbours; the gap at
-/// least `level_gap` of the lower group's median; `level_min_runs` in each
-/// group) with `joint_tightness` for how tight a group must be.
-fn jointLevels(gpa: Allocator, all: []const u64) Allocator.Error!?report.Levels {
+const Grouping = enum {
+    /// Steady and peak: both groups tighter than half the gap (`joint_tightness`).
+    levels,
+    /// Collected launches only: split at the widest gap, at least `level_gap`
+    /// (3%) of the lower mode's median, `level_min_runs` (2+) in each mode,
+    /// and the gap wider than the LOWER mode's span (the upper mode may be
+    /// wide: retained allocator pages, docs/performance.md).
+    collected_modes,
+};
+
+const Split = struct {
+    low: u64,
+    high: u64,
+    /// Highest launch in the lower group; every launch `<= low_max` is in the
+    /// lower group and every launch `> low_max` is in the upper group.
+    low_max: u64,
+};
+
+/// The two groups of both sides' launches, `all`, under `grouping`.
+fn findSplit(gpa: Allocator, all: []const u64, grouping: Grouping) Allocator.Error!?Split {
     if (all.len < 2 * report.level_min_runs) return null;
     const sorted = try gpa.dupe(u64, all);
     defer gpa.free(sorted);
@@ -182,23 +200,24 @@ fn jointLevels(gpa: Allocator, all: []const u64) Allocator.Error!?report.Levels 
     const gap = high[0] - low[low.len - 1];
     const low_level = (try stats.medianU64(gpa, low)).?;
     if (f64Of(gap) < report.level_gap * f64Of(low_level)) return null;
-    const widest = @max(low[low.len - 1] - low[0], high[high.len - 1] - high[0]);
-    if (widest * joint_tightness > gap) return null;
+    const low_span = low[low.len - 1] - low[0];
+    switch (grouping) {
+        .levels => {
+            const widest = @max(low_span, high[high.len - 1] - high[0]);
+            if (widest * joint_tightness > gap) return null;
+        },
+        .collected_modes => {
+            if (low_span >= gap) return null;
+        },
+    }
     return .{
         .low = low_level,
-        .low_runs = @intCast(low.len),
         .high = (try stats.medianU64(gpa, high)).?,
-        .high_runs = @intCast(high.len),
+        .low_max = low[low.len - 1],
     };
 }
 
-/// Both sides' launches of one row, read together; null when a side has
-/// none, or a median is zero.
-///
-/// The levels are looked for in the launches of both sides at once
-/// (`jointLevels`: two groups at least 3% apart, two launches or more in
-/// each, each closer together than half the gap).
-pub fn joint(gpa: Allocator, tip: []const u64, base: []const u64) Allocator.Error!?Joint {
+fn jointWith(gpa: Allocator, tip: []const u64, base: []const u64, grouping: Grouping) Allocator.Error!?Joint {
     const tip_median = (try stats.medianU64(gpa, tip)) orelse return null;
     const base_median = (try stats.medianU64(gpa, base)) orelse return null;
     if (base_median == 0 or tip_median == 0) return null;
@@ -207,7 +226,7 @@ pub fn joint(gpa: Allocator, tip: []const u64, base: []const u64) Allocator.Erro
     defer gpa.free(all);
     @memcpy(all[0..tip.len], tip);
     @memcpy(all[tip.len..], base);
-    const found = (try jointLevels(gpa, all)) orelse return out;
+    const found = (try findSplit(gpa, all, grouping)) orelse return out;
     var levels: Joint.Levels = .{ .low = found.low, .high = found.high, .tip_low = 0, .tip_high = 0, .base_low = 0, .base_high = 0, .share_chance = 1 };
     const sides = [_][]const u64{ tip, base };
     var medians: [2][2]?u64 = @splat(@splat(null));
@@ -219,7 +238,11 @@ pub fn joint(gpa: Allocator, tip: []const u64, base: []const u64) Allocator.Erro
         var n_low: usize = 0;
         var n_high: usize = 0;
         for (values) |v| {
-            if (nearerLow(found.low, found.high, v)) {
+            const in_low = switch (grouping) {
+                .levels => nearerLow(found.low, found.high, v),
+                .collected_modes => v <= found.low_max,
+            };
+            if (in_low) {
                 low[n_low] = v;
                 n_low += 1;
             } else {
@@ -246,6 +269,27 @@ pub fn joint(gpa: Allocator, tip: []const u64, base: []const u64) Allocator.Erro
     levels.share_chance = fisherTwoSided(levels.tip_high, levels.tip_low, levels.base_high, levels.base_low);
     out.levels = levels;
     return out;
+}
+
+/// Both sides' launches of one row (steady or peak), read together; null
+/// when a side has none, or a median is zero.
+///
+/// The levels are looked for in the launches of both sides at once
+/// (`Grouping.levels`: two groups at least 3% apart, two launches or more
+/// in each, each closer together than half the gap).
+pub fn joint(gpa: Allocator, tip: []const u64, base: []const u64) Allocator.Error!?Joint {
+    return jointWith(gpa, tip, base, .levels);
+}
+
+/// Both sides' collected launches of one row, read together; null when a
+/// side has none, or a median is zero.
+///
+/// Modes are looked for in both sides' collected launches at once
+/// (`Grouping.collected_modes`: split at the widest gap, gap >= 3% of the
+/// lower mode's median, 2+ launches in each mode, and gap wider than the
+/// lower mode's span; the upper mode may be wide — retained allocator pages).
+pub fn jointCollected(gpa: Allocator, tip: []const u64, base: []const u64) Allocator.Error!?Joint {
+    return jointWith(gpa, tip, base, .collected_modes);
 }
 
 /// The number of ways to choose `k` of `n`, as a float (exact to a float's
@@ -351,6 +395,14 @@ pub const Pass = struct {
     tip_launches: u32 = 0,
     base_launches: u32 = 0,
 
+    /// Whether any row has a collected figure (the pass was run with
+    /// `--collected`). Every row is asked, not the headline's mean: a pass
+    /// of rows outside the headline (`--only=overhead`) has them too.
+    pub fn readCollected(p: *const Pass) bool {
+        for (p.rows) |*r| if (r.tip.of(.collected).len > 0 or r.base.of(.collected).len > 0) return true;
+        return false;
+    }
+
     pub fn row(p: *const Pass, workload: []const u8) ?*const Row {
         for (p.rows) |*r| if (std.mem.eql(u8, r.workload, workload)) return r;
         return null;
@@ -440,7 +492,8 @@ pub fn reading(gpa: Allocator, row: *const Row, m: Measure) Allocator.Error!?Rea
         defer gpa.free(b);
         for (tip, t) |v, *o| o.* = @intFromFloat(v);
         for (base, b) |v, *o| o.* = @intFromFloat(v);
-        if (try joint(gpa, t, b)) |j| out.levels = j.levels;
+        const j = if (m == .collected) try jointCollected(gpa, t, b) else try joint(gpa, t, b);
+        if (j) |found| out.levels = found.levels;
     }
     return out;
 }
@@ -472,7 +525,9 @@ pub const Verdict = enum {
     /// Above the bar, and cleared: (a) both sides reached a common level
     /// and each such level's ratio is within the bar.
     cleared_by_levels,
-    /// Above the bar, and cleared: (b) the collected figure is within it.
+    /// Above the bar, and cleared: (b) the collected figure is within it
+    /// (or, when both sides' collected launches form two modes, each shared
+    /// mode's tip / base ratio is within it).
     cleared_by_collected,
     /// Above the bar and not cleared.
     over,
@@ -482,16 +537,24 @@ pub const Verdict = enum {
     }
 };
 
+fn levelsWithin(l: Joint.Levels, bar: f64) bool {
+    if (!l.shared()) return false;
+    const low_ok = if (l.low_ratio) |x| x <= bar else true;
+    const high_ok = if (l.high_ratio) |x| x <= bar else true;
+    return low_ok and high_ok;
+}
+
 /// The rule's verdict on a steady or peak reading `r`, with the row's
 /// collected reading where the memory pass read one.
 pub fn verdictOf(r: Reading, collected: ?Reading, bar: f64) Verdict {
     if (!(r.ratio > bar)) return .within;
-    if (r.levels) |l| if (l.shared()) {
-        const low_ok = if (l.low_ratio) |x| x <= bar else true;
-        const high_ok = if (l.high_ratio) |x| x <= bar else true;
-        if (low_ok and high_ok) return .cleared_by_levels;
-    };
-    if (collected) |c| if (c.ratio <= bar) return .cleared_by_collected;
+    if (r.levels) |l| if (levelsWithin(l, bar)) return .cleared_by_levels;
+    if (collected) |c| {
+        if (c.levels) |l| if (l.shared()) {
+            return if (levelsWithin(l, bar)) .cleared_by_collected else .over;
+        };
+        if (c.ratio <= bar) return .cleared_by_collected;
+    }
     return .over;
 }
 
@@ -592,7 +655,7 @@ fn writeMemoryFinding(w: W, gpa: Allocator, row: *const Row, m: Measure, r: Read
     if (collected) |c| {
         try w.print("      collected (after a full collection the page asked for): {d:.3} (tip {d:.1} MB | base {d:.1} MB)", .{ c.ratio, c.tip_median / mb, c.base_median / mb });
         if (c.levels) |l| {
-            try w.writeAll(" - it reads two levels too:\n");
+            try w.writeAll(" - it reads two modes:\n");
             try writeLevels(w, l);
         } else try w.writeAll(", one level\n");
         try writeLaunches(w, gpa, .collected, "collected, MB  tip: ", collected_row.?.tip.of(.collected));
@@ -602,13 +665,23 @@ fn writeMemoryFinding(w: W, gpa: Allocator, row: *const Row, m: Measure, r: Read
     switch (verdictOf(r, collected, limit)) {
         .within => {},
         .cleared_by_levels => try w.writeAll("      VERDICT: CLEARED (a) - both sides reached a common level, and each level they share reads within the bar\n"),
-        .cleared_by_collected => try w.print("      VERDICT: CLEARED (b) - the collected figure reads within the bar ({d:.3})\n", .{collected.?.ratio}),
+        .cleared_by_collected => if (collected.?.levels != null and collected.?.levels.?.shared())
+            try w.writeAll("      VERDICT: CLEARED (b) - the collected launches form two modes, and each mode they share reads within the bar\n")
+        else
+            try w.print("      VERDICT: CLEARED (b) - the collected figure reads within the bar ({d:.3})\n", .{collected.?.ratio}),
         .over => {
             try w.writeAll("      VERDICT: OVER THE BAR - (a) ");
             if (r.levels) |l| {
                 if (l.shared()) try w.writeAll("a level both sides reached reads over the bar") else try w.writeAll("the sides share no level");
             } else try w.writeAll("the launches form one level");
-            if (collected) |c| try w.print("; (b) the collected figure reads {d:.3}\n", .{c.ratio}) else try w.writeAll("; (b) no collected figure was read\n");
+            if (collected) |c| {
+                if (c.levels) |l| {
+                    if (l.shared())
+                        try w.print("; (b) the collected figure reads {d:.3}, and a collected mode both sides reached reads over the bar\n", .{c.ratio})
+                    else
+                        try w.print("; (b) the collected figure reads {d:.3} (the sides share no collected mode)\n", .{c.ratio});
+                } else try w.print("; (b) the collected figure reads {d:.3}\n", .{c.ratio});
+            } else try w.writeAll("; (b) no collected figure was read\n");
         },
     }
 }
@@ -645,8 +718,7 @@ pub fn write(w: W, gpa: Allocator, default: *const Pass, memory: ?*const Pass, o
     try w.print("perf_bench cost: tip {s} against base {s}; the bar is {d:.2} (tip / base)\n", .{ default.tip_version, default.base_version, bar });
     try w.print("  default pass{s}{s}: {d} rows, {d} launches of the tip and {d} of the base\n", .{ if (options.default_name.len > 0) " " else "", options.default_name, default.rows.len, default.tip_launches, default.base_launches });
     if (memory) |p| {
-        const collected = try mean(gpa, p, .collected);
-        try w.print("  memory pass{s}{s}: {d} rows, {d} launches of the tip and {d} of the base; the collected figure {s}\n", .{ if (options.memory_name.len > 0) " " else "", options.memory_name, p.rows.len, p.tip_launches, p.base_launches, if (collected.n > 0) "was read" else "was not read (no --collected)" });
+        try w.print("  memory pass{s}{s}: {d} rows, {d} launches of the tip and {d} of the base; the collected figure {s}\n", .{ if (options.memory_name.len > 0) " " else "", options.memory_name, p.rows.len, p.tip_launches, p.base_launches, if (p.readCollected()) "was read" else "was not read (no --collected)" });
         if (!std.mem.eql(u8, p.tip_version, default.tip_version) or !std.mem.eql(u8, p.base_version, default.base_version)) {
             try w.print("  NOTE: the memory pass compares {s} against {s}: not the default pass's builds\n", .{ p.tip_version, p.base_version });
         }
@@ -1212,4 +1284,273 @@ test "a pair's verdict from its journals: one row cleared by levels, one by the 
     try testing.expectEqual(@as(usize, 0), s2.memory_not_cleared);
     try testing.expect(!s2.failed());
     try testing.expect(std.mem.endsWith(u8, out2.written(), "VERDICT: within the bar\n"));
+}
+
+// Rule (a)'s level grouping against its text (lane tool1, queue item 10,
+// 2026-11-24): docs/performance.md, "A lane's cost pair" - "two groups at
+// least 3% apart, two launches or more in each, each closer together than
+// half the gap between them". The launches are the two windows the queue
+// names; each test says which clause decides.
+
+fn tenths(comptime values: anytype) [values.len]u64 {
+    var out: [values.len]u64 = undefined;
+    inline for (values, 0..) |v, i| out[i] = v * (mib / 10);
+    return out;
+}
+
+test "rule (a)'s grouping, tab1's timers.message-channel: the tip between the base's two groups is one level by the text, and must be" {
+    const a = testing.allocator;
+    // The queue's ranges (the launches themselves were deleted with tab1's
+    // bins): base 22.7-23.2 MB x6 and 24.3-24.9 x3, tip 23.8-24.6 x9.
+    const base = tenths(.{ 227, 228, 229, 230, 231, 232, 243, 246, 249 });
+    const tip = tenths(.{ 238, 239, 240, 241, 242, 243, 244, 245, 246 });
+    const j = (try joint(a, &tip, &base)).?;
+    // The medians: 24.2 over 23.1.
+    try testing.expect(j.plain > 1.03);
+    // Both sides together: the widest gap between neighbours is 23.2 ->
+    // 23.8 MB, 0.6 MB, 2.6% of the lower group's median - under "at least
+    // 3% apart". One level, as the tool said.
+    try testing.expectEqual(@as(?Joint.Levels, null), j.levels);
+    // The base alone looks bimodal (1.1 MB apart, 4.8%), but its upper
+    // group is 0.6 MB wide, more than half that gap (and report.zig's own
+    // test, a quarter, refuses it too): one level by both texts.
+    try testing.expectEqual(@as(?report.Levels, null), try report.levelsOf(a, &base));
+    // Why the text must not group these: were the base's upper group and
+    // the tip one level, every tip launch would be on it (23.8 is nearer
+    // 24.6 than 22.95 in ratio) and the level against level would read
+    // within the bar - clearing a tip that sits on NEITHER of the base's
+    // levels. The user ruled on this row instead (2026-11-23).
+    try testing.expect(!nearerLow(229 * (mib / 10) + mib / 20, 246 * (mib / 10), 238 * (mib / 10)));
+}
+
+test "rule (a)'s grouping, cs1's observers.resize-construct: peak one level; collected bimodal but its upper mode too wide to be a level by the text" {
+    const a = testing.allocator;
+    // cs1's 9-launch pair, memory pass (chat.local
+    // ~/crane-work/cs1-c-bins/costpair-635d7dfd6, 2026-11-24), MB.
+    const tip_peak = tenths(.{ 658, 690, 693, 699, 699, 703, 712, 717, 744 });
+    const base_peak = tenths(.{ 588, 662, 670, 670, 677, 693, 745, 746, 767 });
+    const peak = (try joint(a, &tip_peak, &base_peak)).?;
+    try testing.expectApproxEqAbs(@as(f64, 1.033), peak.plain, 0.001);
+    // The widest gap is the base's lowest launch (58.8 -> 65.8): one launch
+    // below it, not "two launches or more in each". One level.
+    try testing.expectEqual(@as(?Joint.Levels, null), peak.levels);
+
+    const tip_collected = tenths(.{ 193, 193, 203, 258, 262, 271, 279, 283, 284 });
+    const base_collected = tenths(.{ 194, 204, 204, 204, 247, 271, 274, 283, 318 });
+    const collected = (try joint(a, &tip_collected, &base_collected)).?;
+    // 1.059 in the window's table, whose launches had more digits.
+    try testing.expectApproxEqAbs(@as(f64, 1.059), collected.plain, 0.003);
+    // Two modes by eye: 19.3-20.4 MB (7 launches) and 24.7-31.8 (11), 4.3
+    // MB apart (21%). The upper one spans 7.1 MB - not "closer together
+    // than half the gap" (2.15 MB) - so the text says one level, and the
+    // code reads it so.
+    try testing.expectEqual(@as(?Joint.Levels, null), collected.levels);
+    // Without its widest launch (the base's 31.8) the upper mode still
+    // spans 3.7 MB: the text's clause, not one stray launch, decides.
+    try testing.expectEqual(@as(?Joint.Levels, null), (try joint(a, &tip_collected, base_collected[0..8])).?.levels);
+
+    // The verdict the window printed: rule (a) has no levels to clear the
+    // peak by, and rule (b) reads the collected median, which the 9-launch
+    // sample put on different modes (tip median 26.2 high, base 24.7 high
+    // but the base has 4 of 9 low against the tip's 3).
+    const r: Reading = .{ .ratio = peak.plain, .tip_median = 69.9, .base_median = 67.7, .apart = false, .levels = peak.levels };
+    const c: Reading = .{ .ratio = collected.plain, .tip_median = 26.2, .base_median = 24.7, .apart = false, .levels = collected.levels };
+    try testing.expectEqual(Verdict.over, verdictOf(r, c, default_bar));
+}
+
+test "the memory pass's header says the collected figure was read when any row has it, in the headline or not" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    // A pass of the harness's floor alone (`--only=overhead`), which is not
+    // in the headline: lane tool1's dry window said "was not read" over
+    // records that carry it.
+    var records: std.ArrayList(journal.Record) = .empty;
+    for ([_]journal.EngineName{ .crane, .crane_base }) |name| try records.append(a, try testRecord(a, name, if (name == .crane) "tip1" else "base1", "overhead.empty", 0, 1, 1, 30 * mib, 31 * mib, 29 * mib));
+    const memory = try passOf(a, records.items);
+    try testing.expect(memory.readCollected());
+    var out: Io.Writer.Allocating = .init(a);
+    _ = try write(&out.writer, a, &memory, &memory, .{});
+    try testing.expect(std.mem.indexOf(u8, out.written(), "the collected figure was read") != null);
+    // And a pass with none says so.
+    for (records.items) |*r| r.memory.?.footprint_collected = null;
+    const plain = try passOf(a, records.items);
+    try testing.expect(!plain.readCollected());
+}
+
+test "rule (b) mode against mode: cs1's 9-launch bimodal collected figure clears, while steady/peak grouping stays unchanged" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+
+    // cs1's 9-launch observers.resize-construct (chat.local 2026-11-24), MB.
+    const tip_peak = tenths(.{ 658, 690, 693, 699, 699, 703, 712, 717, 744 });
+    const base_peak = tenths(.{ 588, 662, 670, 670, 677, 693, 745, 746, 767 });
+    const tip_collected = tenths(.{ 193, 193, 203, 258, 262, 271, 279, 283, 284 });
+    const base_collected = tenths(.{ 194, 204, 204, 204, 247, 271, 274, 283, 318 });
+
+    var default_records: std.ArrayList(journal.Record) = .empty;
+    var memory_records: std.ArrayList(journal.Record) = .empty;
+    for (0..9) |i| {
+        const run: u32 = @intCast(i);
+        try default_records.append(a, try testRecord(a, .crane, "tip1", "observers.resize-construct", run, 10, 1_000_000, 30 * mib, 65 * mib, null));
+        try default_records.append(a, try testRecord(a, .crane_base, "base1", "observers.resize-construct", run, 10, 1_000_000, 30 * mib, 65 * mib, null));
+        // Steady is level; peak is cs1's 1.033; collected is cs1's bimodal 1.059.
+        try memory_records.append(a, try testRecord(a, .crane, "tip1", "observers.resize-construct", run, 10, 1, 30 * mib, tip_peak[i], tip_collected[i]));
+        try memory_records.append(a, try testRecord(a, .crane_base, "base1", "observers.resize-construct", run, 10, 1, 30 * mib, base_peak[i], base_collected[i]));
+        // Putting the exact same bimodal launches in steady must still read as
+        // one level: rule (a) and steady/peak grouping are unchanged.
+        try memory_records.append(a, try testRecord(a, .crane, "tip1", "steady.same-numbers", run, 10, 1, tip_collected[i], 40 * mib, null));
+        try memory_records.append(a, try testRecord(a, .crane_base, "base1", "steady.same-numbers", run, 10, 1, base_collected[i], 40 * mib, null));
+    }
+
+    const default = try passOf(a, default_records.items);
+    const memory = try passOf(a, memory_records.items);
+    const row = memory.row("observers.resize-construct").?;
+    const peak = (try reading(a, row, .peak)).?;
+    try testing.expect(peak.ratio > default_bar);
+    try testing.expectEqual(@as(?Joint.Levels, null), peak.levels);
+
+    // Steady/peak grouping stays unchanged on the same bimodal numbers.
+    const steady_same = (try reading(a, memory.row("steady.same-numbers").?, .steady)).?;
+    try testing.expectEqual(@as(?Joint.Levels, null), steady_same.levels);
+
+    // Collected launches form two modes: 19.3-20.4 (span 1.1) and 24.7-31.8,
+    // gap 4.3 MB (21% of lower mode median 20.3, wider than lower span 1.1).
+    const collected = (try reading(a, row, .collected)).?;
+    try testing.expectApproxEqAbs(@as(f64, 1.059), collected.ratio, 0.003);
+    const l = collected.levels.?;
+    try testing.expectEqual(@as(u32, 3), l.tip_low);
+    try testing.expectEqual(@as(u32, 6), l.tip_high);
+    try testing.expectEqual(@as(u32, 4), l.base_low);
+    try testing.expectEqual(@as(u32, 5), l.base_high);
+    try testing.expectApproxEqAbs(@as(f64, 193.0 / 204.0), l.low_ratio.?, 0.001);
+    try testing.expectApproxEqAbs(@as(f64, 275.0 / 274.0), l.high_ratio.?, 0.001);
+    try testing.expectEqual(Verdict.cleared_by_collected, verdictOf(peak, collected, default_bar));
+
+    // Full cost output on the cs1 row alone clears the pair.
+    var cs1_only: std.ArrayList(journal.Record) = .empty;
+    for (memory_records.items) |rec| if (std.mem.eql(u8, rec.workload, "observers.resize-construct")) try cs1_only.append(a, rec);
+    const cs1_pass = try passOf(a, cs1_only.items);
+    var out: Io.Writer.Allocating = .init(a);
+    const summary = try write(&out.writer, a, &default, &cs1_pass, .{});
+    const text = out.written();
+    try testing.expectEqual(@as(usize, 1), summary.memory_over);
+    try testing.expectEqual(@as(usize, 1), summary.memory_cleared_collected);
+    try testing.expectEqual(@as(usize, 0), summary.memory_not_cleared);
+    try testing.expect(!summary.failed());
+    try testing.expect(std.mem.indexOf(u8, text, "low 0.946 high 1.004") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "VERDICT: CLEARED (b) - the collected launches form two modes, and each mode they share reads within the bar") != null);
+    try testing.expect(std.mem.endsWith(u8, text, "VERDICT: within the bar\n"));
+}
+
+test "rule (b) mode against mode: tab1's ranges stay one mode, real +3% regressions across modes stay over, and boundary clauses hold" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+
+    const makeCollectedRow = struct {
+        fn build(alloc: Allocator, workload: []const u8, tip_c: []const u64, base_c: []const u64) !Pass {
+            var recs: std.ArrayList(journal.Record) = .empty;
+            for (tip_c, 0..) |v, i| {
+                try recs.append(alloc, try testRecord(alloc, .crane, "tip1", workload, @intCast(i), 10, 1, 105 * mib, 110 * mib, v));
+            }
+            for (base_c, 0..) |v, i| {
+                try recs.append(alloc, try testRecord(alloc, .crane_base, "base1", workload, @intCast(i), 10, 1, 100 * mib, 105 * mib, v));
+            }
+            return passOf(alloc, recs.items);
+        }
+    }.build;
+
+    // 1. tab1's ranges (gap 0.6 MB = 2.6% of 22.95 MB < 3%): one mode, unchanged.
+    const tab1_base = tenths(.{ 227, 228, 229, 230, 231, 232, 243, 246, 249 });
+    const tab1_tip = tenths(.{ 238, 239, 240, 241, 242, 243, 244, 245, 246 });
+    const tab1_pass = try makeCollectedRow(a, "timers.message-channel", &tab1_tip, &tab1_base);
+    const tab1_row = tab1_pass.row("timers.message-channel").?;
+    const tab1_steady = (try reading(a, tab1_row, .steady)).?;
+    const tab1_c = (try reading(a, tab1_row, .collected)).?;
+    try testing.expectEqual(@as(?Joint.Levels, null), tab1_c.levels);
+    try testing.expect(tab1_c.ratio > default_bar);
+    try testing.expectEqual(Verdict.over, verdictOf(tab1_steady, tab1_c, default_bar));
+
+    // 2. Real +3.5% regression across both modes (same split as cs1): stays OVER.
+    const reg_base = tenths(.{ 194, 200, 200, 204, 250, 270, 274, 283, 318 });
+    const reg_tip = tenths(.{ 206, 207, 208, 260, 272, 283, 284, 293, 329 });
+    const reg_pass = try makeCollectedRow(a, "observers.resize-construct", &reg_tip, &reg_base);
+    const reg_row = reg_pass.row("observers.resize-construct").?;
+    const reg_steady = (try reading(a, reg_row, .steady)).?;
+    const reg_c = (try reading(a, reg_row, .collected)).?;
+    const reg_l = reg_c.levels.?;
+    try testing.expect(reg_l.low_ratio.? > default_bar and reg_l.high_ratio.? > default_bar);
+    try testing.expectEqual(Verdict.over, verdictOf(reg_steady, reg_c, default_bar));
+
+    // Confirm write() reports the mode-against-mode failure reason.
+    var default_recs: std.ArrayList(journal.Record) = .empty;
+    for (0..3) |i| {
+        try default_recs.append(a, try testRecord(a, .crane, "tip1", "observers.resize-construct", @intCast(i), 10, 1_000_000, 100 * mib, 105 * mib, null));
+        try default_recs.append(a, try testRecord(a, .crane_base, "base1", "observers.resize-construct", @intCast(i), 10, 1_000_000, 100 * mib, 105 * mib, null));
+    }
+    const default_pass = try passOf(a, default_recs.items);
+    var out: Io.Writer.Allocating = .init(a);
+    const reg_summary = try write(&out.writer, a, &default_pass, &reg_pass, .{});
+    try testing.expect(reg_summary.failed());
+    try testing.expect(std.mem.indexOf(u8, out.written(), "and a collected mode both sides reached reads over the bar") != null);
+
+    // 3. Real +3.5% regression across both modes when tip happens to have more
+    // low launches than base (plain collected median < 1.00): mode-against-mode
+    // STILL catches the regression and keeps the verdict OVER.
+    const flipped_base = tenths(.{ 198, 200, 200, 250, 270, 274, 283, 290, 318 });
+    const flipped_tip = tenths(.{ 205, 206, 207, 207, 208, 260, 289, 289, 329 });
+    const flipped_pass = try makeCollectedRow(a, "observers.resize-construct", &flipped_tip, &flipped_base);
+    const flipped_row = flipped_pass.row("observers.resize-construct").?;
+    const flipped_c = (try reading(a, flipped_row, .collected)).?;
+    try testing.expect(flipped_c.ratio < 1.0);
+    try testing.expect(flipped_c.levels.?.low_ratio.? > default_bar);
+    try testing.expect(flipped_c.levels.?.high_ratio.? > default_bar);
+    try testing.expectEqual(Verdict.over, verdictOf(reg_steady, flipped_c, default_bar));
+
+    // 4. Regression on only one shared mode (low ok, high over): stays OVER.
+    const one_over_base = tenths(.{ 198, 200, 200, 202, 250, 270, 274, 283, 318 });
+    const one_over_tip = tenths(.{ 199, 200, 201, 260, 272, 283, 284, 293, 329 });
+    const one_over_pass = try makeCollectedRow(a, "observers.resize-construct", &one_over_tip, &one_over_base);
+    const one_over_c = (try reading(a, one_over_pass.row("observers.resize-construct").?, .collected)).?;
+    try testing.expect(one_over_c.levels.?.low_ratio.? <= default_bar);
+    try testing.expect(one_over_c.levels.?.high_ratio.? > default_bar);
+    try testing.expectEqual(Verdict.over, verdictOf(reg_steady, one_over_c, default_bar));
+
+    // 5. Sides share no collected mode: tip all high stays OVER; tip all low
+    // (every launch genuinely lower than base) clears by the collected ratio.
+    const apart_base = tenths(.{ 198, 199, 200, 200, 201, 202 });
+    const apart_tip = tenths(.{ 260, 270, 280, 290, 300, 310 });
+    const apart_pass = try makeCollectedRow(a, "observers.resize-construct", &apart_tip, &apart_base);
+    const apart_c = (try reading(a, apart_pass.row("observers.resize-construct").?, .collected)).?;
+    try testing.expect(!apart_c.levels.?.shared());
+    try testing.expectEqual(Verdict.over, verdictOf(reg_steady, apart_c, default_bar));
+    var out_apart: Io.Writer.Allocating = .init(a);
+    _ = try write(&out_apart.writer, a, &default_pass, &apart_pass, .{});
+    try testing.expect(std.mem.indexOf(u8, out_apart.written(), "(the sides share no collected mode)") != null);
+    const improved_pass = try makeCollectedRow(a, "observers.resize-construct", &apart_base, &apart_tip);
+    const improved_c = (try reading(a, improved_pass.row("observers.resize-construct").?, .collected)).?;
+    try testing.expect(!improved_c.levels.?.shared());
+    try testing.expect(improved_c.ratio < 1.0);
+    try testing.expectEqual(Verdict.cleared_by_collected, verdictOf(reg_steady, improved_c, default_bar));
+
+    // 6. Lower mode span >= gap (lower mode too wide): rejected as one mode.
+    const wide_low_base = tenths(.{ 180, 200, 225, 265, 290, 310 });
+    const wide_low_tip = tenths(.{ 185, 205, 220, 270, 295, 315 });
+    const wide_low_pass = try makeCollectedRow(a, "observers.resize-construct", &wide_low_tip, &wide_low_base);
+    try testing.expectEqual(@as(?Joint.Levels, null), (try reading(a, wide_low_pass.row("observers.resize-construct").?, .collected)).?.levels);
+
+    // 7. Wide upper mode: an upper-mode launch near the widest gap (26.0, gap
+    // 6.0 MB vs internal upper steps of 5.0 MB) stays in the upper mode even
+    // though log-ratio midpoint between 20.0 and 36.0 is 26.8.
+    const wide_hi_tip = tenths(.{ 200, 200, 260, 310, 360, 410, 460 });
+    const wide_hi_base = tenths(.{ 200, 200, 260, 310, 360, 410, 460 });
+    const wide_hi_pass = try makeCollectedRow(a, "observers.resize-construct", &wide_hi_tip, &wide_hi_base);
+    const wide_hi_l = (try reading(a, wide_hi_pass.row("observers.resize-construct").?, .collected)).?.levels.?;
+    try testing.expect(nearerLow(wide_hi_l.low, wide_hi_l.high, 260 * (mib / 10)));
+    try testing.expectEqual(@as(u32, 2), wide_hi_l.tip_low);
+    try testing.expectEqual(@as(u32, 5), wide_hi_l.tip_high);
+    try testing.expectEqual(@as(u32, 2), wide_hi_l.base_low);
+    try testing.expectEqual(@as(u32, 5), wide_hi_l.base_high);
 }

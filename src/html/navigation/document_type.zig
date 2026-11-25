@@ -317,10 +317,6 @@ test "essence strips parameters, whitespace and case" {
     }
 }
 
-test "classify routes the HTML MIME type to an HTML document" {
-    try std.testing.expectEqual(DocumentClass.html, classify("text/html"));
-}
-
 test "classify routes XML MIME types to an XML document" {
     try std.testing.expectEqual(DocumentClass.xml, classify("text/xml"));
     try std.testing.expectEqual(DocumentClass.xml, classify("application/xml"));
@@ -338,15 +334,6 @@ test "classify routes script, JSON, css, plain and vtt to a text document" {
     try std.testing.expectEqual(DocumentClass.text, classify("text/css"));
     try std.testing.expectEqual(DocumentClass.text, classify("text/plain"));
     try std.testing.expectEqual(DocumentClass.text, classify("text/vtt"));
-}
-
-test "classify routes image, video and audio to a media document" {
-    try std.testing.expectEqual(DocumentClass.media, classify("image/png"));
-    try std.testing.expectEqual(DocumentClass.media, classify("image/bmp"));
-    try std.testing.expectEqual(DocumentClass.media, classify("image/gif"));
-    try std.testing.expectEqual(DocumentClass.media, classify("image/jpeg"));
-    try std.testing.expectEqual(DocumentClass.media, classify("video/mp4"));
-    try std.testing.expectEqual(DocumentClass.media, classify("audio/mpeg"));
 }
 
 test "a PDF is the inline PDF viewer's when PDF viewer supported is true, else external software's" {

@@ -24,6 +24,7 @@ const CanvasPath = @import("mixins").CanvasPath;
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
 const CanvasPattern = @import("interfaces").CanvasPattern;
 const UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit = @import("typedefs").UnrestrictedDoubleOrDOMPointInitOrSequenceOfUnrestrictedDoubleOrDOMPointInit;
+const DOMStringOrCanvasGradientOrCanvasPattern = @import("typedefs").DOMStringOrCanvasGradientOrCanvasPattern;
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const CanvasFillRule = @import("enums").CanvasFillRule;
 const DOMMatrix = @import("interfaces").DOMMatrix;

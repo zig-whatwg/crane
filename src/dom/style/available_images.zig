@@ -463,8 +463,8 @@ pub const Loader = struct {
         delivery.* = .{ .loader = self, .generation = self.generation, .image = image };
         // HTML image buttons: user interaction task source. SVG image
         // completion: networking. The live Browser queue currently has one
-        // FIFO; html/event_loop/task.zig's source enum is not wired to it
-        // (liaison Q15, source-aware queue is an engine follow-up).
+        // FIFO and no task source is modelled (liaison Q15, source-aware
+        // queue is an engine follow-up).
         loop.queueTask(.{
             .callback = Delivery.run,
             .context = delivery,

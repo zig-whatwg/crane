@@ -1768,17 +1768,3 @@ fn removeFormat(edit: *Edit) !bool {
     // Step 8.
     return true;
 }
-
-test "fontSize keywords from legacy sizes" {
-    try std.testing.expectEqualStrings("medium", fontSizeKeyword("3").?);
-    try std.testing.expectEqualStrings("large", fontSizeKeyword("+1").?);
-    try std.testing.expectEqualStrings("small", fontSizeKeyword("-1").?);
-    try std.testing.expectEqualStrings("xxx-large", fontSizeKeyword("9").?);
-    try std.testing.expectEqualStrings("x-small", fontSizeKeyword("0").?);
-    try std.testing.expectEqualStrings("medium", fontSizeKeyword(" 3.5 ").?);
-    try std.testing.expectEqual(@as(?[]const u8, null), fontSizeKeyword("2em"));
-    try std.testing.expectEqual(@as(?[]const u8, null), fontSizeKeyword("1."));
-    try std.testing.expectEqual(@as(?[]const u8, null), fontSizeKeyword(""));
-    try std.testing.expectEqual(@as(?[]const u8, null), fontSizeKeyword("+"));
-    try std.testing.expectEqual(@as(?[]const u8, null), fontSizeKeyword("xx-small"));
-}

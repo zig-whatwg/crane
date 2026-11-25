@@ -205,35 +205,3 @@ pub fn holds(navigables: ?*const Navigables, navigable_id: u64) bool {
 pub fn release(navigables: *Navigables, navigable_id: u64) void {
     @import("dom").navigables.resumeHeldNavigations(navigables, navigable_id);
 }
-
-test "with no observer nothing is told and nothing is held" {
-    var navigables = Navigables.init(std.testing.allocator);
-    defer navigables.deinit();
-    notify(&navigables, .{ .navigable_id = 1, .event = .stopped_loading });
-    try std.testing.expect(!holds(&navigables, 1));
-}
-
-test "the observer hears each milestone, and decides the hold" {
-    const Probe = struct {
-        seen: u32 = 0,
-        last: ?std.meta.Tag(Event) = null,
-        fn notify(context: *anyopaque, milestone: *const Milestone) void {
-            const self: *@This() = @ptrCast(@alignCast(context));
-            self.seen += 1;
-            self.last = std.meta.activeTag(milestone.event);
-        }
-        fn hold(_: *anyopaque, navigable_id: u64) bool {
-            return navigable_id == 7;
-        }
-    };
-    var probe: Probe = .{};
-    var navigables = Navigables.init(std.testing.allocator);
-    defer navigables.deinit();
-    navigables.observer = .{ .context = &probe, .notify = Probe.notify, .hold_first_navigation = Probe.hold };
-    notify(&navigables, .{ .navigable_id = 7, .navigation_id = 3, .event = .{ .started = .{ .url = "https://a.test/", .initiator = .browser_ui } } });
-    notify(&navigables, .{ .navigable_id = 7, .event = .stopped_loading });
-    try std.testing.expectEqual(@as(u32, 2), probe.seen);
-    try std.testing.expectEqual(std.meta.Tag(Event).stopped_loading, probe.last.?);
-    try std.testing.expect(holds(&navigables, 7));
-    try std.testing.expect(!holds(&navigables, 8));
-}

@@ -17,6 +17,7 @@ const network = @import("network.zig");
 const keyboard_mod = @import("keyboard.zig");
 const snapshot_mod = @import("snapshot.zig");
 const paths_mod = @import("paths.zig");
+const logpoints_mod = @import("logpoints.zig");
 
 const log = std.log.scoped(.mcp);
 
@@ -162,6 +163,11 @@ pub const Page = struct {
     /// McpPage.emulationSettings: what the last emulate call set, which
     /// McpResponse prints for a page tool's answer ("Emulating ...").
     emulation: Emulation = .{},
+    /// McpPage's DevTools universe: the second session on the page
+    /// (logpoints.initUniverse), its Debugger enabled. OWNED.
+    debugger_session_id: ?[]u8 = null,
+    /// set_logpoints' scripts and logpoints (logpoints.zig).
+    logpoints: logpoints_mod.State = .{},
     /// The main frame's id (Page.frameNavigated without a parentId).
     main_frame_id: ?[]u8 = null,
     /// The frames' execution contexts Puppeteer keeps (FrameManager
@@ -201,6 +207,8 @@ pub const Page = struct {
         self.dropSnapshot(allocator);
         self.uids.deinit(allocator);
         self.emulation.deinit(allocator);
+        if (self.debugger_session_id) |id| allocator.free(id);
+        self.logpoints.deinit(allocator);
     }
 
     /// Replace the page's snapshot (null: none).
@@ -424,6 +432,9 @@ pub const Session = struct {
         if (std.mem.eql(u8, method, "Target.attachedToTarget")) {
             const info = (p.get("targetInfo") orelse return).object;
             if (!std.mem.eql(u8, str(info.get("type")), "page")) return;
+            // A second session on a page's target is its DevTools universe
+            // (logpoints.initUniverse), not a page.
+            if (self.pageByTarget(str(info.get("targetId"))) != null) return;
             const page = try self.allocator.create(Page);
             errdefer self.allocator.destroy(page);
             page.* = .{
@@ -449,11 +460,25 @@ pub const Session = struct {
         if (std.mem.eql(u8, method, "Target.detachedFromTarget") or std.mem.eql(u8, method, "Target.targetDestroyed")) {
             const target = str(p.get("targetId"));
             const by_session = str(p.get("sessionId"));
+            // The universe's session going leaves the page.
+            if (by_session.len != 0) for (self.pages.items) |page| {
+                const universe = page.debugger_session_id orelse continue;
+                if (!std.mem.eql(u8, universe, by_session)) continue;
+                self.allocator.free(universe);
+                page.debugger_session_id = null;
+                return;
+            };
             for (self.pages.items) |page| {
                 if ((target.len != 0 and std.mem.eql(u8, page.target_id, target)) or (by_session.len != 0 and std.mem.eql(u8, page.session_id, by_session))) page.closed = true;
             }
             return;
         }
+        // The universe's events: set_logpoints' scripts and resolutions.
+        if (session_id.len != 0) for (self.pages.items) |universe_page| {
+            const universe = universe_page.debugger_session_id orelse continue;
+            if (!std.mem.eql(u8, universe, session_id)) continue;
+            return universe_page.logpoints.debuggerEvent(self.allocator, method, p, universe_page.url, &self.paths);
+        };
         // A page session's events.
         const page = self.pageBySession(session_id) orelse return;
         if (std.mem.eql(u8, method, "Page.javascriptDialogOpening")) {
@@ -551,12 +576,14 @@ pub const Session = struct {
             if (id != .integer) return;
             page.removeContext(self.allocator, id.integer);
             if (page.main_context_id == id.integer) page.main_context_id = null;
+            page.logpoints.contextDestroyed(self.allocator, id.integer);
             return;
         }
         if (std.mem.eql(u8, method, "Runtime.executionContextsCleared")) {
             for (page.contexts.items) |*c| c.deinit(self.allocator);
             page.contexts.clearRetainingCapacity();
             page.main_context_id = null;
+            page.logpoints.contextsCleared(self.allocator);
             return;
         }
         if (std.mem.eql(u8, method, "Runtime.consoleAPICalled")) {

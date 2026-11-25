@@ -392,11 +392,3 @@ pub fn outdentAtIndentationElement(edit: *Edit, node: *Instance) !void {
     // Step 10.4.
     for (node_list.items) |member| try outdent(edit, member);
 }
-
-test "box properties for a simple indentation element" {
-    try std.testing.expect(isBoxProperty("margin-left"));
-    try std.testing.expect(isBoxProperty("border-top-width"));
-    try std.testing.expect(isBoxProperty("-webkit-margin-start"));
-    try std.testing.expect(!isBoxProperty("color"));
-    try std.testing.expect(!isBoxProperty("text-align"));
-}

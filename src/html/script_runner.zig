@@ -41,7 +41,6 @@ const HTMLScriptElement = interfaces.HTMLScriptElement;
 const script_element_state = @import("script_element.zig");
 const Document = interfaces.Document;
 const html_core = @import("html_core");
-const EventLoop = html_core.EventLoop;
 
 const log = std.log.scoped(.script_runner);
 

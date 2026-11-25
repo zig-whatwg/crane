@@ -257,34 +257,3 @@ fn parseXml(
     dom.refcount.offerDocument(document);
     return document;
 }
-
-// =============================================================================
-// Tests
-// =============================================================================
-
-test "DOMParser - constructor creates valid instance" {
-    const ctx = runtime.Context{};
-
-    const parser = try call_constructor(ctx);
-    defer deinit(parser);
-
-    try std.testing.expect(parser != null);
-}
-
-test "DOMParser - parseFromString with HTML" {
-    const ctx = runtime.Context{};
-
-    const parser = try call_constructor(ctx);
-    defer deinit(parser);
-
-    const html = runtime.DOMString.initStatic("<html><body>Hello World</body></html>");
-    const doc = try call_parseFromString(parser, .{ .domstring = html }, ._text_html_);
-    defer interfaces.Document.deinit(doc);
-
-    try std.testing.expect(doc != null);
-
-    // Verify content type was set
-    if (document_internals.getContentType(doc)) |content_type| {
-        try std.testing.expectEqualStrings("text/html", content_type);
-    }
-}

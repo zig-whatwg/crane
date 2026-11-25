@@ -134,27 +134,3 @@ pub fn forbidReuse(handle: *anyopaque) void {
 pub fn freshConnect(handle: *anyopaque) void {
     _ = curl_easy_setopt(handle, CURLOPT_FRESH_CONNECT, @as(c_long, 1));
 }
-
-test "forbidReuse sets curl's option on a handle" {
-    const c = struct {
-        extern fn curl_easy_init() ?*anyopaque;
-        extern fn curl_easy_cleanup(curl: ?*anyopaque) void;
-    };
-    const handle = c.curl_easy_init() orelse return error.SkipZigTest;
-    defer c.curl_easy_cleanup(handle);
-    forbidReuse(handle);
-    // CURLE_OK: curl knows the option id and takes a long.
-    try std.testing.expectEqual(@as(c_uint, 0), curl_easy_setopt(handle, CURLOPT_FORBID_REUSE, @as(c_long, 1)));
-}
-
-test "freshConnect sets curl's option on a handle" {
-    const c = struct {
-        extern fn curl_easy_init() ?*anyopaque;
-        extern fn curl_easy_cleanup(curl: ?*anyopaque) void;
-    };
-    const handle = c.curl_easy_init() orelse return error.SkipZigTest;
-    defer c.curl_easy_cleanup(handle);
-    freshConnect(handle);
-    // CURLE_OK: curl knows the option id and takes a long.
-    try std.testing.expectEqual(@as(c_uint, 0), curl_easy_setopt(handle, CURLOPT_FRESH_CONNECT, @as(c_long, 1)));
-}

@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Event = @import("interfaces").Event;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const DOMString = @import("typedefs").DOMString;
 const Observable = @import("interfaces").Observable;
 
@@ -180,7 +180,7 @@ pub const EventTarget = struct {
         return try EventTargetImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ?runtime.BorrowedCallbackInterface, options: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ?runtime.BorrowedCallbackInterface, options: webidl.Opt(EventListenerOptionsOrBoolean)) anyerror!void {
         return try EventTargetImpl.call_removeEventListener(instance, @"type", callback, options);
     }
 
@@ -188,7 +188,7 @@ pub const EventTarget = struct {
         return try EventTargetImpl.call_when(instance, @"type", options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ?runtime.BorrowedCallbackInterface, options: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ?runtime.BorrowedCallbackInterface, options: webidl.Opt(AddEventListenerOptionsOrBoolean)) anyerror!void {
         return try EventTargetImpl.call_addEventListener(instance, @"type", callback, options);
     }
 

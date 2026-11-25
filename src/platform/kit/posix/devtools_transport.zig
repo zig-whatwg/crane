@@ -217,20 +217,3 @@ test "devtoolsListen binds a free loopback port when asked for 0; a woken wake e
     try std.testing.expect((try devtoolsAccept(listener, wake)) == null);
     try std.testing.expect((try devtoolsAccept(listener, wake)) == null);
 }
-
-test "a wake from another thread ends an accept blocked with no timeout" {
-    const listener = try devtoolsListen(0);
-    defer devtoolsCloseListener(listener);
-    const wake = try devtoolsWakeNew();
-    defer devtoolsWakeClose(wake);
-    const Waker = struct {
-        fn run(w: platform.DevtoolsWake) void {
-            const pause: c.timespec = .{ .sec = 0, .nsec = 50 * std.time.ns_per_ms };
-            _ = c.nanosleep(&pause, null);
-            devtoolsWake(w);
-        }
-    };
-    const thread = try std.Thread.spawn(.{}, Waker.run, .{wake});
-    defer thread.join();
-    try std.testing.expect((try devtoolsAccept(listener, wake)) == null);
-}

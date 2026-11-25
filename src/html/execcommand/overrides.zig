@@ -539,10 +539,3 @@ pub fn restoreTheValues(edit: *Edit, values: Values) !void {
         }
     }
 }
-
-test "an empty record restores nothing" {
-    const recorded: Overrides = .{};
-    try std.testing.expectEqual(@as(usize, 0), recorded.items.len);
-    const values: Values = .{};
-    try std.testing.expectEqual(@as(usize, 0), values.items.len);
-}

@@ -487,6 +487,57 @@ MallocLargeCache=0 MallocMaxMagazines=1 perf_bench run --suite=... --root=tests/
 perf_bench cost --default=<D> --memory=<M> [--bar=1.03]
 ```
 
+**A lane runs the pair with `perf_bench window`** (lane tool1, 2026-11-24), the one committed
+window runner (`tools/perf_bench/window.zig`); the per-lane `costwin.sh` copies are retired. It
+is the tip console's own `perf_bench`, queued as a timed window from the lane's mirror:
+
+```bash
+crane-pool.sh queue chat.local <mirror> cost --est <min> \
+  '<bins>/tip-<sha>/perf_bench window --tip=<bins>/tip-<sha> --tip-commit=<sha> \
+     --base=<bins>/main-<sha> --base-commit=<sha> --out=<bins>/costpair-<sha> \
+     --tree-head=.<lane>/tree.head --stop-file=<bins>/STOP-chat.local'
+```
+
+Each console dir is a frozen release console (repl, repl.modes, whatwg_snapshot.bin, SHA256SUMS
+over them, and BUILD_INFO naming its commit and `v8=<version>`). Before anything is measured the
+window refuses, with exit 2 and the reason: an `--out` that exists (an earlier run's records
+would be read as this window's; `--out-exists=move-aside` renames it with a stamp), a console
+that does not match its SHA256SUMS, is not the ReleaseSafe release build for `apple_m1`, or
+whose BUILD_INFO does not name the commit given, two sides that are one binary, a mirror whose
+`tree.head` is not the tip (`--tree-differs=<reason>` measures anyway and prints the reason), a
+host other than chat.local (`--any-host`: a mechanism run, never a figure), and a `perf_bench
+check` that fails. It writes the pins itself, then runs D (the default pass, `--runs=7`), M (the
+memory pass: `MallocLargeCache=0 MallocMaxMagazines=1`, `--collected`, `--memory-runs=9`) and C
+(`perf_bench cost`), each pass after a quiet-host gate. After each pass it counts the journal's
+records against runs x workloads x consoles, one per engine, workload and run, and prints the
+count on the pass's END line. A pass that is not whole, or that `perf_bench run` ended early, gets
+no verdict. Every START and END line has its time from the clock in 12-hour US Eastern. Exit: 0
+within the bar, 1 over it, 2 an input check, 3 a STOP file, 4 a pass incomplete, 5 the host never
+went quiet; `crane-pool.sh queue-wait` returns it. `--dry-run` makes every check, including the
+check launches, and keeps nothing.
+
+**Bimodal collected launches are judged mode against mode** (the user, 2026-11-25, lane tool1): when
+the collected launches of both sides form two modes — split at the widest gap, the gap at least 3%
+of the lower mode's median, 2+ launches in each mode, and the gap wider than the lower mode's span
+(the upper mode may be wide: retained allocator pages) — rule (b) judges mode against mode, as rule
+(a) does for steady and peak: each shared mode's tip / base ratio within the bar clears. Steady and
+peak grouping for rule (a) is unchanged. Nine launches put the raw median of a bimodal collected
+figure on either mode by chance: cs1's `observers.resize-construct` read 1.033 peak and 1.059
+collected at 9 launches a side (19.3-20.4 MB in 7 launches and 24.7-31.8 MB in 11, on both sides),
+which clears at 9 launches mode against mode (low 19.3/20.4 = 0.946, high 27.5/27.4 = 1.004) and
+read 1.009 and 0.980 at 15. A memory figure over the bar that rule (b) still does not clear (for
+example, sides sharing no collected mode, or a wide single spread) is measured again before it goes
+to a ruling (the integrator, 2026-11-24): the memory pass alone, 15 launches a side, on that row's
+page - `perf_bench window ... --steps=M,C --memory-runs=15 --only=<page>` with a fresh `--out`.
+
+**A broken console fails fast** (perf1-guard, 2026-11-24: on 2026-11-23 a release console whose
+every script threw made every workload of two windows time out, for 7 h and for 5 h). `perf_bench
+check` launches `workloads/overhead.html` once in every pinned engine and fails, naming the
+engine and printing its output's last lines, when one gives no result within
+`--check-timeout-s` (60 s). `perf_bench run` stops when `--max-timeouts` launches of one engine
+in a row (3; 0: never) end in a timeout or a crash: its `STOPPED:` line names the engine, the
+timeouts and crashes, and the last launch, and it exits 4. A STOP file ending it early exits 3.
+
 **The memory pass is always run with `--collected`** (the integrator, 2026-11-17), so that
 clearing (b) below is available for every row: a row whose launches form no two tight groups -
 one stray launch far above a level is enough (lane impls8's window: one launch at 67.7 MB above a
@@ -496,7 +547,7 @@ collected, so its steady and peak figures are the row's own, without what earlie
 uncollected; they are a pair's figures, compared only within the pass.
 
 **The rule `cost` applies** (AGENTS.md, "The 3% memory bar reads what Crane holds"; the user,
-2026-11-15 and 2026-11-17):
+2026-11-15, 2026-11-17 and 2026-11-25):
 
 - time and instructions, on the default pass: a row is over when the tip's median over the base's
   is above the bar and the two sides' launches do not overlap;
@@ -505,7 +556,11 @@ uncollected; they are a pair's figures, compared only within the pass.
   ring is on, so the same bytes read in two levels by chance) and never fail the verdict. A
   figure above the bar is **cleared**, with every launch's value printed, when
   (a) both sides reached a common level and each such level's tip / base ratio is within the bar,
-  or (b) the row's collected figure is within the bar. A figure neither clears is over;
+  or (b) the row's collected figure is within the bar — or, when the collected launches of both
+  sides form two modes (split at the widest gap, at least 3% of the lower mode's median, 2+
+  launches in each mode, and the gap wider than the lower mode's span; the upper mode may be wide),
+  both sides reached a shared mode and each shared mode's tip / base ratio is within the bar. A
+  figure neither clears is over;
 - the collected figure never replaces steady and peak: it is read only to clear a row they put
   above the bar.
 

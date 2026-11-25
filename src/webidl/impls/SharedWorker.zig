@@ -119,7 +119,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Spec: HTML Standard § 10.2.6.4
 /// https://html.spec.whatwg.org/multipage/workers.html#dom-sharedworker
-pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptURLOrUSVString, options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+///
+/// `options` is `optional (DOMString or SharedWorkerOptions) options = {}`,
+/// converted by the binding BEFORE these steps: its getters run before step
+/// 1's Trusted Types callback. Chrome 157, Firefox 159 and Safari 27 all read
+/// credentials, name and type (Chrome also extendedLifetime and
+/// sameSiteCookies) before the default policy's createScriptURL (probe
+/// tmp/probes/bind1-nullmember/report-g3.txt, 2026-11-24). The hand
+/// conversion this replaced ran in step 2, after that callback
+/// (crane/bind1-g3-conversion-order.html).
+pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptURLOrUSVString, options: webidl.Opt(typedefs.DOMStringOrSharedWorkerOptions)) !*runtime.Instance {
     const allocator = ctx.allocator;
     // 1. "Let compliantScriptURL be the result of invoking the get trusted
     // type compliant string algorithm with TrustedScriptURL, this's relevant
@@ -136,7 +145,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
 
     // 2. If options is a DOMString, it is a WorkerOptions whose name is
     // options; otherwise it is the dictionary.
-    var worker_options = try convertOptions(ctx, options);
+    var worker_options = try optionsOf(allocator, options);
     defer worker_options.deinit(allocator);
 
     // 3-5. outsideSettings is this's relevant settings object; urlRecord is
@@ -265,10 +274,7 @@ const Options = struct {
     name: []const u8,
     worker_type: WorkerType = .classic,
     credentials: RequestCredentials = .same_origin,
-    /// SharedWorkerOptions' own member (HTML, 2025): the worker's extended
-    /// lifetime. The pinned IDL (specs/idl) predates it and types the
-    /// argument (DOMString or WorkerOptions); this conversion follows the
-    /// current dictionary, SharedWorkerOptions : WorkerOptions.
+    /// SharedWorkerOptions' own member: the worker's extended lifetime.
     extended_lifetime: bool = false,
 
     fn deinit(self: *Options, allocator: std.mem.Allocator) void {
@@ -276,56 +282,40 @@ const Options = struct {
     }
 };
 
-/// The (DOMString or WorkerOptions) argument, converted as WebIDL converts a
-/// union with a dictionary in it (3.2.24): undefined, null or an object is
-/// the dictionary; anything else is converted to a DOMString, which step 2
-/// makes the name. An omitted argument is the dictionary's defaults.
-fn convertOptions(ctx: runtime.Context, options: webidl.Opt(runtime.JSValue)) !Options {
-    const allocator = ctx.allocator;
+/// Step 2: "If options is a DOMString, set options to a new WorkerOptions
+/// dictionary whose name member is set to the value of options and whose
+/// other members are set to their default values." `options` is the union
+/// the binding converted (WebIDL 3.2.25: undefined, null or an object is the
+/// dictionary, its members read inherited first - credentials, name, type -
+/// then extendedLifetime and sameSiteCookies; anything else a DOMString; an
+/// enumeration value that is not one of the enum's threw a TypeError there).
+/// Not passed is the dictionary's defaults. The name is copied: the
+/// binding's string is borrowed for the call.
+///
+/// TODO: sameSiteCookies (in the pinned IDL's SharedWorkerOptions) is
+/// converted and then not used - nothing in Crane's shared worker setup
+/// reads it yet, as the hand conversion never read it either.
+fn optionsOf(allocator: std.mem.Allocator, options: webidl.Opt(typedefs.DOMStringOrSharedWorkerOptions)) !Options {
     if (!options.wasPassed()) return .{ .name = try allocator.dupe(u8, "") };
-    const value = options.getValue();
-    switch (engine.typeOf(ctx, value)) {
-        .undefined, .null => return .{ .name = try allocator.dupe(u8, "") },
-        .object => return convertWorkerOptions(ctx, value),
-        else => return .{ .name = try engine.convertToDOMString(ctx, value, allocator) },
+    switch (options.getValue()) {
+        .domstring => |name| return .{ .name = try allocator.dupe(u8, name.asSlice()) },
+        .shared_worker_options => |dictionary| {
+            const base = dictionary.base;
+            return .{
+                .name = try allocator.dupe(u8, if (base.name) |name| name.asSlice() else ""),
+                .worker_type = if (base.type) |t| switch (t) {
+                    ._classic_ => .classic,
+                    ._module_ => .module,
+                } else .classic,
+                .credentials = if (base.credentials) |c| switch (c) {
+                    ._omit_ => .omit,
+                    ._same_origin_ => .same_origin,
+                    ._include_ => .include,
+                } else .same_origin,
+                .extended_lifetime = dictionary.extendedLifetime orelse false,
+            };
+        },
     }
-}
-
-/// WebIDL's dictionary conversion of `value`, an object, to
-/// SharedWorkerOptions: its members - the inherited dictionary's first
-/// (WorkerOptions: credentials, name, type), then its own (extendedLifetime),
-/// each set in lexicographic order - each Get, then converted, or its default
-/// when undefined. An enumeration value that is not one of the enum's throws
-/// a TypeError.
-fn convertWorkerOptions(ctx: runtime.Context, value: runtime.JSValue) !Options {
-    const allocator = ctx.allocator;
-    var result: Options = .{ .name = try allocator.dupe(u8, "") };
-    errdefer result.deinit(allocator);
-
-    if (try memberString(ctx, value, "credentials")) |text| {
-        defer allocator.free(text);
-        result.credentials = RequestCredentials.fromString(text) orelse return error.TypeError;
-    }
-    if (try memberString(ctx, value, "name")) |text| {
-        allocator.free(result.name);
-        result.name = text;
-    }
-    if (try memberString(ctx, value, "type")) |text| {
-        defer allocator.free(text);
-        result.worker_type = WorkerType.fromString(text) orelse return error.TypeError;
-    }
-    // SharedWorkerOptions' own member: boolean, ToBoolean of the value.
-    if (try engine.getPropertyBoolean(ctx, value, "extendedLifetime")) |extended| result.extended_lifetime = extended;
-    return result;
-}
-
-/// Get(`object`, `member`) converted to a DOMString, or null when it is
-/// undefined (the member is not present). OWNED (`ctx.allocator`).
-fn memberString(ctx: runtime.Context, object: runtime.JSValue, member: []const u8) !?[]u8 {
-    const got = try engine.getProperty(ctx, object, member);
-    defer got.release();
-    if (engine.typeOf(ctx, got.value) == .undefined) return null;
-    return try engine.convertToDOMString(ctx, got.value, ctx.allocator);
 }
 
 /// HTML "encoding-parsing a URL" given `script_url`, relative to the outside
