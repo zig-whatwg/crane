@@ -403,6 +403,9 @@ pub const BrowserScope = struct {
         self.slab.deinit();
         if (self.heap) |heap| {
             if (self.engine.load(.acquire)) |engine| {
+                // Every agent ended: their caches' blocks go back to their
+                // spans, so the leak report reads only what someone holds.
+                engine.flushAllCaches();
                 const swept = self.releaseSweptNodes(engine);
                 if (self.heap_leak_count_out) |out| {
                     out.* = engine.leakReport({}, struct {

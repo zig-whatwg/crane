@@ -513,6 +513,40 @@ const huge_regions_max: usize = 4096;
 /// A huge block's span entry's bucket.
 const huge_bucket: u16 = std.math.maxInt(u16) - 1;
 
+/// How many blocks an agent's cache keeps per class of each general
+/// partition (batch B; measured with time and memory before it is chosen).
+pub const cache_depth: usize = 32;
+
+/// An agent's general-memory cache (design 3.7): per class of the objects
+/// and bytes partitions, a stack of released blocks' offsets - an array, no
+/// link in any block (libpas's thread-local cache, pas_thread_local_cache.h)
+/// - which its agent's thread takes from and gives back to without the
+/// partition's lock. Its blocks are `.cached` in their slot maps, so a double
+/// free of one is caught. Reached through its allocator (heap.general), never
+/// a threadlocal; in the objects partition's metadata pool.
+pub const AgentCache = struct {
+    engine: *Engine,
+    /// The agent's thread: the one whose calls take the cache unlocked. 0
+    /// once detached.
+    owner: std.atomic.Value(std.Thread.Id),
+    stacks: [2][Classes.count]Stack = @splat(@splat(.{})),
+    /// Blocks the stacks hold now (objects, bytes): out of their spans and
+    /// counted live in their buckets, but no one's - the stats subtract them.
+    held: [2]std.atomic.Value(usize) = .{ .init(0), .init(0) },
+    next: ?*AgentCache = null,
+
+    pub const Stack = struct {
+        count: u16 = 0,
+        at: [cache_depth]u32 = undefined,
+    };
+
+    /// The agent's general allocator: this cache on its thread, the shared
+    /// path elsewhere.
+    pub fn allocator(self: *AgentCache) std.mem.Allocator {
+        return general.agentAllocator(self);
+    }
+};
+
 // ============================================================================
 // The quarantine
 // ============================================================================
@@ -622,6 +656,10 @@ pub const Engine = struct {
     /// still fails its State allocations in checkAllAllocationFailures
     /// sweeps. False fails the allocation with OutOfMemory.
     grow_hook: ?GrowHook = null,
+    /// The agents' general-memory caches (batch B): those attached now, and
+    /// those detached for reuse. Under the objects partition's lock.
+    caches: ?*AgentCache = null,
+    free_caches: ?*AgentCache = null,
 
     pub const magic_value: u64 = 0x4352_414e_4553_4e31; // "CRANESN1"
 
@@ -784,13 +822,45 @@ pub const Engine = struct {
         return null;
     }
 
+    // A slot map's words are read atomically everywhere: the general
+    // partitions' agent caches (batch B) move their own blocks' states
+    // (allocated <-> cached) without the partition's lock while a holder of
+    // it changes another slot of the same word. The node partition is one
+    // thread's, and writes its words plainly.
+
     inline fn slotGet(map: *const [map_words]u64, slot: usize) SlotState {
-        return @fromBackingInt(@intCast(@as(u2, @truncate(map[slot / 32] >> @intCast((slot % 32) * 2)))));
+        const word = @atomicLoad(u64, &map[slot / 32], .monotonic);
+        return @fromBackingInt(@intCast(@as(u2, @truncate(word >> @intCast((slot % 32) * 2)))));
     }
 
-    inline fn slotSet(map: *[map_words]u64, slot: usize, state: SlotState) void {
+    /// Set `slot`'s state; `shared` (a general or objects partition's map):
+    /// one atomic step, so a cache's lock-free move of another slot of the
+    /// word is never lost and no reader sees an intermediate state.
+    inline fn slotSet(map: *[map_words]u64, slot: usize, state: SlotState, shared: bool) void {
         const shift: u6 = @intCast((slot % 32) * 2);
-        map[slot / 32] = (map[slot / 32] & ~(@as(u64, 3) << shift)) | (@as(u64, @backingInt(state)) << shift);
+        const mask = @as(u64, 3) << shift;
+        const bits = @as(u64, @backingInt(state)) << shift;
+        const word = &map[slot / 32];
+        if (!shared) {
+            word.* = (word.* & ~mask) | bits;
+            return;
+        }
+        var old = @atomicLoad(u64, word, .monotonic);
+        while (@cmpxchgWeak(u64, word, old, (old & ~mask) | bits, .monotonic, .monotonic)) |actual| old = actual;
+    }
+
+    /// Move `slot` from `from` to `to` in one atomic step; false, and no
+    /// change, when it was not in `from` (an agent cache's free of a block
+    /// not allocated: a double free).
+    inline fn slotSwap(map: *[map_words]u64, slot: usize, from: SlotState, to: SlotState) bool {
+        const shift: u6 = @intCast((slot % 32) * 2);
+        const mask = @as(u64, 3) << shift;
+        const word = &map[slot / 32];
+        var old = @atomicLoad(u64, word, .monotonic);
+        while (true) {
+            if ((old & mask) >> shift != @backingInt(from)) return false;
+            old = @cmpxchgWeak(u64, word, old, (old & ~mask) | (@as(u64, @backingInt(to)) << shift), .monotonic, .monotonic) orelse return true;
+        }
     }
 
     /// The lowest free slot at or above `from`, below `slots`.
@@ -798,7 +868,7 @@ pub const Engine = struct {
         var w = from / 32;
         const last = (slots + 31) / 32;
         while (w < last) : (w += 1) {
-            const word = map[w];
+            const word = @atomicLoad(u64, &map[w], .monotonic);
             // A free slot is 00: both bits clear.
             var open = ~(word | (word >> 1)) & 0x5555_5555_5555_5555;
             if (w == from / 32) open &= ~((@as(u64, 1) << @intCast((from % 32) * 2)) - 1);
@@ -912,7 +982,8 @@ pub const Engine = struct {
             }
         }
 
-        p.frontier = end;
+        // Atomic: an agent cache's lock-free free reads it (batch B).
+        @atomicStore(usize, &p.frontier, end, .release);
         self.entry(first).* = .{
             .bucket = bi,
             .state = .active,
@@ -1116,7 +1187,7 @@ pub const Engine = struct {
         const e = self.entry(index);
         const map = self.slotMap(index);
         const slot = findFree(map, e.hint, e.slots) orelse unreachable;
-        slotSet(map, slot, .allocated);
+        slotSet(map, slot, .allocated, p.id != .node);
         e.hint = @intCast(slot + 1);
         if (e.used == 0) {
             self.setTier(p, b, e, .empty, false);
@@ -1230,6 +1301,259 @@ pub const Engine = struct {
         self.freeIn(p, offset, want, false, size, null);
     }
 
+    // ------------------------------------------------------------------
+    // Agent caches (allocator-hardening batch B, design 3.7)
+    // ------------------------------------------------------------------
+
+    /// A cache for the agent whose thread calls this (the window agent's,
+    /// or a worker's): its allocator (AgentCache.allocator) takes and gives
+    /// back general class blocks without a lock on that thread. Detach it
+    /// at the agent's end (`detachAgent`).
+    pub fn attachAgent(self: *Engine) Error!*AgentCache {
+        std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+        const cache: *AgentCache = if (self.free_caches) |reused| reused: {
+            self.free_caches = reused.next;
+            break :reused reused;
+        } else made: {
+            const id = try self.poolAlloc(&self.objects, @sizeOf(AgentCache));
+            break :made @ptrFromInt(self.heap.window_base + self.objects.pool_base + @as(usize, id) * @sizeOf(Chunk));
+        };
+        cache.* = .{ .engine = self, .owner = .init(std.Thread.getCurrentId()) };
+        cache.next = self.caches;
+        self.caches = cache;
+        return cache;
+    }
+
+    /// The agent ended: every block its cache holds goes back to its span,
+    /// and the cache to the engine's reuse list. Its allocator stays valid:
+    /// an operation through it after this takes the shared path.
+    pub fn detachAgent(self: *Engine, cache: *AgentCache) void {
+        self.flushCache(cache);
+        cache.owner.store(0, .monotonic);
+        std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+        var link: *?*AgentCache = &self.caches;
+        while (link.*) |current| : (link = &current.next) {
+            if (current != cache) continue;
+            link.* = current.next;
+            break;
+        }
+        cache.next = self.free_caches;
+        self.free_caches = cache;
+    }
+
+    /// Every attached cache's blocks back to their spans: the scope's end,
+    /// once every agent is gone, before the leak report reads the buckets.
+    pub fn flushAllCaches(self: *Engine) void {
+        var at = self.caches;
+        while (at) |cache| : (at = cache.next) self.flushCache(cache);
+    }
+
+    /// The caches whose agent runs on this thread give their blocks back
+    /// (idle decommit's first step: a span only a cache keeps open would be
+    /// kept committed).
+    fn flushCachesOfThisThread(self: *Engine) void {
+        const thread = std.Thread.getCurrentId();
+        var found: [8]*AgentCache = undefined;
+        var n: usize = 0;
+        {
+            std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+            var at = self.caches;
+            while (at) |cache| : (at = cache.next) {
+                if (cache.owner.load(.monotonic) != thread or n == found.len) continue;
+                found[n] = cache;
+                n += 1;
+            }
+        }
+        for (found[0..n]) |cache| self.flushCache(cache);
+    }
+
+    fn flushCache(self: *Engine, cache: *AgentCache) void {
+        inline for (.{ PartitionId.objects, PartitionId.bytes }, 0..) |pid, pi| {
+            const p = self.partition(pid);
+            std.Io.Threaded.mutexLockUncancelable(&p.mutex);
+            defer std.Io.Threaded.mutexUnlock(&p.mutex);
+            for (&cache.stacks[pi], 0..) |*stack, class| {
+                self.giveBack(p, generalBucket(pid, class, 0), stack.at[0..stack.count]);
+                stack.count = 0;
+            }
+            cache.held[pi].store(0, .monotonic);
+        }
+    }
+
+    /// Blocks a cache held (`at`: offsets / 16, state `.cached`) back to
+    /// their spans. The partition's lock held.
+    fn giveBack(self: *Engine, p: *Partition, bi: u16, at: []const u32) void {
+        const b = &self.buckets(p.id)[bi];
+        const now = self.now_ms.load(.monotonic);
+        for (at) |a| {
+            const offset = @as(usize, a) * 16;
+            const index = offset / span_bytes;
+            const slot = (offset - index * span_bytes) / b.block_bytes;
+            b.live -= 1;
+            self.releaseSlot(p, b, index, slot, now);
+        }
+    }
+
+    /// A general class block from `cache`, on its agent's thread: the top of
+    /// its stack for the class, refilled from the spans under the lock when
+    /// empty. A large run or a huge block takes the shared path.
+    pub fn cacheAlloc(self: *Engine, cache: *AgentCache, pid: PartitionId, size: usize, alignment: usize, return_address: usize) Error![*]u8 {
+        const class = classes.classOf(size, alignment) orelse return self.allocGeneral(pid, size, alignment, return_address);
+        const pi = cacheIndex(pid);
+        const stack = &cache.stacks[pi][class];
+        if (stack.count == 0) try self.refill(cache, pid, class);
+        stack.count -= 1;
+        const offset = @as(usize, stack.at[stack.count]) * 16;
+        _ = cache.held[pi].fetchSub(1, .monotonic);
+        const p = self.partition(pid);
+        const b = &self.buckets(pid)[generalBucket(pid, class, 0)];
+        const index = offset / span_bytes;
+        const slot = (offset - index * span_bytes) / b.block_bytes;
+        if (!slotSwap(self.slotMap(index), slot, .cached, .allocated)) @panic("heap: a cached block left its cache's state (allocator-hardening design 3.3)");
+        const block: [*]u8 = @ptrFromInt(self.heap.window_base + offset);
+        if (self.fills(p)) self.verifyFreed(block[0..size], false);
+        const e = self.entry(index);
+        if (e.sites != 0) {
+            const sites: [*]usize = @ptrFromInt(self.heap.window_base + p.pool_base + (@as(usize, e.sites) - 1) * @sizeOf(Chunk));
+            sites[slot] = return_address | site_return_tag | site_general_tag;
+        }
+        return block;
+    }
+
+    /// Free a general block through `cache`, on its agent's thread:
+    /// validated as `freeGeneral` validates (its partition, a block's start,
+    /// its class, allocated - the last in one atomic step), filled, and onto
+    /// the cache's stack, half of which goes back to the spans when it is
+    /// full. An objects block freed while the window agent runs a task here
+    /// is held by the quarantine instead (the shared path); a large run or a
+    /// huge block takes the shared path.
+    pub fn cacheFree(self: *Engine, cache: *AgentCache, ptr: [*]u8, size: usize, alignment: usize) void {
+        const class = classes.classOf(size, alignment) orelse return self.freeGeneral(ptr, size, alignment);
+        const address = @intFromPtr(ptr);
+        const offset = self.offsetOf(address) orelse return self.violation(.other_heap, address);
+        const pid = self.partitionOfOffset(offset) orelse return self.violation(.invalid_free, address);
+        if (pid == .node) return self.violation(.invalid_free, address);
+        if (pid == .objects and self.holds(null)) return self.freeGeneral(ptr, size, alignment);
+        const p = self.partition(pid);
+        if (offset >= @atomicLoad(usize, &p.frontier, .acquire)) return self.violation(.invalid_free, address);
+        const index = offset / span_bytes;
+        const e = self.entry(index);
+        if (e.state == .unopened or e.state == .run_tail) return self.violation(.invalid_free, address);
+        if (e.state != .active) return self.violation(.double_free, address);
+        const want = generalBucket(pid, class, 0);
+        if (e.bucket != want) return self.violation(if (e.bucket >= self.buckets(pid).len or self.buckets(pid)[e.bucket].kind == .instance) .invalid_free else .wrong_size, address);
+        const b = &self.buckets(pid)[want];
+        const within = offset - index * span_bytes;
+        if (within % b.block_bytes != 0) return self.violation(.invalid_free, address);
+        const slot = within / b.block_bytes;
+        if (!slotSwap(self.slotMap(index), slot, .allocated, .cached)) return self.violation(.double_free, address);
+        if (self.fills(p)) @memset(ptr[0..b.fill_bytes], self.config.fillByte());
+        const pi = cacheIndex(pid);
+        const stack = &cache.stacks[pi][class];
+        if (stack.count == cache_depth) {
+            // Full: the older half goes back to its spans.
+            const half = cache_depth / 2;
+            {
+                std.Io.Threaded.mutexLockUncancelable(&p.mutex);
+                defer std.Io.Threaded.mutexUnlock(&p.mutex);
+                self.giveBack(p, want, stack.at[0..half]);
+            }
+            std.mem.copyForwards(u32, stack.at[0 .. cache_depth - half], stack.at[half..cache_depth]);
+            stack.count = cache_depth - half;
+            _ = cache.held[pi].fetchSub(half, .monotonic);
+        }
+        stack.at[stack.count] = @intCast(offset / 16);
+        stack.count += 1;
+        _ = cache.held[pi].fetchAdd(1, .monotonic);
+    }
+
+    /// Fill `cache`'s stack for `class` of `pid` with up to half its depth of
+    /// blocks, lowest address first, under the partition's lock: from the
+    /// bucket's magazine, then its spans.
+    fn refill(self: *Engine, cache: *AgentCache, pid: PartitionId, class: usize) Error!void {
+        const p = self.partition(pid);
+        if (p.lo == p.hi) return error.OutOfMemory;
+        const bi = generalBucket(pid, class, 0);
+        const b = &self.buckets(pid)[bi];
+        const pi = cacheIndex(pid);
+        const stack = &cache.stacks[pi][class];
+        std.Io.Threaded.mutexLockUncancelable(&p.mutex);
+        defer std.Io.Threaded.mutexUnlock(&p.mutex);
+        var n: usize = 0;
+        while (n < cache_depth / 2) : (n += 1) {
+            const offset = self.takeSlot(p, b, bi) catch |err| {
+                if (n == 0) return err;
+                break;
+            };
+            // Lowest address on top: the stack pops from the end.
+            stack.at[cache_depth / 2 - 1 - n] = @intCast(offset / 16);
+        }
+        // Slide what was taken to the bottom, lowest last (popped first).
+        if (n < cache_depth / 2) std.mem.copyForwards(u32, stack.at[0..n], stack.at[cache_depth / 2 - n .. cache_depth / 2]);
+        stack.count = @intCast(n);
+        _ = cache.held[pi].fetchAdd(n, .monotonic);
+    }
+
+    /// A block of bucket `b` out of its spans into a cache, state `.cached`:
+    /// as `allocIn` takes one (the bucket's magazine first, then the lowest
+    /// span with room, a released span, a new one), counted live in the
+    /// bucket. A fresh slot is filled as a freed one is, so every cached
+    /// block reads the fill. The partition's lock held. Its offset.
+    fn takeSlot(self: *Engine, p: *Partition, b: *Bucket, bi: u16) Error!usize {
+        if (magazine_depth != 0 and b.mag_count != 0) {
+            b.mag_count -= 1;
+            const offset = @as(usize, self.magazineOf(p, b)[b.mag_count]) * 16;
+            b.live += 1;
+            if (b.live > b.live_peak) b.live_peak = b.live;
+            b.issued += 1;
+            return offset;
+        }
+        var index = b.current;
+        if (index == no_span or self.entry(index).used == self.entry(index).slots) {
+            index = self.lowest(p, b, .room) orelse released: {
+                const released = self.lowest(p, b, .released) orelse break :released try self.openSpan(p, bi);
+                try self.reuseReleased(p, b, released);
+                break :released released;
+            };
+            b.current = index;
+        }
+        const e = self.entry(index);
+        const map = self.slotMap(index);
+        const slot = findFree(map, e.hint, e.slots) orelse unreachable;
+        slotSet(map, slot, .cached, true);
+        e.hint = @intCast(slot + 1);
+        if (e.used == 0) {
+            self.setTier(p, b, e, .empty, false);
+            p.stats.spans_empty -= 1;
+        }
+        e.used += 1;
+        if (e.used == e.slots) {
+            self.setTier(p, b, e, .room, false);
+            b.current = no_span;
+        }
+        const offset = index * span_bytes + slot * b.block_bytes;
+        if (slot >= e.issued_hi) {
+            e.issued_hi = @intCast(slot + 1);
+            b.fresh += 1;
+            if (self.config.fill == .poison) @memset(@as([*]u8, @ptrFromInt(self.heap.window_base + offset))[0..b.fill_bytes], poison_byte);
+        }
+        b.live += 1;
+        if (b.live > b.live_peak) b.live_peak = b.live;
+        b.issued += 1;
+        return offset;
+    }
+
+    inline fn cacheIndex(pid: PartitionId) usize {
+        return switch (pid) {
+            .objects => 0,
+            .bytes => 1,
+            .node => unreachable,
+        };
+    }
+
     /// Whether a general block of `old_size` may become `new_size` in place:
     /// the same class (or, huge, the same spans committed). No change is made
     /// to the block's bytes; its request is the caller's.
@@ -1286,7 +1610,7 @@ pub const Engine = struct {
             try self.commitMeta(&p.table_hi, @as(usize, @intCast(layout.span_table.offset)) + (first + data_spans) * @sizeOf(SpanEntry));
             try self.hugeRange(first * span_bytes, need * span_bytes, .commit);
             // Class spans open past it: nothing commits over its guards.
-            p.frontier = end;
+            @atomicStore(usize, &p.frontier, end, .release);
             p.data_hi = @max(p.data_hi, end);
             p.stats.va_assigned = p.frontier - p.lo;
             for (1..data_spans) |k| self.entry(first + k).* = .{ .bucket = huge_bucket, .state = .run_tail, .slots = 0, .used = 0, .quarantined = 0, .hint = 0, .issued_hi = 0, .run = 0, .chunk = @intCast(first), .ordinal = 0, .empty_since = 0, .sites = 0 };
@@ -1466,7 +1790,7 @@ pub const Engine = struct {
         b.requested -|= size;
 
         if (p.id != .bytes and self.holds(thread)) {
-            slotSet(map, slot, .quarantined);
+            slotSet(map, slot, .quarantined, p.id != .node);
             e.quarantined += 1;
             self.hold(address, b.block_bytes, p.id == .objects);
             return;
@@ -1513,7 +1837,7 @@ pub const Engine = struct {
         if (b.mag_count == magazine_depth) return false;
         if (b.mag == no_chunk) b.mag = self.poolAlloc(p, @sizeOf(Chunk)) catch return false;
         const mag = self.magazineOf(p, b);
-        slotSet(self.slotMap(index), slot, .cached);
+        slotSet(self.slotMap(index), slot, .cached, p.id != .node);
         // The span's last release: a span only the magazine keeps is aged
         // from it when the magazine gives the block back, as it would have
         // been with no magazine (a bucket-wide time made idle decommit miss
@@ -1542,7 +1866,7 @@ pub const Engine = struct {
         const slot = (offset - index * span_bytes) / b.block_bytes;
         const map = self.slotMap(index);
         std.debug.assert(slotGet(map, slot) == .cached);
-        slotSet(map, slot, .allocated);
+        slotSet(map, slot, .allocated, p.id != .node);
         b.live += 1;
         if (b.live > b.live_peak) b.live_peak = b.live;
         b.issued += 1;
@@ -1591,7 +1915,7 @@ pub const Engine = struct {
     fn releaseSlot(self: *Engine, p: *Partition, b: *Bucket, index: usize, slot: usize, since: u32) void {
         const e = self.entry(index);
         e.empty_since = since;
-        slotSet(self.slotMap(index), slot, .free);
+        slotSet(self.slotMap(index), slot, .free, p.id != .node);
         if (slot < e.hint) e.hint = @intCast(slot);
         const was_full = e.used == e.slots;
         e.used -= 1;
@@ -1816,6 +2140,9 @@ pub const Engine = struct {
     /// thread, from its idle turn; the node partition is skipped off it.
     pub fn decommitAged(self: *Engine, now_ms: u32, min_age_ms: u32, budget: usize) DecommitResult {
         var result: DecommitResult = .{};
+        // A span only an agent's cache keeps open would stay committed: this
+        // thread's agents give their blocks back first.
+        self.flushCachesOfThisThread();
         const on_owner = if (self.node.owner) |owner| owner == std.Thread.getCurrentId() else true;
         if (on_owner) {
             self.drainMagazines(&self.node);
@@ -1919,6 +2246,13 @@ pub const Engine = struct {
         s.general_objects.live_bytes += s.objects.huge_bytes;
         s.bytes.live_blocks += s.bytes.huge_blocks;
         s.bytes.live_bytes += s.bytes.huge_bytes;
+        // What the agents' caches hold is counted live in its bucket and is
+        // no one's (the objects lock, held, guards the cache list).
+        var at = self.caches;
+        while (at) |cache| : (at = cache.next) {
+            s.general_objects.live_blocks -|= cache.held[0].load(.monotonic);
+            s.bytes.live_blocks -|= cache.held[1].load(.monotonic);
+        }
         const entries = self.quarantineEntries();
         for (entries[0..self.quarantine.count]) |address| {
             const offset = address - self.heap.window_base;

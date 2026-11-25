@@ -368,7 +368,12 @@ pub const Browser = struct {
         // allocator (design 4.2). The host's allocator keeps only the
         // Browser's own record and its scope, made before and ended after.
         if (scope.heap) |reserved| if (reserved.general_pools and config.general_memory == .crane) {
-            scope.useGeneralAllocator(runtime.heap.general.allocatorOf(try scope.heapEngine()));
+            // The window agent's: its cache serves this thread - the
+            // Browser's, which its window agent runs on - without a lock
+            // (runtime.heap.AgentCache); another thread's call through it
+            // takes the shared path.
+            const window_cache = try (try scope.heapEngine()).attachAgent();
+            scope.useGeneralAllocator(window_cache.allocator());
         };
         const memory = scope.allocator;
 

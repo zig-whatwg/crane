@@ -255,3 +255,93 @@ fn generalAllocations(allocator: std.mem.Allocator) !void {
 test "the general allocator's out-of-memory paths unwind every failed allocation (checkAllAllocationFailures, through the heap's failure injector)" {
     try testing.checkAllAllocationFailures(testing.allocator, generalAllocations, .{});
 }
+
+test "an agent's cache: a freed block is the next one issued on its thread, a double free of a cached block is caught, and the stats count it as no one's" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+    const cache = try engine.attachAgent();
+    defer engine.detachAgent(cache);
+    const allocator = cache.allocator();
+    const before = engine.stats();
+
+    const text = try allocator.alloc(u8, 40);
+    const address = @intFromPtr(text.ptr);
+    try testing.expectEqual(heap.PartitionId.bytes, engine.partitionOf(text.ptr).?);
+    allocator.free(text);
+    // LIFO on its thread: the block just given back.
+    const again = try allocator.alloc(u8, 40);
+    try testing.expectEqual(address, @intFromPtr(again.ptr));
+    allocator.free(again);
+    engine.checks = .report;
+    allocator.free(again);
+    try testing.expectEqual(@as(?heap.Violation, .double_free), engine.takeViolation());
+    engine.checks = .panic;
+
+    // The cache's blocks are out of their spans but no one's.
+    const during = engine.stats();
+    try testing.expectEqual(before.bytes.live_blocks, during.bytes.live_blocks);
+    const words = try allocator.alloc(usize, 6);
+    try testing.expectEqual(before.general_objects.live_blocks + 1, engine.stats().general_objects.live_blocks);
+    allocator.free(words);
+    engine.flushAllCaches();
+    const Count = struct {
+        fn line(_: void, _: heap.LeakLine) void {}
+    };
+    try testing.expectEqual(@as(usize, 0), engine.leakReport({}, Count.line));
+}
+
+test "agents on two threads, each through its own cache, free each other's blocks (into the freeing thread's cache), and nothing is left" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+
+    const rounds = 100;
+    const per_round = 64;
+    const Side = struct {
+        engine: *heap.Engine,
+        made: [rounds][per_round][]u8 = undefined,
+        words: [rounds][per_round][]usize = undefined,
+        ready: std.atomic.Value(usize) = .init(0),
+        done: std.atomic.Value(bool) = .init(false),
+
+        fn run(self: *@This(), other: *@This()) !void {
+            const cache = try self.engine.attachAgent();
+            defer self.engine.detachAgent(cache);
+            const allocator = cache.allocator();
+            for (0..rounds) |r| {
+                for (0..per_round) |i| {
+                    self.made[r][i] = try allocator.alloc(u8, 16 + (i * 37) % 900);
+                    self.words[r][i] = try allocator.alloc(usize, 1 + i % 40);
+                }
+                self.ready.store(r + 1, .release);
+                while (other.ready.load(.acquire) <= r) std.Thread.yield() catch {};
+                for (0..per_round) |i| {
+                    allocator.free(other.made[r][i]);
+                    allocator.free(other.words[r][i]);
+                }
+            }
+            self.done.store(true, .release);
+            // Stay attached until the other side freed every block of ours.
+            while (!other.done.load(.acquire)) std.Thread.yield() catch {};
+        }
+    };
+    const a = try testing.allocator.create(Side);
+    defer testing.allocator.destroy(a);
+    a.* = .{ .engine = engine };
+    const b = try testing.allocator.create(Side);
+    defer testing.allocator.destroy(b);
+    b.* = .{ .engine = engine };
+    const Worker = struct {
+        fn run(mine: *Side, theirs: *Side) void {
+            mine.run(theirs) catch @panic("an agent's side could not allocate");
+        }
+    };
+    const thread = try std.Thread.spawn(.{}, Worker.run, .{ b, a });
+    try a.run(b);
+    thread.join();
+    const Count = struct {
+        fn line(_: void, _: heap.LeakLine) void {}
+    };
+    try testing.expectEqual(@as(usize, 0), engine.leakReport({}, Count.line));
+}
