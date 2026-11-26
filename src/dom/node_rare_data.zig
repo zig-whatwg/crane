@@ -332,13 +332,19 @@ pub const Context = struct {
     }
 };
 
+/// `scope`'s allocator, satellite allocator, and DOM memory.
+pub fn contextOfScope(scope: *runtime.BrowserScope, memory: ?*runtime.gc.ExternalMemory) Context {
+    return .{
+        .allocator = scope.allocator,
+        .satellite = scope.satelliteAllocator(),
+        .memory = memory,
+    };
+}
+
 /// `element`'s Browser's allocator, satellite allocator, and DOM memory.
 pub fn contextOf(element: *runtime.Instance) Context {
-    return .{
-        .allocator = runtime.allocatorOf(element),
-        .satellite = runtime.satelliteAllocatorOf(element),
-        .memory = &runtime.BrowserScope.ofInstance(element).dom_memory,
-    };
+    const scope = runtime.BrowserScope.ofInstance(element);
+    return contextOfScope(scope, &scope.dom_memory);
 }
 
 /// An owned byte string in one allocation: its u32 length, then its bytes.

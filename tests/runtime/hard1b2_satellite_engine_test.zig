@@ -44,7 +44,7 @@ test "satellite blocks live in the cage and encode/decode via Link against node 
     // Both sit inside the node cage, so 32-bit Links work directly between them (N10 ready).
     const sat_offset = @intFromPtr(sat_ptr) - engine.heap.window_base;
     try testing.expect(sat_offset >= Heap.layout.cage.offset and sat_offset < Heap.layout.cage.end());
-    const link = try Heap.Link(u8).encode(sat_ptr, node_ptr);
+    const link = try Heap.Link(u8).encode(@ptrCast(sat_ptr), node_ptr);
     try testing.expectEqual(@as(?*u8, @ptrCast(sat_ptr)), try link.decode(node_ptr));
 }
 
