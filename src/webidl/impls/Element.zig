@@ -196,7 +196,7 @@ pub const InternalState = struct {
             // association, the is value's and nonce's bytes), each cleared.
             // The block is the node's: its NodeBase's teardown frees it,
             // with the node's own fields (NodeBase.deinitRareData).
-            rare_data.releaseElementFields(.{ .allocator = allocator, .memory = memory }, rare);
+            rare_data.releaseElementFields(rare_data.contextOfScope(scope, memory), rare);
         }
         self.data.deinit(scope);
     }
@@ -439,7 +439,6 @@ fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementDa
 fn initializeCustomElement(instance: *runtime.Instance, prefix: ?[]const u8, is_value: ?[]const u8, state: CustomElementState) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const scope = runtime.BrowserScope.ofInstance(instance);
-    const allocator = scope.allocator;
     // "Create an element" names the element with its prefix already
     // (`setNames`), so this finds it set. A custom element its constructor
     // made has none yet: DOM create-an-element step 5.1.4.9 "Set result's
@@ -452,7 +451,7 @@ fn initializeCustomElement(instance: *runtime.Instance, prefix: ?[]const u8, is_
     errdefer if (renamed) |name| dom.element_name.release(scope, name);
     // The is value lives in rare data: made only when one is set, or
     // cleared where an earlier call set one.
-    const rare_ctx: rare_data.Context = .{ .allocator = allocator, .memory = &scope.dom_memory };
+    const rare_ctx = rare_data.contextOfScope(scope, &scope.dom_memory);
     if (is_value) |value| try rare_data.putBytes(rare_ctx, internal.rareHolder(), .is_value, value) else rare_data.clearBytes(rare_ctx, internal.rareHolder(), .is_value);
     if (renamed) |name| internal.data.rename(scope, name);
     internal.bits().setCustomElementState(state);

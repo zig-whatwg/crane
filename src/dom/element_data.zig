@@ -372,7 +372,7 @@ pub const AttributeList = struct {
     /// element's attributes were no part of the figure).
     fn create(scope: *runtime.BrowserScope, class: u8) error{OutOfMemory}!*AttributeList {
         const size = bytesFor(capacityOf(class));
-        const memory = scope.allocator.rawAlloc(size, .of(AttributeList), @returnAddress()) orelse return error.OutOfMemory;
+        const memory = scope.satelliteAllocator().rawAlloc(size, .of(AttributeList), @returnAddress()) orelse return error.OutOfMemory;
         const list: *AttributeList = @ptrCast(@alignCast(memory));
         list.* = .{ .len = 0, .cap_class = class };
         scope.dom_memory.add(runtime.gc.ExternalMemory.blockBytes(size));
@@ -383,7 +383,7 @@ pub const AttributeList = struct {
         const memory = self.block();
         scope.dom_memory.sub(runtime.gc.ExternalMemory.blockBytes(memory.len));
         if (debug_checks) @memset(memory, 0xAA);
-        scope.allocator.rawFree(memory, .of(AttributeList), @returnAddress());
+        scope.satelliteAllocator().rawFree(memory, .of(AttributeList), @returnAddress());
     }
 
     /// The list in a block of class `class`: header and entries copied,
@@ -848,9 +848,10 @@ pub const SharingCache = struct {
     /// any more is freed) and free the table.
     pub fn deinit(self: *SharingCache) void {
         const scope = self.scope orelse return;
+        const sat = scope.satelliteAllocator();
         for (self.slots()) |slot| if (slot) |list| list.drop(scope);
-        scope.allocator.free(self.heap_slots);
-        scope.allocator.free(self.heap_hashes);
+        sat.free(self.heap_slots);
+        sat.free(self.heap_hashes);
         self.* = .{};
     }
 
@@ -927,6 +928,7 @@ pub const SharingCache = struct {
         var len: usize = inline_len;
         while ((held + 1) * 2 > len) len *= 4;
 
+        const sat = scope.satelliteAllocator();
         if (len == inline_len) {
             // Into the inline table - from itself (a copy first) or from
             // the heap's, which goes.
@@ -942,19 +944,19 @@ pub const SharingCache = struct {
             self.inline_slots = @splat(null);
             rehash(scope, from_slots, from_hashes, &self.inline_slots, &self.inline_hashes);
             if (!from_inline) {
-                scope.allocator.free(self.heap_slots);
-                scope.allocator.free(self.heap_hashes);
+                sat.free(self.heap_slots);
+                sat.free(self.heap_hashes);
                 self.heap_slots = &.{};
                 self.heap_hashes = &.{};
             }
         } else {
-            const new_slots = try scope.allocator.alloc(?*const AttributeList, len);
-            errdefer scope.allocator.free(new_slots);
-            const new_hashes = try scope.allocator.alloc(u32, len);
+            const new_slots = try sat.alloc(?*const AttributeList, len);
+            errdefer sat.free(new_slots);
+            const new_hashes = try sat.alloc(u32, len);
             @memset(new_slots, null);
             rehash(scope, old_slots, old_hashes, new_slots, new_hashes);
-            scope.allocator.free(self.heap_slots);
-            scope.allocator.free(self.heap_hashes);
+            sat.free(self.heap_slots);
+            sat.free(self.heap_hashes);
             self.heap_slots = new_slots;
             self.heap_hashes = new_hashes;
         }

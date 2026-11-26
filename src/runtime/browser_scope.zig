@@ -411,16 +411,22 @@ pub const BrowserScope = struct {
                     out.* = engine.leakReport({}, struct {
                         fn line(_: void, _: heap_engine.LeakLine) void {}
                     }.line);
-                } else if (self.general and @import("builtin").is_test) {
-                    // A test whose Browser leaked general memory fails, as it
-                    // did while std.testing.allocator saw that memory
-                    // (allocator-hardening design 10.2: "the pools' leak
-                    // report fails the test scope"); a test that leaks on
-                    // purpose takes the count instead (`heap_leak_count_out`).
-                    _ = engine.leakReport({}, struct {
-                        fn line(_: void, l: heap_engine.LeakLine) void {
-                            if (!l.general) return;
-                            std.log.scoped(.heap).err("heap leak: {d} general block(s) of {d} B ({t}) alive at the Browser's end, made at 0x{x}", .{ l.count, l.block_bytes, l.partition, l.return_address });
+                } else if (@import("builtin").is_test) {
+                    // A test whose scope leaked satellite or general memory
+                    // fails, as it did while std.testing.allocator saw that
+                    // memory (allocator-hardening design 10.2, B4); a test
+                    // that leaks on purpose takes the count instead
+                    // (`heap_leak_count_out`).
+                    const check_general = self.general;
+                    _ = engine.leakReport(check_general, struct {
+                        fn line(general: bool, l: heap_engine.LeakLine) void {
+                            if (l.partition == .satellite) {
+                                std.log.scoped(.heap).err("heap leak: {d} satellite block(s) of {d} B alive at the Browser's end, made at 0x{x}", .{ l.count, l.block_bytes, l.return_address });
+                                return;
+                            }
+                            if (general and l.general) {
+                                std.log.scoped(.heap).err("heap leak: {d} general block(s) of {d} B ({t}) alive at the Browser's end, made at 0x{x}", .{ l.count, l.block_bytes, l.partition, l.return_address });
+                            }
                         }
                     }.line);
                 }
@@ -555,6 +561,21 @@ pub const BrowserScope = struct {
     /// standalone scope. Not for a Browser.
     pub fn setStandalone(scope: ?*BrowserScope) void {
         standalone_scope = scope;
+    }
+
+    /// The Browser's satellite allocator (allocator-hardening batch B2, item 3):
+    /// allocates node-linked satellites in the cage's `.satellite` partition
+    /// (window agent's thread only, lock-free). Falls back to `self.allocator`
+    /// on pointer32 or if the heap cannot reserve.
+    pub inline fn satelliteAllocator(self: *BrowserScope) Allocator {
+        if (self.engine.load(.acquire)) |eng| return heap_engine.satellite.allocatorOf(eng);
+        return self.satelliteAllocatorCold();
+    }
+
+    fn satelliteAllocatorCold(self: *BrowserScope) Allocator {
+        @branchHint(.cold);
+        const eng = self.startHeapLazily() catch return self.allocator;
+        return heap_engine.satellite.allocatorOf(eng);
     }
 
     /// From now on the Browser's memory is its heap's objects and bytes

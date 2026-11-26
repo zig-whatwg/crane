@@ -116,7 +116,7 @@ pub const DocumentCache = struct {
 
     fn create(document: *runtime.Instance, owner: *document_state.InteractionState) error{OutOfMemory}!*DocumentCache {
         const scope = runtime.BrowserScope.ofInstance(document);
-        const self = try scope.allocator.create(DocumentCache);
+        const self = try scope.satelliteAllocator().create(DocumentCache);
         self.* = .{ .scope = scope, .owner = owner, .document = document };
         owner.attribute_blocks = self;
         return self;
@@ -146,7 +146,7 @@ pub const DocumentCache = struct {
 
     fn freeIfUnheld(self: *DocumentCache) void {
         if (self.owner != null or self.users != 0 or self.timer != null) return;
-        self.scope.allocator.destroy(self);
+        self.scope.satelliteAllocator().destroy(self);
     }
 
     /// Start the 10 s. False when the document's realm has no timers (or
