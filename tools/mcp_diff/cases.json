@@ -2390,16 +2390,16 @@
           "tool": "fill",
           "args": {
             "pageId": 1,
-            "uid": "1_16",
-            "value": "nope"
+            "uid": "1_10",
+            "value": "Purple"
           }
         },
         {
           "tool": "fill",
           "args": {
             "pageId": 1,
-            "uid": "1_1",
-            "value": "nope"
+            "uid": "1_13",
+            "value": "yes"
           }
         },
         {
@@ -2414,7 +2414,7 @@
           "tool": "upload_file",
           "args": {
             "pageId": 1,
-            "uid": "1_17",
+            "uid": "1_18",
             "filePaths": [
               "{files}/upload.txt"
             ]

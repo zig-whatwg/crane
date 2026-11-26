@@ -59,22 +59,23 @@ fn click(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Respo
 
     const Click = struct {
         page: *Page,
+        uid: []const u8,
         element: elements.Element,
         role: []const u8,
         dbl_click: bool,
 
         pub fn run(self: @This(), c: *Context) !void {
             if (!self.dbl_click and std.mem.eql(u8, self.role, "option")) {
-                const handled = try selectNativeOption(c, self.page, self.element);
+                const handled = try selectNativeOption(c, self.page, self.uid, self.element);
                 if (handled) return;
             }
-            const object_id = self.element.object_id orelse return c.fail("Node is not an Element.", .{});
+            const object_id = self.element.object_id orelse return failInteract(c, self.uid, "Node is not an Element.");
             const params = try std.fmt.allocPrint(
                 c.arena,
                 "{{\"objectId\":{f},\"clickCount\":{d},\"checkEnabled\":true}}",
                 .{ std.json.fmt(object_id, .{}), if (self.dbl_click) @as(u32, 2) else @as(u32, 1) },
             );
-            callElementAction(c, self.page, "Input._craneClickElement", params) catch |err| switch (err) {
+            callElementAction(c, self.page, self.uid, "Input._craneClickElement", params) catch |err| switch (err) {
                 error.DialogAborted => return,
                 else => return err,
             };
@@ -83,12 +84,17 @@ fn click(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Respo
 
     const result = try wait.afterAction(ctx, target, .{}, Click{
         .page = target,
+        .uid = uid,
         .element = element,
         .role = target_info.role,
         .dbl_click = dbl_click,
     });
     if (result.dialog_detected or target.dialog != null) {
-        try response.line("The element was clicked and it opened a dialog.", .{});
+        if (dbl_click) {
+            try response.line("The element was double clicked and it opened a dialog.", .{});
+        } else {
+            try response.line("The element was clicked and it opened a dialog.", .{});
+        }
     } else if (dbl_click) {
         try response.line("Successfully double clicked on the element", .{});
     } else {
@@ -101,7 +107,7 @@ fn click(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Respo
 /// chrome-devtools-mcp selectNativeSelectOption: for an AX `option` inside a
 /// native `<select>`, select it and dispatch `input` + `change` on the select.
 /// Returns false if the element has no ancestor `<select>` (fall back to click).
-fn selectNativeOption(ctx: *Context, page: *Page, element: elements.Element) !bool {
+fn selectNativeOption(ctx: *Context, page: *Page, uid: []const u8, element: elements.Element) !bool {
     const context_id = try elements.mainWorld(ctx, page, element.frame_id);
     const ans = callOnString(ctx, page, context_id, select_native_option_js, element.argument, null) catch |err| switch (err) {
         error.DialogAborted => return true,
@@ -110,7 +116,7 @@ fn selectNativeOption(ctx: *Context, page: *Page, element: elements.Element) !bo
     const status = ans orelse return false;
     if (std.mem.eql(u8, status, "ok")) return true;
     if (std.mem.eql(u8, status, "no_select")) return false;
-    if (std.mem.eql(u8, status, "disabled")) return ctx.fail("Element is disabled and cannot be interacted with.", .{});
+    if (std.mem.eql(u8, status, "disabled")) return failInteract(ctx, uid, "Element is disabled and cannot be interacted with.");
     return false;
 }
 
@@ -146,20 +152,25 @@ fn hover(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Respo
 
     const Hover = struct {
         page: *Page,
+        uid: []const u8,
         element: elements.Element,
 
         pub fn run(self: @This(), c: *Context) !void {
-            const object_id = self.element.object_id orelse return c.fail("Node is not an Element.", .{});
+            const object_id = self.element.object_id orelse return failInteract(c, self.uid, "Node is not an Element.");
             const params = try std.fmt.allocPrint(c.arena, "{{\"objectId\":{f}}}", .{std.json.fmt(object_id, .{})});
-            callElementAction(c, self.page, "Input._craneHoverElement", params) catch |err| switch (err) {
+            callElementAction(c, self.page, self.uid, "Input._craneHoverElement", params) catch |err| switch (err) {
                 error.DialogAborted => return,
                 else => return err,
             };
         }
     };
 
-    const result = try wait.afterAction(ctx, target, .{}, Hover{ .page = target, .element = element });
-    try response.line("Successfully hovered over the element", .{});
+    const result = try wait.afterAction(ctx, target, .{}, Hover{ .page = target, .uid = uid, .element = element });
+    if (result.dialog_detected or target.dialog != null) {
+        try response.line("The element was hovered and it opened a dialog.", .{});
+    } else {
+        try response.line("Successfully hovered over the element", .{});
+    }
     response.wait_result = result.forResponse();
     if (include_snapshot and target.dialog == null) response.snapshot = try snapshot_tools.capture(ctx, target, false);
 }
@@ -192,7 +203,7 @@ fn drag(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Respon
                 "{{\"fromObjectId\":{f},\"toObjectId\":{f}}}",
                 .{ std.json.fmt(from_id, .{}), std.json.fmt(to_id, .{}) },
             );
-            callElementAction(c, self.page, "Input._craneDragStart", start_params) catch |err| switch (err) {
+            callElementAction(c, self.page, null, "Input._craneDragStart", start_params) catch |err| switch (err) {
                 error.DialogAborted => return,
                 else => return err,
             };
@@ -200,7 +211,7 @@ fn drag(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Respon
             var waited: u32 = 0;
             while (waited < 50) : (waited += 10) _ = try c.session.client.pump(10 * std.time.ns_per_ms);
             const drop_params = try std.fmt.allocPrint(c.arena, "{{\"toObjectId\":{f}}}", .{std.json.fmt(to_id, .{})});
-            callElementAction(c, self.page, "Input._craneDragDrop", drop_params) catch |err| switch (err) {
+            callElementAction(c, self.page, null, "Input._craneDragDrop", drop_params) catch |err| switch (err) {
                 error.DialogAborted => return,
                 else => return err,
             };
@@ -298,24 +309,27 @@ fn fillOne(ctx: *Context, page: *Page, uid: []const u8, raw_value: []const u8) !
     const element = try elements.byUid(ctx, page, uid);
     defer if (element.object_id) |id| elements.release(ctx, page, id);
 
-    const object_id = element.object_id orelse return ctx.fail("Node is not an Element.", .{});
+    const object_id = element.object_id orelse return failInteract(ctx, uid, "Node is not an Element.");
     // Option 2 preconditions: visible (not display:none / visibility:hidden), not inert, not disabled.
     const check_params = try std.fmt.allocPrint(
         ctx.arena,
         "{{\"objectId\":{f},\"checkEnabled\":true,\"checkPointerEvents\":false}}",
         .{std.json.fmt(object_id, .{})},
     );
-    callElementAction(ctx, page, "Input._craneCheckElement", check_params) catch |err| switch (err) {
+    callElementAction(ctx, page, uid, "Input._craneCheckElement", check_params) catch |err| switch (err) {
         error.DialogAborted => return true,
         else => return err,
     };
 
-    // chrome-devtools-mcp: for AX combobox with option children, map an option's
-    // accessible name to its DOM option `.value`.
+    // chrome-devtools-mcp selectOption: for AX combobox with option children,
+    // match an option by its accessible name, or fail with chrome-devtools-mcp's
+    // exact message ("Could not find option with text ...").
     var effective_value = raw_value;
-    if (std.mem.eql(u8, target_info.role, "combobox")) {
+    if (std.mem.eql(u8, target_info.role, "combobox") and target_info.options.len > 0) {
+        var matched_opt = false;
         for (target_info.options) |opt| {
             if (!std.mem.eql(u8, opt.name, raw_value)) continue;
+            matched_opt = true;
             const opt_el = elements.resolveNode(ctx, page, opt.backend_node_id, opt.loader_id, opt.frame_id) catch break;
             defer if (opt_el.object_id) |oid| elements.release(ctx, page, oid);
             const opt_ctx = elements.mainWorld(ctx, page, opt.frame_id) catch break;
@@ -324,23 +338,26 @@ fn fillOne(ctx: *Context, page: *Page, uid: []const u8, raw_value: []const u8) !
             }
             break;
         }
+        if (!matched_opt) {
+            return ctx.fail("Failed to interact with the element with uid {s}. Could not find option with text \"{s}\"", .{ uid, raw_value });
+        }
     }
 
     const context_id = try elements.mainWorld(ctx, page, element.frame_id);
     const info_json = (callOnString(ctx, page, context_id, classify_fill_js, element.argument, null) catch |err| switch (err) {
         error.DialogAborted => return true,
         else => return err,
-    }) orelse return ctx.fail("Element cannot be filled out.", .{});
+    }) orelse return failInteract(ctx, uid, "Element cannot be filled out.");
 
     const parsed = std.json.parseFromSliceLeaky(std.json.Value, ctx.arena, info_json, .{}) catch
-        return ctx.fail("Element cannot be filled out.", .{});
-    if (parsed != .object) return ctx.fail("Element cannot be filled out.", .{});
+        return failInteract(ctx, uid, "Element cannot be filled out.");
+    if (parsed != .object) return failInteract(ctx, uid, "Element cannot be filled out.");
     const info = parsed.object;
     const kind = session_mod.str(info.get("kind"));
     const read_only = if (info.get("readOnly")) |v| v == .bool and v.bool else false;
     const checked = if (info.get("checked")) |v| v == .bool and v.bool else false;
 
-    if (read_only) return ctx.fail("Element is read-only.", .{});
+    if (read_only) return failInteract(ctx, uid, "Element is read-only.");
 
     if (std.mem.eql(u8, kind, "select")) {
         const res = callOnString(ctx, page, context_id, select_value_js, element.argument, effective_value) catch |err| switch (err) {
@@ -348,20 +365,24 @@ fn fillOne(ctx: *Context, page: *Page, uid: []const u8, raw_value: []const u8) !
             else => return err,
         };
         if (res == null or !std.mem.eql(u8, res.?, "ok")) {
-            return ctx.fail("Element has no option with the value \"{s}\".", .{effective_value});
+            return ctx.fail("Failed to interact with the element with uid {s}. Element has no option with the value \"{s}\".", .{ uid, effective_value });
         }
         return dialogOpened(ctx, page);
     }
 
     if (std.mem.eql(u8, kind, "toggle")) {
-        const want = std.mem.eql(u8, raw_value, "true");
-        if (want != checked) {
+        const is_true = std.mem.eql(u8, raw_value, "true");
+        const is_false = std.mem.eql(u8, raw_value, "false");
+        if (!is_true and !is_false) {
+            return ctx.fail("Failed to interact with the element with uid {s}. Checkboxes, radio boxes and toggles require \"true\" or \"false\" value, but {s} was used", .{ uid, raw_value });
+        }
+        if (is_true != checked) {
             const click_params = try std.fmt.allocPrint(
                 ctx.arena,
                 "{{\"objectId\":{f},\"clickCount\":1,\"checkEnabled\":true}}",
                 .{std.json.fmt(object_id, .{})},
             );
-            callElementAction(ctx, page, "Input._craneClickElement", click_params) catch |err| switch (err) {
+            callElementAction(ctx, page, uid, "Input._craneClickElement", click_params) catch |err| switch (err) {
                 error.DialogAborted => return true,
                 else => return err,
             };
@@ -385,23 +406,23 @@ fn fillOne(ctx: *Context, page: *Page, uid: []const u8, raw_value: []const u8) !
             };
             return dialogOpened(ctx, page);
         }
-        return fillDirectly(ctx, page, context_id, element.argument, effective_value);
+        return fillDirectly(ctx, page, uid, context_id, element.argument, effective_value);
     }
 
     if (std.mem.eql(u8, kind, "direct")) {
-        return fillDirectly(ctx, page, context_id, element.argument, effective_value);
+        return fillDirectly(ctx, page, uid, context_id, element.argument, effective_value);
     }
 
-    return ctx.fail("Element cannot be filled out.", .{});
+    return failInteract(ctx, uid, "Element cannot be filled out.");
 }
 
-fn fillDirectly(ctx: *Context, page: *Page, context_id: i64, argument: []const u8, value: []const u8) !bool {
+fn fillDirectly(ctx: *Context, page: *Page, uid: []const u8, context_id: i64, argument: []const u8, value: []const u8) !bool {
     const res = callOnString(ctx, page, context_id, fill_directly_js, argument, value) catch |err| switch (err) {
         error.DialogAborted => return true,
         else => return err,
     };
     if (res != null and std.mem.eql(u8, res.?, "rejected")) {
-        return ctx.fail("Element did not accept the value \"{s}\".", .{value});
+        return ctx.fail("Failed to interact with the element with uid {s}. Element did not accept the value \"{s}\".", .{ uid, value });
     }
     return dialogOpened(ctx, page);
 }
@@ -791,9 +812,14 @@ fn typeChars(ctx: *Context, page: *Page, text: []const u8) !void {
     }
 }
 
+fn failInteract(ctx: *Context, uid: ?[]const u8, reason: []const u8) error{ToolFailed} {
+    if (uid) |u| return ctx.fail("Failed to interact with the element with uid {s}. {s}", .{ u, reason });
+    return ctx.fail("{s}", .{reason});
+}
+
 /// Invoke a local-only element action on `domains/input.zig`, aborting
 /// immediately if a JS dialog opens during the event dispatch.
-fn callElementAction(ctx: *Context, page: *Page, method: []const u8, params: []const u8) !void {
+fn callElementAction(ctx: *Context, page: *Page, uid: ?[]const u8, method: []const u8, params: []const u8) !void {
     var r = if (ctx.session.watch) |w|
         ctx.session.client.callOrAbort(method, params, page.session_id, session_mod.command_timeout_ms, &w.aborted) catch |err| switch (err) {
             error.Aborted => return error.DialogAborted,
@@ -802,7 +828,7 @@ fn callElementAction(ctx: *Context, page: *Page, method: []const u8, params: []c
     else
         try ctx.session.client.call(method, params, page.session_id, session_mod.command_timeout_ms);
     defer r.deinit();
-    if (r.errorMessage()) |message| return ctx.fail("{s}", .{message});
+    if (r.errorMessage()) |message| return failInteract(ctx, uid, message);
 }
 
 /// ElementHandle.evaluate(fn) returning a string (copied into `ctx.arena`) or

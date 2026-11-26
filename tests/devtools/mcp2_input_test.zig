@@ -314,18 +314,22 @@ test "fill and fill_form: text, textarea, select, checkbox, radio, contenteditab
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => [document.getElementById('name').value, document.getElementById('bio').value.length, document.getElementById('col').value, document.getElementById('cb').checked, document.getElementById('rad').checked, document.getElementById('ce').textContent]\"}");
     try expectResult(r.text, "[\"Grace\",120,\"g\",true,true,\"Hello CE\"]");
 
-    // Refusals: read-only, non-fillable button, unknown select option.
+    // Refusals: read-only, non-fillable button, unknown combobox option, invalid toggle value.
     r = try h.tool("fill", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"value\":\"nope\"}}", .{ro_uid}));
     try testing.expect(r.is_error);
-    try testing.expectEqualStrings("Error: Element is read-only.", r.text);
+    try testing.expectEqualStrings(try std.fmt.allocPrint(a, "Error: Failed to interact with the element with uid {s}. Element is read-only.", .{ro_uid}), r.text);
 
     r = try h.tool("fill", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"value\":\"nope\"}}", .{btn_uid}));
     try testing.expect(r.is_error);
-    try testing.expectEqualStrings("Error: Element cannot be filled out.", r.text);
+    try testing.expectEqualStrings(try std.fmt.allocPrint(a, "Error: Failed to interact with the element with uid {s}. Element cannot be filled out.", .{btn_uid}), r.text);
 
     r = try h.tool("fill", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"value\":\"Purple\"}}", .{col_uid}));
     try testing.expect(r.is_error);
-    try testing.expectEqualStrings("Error: Element has no option with the value \"Purple\".", r.text);
+    try testing.expectEqualStrings(try std.fmt.allocPrint(a, "Error: Failed to interact with the element with uid {s}. Could not find option with text \"Purple\"", .{col_uid}), r.text);
+
+    r = try h.tool("fill", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"value\":\"yes\"}}", .{cb_uid}));
+    try testing.expect(r.is_error);
+    try testing.expectEqualStrings(try std.fmt.allocPrint(a, "Error: Failed to interact with the element with uid {s}. Checkboxes, radio boxes and toggles require \"true\" or \"false\" value, but yes was used", .{cb_uid}), r.text);
 
     // fill_form interrupted by dialog stops and reports remaining elements.
     r = try h.tool("fill_form", try std.fmt.allocPrint(
