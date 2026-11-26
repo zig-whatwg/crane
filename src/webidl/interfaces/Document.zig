@@ -2209,9 +2209,7 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandSupported(instance, commandId);
     }
 
-    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
-        return try DocumentImpl.call_getBoxQuads(instance, options);
-    }
+    pub const call_getBoxQuads = mixins.GeometryUtils.call_getBoxQuads;
 
     /// Extended attributes: [NewObject]
     pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
@@ -2260,9 +2258,7 @@ pub const Document = struct {
         return try DocumentImpl.call_getElementsByClassName(instance, classNames);
     }
 
-    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        return try DocumentImpl.call_convertQuadFromNode(instance, quad, from, options);
-    }
+    pub const call_convertQuadFromNode = mixins.GeometryUtils.call_convertQuadFromNode;
 
     /// Extended attributes: [NewObject]
     pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMString) anyerror!*runtime.Instance {
@@ -2437,9 +2433,7 @@ pub const Document = struct {
         return try DocumentImpl.call_hasPrivateToken(instance, issuer);
     }
 
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        return try DocumentImpl.call_convertRectFromNode(instance, rect, from, options);
-    }
+    pub const call_convertRectFromNode = mixins.GeometryUtils.call_convertRectFromNode;
 
     pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
         return try DocumentImpl.call_queryCommandIndeterm(instance, commandId);
@@ -2456,9 +2450,7 @@ pub const Document = struct {
         return try DocumentImpl.call_hasUnpartitionedCookieAccess(instance);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        return try DocumentImpl.call_convertPointFromNode(instance, point, from, options);
-    }
+    pub const call_convertPointFromNode = mixins.GeometryUtils.call_convertPointFromNode;
 
     /// Extended attributes: [CEReactions], [NewObject]
     pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(BooleanOrImportNodeOptions)) anyerror!*runtime.Instance {
@@ -2479,9 +2471,7 @@ pub const Document = struct {
 
     pub const call_replaceChildren = mixins.ParentNode.call_replaceChildren;
 
-    pub fn call_ariaNotify(instance: *runtime.Instance, announcement: runtime.DOMString, options: webidl.Opt(AriaNotificationOptions)) anyerror!void {
-        return try DocumentImpl.call_ariaNotify(instance, announcement, options);
-    }
+    pub const call_ariaNotify = mixins.ARIANotifyMixin.call_ariaNotify;
 
     pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.call_getSelection(instance);

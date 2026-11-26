@@ -50,9 +50,6 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// assignedSlot: "return the result of find a slot given this and true".
 /// Spec: https://dom.spec.whatwg.org/#dom-slotable-assignedslot
-///
-/// Element and Text still bind their own (Slottable is not yet among
-/// codegen's inherited_mixins), which run the same algorithm.
 pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return dom.shadow_dom_algorithms.assignedSlotForScript(instance);
 }

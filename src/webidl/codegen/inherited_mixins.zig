@@ -19,6 +19,8 @@
 const std = @import("std");
 
 pub const names = [_][]const u8{
+    "ARIAMixin",
+    "ARIANotifyMixin",
     "AbstractWorker",
     "ActivationBlockersMixin",
     "Animatable",
@@ -57,6 +59,7 @@ pub const names = [_][]const u8{
     "GPUPipelineBase",
     "GPURenderCommandsMixin",
     "GenericTransformStream",
+    "GeometryUtils",
     "GlobalEventHandlers",
     "GlobalPrivacyControl",
     "HTMLHyperlinkElementUtils",
@@ -91,6 +94,7 @@ pub const names = [_][]const u8{
     "PowerfulFeatureObserver",
     "PushManagerAttribute",
     "ReadableStreamGenericReader",
+    "Region",
     "SFrameDecryptorManager",
     "SFrameEncryptorManager",
     "SVGAnimatedPoints",
@@ -100,6 +104,7 @@ pub const names = [_][]const u8{
     "SVGTests",
     "SVGURIReference",
     "ServiceEventHandlers",
+    "Slottable",
     "TextDecoderCommon",
     "TextEncoderCommon",
     "WebGL2RenderingContextBase",

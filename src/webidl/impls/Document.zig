@@ -2421,15 +2421,6 @@ pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
     // No-op - legacy method
 }
 
-/// Operation: convertQuadFromNode
-pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = quad;
-    _ = from;
-    _ = options;
-    return error.NotImplemented;
-}
-
 /// Operation: queryCommandSupported
 /// Returns whether an editing command is supported by this implementation.
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandsupported
@@ -3168,26 +3159,6 @@ fn createLegacyEvent(realm: runtime.Context, interface: LegacyEventInterface) an
     }
 }
 
-/// Operation: getBoxQuads
-/// Returns the CSS box quads for this document.
-/// Without a layout engine, returns an empty sequence.
-pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    // Without a layout engine, we cannot compute box quads
-    // Return undefined for empty array
-    return runtime.JSValue.jsUndefined;
-}
-
-/// Operation: convertPointFromNode
-pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = point;
-    _ = from;
-    _ = options;
-    return error.NotImplemented;
-}
-
 /// Operation: getElementsByClassName
 ///
 /// Spec: https://dom.spec.whatwg.org/#dom-document-getelementsbyclassname
@@ -3507,15 +3478,6 @@ pub fn call_getElementsByName(instance: *runtime.Instance, elementName: runtime.
 /// steps with this, text, true, and "Document writeln"."
 pub fn call_writeln(instance: *runtime.Instance, text: []const typedefs.TrustedHTMLOrDOMString) anyerror!void {
     return documentWriteSteps(instance, text, true, "Document writeln");
-}
-
-/// Operation: convertRectFromNode
-pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = rect;
-    _ = from;
-    _ = options;
-    return error.NotImplemented;
 }
 
 /// Operation: queryCommandValue
@@ -6322,14 +6284,6 @@ fn sweepRemaining(scope: *runtime.BrowserScope) void {
 /// Getter for modelContext
 pub fn get_modelContext(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: ariaNotify
-pub fn call_ariaNotify(instance: *runtime.Instance, announcement: runtime.DOMString, options: webidl.Opt(dictionaries.AriaNotificationOptions)) anyerror!void {
-    _ = instance;
-    _ = announcement;
-    _ = options;
     return error.NotImplemented;
 }
 
