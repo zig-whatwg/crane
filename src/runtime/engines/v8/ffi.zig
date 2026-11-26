@@ -4487,6 +4487,12 @@ pub extern fn v8_InspectorSession_Wrap(session: *InspectorSession, context_id: c
 /// The value the object id names (a new Global the caller owns), and its
 /// context's Crane id in `context_key`; null when it names nothing.
 pub extern fn v8_InspectorSession_Unwrap(session: *InspectorSession, object_id: [*]const u8, length: usize, context_key: *?*anyopaque) ?*Value;
+/// Like v8_InspectorSession_Unwrap, also sending any non-empty objectGroup to `group_sink`.
+pub extern fn v8_InspectorSession_UnwrapWithGroup(session: *InspectorSession, object_id: [*]const u8, length: usize, context_key: *?*anyopaque, group_sink: InspectorSend, group_host: ?*anyopaque) ?*Value;
+/// Resolve an event listener callback to its effective callable (unwrapping
+/// bound functions and `.handleEvent` on objects) and its script id + 0-based
+/// line/column. Returns a new Global<Value> the caller owns, or null.
+pub extern fn v8_Function_InspectorLocation(context: *Context, callback: *Value, script_id_out: *i32, line_out: *i32, column_out: *i32) ?*Value;
 pub extern fn v8_InspectorSession_ReleaseObjectGroup(session: *InspectorSession, group: [*]const u8, length: usize) void;
 /// Keep V8's own console object of `context` (BORROWED) before the Console
 /// Standard's namespace replaces it (engine.inspectorConsoleMessage).

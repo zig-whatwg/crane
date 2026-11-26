@@ -34,6 +34,7 @@ pub const full_domains = [_][]const u8{
     "Browser",
     "CSS",
     "DOM",
+    "DOMDebugger",
     "Emulation",
     "Fetch",
     "IO",

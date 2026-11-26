@@ -21,6 +21,7 @@ pub const Audits = @import("Audits.zig");
 pub const Browser = @import("Browser.zig");
 pub const CSS = @import("CSS.zig");
 pub const DOM = @import("DOM.zig");
+pub const DOMDebugger = @import("DOMDebugger.zig");
 pub const Emulation = @import("Emulation.zig");
 pub const Fetch = @import("Fetch.zig");
 pub const IO = @import("IO.zig");
