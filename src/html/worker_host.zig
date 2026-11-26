@@ -2963,22 +2963,26 @@ fn workerCrossOriginIsolated(start: *const WorkerStart) bool {
 /// isolation mode other than "none" when its realm is made (HTML "create a
 /// new realm" step 5), read on its owner's thread:
 ///
-/// - a shared worker's agent starts a cluster of its own (isTopLevel), made
-///   with the mode "none"; "run a worker" makes the realm (step 7) before
-///   onComplete step 5 sets the mode from the embedder policy ("This really
-///   ought to be set when the agent cluster is created"), so the realm is
-///   made with "none" whatever its policy - and the browsers agree: Chrome
-///   157 and Firefox 160 make no shared worker cross-origin isolated even
-///   with COOP and COEP (html/cross-origin-embedder-policy/cross-origin-
-///   isolated-permission-worker.https.window.html "shared_worker
-///   (withCoopCoep: true)": C FAIL, F FAIL, S PASS, wpt.fyi 2358bd4835), so
-///   neither exposes SharedArrayBuffer there. Its capability stays the
-///   spec's (`workerCrossOriginIsolated`, steps 5-7);
+/// - a shared worker's agent starts a cluster of its own (isTopLevel), whose
+///   mode "run a worker" onComplete step 5 sets to "concrete" when its
+///   embedder policy is compatible with cross-origin isolation (the spec notes
+///   "This really ought to be set when the agent cluster is created", i.e.
+///   before "create a new realm" step 5). Under golden rule 2 (newer spec
+///   shipped by at least one browser), Safari 27.2 ships cross-origin isolated
+///   COEP SharedWorkers (wpt.fyi 2358bd4835: `cross-origin-isolated-permission-
+///   worker.https.window.js` `shared_worker (withCoopCoep: true)` S PASS,
+///   `window-sharedworker-failure.https.html` S OK 1/1; Chrome 157 crbug
+///   1131403 and Firefox 160 lag, both TIMEOUT 0/1). Matching
+///   `workerCrossOriginIsolated` keeps `self.crossOriginIsolated` and
+///   `SharedArrayBuffer` exposure consistent for COEP SharedWorkers;
 /// - a dedicated worker's agent is in its owner's cluster ("obtain a
 ///   worker/worklet agent" step 3), whose mode it shares - a data: URL's too:
 ///   step 9 takes only its capability away.
 fn workerAgentClusterIsolated(start: *const WorkerStart) bool {
-    if (start.shared != null) return false;
+    if (start.shared != null) {
+        const container = if (start.policy_container) |*c| c else return false;
+        return container.embedderPolicy().value.compatibleWithCrossOriginIsolation();
+    }
     return agent_clusters.crossOriginIsolationMode(start.owner_realm);
 }
 

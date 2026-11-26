@@ -47,3 +47,12 @@ test "same-site origins share a key; another scheme or registrable domain does n
 test "a serialized origin that is not a tuple origin has no site" {
     try std.testing.expectError(error.InvalidOrigin, agent_clusters.siteOf(std.testing.allocator, "null"));
 }
+
+test "same site in distinct browsing context groups produces distinct agent cluster keys" {
+    const k1 = agent_clusters.groupSiteKey(1, "https://web-platform.test");
+    const k2 = agent_clusters.groupSiteKey(2, "https://web-platform.test");
+    try std.testing.expect(k1 != k2);
+    try std.testing.expect(k1 != 0);
+    try std.testing.expect(k2 != 0);
+    try std.testing.expectEqual(k1, agent_clusters.groupSiteKey(1, "https://web-platform.test"));
+}

@@ -876,6 +876,9 @@ pub const NavigateOptions = struct {
     history_behavior: navigate_steps.HistoryBehavior = .auto,
     /// "documentResource" as a string: an iframe srcdoc document's markup.
     srcdoc: ?[]const u8 = null,
+    /// Document state's snapshotted `about base URL` restored on a history
+    /// traversal (HTML "document state" / whatwg/html#9506). BORROWED.
+    about_base_url: ?[]const u8 = null,
     /// HTML navigate's `response`, as the host page's embedder supplies it:
     /// the markup of the document made at the navigation's URL, never
     /// fetched (dom.top_level_traversables.NavigateOptions) - and, for a
@@ -1956,8 +1959,12 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     }
     // Step 5: "Let initiatorBaseURLSnapshot be sourceDocument's document base
     // URL" - kept only where it can be used, for a document at about:blank
-    // or about:srcdoc (navigate step 22.3's document state).
-    if (options.srcdoc != null or navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url)) {
+    // or about:srcdoc (navigate step 22.3's document state). When traversing
+    // back/forward to a history entry whose document state recorded its about
+    // base URL, restore that snapshot instead of re-reading sourceDocument.
+    if (options.about_base_url) |base| {
+        record.initiator_base_url = allocator.dupe(u8, base) catch null;
+    } else if (options.srcdoc != null or navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url)) {
         if (options.source_document) |source| record.initiator_base_url = documentBaseUrl(source, allocator);
     }
     // Step 4's initiatorOriginSnapshot, for a javascript: URL, whose
@@ -5419,9 +5426,11 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
         history.commitDocument(bc.id, url, null, origin, handling);
     committed catch return null;
     // Navigate step 24.4: the document state's resource is documentResource
-    // - a srcdoc document's markup, which a traversal back loads again.
+    // - a srcdoc document's markup, which a traversal back loads again - and
+    // its about base URL is initiatorBaseURLSnapshot (step 22.3).
     if (record.srcdoc) |markup| history.setCurrentResource(bc.id, markup) catch {};
     if (record.markup) |markup| history.setCurrentResource(bc.id, markup) catch {};
+    if (record.initiator_base_url) |base| history.setCurrentAboutBaseUrl(bc.id, base) catch {};
     const current = history.currentEntry(bc.id) orelse return null;
     if (bc.parent == null) history.recordNavigationEntry(current.id, navigationEntryTransition(record), record.url);
     // "Update document for history step application" step 7's inputs, for
@@ -5471,9 +5480,11 @@ fn listBeforeUnload(integration: *IFrameIntegration, record: *Navigation, respon
     if (bc.parent == null) history.recordNavigationEntry(listed.entry, navigationEntryTransition(record), record.url);
     record.listed_previous = previous;
     record.listed_previous_allocator = history.allocator;
-    // Navigate step 24.4: the document state's resource is documentResource.
+    // Navigate step 24.4: the document state's resource is documentResource
+    // and its about base URL is initiatorBaseURLSnapshot (step 22.3).
     if (record.srcdoc) |markup| history.setEntryResource(listed.entry, markup) catch {};
     if (record.markup) |markup| history.setEntryResource(listed.entry, markup) catch {};
+    if (record.initiator_base_url) |base| history.setEntryAboutBaseUrl(listed.entry, base) catch {};
     html_core.navigation.apply_history_step.beginPushReplace(bc, waiter, listed);
 }
 
@@ -5624,10 +5635,10 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
         // The entry's document is kept in the back/forward cache: shown
         // again, with no fetch.
         if (restoreFromBfcache(integration, bc, entry_id, from_entry_id)) return false;
-        // A srcdoc entry's document takes its container document's base URL
-        // as its about base URL. Deviation, stated: the spec restores the one
-        // the entry's document state recorded when it was first navigated to;
-        // the container's current one is used instead.
+        // A srcdoc/about:blank entry's document restores the about base URL
+        // recorded on its document state when it was first navigated to (HTML
+        // "document state" / whatwg/html#9506), falling back to the container
+        // document's current base URL only if none was recorded.
         // The host page's entry an embedder's load made keeps the
         // embedder's markup: re-created from it at the entry's URL.
         // A declarative refresh's reload: the refreshing document - still the
@@ -5637,11 +5648,15 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
             navigate(integration, url, .{ .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .markup = resource, .traversal_waiter = waiter, .referrer_document = referrer_document });
             return traversalInFlight(list, integration, waiter);
         }
+        const stored_about_base_url: ?[]const u8 = if (bc.jointHistory() catch null) |history|
+            history.entryAboutBaseUrl(entry_id)
+        else
+            null;
         const source: ?*runtime.Instance = if (resource != null) blk: {
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
             break :blk nodeDocumentOf(element);
         } else null;
-        navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .srcdoc = resource, .traversal_waiter = waiter, .referrer_document = referrer_document });
+        navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .srcdoc = resource, .about_base_url = stored_about_base_url, .traversal_waiter = waiter, .referrer_document = referrer_document });
         return traversalInFlight(list, integration, waiter);
     }
     return false;
