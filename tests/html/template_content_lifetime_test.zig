@@ -165,7 +165,7 @@ fn nativeCloneSurvives() !void {
     try testing.expectEqual(nested_generation, runtime.SlabAllocator.generationOf(nested));
     try testing.expectEqual(nested_content_generation, runtime.SlabAllocator.generationOf(nested_content));
     var text = try interfaces.Node.get_textContent(nested_content);
-    defer if (text) |*value| value.deinit(testing.allocator);
+    defer if (text) |*value| value.deinit(runtime.allocatorOf(nested_content));
     try testing.expectEqualStrings("x", (text orelse return error.NoText).asSlice());
 }
 

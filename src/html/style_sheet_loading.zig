@@ -162,6 +162,11 @@ const Load = struct {
     /// conditions, checked by blocksScripts. Completion, cancellation and
     /// removal end eligibility with the load.
     blocks_scripts: bool = false,
+    /// Whether this load still delays its node document's load event.
+    /// Cleared by `abandon()` when a style element's sheet is removed so an
+    /// already-queued element load event no longer keeps the document from
+    /// completing.
+    delays_load: bool = true,
     /// An inserted @import's load: the sheet the rule was inserted into,
     /// HELD (its import slots are where the fetched sheet is delivered:
     /// `deliver` paths start there), and what its first fetch inherits from
@@ -257,6 +262,7 @@ var next_id: std.atomic.Value(u64) = .init(1);
 /// has not yet fired its event.
 pub fn delaysLoadEvent(document: *runtime.Instance) bool {
     for (loadsIn(document.ctx)) |load| {
+        if (!load.delays_load) continue;
         // "A user agent must not delay the load event for this link type"
         // - preload and modulepreload. Prefetch also does not block in
         // browsers, despite HTML 4.2.4.3's default delay rule: Gecko fetches
@@ -829,6 +835,7 @@ pub fn abandon(element: *runtime.Instance, id: u64) void {
     const load = find(element.ctx, id) orelse return;
     if (load.event_queued) {
         load.blocks_scripts = false;
+        load.delays_load = false;
         if (load.documentIsLive()) queueBlockingMayHaveEnded(load.document);
         return;
     }

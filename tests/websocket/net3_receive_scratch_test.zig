@@ -79,7 +79,10 @@ test "a WebSocket gives its receive scratch back when it reaches CLOSED, while s
     var server: Server = undefined;
     try server.start();
     defer server.stop();
-    const browser = try Browser.init(counting.allocator(), .{ .snapshot_path = "" });
+    // The scratch is counted through the allocator given to Browser.init:
+    // the Browser's general memory is that allocator's (.host), not its
+    // heap's.
+    const browser = try Browser.init(counting.allocator(), .{ .snapshot_path = "", .general_memory = .host });
     defer browser.deinit();
     const page_url = "http://127.0.0.1/net3-scratch.html";
     try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });

@@ -288,7 +288,7 @@ fn nothingLeftAtDeinit(page: native_read_page.Page) !void {
         const element = try interfaces.Document.call_createElementNS(page.document, str(case[0]), str(case[1]), .notPassed());
         const made = try setEverything(case[2], element);
         var nonce = try case[2].get_nonce(element);
-        defer nonce.deinit(testing.allocator);
+        defer nonce.deinit(runtime.allocatorOf(element));
         try testing.expectEqualStrings("set by script", nonce.asSlice());
         // An SVG or MathML element's style object is the generated cache's,
         // its wrapper's to free, as its dataset and attributeStyleMap are.

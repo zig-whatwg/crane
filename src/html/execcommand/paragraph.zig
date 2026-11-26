@@ -12,6 +12,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const dom = @import("dom");
 const common = @import("common.zig");
 const block = @import("block.zig");
 const delete = @import("delete.zig");
@@ -90,7 +91,10 @@ fn insertLineBreakAfterDeletion(edit: *Edit) !bool {
     try moveOffTextEdges(edit);
     // Steps 7-8.
     const br = try edit.createElement("br");
-    try insertNodeAtActiveRange(edit, br);
+    {
+        errdefer dom.node_creation.destroyUninserted(br);
+        try insertNodeAtActiveRange(edit, br);
+    }
     // Step 9.
     try collapseAfter(edit, br);
     // Step 10: a br that would collapse needs a second one to show the new
@@ -100,7 +104,10 @@ fn insertLineBreakAfterDeletion(edit: *Edit) !bool {
     // insertNode").
     if (try common.isCollapsedLineBreak(br)) {
         const extra = try edit.createElement("br");
-        try insertNodeAtActiveRange(edit, extra);
+        {
+            errdefer dom.node_creation.destroyUninserted(extra);
+            try insertNodeAtActiveRange(edit, extra);
+        }
         try collapseAfter(edit, br);
     }
     // The browsers keep the white-space around the new line visible
@@ -178,6 +185,7 @@ fn insertLinefeed(edit: *Edit, point: Point) !bool {
         after = 1;
     } else {
         text = try interfaces.Document.call_createTextNode(edit.document, DOMString.initInterned("\n"));
+        errdefer dom.node_creation.destroyUninserted(text);
         try edit.insertBefore(point.node, text, try common.childAt(point.node, point.offset));
         after = 1;
     }
@@ -188,6 +196,7 @@ fn insertLinefeed(edit: *Edit, point: Point) !bool {
     if (after == try common.nodeLength(text) and (try nextLeaf(text)) == null) {
         const p = (try common.parent(text)) orelse return true;
         const br = try edit.createElement("br");
+        errdefer dom.node_creation.destroyUninserted(br);
         try edit.insertBefore(p, br, try common.nextSibling(text));
     }
     return true;
@@ -229,7 +238,10 @@ pub fn insertHorizontalRuleAction(edit: *Edit) !bool {
     try moveOffTextEdges(edit);
     // Steps 10-11.
     const hr = try edit.createElement("hr");
-    try insertNodeAtActiveRange(edit, hr);
+    {
+        errdefer dom.node_creation.destroyUninserted(hr);
+        try insertNodeAtActiveRange(edit, hr);
+    }
     // Step 12.
     try block.fixDisallowedAncestors(edit, hr);
     // Step 13.
@@ -526,9 +538,16 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
             if (!try common.isAllowedChild(.{ .name = tag }, start.node)) return true;
             // Steps 11.5.2-11.5.3.
             const new_container = try edit.createElement(tag);
-            try insertNodeAtActiveRange(edit, new_container);
+            {
+                errdefer dom.node_creation.destroyUninserted(new_container);
+                try insertNodeAtActiveRange(edit, new_container);
+            }
             // Step 11.5.4.
-            try edit.appendChild(new_container, try edit.createElement("br"));
+            const placeholder = try edit.createElement("br");
+            {
+                errdefer dom.node_creation.destroyUninserted(placeholder);
+                try edit.appendChild(new_container, placeholder);
+            }
             // Step 11.5.5.
             try edit.collapse(new_container, 0);
             // Step 11.5.6.
@@ -545,14 +564,20 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
     // Step 12: address, listing and pre take a br instead of a new block.
     if (try common.localNameIn(container, &.{ "address", "listing", "pre" })) {
         // Steps 12.1-12.2.
-        var br = try edit.createElement("br");
-        try insertNodeAtActiveRange(edit, br);
+        const first_br = try edit.createElement("br");
+        {
+            errdefer dom.node_creation.destroyUninserted(first_br);
+            try insertNodeAtActiveRange(edit, first_br);
+        }
         // Step 12.3.
         try edit.collapse(node, offset + 1);
         // Step 12.4: a br at the very end shows no new line on its own.
-        if ((try lastDescendant(container)) == br) {
-            br = try edit.createElement("br");
-            try insertNodeAtActiveRange(edit, br);
+        if ((try lastDescendant(container)) == first_br) {
+            const second_br = try edit.createElement("br");
+            {
+                errdefer dom.node_creation.destroyUninserted(second_br);
+                try insertNodeAtActiveRange(edit, second_br);
+            }
             // insertNode grows the collapsed range over the new br; keep the
             // caret where step 12.3 put it.
             try edit.collapse(node, offset + 1);
@@ -568,7 +593,11 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
             // Step 13.1.
             try split_parent.splitParent(edit, &.{container});
             // Step 13.2.
-            if (!try common.hasChildren(container)) try edit.appendChild(container, try edit.createElement("br"));
+            if (!try common.hasChildren(container)) {
+                const pad = try edit.createElement("br");
+                errdefer dom.node_creation.destroyUninserted(pad);
+                try edit.appendChild(container, pad);
+            }
             // Step 13.3.
             if ((try common.isHtmlElementIn(container, &.{ "dd", "dt" })) and !try isAllowedChildOfAnAncestorInHost(container)) {
                 container = try edit.setTagName(container, try block.defaultSingleLineContainerName(edit));
@@ -640,15 +669,18 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
         "dt"
     else
         container_name;
+    const container_parent = (try common.parent(container)) orelse return true;
     // Step 22.
     var new_container = try edit.createElement(new_container_name);
-    // Step 23.
-    try copyAttributes(edit, container, new_container);
-    // Step 24.
-    if (try common.hasAttribute(new_container, "id")) try common.removeAttribute(new_container, "id");
-    // Step 25.
-    const container_parent = (try common.parent(container)) orelse return true;
-    try edit.insertBefore(container_parent, new_container, try common.nextSibling(container));
+    {
+        errdefer dom.node_creation.destroyUninserted(new_container);
+        // Step 23.
+        try copyAttributes(edit, container, new_container);
+        // Step 24.
+        if (try common.hasAttribute(new_container, "id")) try interfaces.Element.call_removeAttribute(new_container, DOMString.initInterned("id"));
+        // Step 25.
+        try edit.insertBefore(container_parent, new_container, try common.nextSibling(container));
+    }
     // Step 26: every node contained in the line range, descendants included.
     var contained_nodes: std.ArrayList(*Instance) = .empty;
     defer contained_nodes.deinit(edit.allocator);
@@ -881,7 +913,10 @@ fn finishSplitSide(edit: *Edit, container: *Instance, edge: Edge) !void {
     }
     try pruneEdgeInlines(edit, container, edge, empty_line);
     if (!empty_line) return;
-    try edit.appendChild(try deepestTrailingInline(container), try edit.createElement("br"));
+    const target = try deepestTrailingInline(container);
+    const pad = try edit.createElement("br");
+    errdefer dom.node_creation.destroyUninserted(pad);
+    try edit.appendChild(target, pad);
 }
 
 /// The deepest element ending `node` through last children that are

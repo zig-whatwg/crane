@@ -37,7 +37,9 @@ fn exercise(comptime case: Case) !void {
         return;
     }
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
-    const browser = try Browser.init(failing.allocator(), .{ .snapshot_path = "" });
+    // The failures are injected through the allocator given to Browser.init:
+    // the Browser's general memory is that allocator's (.host), not its heap's.
+    const browser = try Browser.init(failing.allocator(), .{ .snapshot_path = "", .general_memory = .host });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
