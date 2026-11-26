@@ -1995,44 +1995,38 @@ fn collapsedLineBreakRun(text: *Instance, offset: u32, direction: RunDirection) 
     var data = try common.textData(text);
     defer data.deinit(text.ctx.allocator);
     const bytes = data.asSlice();
-    const length = common.utf16Length(bytes);
-    const isRunUnit = struct {
-        fn f(unit: u16) bool {
-            return unit == ' ' or unit == '\t' or unit == '\n';
+    const length = try common.nodeLength(text);
+    const isRunByte = struct {
+        fn f(byte: u8) bool {
+            return byte == ' ' or byte == '\t' or byte == '\n';
         }
     }.f;
-    // The run around the character the key meets.
-    var from = offset;
-    var to = offset;
+    // All run characters (' ', '\t', '\n') are single-byte ASCII (1 byte =
+    // 1 UTF-16 code unit), so scan raw UTF-8 bytes around `pos` in O(run_len).
+    const pos: usize = if (offset == 0)
+        0
+    else if (offset >= length)
+        bytes.len
+    else if (bytes.len == length)
+        offset
+    else
+        common.byteOffsetOfUnits(bytes, offset);
     switch (direction) {
         .forward => {
-            if (offset >= length) return null;
-            const unit = common.codeUnitAt(bytes, offset) orelse return null;
-            if (!isRunUnit(unit)) return null;
+            if (pos >= bytes.len or !isRunByte(bytes[pos])) return null;
         },
         .backward => {
-            if (offset == 0) return null;
-            const unit = common.codeUnitAt(bytes, offset - 1) orelse return null;
-            if (!isRunUnit(unit)) return null;
+            if (pos == 0 or !isRunByte(bytes[pos - 1])) return null;
         },
     }
-    while (from > 0) {
-        const unit = common.codeUnitAt(bytes, from - 1) orelse break;
-        if (!isRunUnit(unit)) break;
-        from -= 1;
-    }
-    while (to < length) {
-        const unit = common.codeUnitAt(bytes, to) orelse break;
-        if (!isRunUnit(unit)) break;
-        to += 1;
-    }
+    var from_byte = pos;
+    while (from_byte > 0 and isRunByte(bytes[from_byte - 1])) from_byte -= 1;
+    var to_byte = pos;
+    while (to_byte < bytes.len and isRunByte(bytes[to_byte])) to_byte += 1;
+    const from: u32 = offset - @as(u32, @intCast(pos - from_byte));
+    const to: u32 = offset + @as(u32, @intCast(to_byte - pos));
     // Only a run holding a line feed.
-    var has_line_feed = false;
-    var i = from;
-    while (i < to) : (i += 1) {
-        if (common.codeUnitAt(bytes, i) == '\n') has_line_feed = true;
-    }
-    if (!has_line_feed) return null;
+    if (std.mem.indexOfScalar(u8, bytes[from_byte..to_byte], '\n') == null) return null;
     if (!ws.preservesNewlines()) {
         // normal, nowrap: the run is one rendered space - all of it goes.
         return if (direction == .forward) to else from;
@@ -2042,20 +2036,16 @@ fn collapsedLineBreakRun(text: *Instance, offset: u32, direction: RunDirection) 
     // between.
     switch (direction) {
         .forward => {
-            var j = offset;
-            while (j < to and common.codeUnitAt(bytes, j) != '\n') : (j += 1) {}
-            if (j == to) return null;
-            j += 1;
-            while (j < to and common.codeUnitAt(bytes, j) != '\n') : (j += 1) {}
-            return j;
+            const rel_lf = std.mem.indexOfScalar(u8, bytes[pos..to_byte], '\n') orelse return null;
+            var j_byte = pos + rel_lf + 1;
+            while (j_byte < to_byte and bytes[j_byte] != '\n') : (j_byte += 1) {}
+            return offset + @as(u32, @intCast(j_byte - pos));
         },
         .backward => {
-            var j = offset;
-            while (j > from and common.codeUnitAt(bytes, j - 1) != '\n') : (j -= 1) {}
-            if (j == from) return null;
-            j -= 1;
-            while (j > from and common.codeUnitAt(bytes, j - 1) != '\n') : (j -= 1) {}
-            return j;
+            const rel_lf = std.mem.lastIndexOfScalar(u8, bytes[from_byte..pos], '\n') orelse return null;
+            var j_byte = from_byte + rel_lf;
+            while (j_byte > from_byte and bytes[j_byte - 1] != '\n') : (j_byte -= 1) {}
+            return offset - @as(u32, @intCast(pos - j_byte));
         },
     }
 }
