@@ -220,17 +220,10 @@ pub const Worker = struct {
         }
     }
 
+    pub const get_onerror = mixins.AbstractWorker.get_onerror;
+    pub const set_onerror = mixins.AbstractWorker.set_onerror;
+
     const event_handlers = @import("dom").event_handlers;
-
-    pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(WorkerImpl, "get_onerror")) return try WorkerImpl.get_onerror(instance);
-        return event_handlers.value(EventHandler, instance, "onerror");
-    }
-
-    pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(WorkerImpl, "set_onerror")) return try WorkerImpl.set_onerror(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onerror", value);
-    }
 
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
         if (comptime @hasDecl(WorkerImpl, "get_onmessage")) return try WorkerImpl.get_onmessage(instance);

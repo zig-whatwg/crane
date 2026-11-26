@@ -31,3 +31,11 @@ pub const InternalState = struct {};
 //
 // (run after and before the parent's), and list what it is given at
 // construction in `pub const construction_args = .{"name"};`.
+
+/// Operation: setEncryptionKey
+pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyId: typedefs.CryptoKeyID) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = key;
+    _ = keyId;
+    return error.NotImplemented;
+}

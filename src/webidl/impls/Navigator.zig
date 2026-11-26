@@ -673,12 +673,6 @@ pub fn get_cpuPerformance(instance: *runtime.Instance) anyerror!u16 {
     return error.NotImplemented;
 }
 
-/// Getter for crossOriginStorage
-pub fn get_crossOriginStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: install
 pub fn call_install(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;

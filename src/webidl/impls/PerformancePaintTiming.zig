@@ -39,18 +39,6 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Getter for paintTime
-pub fn get_paintTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for presentationTime
-pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?typedefs.DOMHighResTimeStamp {
-    _ = instance;
-    return null;
-}
-
 /// Operation: toJSON
 pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformancePaintTiming.PerformancePaintTimingToJSON {
     _ = instance;

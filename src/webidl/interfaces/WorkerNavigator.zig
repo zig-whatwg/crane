@@ -450,7 +450,7 @@ pub const WorkerNavigator = struct {
         if (state.own.cached_crossOriginStorage) |cached| {
             return cached;
         }
-        const value = try WorkerNavigatorImpl.get_crossOriginStorage(instance);
+        const value = try mixins.NavigatorCrossOriginStorage.get_crossOriginStorage(instance);
         state.own.cached_crossOriginStorage = value;
         @import("dom").same_object_cache.made(instance, value, "crossOriginStorage");
         return value;

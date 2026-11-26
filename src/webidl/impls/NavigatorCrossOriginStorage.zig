@@ -31,3 +31,9 @@ pub const InternalState = struct {};
 //
 // (run after and before the parent's), and list what it is given at
 // construction in `pub const construction_args = .{"name"};`.
+
+/// Getter for crossOriginStorage
+pub fn get_crossOriginStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    _ = instance;
+    return error.NotImplemented;
+}

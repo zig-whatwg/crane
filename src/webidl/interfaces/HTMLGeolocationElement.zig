@@ -468,51 +468,22 @@ pub const HTMLGeolocationElement = struct {
         try event_handlers.setValue(EventHandler, instance, "onlocation", value);
     }
 
-    pub fn get_isValid(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLGeolocationElementImpl.get_isValid(instance);
-    }
+    pub const get_isValid = mixins.ActivationBlockersMixin.get_isValid;
 
-    pub fn get_invalidReason(instance: *runtime.Instance) anyerror!ActivationBlockersMixinBlockerReason {
-        return try HTMLGeolocationElementImpl.get_invalidReason(instance);
-    }
+    pub const get_invalidReason = mixins.ActivationBlockersMixin.get_invalidReason;
 
-    pub fn get_onvalidationstatuschange(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(HTMLGeolocationElementImpl, "get_onvalidationstatuschange")) return try HTMLGeolocationElementImpl.get_onvalidationstatuschange(instance);
-        return event_handlers.value(EventHandler, instance, "onvalidationstatuschange");
-    }
+    pub const get_onvalidationstatuschange = mixins.ActivationBlockersMixin.get_onvalidationstatuschange;
+    pub const set_onvalidationstatuschange = mixins.ActivationBlockersMixin.set_onvalidationstatuschange;
 
-    pub fn set_onvalidationstatuschange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(HTMLGeolocationElementImpl, "set_onvalidationstatuschange")) return try HTMLGeolocationElementImpl.set_onvalidationstatuschange(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onvalidationstatuschange", value);
-    }
+    pub const get_initialPermissionStatus = mixins.PowerfulFeatureObserver.get_initialPermissionStatus;
 
-    pub fn get_initialPermissionStatus(instance: *runtime.Instance) anyerror!PermissionState {
-        return try HTMLGeolocationElementImpl.get_initialPermissionStatus(instance);
-    }
+    pub const get_permissionStatus = mixins.PowerfulFeatureObserver.get_permissionStatus;
 
-    pub fn get_permissionStatus(instance: *runtime.Instance) anyerror!PermissionState {
-        return try HTMLGeolocationElementImpl.get_permissionStatus(instance);
-    }
+    pub const get_onpromptaction = mixins.PowerfulFeatureObserver.get_onpromptaction;
+    pub const set_onpromptaction = mixins.PowerfulFeatureObserver.set_onpromptaction;
 
-    pub fn get_onpromptaction(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(HTMLGeolocationElementImpl, "get_onpromptaction")) return try HTMLGeolocationElementImpl.get_onpromptaction(instance);
-        return event_handlers.value(EventHandler, instance, "onpromptaction");
-    }
-
-    pub fn set_onpromptaction(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(HTMLGeolocationElementImpl, "set_onpromptaction")) return try HTMLGeolocationElementImpl.set_onpromptaction(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onpromptaction", value);
-    }
-
-    pub fn get_onpromptdismiss(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(HTMLGeolocationElementImpl, "get_onpromptdismiss")) return try HTMLGeolocationElementImpl.get_onpromptdismiss(instance);
-        return event_handlers.value(EventHandler, instance, "onpromptdismiss");
-    }
-
-    pub fn set_onpromptdismiss(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(HTMLGeolocationElementImpl, "set_onpromptdismiss")) return try HTMLGeolocationElementImpl.set_onpromptdismiss(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onpromptdismiss", value);
-    }
+    pub const get_onpromptdismiss = mixins.PowerfulFeatureObserver.get_onpromptdismiss;
+    pub const set_onpromptdismiss = mixins.PowerfulFeatureObserver.set_onpromptdismiss;
 
     /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
     pub const legacy_treat_non_object_as_null = .{ "set_onlocation", "set_onvalidationstatuschange", "set_onpromptaction", "set_onpromptdismiss" };

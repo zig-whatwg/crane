@@ -41,11 +41,3 @@ pub fn call_constructor(instance: *runtime.Instance, options: dictionaries.RTCRt
     _ = options;
     // TODO: Implement constructor logic with parameters
 }
-
-/// Operation: setEncryptionKey
-pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyId: typedefs.CryptoKeyID) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = key;
-    _ = keyId;
-    return error.NotImplemented;
-}

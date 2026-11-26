@@ -202,9 +202,7 @@ pub const SFrameEncryptorStream = struct {
         return try SFrameEncryptorStreamImpl.get_writable(instance);
     }
 
-    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyId: CryptoKeyID) anyerror!runtime.JSValue {
-        return try SFrameEncryptorStreamImpl.call_setEncryptionKey(instance, key, keyId);
-    }
+    pub const call_setEncryptionKey = mixins.SFrameEncryptorManager.call_setEncryptionKey;
 
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements

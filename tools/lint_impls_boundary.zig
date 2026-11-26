@@ -644,18 +644,28 @@ fn appendName(gpa: std.mem.Allocator, out: *std.ArrayList([]const u8), name: []c
 }
 
 /// The mixins a generated interface inherits members from: every
-/// `= mixins.<Name>.<member>;` alias in it. Such a mixin's impl is bound by
-/// the mixin's own generated module, which is what those aliases name.
+/// `mixins.<Name>.<api_member>` reference in code — both direct aliases
+/// (`= mixins.<Name>.<member>;`) and `[SameObject]` wrappers
+/// (`try mixins.<Name>.<member>(instance)`). Such a mixin's impl is bound by
+/// the mixin's own generated module, which is what those references name.
+/// Type references (`mixins.ParentNode.NodeOrString`) and comments are skipped.
 pub fn inheritedMixins(gpa: std.mem.Allocator, generated: []const u8) !std.ArrayList([]const u8) {
     var out: std.ArrayList([]const u8) = .empty;
     errdefer out.deinit(gpa);
-    const key = "= mixins.";
-    var pos: usize = 0;
-    while (std.mem.indexOfPos(u8, generated, pos, key)) |at| {
-        pos = at + key.len;
-        const name = identAt(generated, pos);
-        if (name.len == 0 or pos + name.len >= generated.len or generated[pos + name.len] != '.') continue;
-        try appendName(gpa, &out, name);
+    const key = "mixins.";
+    var lines = std.mem.splitScalar(u8, generated, '\n');
+    while (lines.next()) |raw| {
+        const code = codeOf(raw);
+        var pos: usize = 0;
+        while (std.mem.indexOfPos(u8, code, pos, key)) |at| {
+            pos = at + key.len;
+            if (at > 0 and (isIdentChar(code[at - 1]) or code[at - 1] == '.' or code[at - 1] == '-')) continue;
+            const name = identAt(code, pos);
+            if (name.len == 0 or pos + name.len >= code.len or code[pos + name.len] != '.') continue;
+            const member = identAt(code, pos + name.len + 1);
+            if (!isApiName(member)) continue;
+            try appendName(gpa, &out, name);
+        }
     }
     return out;
 }
@@ -1711,6 +1721,27 @@ test "an interface inherits a mixin through `= mixins.<Name>.` aliases" {
     try testing.expectEqual(@as(usize, 2), found.items.len);
     try testing.expect(contains(found.items, "GlobalEventHandlers"));
     try testing.expect(contains(found.items, "ParentNode"));
+}
+
+test "an interface inherits a [SameObject]-only mixin through `mixins.<Name>.<member>(` calls" {
+    const generated =
+        \\//! Generated from: css-mixins.idl
+        \\const mixins = @import("mixins");
+        \\pub const Navigator = struct {
+        \\    pub fn get_gpu(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        \\        const value = try mixins.NavigatorGPU.get_gpu(instance);
+        \\        return value;
+        \\    }
+        \\    pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
+        \\        _ = instance;
+        \\        _ = nodes;
+        \\    }
+        \\};
+    ;
+    var found = try inheritedMixins(testing.allocator, generated);
+    defer found.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 1), found.items.len);
+    try testing.expect(contains(found.items, "NavigatorGPU"));
 }
 
 test "a mixin module binds its impl's functions like an interface's file" {

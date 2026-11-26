@@ -324,9 +324,3 @@ pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-
-/// Getter for crossOriginStorage
-pub fn get_crossOriginStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
