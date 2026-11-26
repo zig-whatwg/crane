@@ -328,3 +328,5 @@ pub const popover = @import("popover.zig");
 pub const fullscreen = @import("fullscreen.zig");
 pub const dialog = @import("dialog.zig");
 pub const details = @import("details.zig");
+/// HTML §4.6.8.9 icon link selection and default `/favicon.ico` fetching.
+pub const icon_loading = @import("icon_loading.zig");

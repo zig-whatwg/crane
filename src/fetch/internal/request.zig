@@ -675,6 +675,12 @@ pub const InternalRequest = struct {
     /// for a later fetch to consume.
     link_preload: bool = false,
 
+    /// HTML 4.6.8.9 icon fetch (a `<link rel="icon">` or default `/favicon.ico`):
+    /// destination stays `"image"` for Accept/Sec-Fetch-Dest/CSP img-src, while
+    /// CDP Network reports `type: "Other"` and `initiator.type: "other"` as Chrome
+    /// 157 does (Blink `RequestContextType::FAVICON` / `InspectorPageAgent`).
+    is_favicon: bool = false,
+
     /// HTML 13.2.8 "speculative fetch": the request is the speculative HTML
     /// parser's, made "as if the element was processed normally" before the
     /// parser reaches the element. Its response goes into the document's
@@ -1192,6 +1198,7 @@ pub const InternalRequest = struct {
             .service_worker = self.service_worker,
             .document_resources = self.document_resources,
             .link_preload = self.link_preload,
+            .is_favicon = self.is_favicon,
             .speculative_preload = self.speculative_preload,
             .integrity_violation_reporter = self.integrity_violation_reporter,
             .coep_violation_reporter = self.coep_violation_reporter,
