@@ -232,14 +232,16 @@ test "a modal dialog entering and leaving the top layer is topLayerElementsUpdat
     // made and destroyed by the next style recalc each time - and Blink keeps
     // the ::backdrop in the top layer list beside its element, so its coming
     // and going are top layer changes of their own (Chrome 157's trace).
+    // On close(), CSS Position 4 defers top-layer removal to update-the-rendering
+    // step 23, after step 16's style recalc removes ::backdrop (Chrome 157's trace).
     try expectEvents(&h, from,
         \\attributeModified 9 open=
         \\topLayerElementsUpdated
         \\topLayerElementsUpdated
         \\pseudoElementAdded 9 ::backdrop#10/0 backdrop
         \\attributeRemoved 9 open
-        \\topLayerElementsUpdated
         \\pseudoElementRemoved 9 10
+        \\topLayerElementsUpdated
         \\topLayerElementsUpdated
         \\
     );

@@ -677,7 +677,7 @@ pub fn getTopLayerElements(session: *PageSession, params: D.getTopLayerElements.
         const layer = (dom.top_layer.ofDocument(document, false) catch null) orelse continue;
         var members: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
         for (layer.entries.items) |entry| {
-            if (!(entry.showing or entry.modal or entry.fullscreen)) continue;
+            if (!entry.isTopLayerMember()) continue;
             const element = entry.node() orelse continue;
             // An element is in the top layer once, where it was last added.
             for (members.items, 0..) |m, i| if (m == element) {
@@ -1424,7 +1424,7 @@ fn updateBackdrops(session: *PageSession, document: *runtime.Instance) struct { 
     defer now.deinit(session.allocator);
     if (dom.top_layer.ofDocument(document, false) catch null) |layer| {
         for (layer.entries.items) |entry| {
-            if (!(entry.showing or entry.modal or entry.fullscreen)) continue;
+            if (!entry.isTopLayerMember()) continue;
             const element = entry.node() orelse continue;
             if (!dom.style.engine.generatedPseudos(element).backdrop) continue;
             const named: Backdrop = .{ .document = @intFromPtr(document), .element = @intFromPtr(element), .generation = runtime.SlabAllocator.generationOf(element) };

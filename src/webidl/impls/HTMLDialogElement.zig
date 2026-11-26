@@ -537,11 +537,14 @@ fn closeDialog(instance: *Instance, return_value: webidl.Opt(runtime.DOMString),
     // Step 5. Direct removal alone deliberately does NOT clear modal state.
     // Its attribute change steps run the dialog cleanup steps.
     dom.element_attributes.remove(subject, null, "open");
-    // Steps 6–8. No rendering transition delays top-layer removal.
+    // Steps 6–8: CSS Position 4 "request an element to be removed from the top
+    // layer" (deferred to update-the-rendering step 23) and clear is-modal
+    // immediately so :modal, inertness, and the UA overlay: auto rule update
+    // synchronously.
     const layer = try dom.top_layer.ofElement(subject, false);
     const modal_entry = if (layer) |state| state.findModal(subject) else null;
     const was_modal = modal_entry != null;
-    if (modal_entry) |entry| layer.?.remove(entry.id);
+    if (modal_entry) |entry| layer.?.requestRemoval(entry);
     // Step 9 updates the internal IDL value without invoking a JS setter.
     if (return_value.wasPassed()) try set_returnValue(subject, return_value.value);
     // Steps 10-11: the request close return value and source element to
@@ -614,6 +617,7 @@ fn removingSteps(node: *dom.NodeBase, _: ?*dom.NodeBase) void {
     // but preserve the gesture mismatch with a non-owning removed marker.
     layer.removeDialogPointerdownTarget(subject);
     if (layer.findModal(subject)) |entry| layer.remove(entry.id);
+    layer.removePendingRemovalsFor(subject, true);
 }
 
 /// HTML 6.3.1: only the topmost modal's flat-tree subtree escapes blocking.
