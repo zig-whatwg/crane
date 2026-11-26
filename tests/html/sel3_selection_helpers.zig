@@ -13,7 +13,10 @@ pub const DocumentPage = struct {
     pub fn open() !DocumentPage {
         const page = try Page.open();
         errdefer page.close();
-        const document = try interfaces.Document.init(std.testing.allocator, page.browser.getRealm().?);
+        // The realm's allocator: a Browser's objects allocate from its heap
+        // (allocator-hardening batch B), and are freed through it.
+        const realm = page.browser.getRealm().?;
+        const document = try interfaces.Document.init(realm.allocator, realm);
         return .{ .page = page, .document = document };
     }
 

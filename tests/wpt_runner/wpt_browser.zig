@@ -49,6 +49,7 @@ const clock = @import("clock");
 /// ceiling (script_deadline.zig), when the engine has it.
 const engine = @import("engine");
 const runtime = @import("runtime");
+const dom = @import("dom");
 const interfaces = @import("interfaces");
 const script_deadline = @import("script_deadline.zig");
 
@@ -128,6 +129,11 @@ pub const WptBrowser = struct {
             .poison_freed_state = poison_freed_state,
         });
         errdefer browser_instance.deinit();
+        // The production configuration only: the Browser's general memory is
+        // its heap's (BrowserConfig.general_memory = .crane, allocator-
+        // hardening batch B) wherever its rung has general pools - never the
+        // embedder option `.host`.
+        if (browser_instance.scope.heap) |heap| if (heap.general_pools and !browser_instance.scope.general) return error.GeneralMemoryNotProduction;
 
         const driver = try test_driver.TestDriver.create(allocator);
         errdefer driver.destroy();
@@ -497,13 +503,18 @@ pub const WptBrowser = struct {
         return result;
     }
 
-    /// What `runCrashtest` waits for before test-wait.js: the page's document
-    /// is "complete", or the page has none.
+    /// What `runCrashtest` waits for before test-wait.js: no top-level
+    /// navigation is in flight (e.g. an onerror handler calling window.stop()
+    /// and location.href='about:blank') and the page's document is "complete",
+    /// or the page has none.
     const PageLoaded = struct {
         ctx: *Context,
 
         fn met(opaque_self: *anyopaque) bool {
             const self: *PageLoaded = @ptrCast(@alignCast(opaque_self));
+            if (self.ctx.traversable) |record| {
+                if (dom.top_level_traversables.isNavigating(record)) return false;
+            }
             const document = self.ctx.document_instance orelse return true;
             const state = interfaces.Document.get_readyState(document) catch return true;
             return state == ._complete_;

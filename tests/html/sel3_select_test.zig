@@ -59,7 +59,7 @@ fn exercise(comptime which: Case) !void {
             const clone = (try interfaces.Node.get_firstChild(content)) orelse return error.MissingSelectedContent;
             try testing.expect(clone != label);
             var text = (try interfaces.Node.get_textContent(content)) orelse return error.MissingText;
-            defer text.deinit(testing.allocator);
+            defer text.deinit(runtime.allocatorOf(content));
             try testing.expectEqualStrings("one", text.asSlice());
             try interfaces.HTMLSelectElement.set_selectedIndex(select, -1);
             try testing.expectEqual(@as(?*runtime.Instance, null), try interfaces.Node.get_firstChild(content));

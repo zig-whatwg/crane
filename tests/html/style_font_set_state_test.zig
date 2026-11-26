@@ -93,7 +93,7 @@ fn loadingEnvironment() !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const document = try interfaces.Document.initWith(std.testing.allocator, realm, .{ .ready_state = ._loading_ });
+    const document = try interfaces.Document.initWith(realm.allocator, realm, .{ .ready_state = ._loading_ });
     const generation = runtime.SlabAllocator.generationOf(document);
     defer document.releaseIfUnwrapped(generation);
     const set = try interfaces.Document.get_fonts(document);
@@ -408,7 +408,7 @@ fn absentFontSet() !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const document = try interfaces.Document.initWith(std.testing.allocator, realm, .{ .ready_state = ._loading_ });
+    const document = try interfaces.Document.initWith(realm.allocator, realm, .{ .ready_state = ._loading_ });
     const generation = runtime.SlabAllocator.generationOf(document);
     defer document.releaseIfUnwrapped(generation);
     const style = dom.style.hooks.engineOf(document) orelse return error.NoStyleEngine;
@@ -572,10 +572,10 @@ fn connectedDescriptorAllocations() !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const first = try interfaces.FontFace.init(std.testing.allocator, realm);
+    const first = try interfaces.FontFace.init(realm.allocator, realm);
     const first_generation = runtime.SlabAllocator.generationOf(first);
     defer first.releaseIfUnwrapped(first_generation);
-    const second = try interfaces.FontFace.init(std.testing.allocator, realm);
+    const second = try interfaces.FontFace.init(realm.allocator, realm);
     const second_generation = runtime.SlabAllocator.generationOf(second);
     defer second.releaseIfUnwrapped(second_generation);
     const Exercise = struct {

@@ -80,6 +80,13 @@ const engine = @import("engine");
 const browser_mod = @import("browser");
 const Browser = browser_mod.Browser;
 const BrowserConfig = browser_mod.BrowserConfig;
+
+/// The console is the headless browser: its Browser's general memory is its
+/// heap's (BrowserConfig.general_memory = .crane, allocator-hardening batch
+/// B), never the embedder option `.host`.
+fn requireProductionMemory(config: BrowserConfig) error{GeneralMemoryNotProduction}!void {
+    if (config.general_memory != .crane) return error.GeneralMemoryNotProduction;
+}
 const printer = @import("console").printer;
 const developer_console = Browser.developer_console;
 /// Chrome's remote debugging (src/devtools; -Dcdp).
@@ -351,6 +358,7 @@ fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.I
     // Decision D6 (the user, 2026-11-21): --user-data-dir is the Browser's
     // profile directory (lane life1's profile persistence).
     if (comptime @hasField(BrowserConfig, "profile_dir")) config.profile_dir = options.user_data_dir;
+    try requireProductionMemory(config);
     const host = devtools.host_bridge.BrowserHost.start(allocator, config) catch |err| {
         try err_out.print("repl: the browser could not start: {t}\n", .{err});
         try err_out.flush();
@@ -443,6 +451,7 @@ fn serveMcp(allocator: std.mem.Allocator, io: std.Io, options: Options, err_out:
         .proxy = options.proxy,
         .accept_insecure_certs = options.accept_insecure_certs,
     };
+    try requireProductionMemory(config);
     const host = devtools.host_bridge.BrowserHost.start(allocator, config) catch |err| {
         try err_out.print("repl: the browser could not start: {t}\n", .{err});
         try err_out.flush();
@@ -2256,12 +2265,14 @@ pub fn main(init: std.process.Init) !u8 {
     // In memory (BrowserConfig's default): nothing is written to disk.
     var proxy_rules = try chromeProxyRules(allocator, options);
     defer if (proxy_rules) |*rules| rules.deinit();
-    const browser = try Browser.init(allocator, .{
+    const console_config: BrowserConfig = .{
         .ca_bundle_path = options.ca_bundle,
         .user_agent = options.user_agent,
         .proxy = if (proxy_rules) |*rules| .{ .rules = rules } else options.proxy,
         .accept_insecure_certs = options.accept_insecure_certs,
-    });
+    };
+    try requireProductionMemory(console_config);
+    const browser = try Browser.init(allocator, console_config);
     defer browser.deinit();
 
     var out_buffer: [4096]u8 = undefined;

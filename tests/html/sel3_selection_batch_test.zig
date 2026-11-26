@@ -30,7 +30,7 @@ fn exercise(comptime which: Case) !void {
         try std.testing.expectEqual(@as(i32, 1), after_connect);
         return;
     }
-    const other_document: ?*runtime.Instance = if (which == .adopted_wrapper) try interfaces.Document.init(std.testing.allocator, document.ctx) else null;
+    const other_document: ?*runtime.Instance = if (which == .adopted_wrapper) try interfaces.Document.init(document.ctx.allocator, document.ctx) else null;
     defer if (other_document) |other| interfaces.Document.deinit(other);
     const select = try element(document, "select");
     const root = switch (which) {

@@ -97,7 +97,7 @@ fn secureXml() !void {
     const setup = try browser.evaluateScript("globalThis.cr1SvgScriptRan=false; customElements.define('cr1-evil',class extends HTMLElement {constructor(){super();globalThis.cr1SvgScriptRan=true;}}); true");
     setup.release();
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const document = try interfaces.XMLDocument.initWith(std.testing.allocator, realm, .{ .ready_state = ._complete_ });
+    const document = try interfaces.XMLDocument.initWith(realm.allocator, realm, .{ .ready_state = ._complete_ });
     const generation = runtime.SlabAllocator.generationOf(document);
     defer document.releaseIfUnwrapped(generation);
     try dom.document_internals.setDocumentType(document, .xml);
@@ -128,7 +128,7 @@ fn strictSvgEncoding() !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const document = try interfaces.XMLDocument.initWith(std.testing.allocator, realm, .{ .ready_state = ._complete_ });
+    const document = try interfaces.XMLDocument.initWith(realm.allocator, realm, .{ .ready_state = ._complete_ });
     const generation = runtime.SlabAllocator.generationOf(document);
     defer document.releaseIfUnwrapped(generation);
     try dom.document_internals.setDocumentType(document, .xml);
@@ -334,7 +334,7 @@ fn nativeSvgAbort() !void {
     const body = (try interfaces.Document.get_body(document)) orelse return error.NoBody;
     // Q18/Q28's factory dependency is separate: exercise the actual leaf
     // owners through the generated chain even while createElementNS is red.
-    const image = try interfaces.SVGImageElement.init(std.testing.allocator, realm);
+    const image = try interfaces.SVGImageElement.init(realm.allocator, realm);
     const image_generation = runtime.SlabAllocator.generationOf(image);
     defer {
         if (runtime.SlabAllocator.generationOf(image) == image_generation) {
@@ -342,7 +342,7 @@ fn nativeSvgAbort() !void {
         }
         image.releaseIfUnwrapped(image_generation);
     }
-    const use = try interfaces.SVGUseElement.init(std.testing.allocator, realm);
+    const use = try interfaces.SVGUseElement.init(realm.allocator, realm);
     const use_generation = runtime.SlabAllocator.generationOf(use);
     defer {
         if (runtime.SlabAllocator.generationOf(use) == use_generation) {
@@ -386,7 +386,7 @@ fn nativeEmptySvgReplacement() !void {
     const result = try browser.evaluateScript("document");
     defer result.release();
     const document = engine.convertToPlatformObject(realm, result.borrow()) orelse return error.NoDocument;
-    const image = try interfaces.SVGImageElement.init(std.testing.allocator, realm);
+    const image = try interfaces.SVGImageElement.init(realm.allocator, realm);
     const generation = runtime.SlabAllocator.generationOf(image);
     defer image.releaseIfUnwrapped(generation);
     defer _ = dom.document_fetches.abort(document);
@@ -445,7 +445,7 @@ fn cssomSheetSources() !void {
         try std.testing.expectEqualStrings("", source.referrer_policy);
         try std.testing.expect(source.origin_clean);
     }
-    const detached = try interfaces.CSSStyleDeclaration.init(std.testing.allocator, realm);
+    const detached = try interfaces.CSSStyleDeclaration.init(realm.allocator, realm);
     const generation = runtime.SlabAllocator.generationOf(detached);
     defer detached.releaseIfUnwrapped(generation);
     try interfaces.CSSStyleDeclaration.call_setProperty(detached, .initInterned("background-image"), .initInterned("url(picture.png)"), .{ .was_passed = false, .value = undefined });

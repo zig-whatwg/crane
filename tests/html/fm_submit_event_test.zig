@@ -11,7 +11,7 @@ fn exercise() !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const button = try interfaces.HTMLButtonElement.init(testing.allocator, realm);
+    const button = try interfaces.HTMLButtonElement.init(realm.allocator, realm);
     const generation = runtime.SlabAllocator.generationOf(button);
     const event = try interfaces.SubmitEvent.call_constructor(realm, runtime.DOMString.initInterned("submit"), .passed(.{ .base = .{}, .submitter = button }));
     // traceChild makes the child's wrapper and holds it pending the event's

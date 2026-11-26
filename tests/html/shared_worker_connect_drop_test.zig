@@ -73,7 +73,7 @@ fn body() !void {
     // The object given pending activity: a platform object of the page's
     // realm that script has seen, and nothing else holds once `held` goes.
     // (The steps only ever read its slab generation and its hold.)
-    const worker = try interfaces.HTMLDivElement.init(testing.allocator, ctx);
+    const worker = try interfaces.HTMLDivElement.init(ctx.allocator, ctx);
     const generation = runtime.SlabAllocator.generationOf(worker);
     const held = try engine.retainValue(ctx, .{ .instance = worker });
     if (!engine.hasWrapper(worker)) return error.NotWrapped;

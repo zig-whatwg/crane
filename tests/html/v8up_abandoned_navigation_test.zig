@@ -59,7 +59,9 @@ const Fixture = struct {
     page: *browser_mod.Context = undefined,
 
     fn start(self: *Fixture, markup: []const u8) !void {
-        self.browser = try browser_mod.Browser.init(self.failing.allocator(), .{ .snapshot_path = "" });
+        // The failures are injected through the allocator given to Browser.init:
+        // the Browser's general memory is that allocator's (.host), not its heap's.
+        self.browser = try browser_mod.Browser.init(self.failing.allocator(), .{ .snapshot_path = "", .general_memory = .host });
         errdefer self.browser.deinit();
         dom.refcount_teardown.allowLiveNodesAtAgentEnd(&self.browser.agent_host.deferred_teardown, "out-of-memory rounds may leave a tree held");
         try self.browser.navigate("about:blank", .window);

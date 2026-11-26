@@ -994,75 +994,84 @@ pub fn forceValue(edit: *Edit, node: *Instance, command: Command, new_value_in: 
     // the run's font element and the CSS on its style container instead of
     // surrounding the run. Golden rule 2, no newer spec.
     if (try valueOntoWrapper(edit, node, command, new_value, css_styling)) return;
-    // Steps 9-15: the new parent.
+    // Steps 9-16: check parent before allocating the new wrapper, set initial
+    // attributes directly on the brand-new uninserted element, and destroy it
+    // if setup or insertBefore fails.
+    const node_parent = (try common.parent(node)) orelse return;
     var new_parent: ?*Instance = null;
-    if (!css_styling) {
-        switch (command) {
-            .bold => if (std.mem.eql(u8, new_value, "bold")) {
-                new_parent = try edit.createElement("b");
-            },
-            .italic => if (std.mem.eql(u8, new_value, "italic")) {
-                new_parent = try edit.createElement("i");
-            },
-            // The spec says an s; Chrome, Firefox and Safari all make a
-            // strike (Blink ApplyStyleCommand::ApplyInlineStyleChange
-            // surrounds with html_names::kStrikeTag; Gecko
-            // HTMLEditor::SetInlinePropertiesAsSubAction maps
-            // strikethrough to nsGkAtoms::strike), and the WPT data expects
-            // it (editing/run/strikethrough.html with styleWithCSS false,
-            // 37 subtests PPP at wpt.fyi 2358bd4835). Golden rule 2, no
-            // newer spec.
-            .strikethrough => if (std.mem.eql(u8, new_value, "line-through")) {
-                new_parent = try edit.createElement(strike_element);
-            },
-            .underline => if (std.mem.eql(u8, new_value, "underline")) {
-                new_parent = try edit.createElement("u");
-            },
-            .fore_color => {
-                var buffer: [7]u8 = undefined;
-                if (style_values.simpleColor(scratch(edit), new_value, &buffer)) |hex| {
+    var wrapper: *Instance = undefined;
+    {
+        errdefer if (new_parent) |np| dom.node_creation.destroyUninserted(np);
+        if (!css_styling) {
+            switch (command) {
+                .bold => if (std.mem.eql(u8, new_value, "bold")) {
+                    new_parent = try edit.createElement("b");
+                },
+                .italic => if (std.mem.eql(u8, new_value, "italic")) {
+                    new_parent = try edit.createElement("i");
+                },
+                // The spec says an s; Chrome, Firefox and Safari all make a
+                // strike (Blink ApplyStyleCommand::ApplyInlineStyleChange
+                // surrounds with html_names::kStrikeTag; Gecko
+                // HTMLEditor::SetInlinePropertiesAsSubAction maps
+                // strikethrough to nsGkAtoms::strike), and the WPT data expects
+                // it (editing/run/strikethrough.html with styleWithCSS false,
+                // 37 subtests PPP at wpt.fyi 2358bd4835). Golden rule 2, no
+                // newer spec.
+                .strikethrough => if (std.mem.eql(u8, new_value, "line-through")) {
+                    new_parent = try edit.createElement(strike_element);
+                },
+                .underline => if (std.mem.eql(u8, new_value, "underline")) {
+                    new_parent = try edit.createElement("u");
+                },
+                .fore_color => {
+                    var buffer: [7]u8 = undefined;
+                    if (style_values.simpleColor(scratch(edit), new_value, &buffer)) |hex| {
+                        new_parent = try edit.createElement("font");
+                        try interfaces.Element.call_setAttribute(new_parent.?, DOMString.initInterned("color"), .{ .domstring = DOMString.initInterned(hex) });
+                    }
+                },
+                .font_name => {
                     new_parent = try edit.createElement("font");
-                    try common.setAttribute(new_parent.?, "color", hex);
-                }
-            },
-            .font_name => {
-                new_parent = try edit.createElement("font");
-                try common.setAttribute(new_parent.?, "face", new_value);
-            },
-            else => {},
-        }
-    }
-    // Step 11: createLink and unlink make an a, and no a may enclose it.
-    if (command == .create_link or command == .unlink) {
-        new_parent = try edit.createElement("a");
-        try common.setAttribute(new_parent.?, "href", new_value);
-        var ancestor = try common.parent(node);
-        while (ancestor) |a| {
-            var current = a;
-            if (try isNamed(a, "a")) current = try edit.setTagName(a, "span");
-            ancestor = try common.parent(current);
-        }
-    }
-    // Step 12: fontSize keywords as <font size>, always for xxx-large.
-    if (command == .font_size) {
-        if (style_values.legacySizeOfKeyword(new_value)) |size| {
-            if (!css_styling or size == 7) {
-                new_parent = try edit.createElement("font");
-                var digit = [1]u8{'0' + size};
-                try common.setAttribute(new_parent.?, "size", &digit);
+                    try interfaces.Element.call_setAttribute(new_parent.?, DOMString.initInterned("face"), .{ .domstring = DOMString.initInterned(new_value) });
+                },
+                else => {},
             }
         }
+        // Step 11: createLink and unlink make an a, and no a may enclose it.
+        if (command == .create_link or command == .unlink) {
+            new_parent = try edit.createElement("a");
+            try interfaces.Element.call_setAttribute(new_parent.?, DOMString.initInterned("href"), .{ .domstring = DOMString.initInterned(new_value) });
+            var ancestor = try common.parent(node);
+            while (ancestor) |a| {
+                var current = a;
+                if (try isNamed(a, "a")) current = try edit.setTagName(a, "span");
+                ancestor = try common.parent(current);
+            }
+        }
+        // Step 12: fontSize keywords as <font size>, always for xxx-large.
+        if (command == .font_size) {
+            if (style_values.legacySizeOfKeyword(new_value)) |size| {
+                if (!css_styling or size == 7) {
+                    new_parent = try edit.createElement("font");
+                    var digit = [1]u8{'0' + size};
+                    try interfaces.Element.call_setAttribute(new_parent.?, DOMString.initInterned("size"), .{ .domstring = DOMString.initInterned(&digit) });
+                }
+            }
+        }
+        // Steps 13-14: sub and sup, in CSS mode too.
+        if (command == .subscript or command == .superscript) {
+            if (std.mem.eql(u8, new_value, "subscript")) new_parent = try edit.createElement("sub");
+            if (std.mem.eql(u8, new_value, "superscript")) new_parent = try edit.createElement("sup");
+        }
+        // Step 15: otherwise a span.
+        if (new_parent == null) new_parent = try edit.createElement("span");
+        wrapper = new_parent.?;
+        // Step 16: "Insert new parent in node's parent before node."
+        // Re-read parent: step 11's setTagName may have replaced an enclosing <a>.
+        const insert_parent = (try common.parent(node)) orelse node_parent;
+        try edit.insertBefore(insert_parent, wrapper, node);
     }
-    // Steps 13-14: sub and sup, in CSS mode too.
-    if (command == .subscript or command == .superscript) {
-        if (std.mem.eql(u8, new_value, "subscript")) new_parent = try edit.createElement("sub");
-        if (std.mem.eql(u8, new_value, "superscript")) new_parent = try edit.createElement("sup");
-    }
-    // Step 15: otherwise a span.
-    const wrapper = new_parent orelse try edit.createElement("span");
-    // Step 16: "Insert new parent in node's parent before node."
-    const node_parent = (try common.parent(node)) orelse return;
-    try edit.insertBefore(node_parent, wrapper, node);
     // Step 17: the relevant CSS property, when the wrapper does not have
     // the value already (and the value is valid for it).
     if (command.relevantProperty()) |property| {

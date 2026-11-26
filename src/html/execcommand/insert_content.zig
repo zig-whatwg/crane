@@ -125,6 +125,7 @@ fn insertHtmlSteps(edit: *Edit, value: []const u8) anyerror!bool {
     if (try edit.rangeStart()) |after| {
         if (common.isBlockNode(after.node) and !try hasVisibleChild(after.node)) {
             const br = try edit.createElement("br");
+            errdefer dom.node_creation.destroyUninserted(br);
             try edit.appendChild(after.node, br);
         }
     }
@@ -361,7 +362,10 @@ fn hasVisiblePreviousSibling(node: *Instance) !bool {
 fn splitElement(edit: *Edit, element: *Instance, at_child: *Instance) !void {
     const parent_node = (try common.parent(element)) orelse return;
     const prefix = try common.cloneNode(element, false);
-    try edit.insertBefore(parent_node, prefix, element);
+    {
+        errdefer dom.node_creation.destroyUninserted(prefix);
+        try edit.insertBefore(parent_node, prefix, element);
+    }
     while (try common.firstChild(element)) |child| {
         if (child == at_child) break;
         try edit.movePreservingRanges(child, prefix, try common.childCount(prefix));
@@ -527,11 +531,16 @@ fn replaceWithText(edit: *Edit, fragment: *Instance, start_node: *Instance) !voi
     var builder: TextBuilder = .{ .arena = edit.scratchAllocator() };
     try builder.walk(fragment, false);
     const text = builder.text();
-    while (try common.firstChild(fragment)) |child| _ = try interfaces.Node.call_removeChild(fragment, child);
+    while (try common.firstChild(fragment)) |child| {
+        const child_generation = runtime.SlabAllocator.generationOf(child);
+        _ = try interfaces.Node.call_removeChild(fragment, child);
+        dom.node_creation.releaseIfUnwrapped(child, child_generation);
+    }
     if (text.len == 0) return;
     const keeps_newlines = (try common.whiteSpaceAround(start_node)).preservesNewlines();
     if (keeps_newlines) {
         const node = try interfaces.Document.call_createTextNode(edit.document, DOMString.initInterned(text));
+        errdefer dom.node_creation.destroyUninserted(node);
         _ = try interfaces.Node.call_appendChild(fragment, node);
         return;
     }
@@ -540,11 +549,13 @@ fn replaceWithText(edit: *Edit, fragment: *Instance, start_node: *Instance) !voi
     while (lines.next()) |line| {
         if (!first) {
             const br = try edit.createElement("br");
+            errdefer dom.node_creation.destroyUninserted(br);
             _ = try interfaces.Node.call_appendChild(fragment, br);
         }
         first = false;
         if (line.len == 0) continue;
         const node = try interfaces.Document.call_createTextNode(edit.document, DOMString.initInterned(line));
+        errdefer dom.node_creation.destroyUninserted(node);
         _ = try interfaces.Node.call_appendChild(fragment, node);
     }
 }
@@ -597,8 +608,11 @@ fn splitInlinesForInsertion(edit: *Edit) !void {
             point = .{ .node = p, .offset = index + 1 };
         } else {
             const after = try common.cloneNode(element, false);
-            if (try common.hasAttribute(after, "id")) try common.removeAttribute(after, "id");
-            try edit.insertBefore(p, after, try common.nextSibling(element));
+            {
+                errdefer dom.node_creation.destroyUninserted(after);
+                if (try common.hasAttribute(after, "id")) try interfaces.Element.call_removeAttribute(after, DOMString.initInterned("id"));
+                try edit.insertBefore(p, after, try common.nextSibling(element));
+            }
             while (try common.childAt(element, point.offset)) |child| {
                 try edit.movePreservingRanges(child, after, try common.childCount(after));
             }
@@ -636,11 +650,17 @@ fn insertImageSteps(edit: *Edit, value: []const u8) anyerror!bool {
         if (try common.isHtmlElementNamed(only, "br")) try edit.removeNode(only);
     }
     // Steps 6-7: "Let img be the result of calling createElement("img")",
-    // its src set to value.
+    // its src set to value. Set src directly on the brand-new uninserted
+    // element so a failing insertNode (e.g., Comment or ProcessingInstruction
+    // range start) neither records an undo entry on an uninserted node nor
+    // leaks img and its owner_document reference.
     const img = try edit.createElement("img");
-    try common.setAttribute(img, "src", value);
-    // Step 8: "Run insertNode(img) on range."
-    try edit.insertNode(range, img);
+    {
+        errdefer dom.node_creation.destroyUninserted(img);
+        try interfaces.Element.call_setAttribute(img, DOMString.initInterned("src"), .{ .domstring = DOMString.initInterned(value) });
+        // Step 8: "Run insertNode(img) on range."
+        try edit.insertNode(range, img);
+    }
     // Steps 9-10: the caret just after img.
     if (try common.parent(img)) |p| {
         const index = try common.indexOf(img);

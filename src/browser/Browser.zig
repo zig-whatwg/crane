@@ -91,6 +91,9 @@ const window_agent_hooks: engine.HostHooks = blk: {
 };
 
 /// Browser configuration options
+/// BrowserConfig.general_memory's choices.
+pub const GeneralMemory = enum { crane, host };
+
 pub const BrowserConfig = struct {
     /// The Browser's profile directory (docs/instances.md): its stores
     /// persist under it, and it is the Browser's alone while it lives - a
@@ -138,6 +141,15 @@ pub const BrowserConfig = struct {
     /// (the user, 2026-11-05); off by default - never in a product build. A
     /// Debug build poisons either way, without the quarantine.
     poison_freed_state: bool = false,
+    /// Where the Browser's general memory comes from (allocator-hardening
+    /// design 4.2): `.crane`, its heap's objects and bytes partitions
+    /// (runtime.heap.general) - the default, and what every WPT run uses;
+    /// or `.host`, the allocator `init` is given, for an embedder that must
+    /// account the Browser's memory itself, giving up those partitions'
+    /// hardening (as V8 takes an embedder's ArrayBuffer::Allocator). A test
+    /// that injects allocation failures through the allocator it gives
+    /// `init` asks for `.host`, so its failures reach the Browser's memory.
+    general_memory: GeneralMemory = .crane,
     /// How many pages the back/forward cache keeps (back_forward_cache.zig):
     /// 8 by default - Firefox's desktop cap, for the whole Browser
     /// (back_forward_cache.zig `default_size` says why). 0 keeps none.
@@ -349,19 +361,34 @@ pub const Browser = struct {
         // has no objects range: its objects partition shares the cage
         // (runtime.heap.Engine.init; the integrator's ruling, 2026-11-23).
         if (scope.heap) |reserved| if (reserved.rung != .full) log.info("the Browser's heap got the {t} rung: its objects partition is in the cage's upper half", .{reserved.rung});
+        // The Browser's general memory (allocator-hardening batch B): from
+        // here on its agent, its realms, its tables and its states allocate
+        // from its heap's objects and bytes partitions, where the rung has
+        // them (runtime.heap.general); a smaller rung keeps the host's
+        // allocator (design 4.2). The host's allocator keeps only the
+        // Browser's own record and its scope, made before and ended after.
+        if (scope.heap) |reserved| if (reserved.general_pools and config.general_memory == .crane) {
+            // The window agent's: its cache serves this thread - the
+            // Browser's, which its window agent runs on - without a lock
+            // (runtime.heap.AgentCache); another thread's call through it
+            // takes the shared path.
+            const window_cache = try (try scope.heapEngine()).attachAgent();
+            scope.useGeneralAllocator(window_cache.allocator());
+        };
+        const memory = scope.allocator;
 
-        const agent_host = try allocator.create(@import("html").agent_host.AgentHost);
-        agent_host.* = @import("html").agent_host.AgentHost.init(allocator);
+        const agent_host = try memory.create(@import("html").agent_host.AgentHost);
+        agent_host.* = @import("html").agent_host.AgentHost.init(memory);
         errdefer {
             agent_host.deinit();
-            allocator.destroy(agent_host);
+            memory.destroy(agent_host);
         }
         // The agent's host and host state: the Browser's AgentHost.
         const agent = engine.createAgent(@import("dom").agent_hosts.agentOptions(agent_host, .{
             .can_block = false,
             .from_snapshot = from_snapshot,
             .hooks = &window_agent_hooks,
-            .allocator = allocator,
+            .allocator = memory,
             // A collected node's teardown is queued here, for the event loop
             // to run between tasks (runtime.gc.DeferredTeardown).
             .deferred_teardown = &agent_host.deferred_teardown,
@@ -379,7 +406,7 @@ pub const Browser = struct {
         // one read-only heap per process; the engine says so at warn), and
         // its realms are then made afresh rather than failing a restore each.
         const restored = engine.agentRestoredFromSnapshot(agent);
-        return initBrowserWithAgent(allocator, agent, agent_host, restored, config, scope, browser_clock);
+        return initBrowserWithAgent(memory, agent, agent_host, restored, config, scope, browser_clock);
     }
 
     /// Complete browser initialization with its agent.
@@ -397,7 +424,7 @@ pub const Browser = struct {
         // The agent's event loop, with its timers (the host's).
         const event_loop = try allocator.create(EventLoop);
         errdefer allocator.destroy(event_loop);
-        event_loop.* = try EventLoop.initWithClock(agent, allocator, browser_clock);
+        event_loop.* = try EventLoop.initWithClock(agent, allocator, browser_clock, scope.host_allocator);
         // The agent's deferred teardown queue, which the loop runs between
         // tasks, and its fetches, which the loop pumps.
         event_loop.deferred_teardown = &agent_host.deferred_teardown;
@@ -457,9 +484,10 @@ pub const Browser = struct {
         // The back/forward cache, on the Browser's loop, as configured.
         (try scope.of(@import("back_forward_cache.zig").BackForwardCache)).configure(event_loop, config.back_forward_cache_size, config.back_forward_cache_ttl_seconds);
 
-        // Allocate browser struct
-        const browser = try allocator.create(Browser);
-        errdefer allocator.destroy(browser);
+        // The Browser's own record: the host's, as its scope is (ended after
+        // the heap).
+        const browser = try scope.host_allocator.create(Browser);
+        errdefer scope.host_allocator.destroy(browser);
 
         browser.* = Browser{
             .allocator = allocator,
@@ -647,13 +675,16 @@ pub const Browser = struct {
         // it), then its slab and arena - every platform object of this
         // Browser, and none of another's - and last its heap's reservation.
         // Its platform state ends first.
+        // The host's allocator made the scope and this record; everything
+        // else of the Browser is its heap's, ended with the scope.
+        const host_allocator = self.scope.host_allocator;
+        self.known_tabs.deinit(self.allocator);
         @import("html").platform_state.destroy(self.scope);
         self.scope.deinit();
-        self.allocator.destroy(self.scope);
+        host_allocator.destroy(self.scope);
 
-        self.known_tabs.deinit(self.allocator);
         self.initialized = false;
-        self.allocator.destroy(self);
+        host_allocator.destroy(self);
     }
 
     /// Navigation options
