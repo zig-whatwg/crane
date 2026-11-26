@@ -116,6 +116,9 @@ pub fn sessionEnded(session: *PageSession) void {
     const had_media = bc.host_overrides.media_owner == owner(session);
     const had_screen = bc.host_overrides.screen_owner == owner(session);
     bc.host_overrides.clearOwnedBy(bc.allocator, owner(session));
+    if (bc.getTop().host_overrides.geolocation_owner == owner(session)) {
+        @import("html").geolocation.setEmulatedPositionData(bc, 0, null);
+    }
     if (had_media) mediaChanged(bc);
     if (had_screen) @import("html").screen_info.changed(bc.getTop());
 }
@@ -332,20 +335,42 @@ pub fn setCPUThrottlingRate(session: *PageSession, params: E.setCPUThrottlingRat
     return .{};
 }
 
-/// Chrome's EmulationHandler::ClearGeolocationOverride: the tab's
-/// geolocation is the platform's again - which it is: Crane has no override
-/// to clear (its Geolocation API is queued; setGeolocationOverride waits
-/// for it).
+/// Chrome's EmulationHandler::ClearGeolocationOverride
+/// (content/browser/devtools/protocol/emulation_handler.cc): clears the tab's
+/// geolocation override so the Geolocation API uses the platform source again.
 pub fn clearGeolocationOverride(session: *PageSession, params: E.clearGeolocationOverride.Params) !E.clearGeolocationOverride.Result {
     _ = params;
-    _ = tabOf(session) orelse return session.fail("Target is not a page");
+    const bc = tabOf(session) orelse return session.fail("Target is not a page");
+    @import("html").geolocation.setEmulatedPositionData(bc, 0, null);
     return .{};
 }
 
-/// Chrome's EmulationHandler::SetGeolocationOverride: refused until Crane's
-/// Geolocation API lands (queued by main, 2026-11-24): nothing would read
-/// the override.
+/// Chrome's EmulationHandler::SetGeolocationOverride
+/// (content/browser/devtools/protocol/emulation_handler.cc): sets the tab's
+/// W3C Geolocation §12 emulated position data (winning over the platform source
+/// and notifying active watches). Omitting latitude, longitude or accuracy
+/// (e.g. `{}`) emulates POSITION_UNAVAILABLE.
 pub fn setGeolocationOverride(session: *PageSession, params: E.setGeolocationOverride.Params) !E.setGeolocationOverride.Result {
-    _ = params;
-    return session.fail("Geolocation is not supported by Crane yet");
+    const bc = tabOf(session) orelse return session.fail("Target is not a page");
+    const override: host_overrides.GeolocationOverride = if (params.latitude != null and params.longitude != null and params.accuracy != null) blk: {
+        const lat = params.latitude.?;
+        const lon = params.longitude.?;
+        const acc = params.accuracy.?;
+        if (std.math.isNan(lat) or std.math.isNan(lon) or std.math.isNan(acc) or
+            lat < -90.0 or lat > 90.0 or lon < -180.0 or lon > 180.0 or acc < 0.0)
+        {
+            break :blk .position_unavailable;
+        }
+        break :blk .{ .coordinates = .{
+            .latitude = lat,
+            .longitude = lon,
+            .accuracy = acc,
+            .altitude = params.altitude,
+            .altitude_accuracy = params.altitudeAccuracy,
+            .heading = params.heading,
+            .speed = params.speed,
+        } };
+    } else .position_unavailable;
+    @import("html").geolocation.setEmulatedPositionData(bc, owner(session), override);
+    return .{};
 }

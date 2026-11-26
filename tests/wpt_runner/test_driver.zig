@@ -896,7 +896,19 @@ const Command = struct {
         const scope = target.ctx.browser_scope orelse return noSuchWindow();
         const store = scope.of(permissions.BrowserStore) catch return outOfMemory();
         if (self.permission_origin) |origin| {
-            self.permission_batch = store.set(origin, descriptor, self.permission_state) catch return outOfMemory();
+            // WebDriver BiDi permissions.setPermission accepts an origin or URL
+            // string (e.g. `https://host:port/path`); normalize to `scheme://authority`
+            // so it matches Permissions/Geolocation serialized origin keys.
+            const key_slice = blk: {
+                if (std.mem.indexOf(u8, origin, "://")) |scheme_end| {
+                    const after_scheme = scheme_end + 3;
+                    if (std.mem.indexOfAnyPos(u8, origin, after_scheme, "/?#")) |path_start| {
+                        break :blk origin[0..path_start];
+                    }
+                }
+                break :blk origin;
+            };
+            self.permission_batch = store.set(key_slice, descriptor, self.permission_state) catch return outOfMemory();
             return null;
         }
         const key = permissionKeyForWindow(target, descriptor) catch return outOfMemory();
