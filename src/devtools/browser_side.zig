@@ -135,6 +135,7 @@ pub const BrowserSide = struct {
     /// Free the record; `uninstall` has run (or `install` never did).
     pub fn destroy(self: *BrowserSide) void {
         std.debug.assert(self.sessions.items.len == 0);
+        self.interceptions.deinit(self.allocator);
         self.sessions.deinit(self.allocator);
         self.dom_agents.deinit(self.allocator);
         self.ax_agents.deinit(self.allocator);
@@ -184,8 +185,12 @@ pub const BrowserSide = struct {
         self.fetch_state.deinit(self.allocator);
         self.fetch_state = .{};
         // Every session detached (its holds let go); none is left.
+        // Do NOT deinit `self.interceptions` here on the browser thread:
+        // `uninstallAndWait` on the devtools thread still loops calling
+        // `fetch_interception.release(side, ...)` until `wait.done == 1`, so
+        // `self.interceptions.deinit` runs after `uninstallAndWait` exits the
+        // wait loop (and in `destroy`).
         fetch_interception.release(self, null, .any);
-        self.interceptions.deinit(self.allocator);
         self.log_storage.deinit(self.allocator);
         // The detectors' armed checks are cancelled on this, the timers'
         // thread, while the Browser's loop still runs.
@@ -584,6 +589,9 @@ pub fn uninstallAndWait(side: *BrowserSide) void {
         fetch_interception.release(side, null, .blocking);
         futexIo().futexWaitTimeout(u32, &wait.done.raw, 0, .{ .duration = .{ .raw = .fromMilliseconds(20), .clock = .awake } }) catch {};
     }
+    // Browser thread has finished `uninstall()` and signaled `wait.done`; safe
+    // to destroy the interception table (mutex + maps) without racing `release`.
+    side.interceptions.deinit(side.allocator);
 }
 
 fn futexIo() std.Io {

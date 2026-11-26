@@ -57,6 +57,143 @@ const fonts = if (for (platform_options.platform_without) |capability| {
     if (std.mem.eql(u8, capability, "font_decoding")) break true;
 } else false) headless else @import("fonts.zig");
 
+/// Scripted per-Browser geolocation source and permission policy for tests.
+/// Defaults to `.unavailable` / ungoverned permission (matching headless
+/// darwin/linux); tests opt in via `platform.adapter.setGeolocation*`.
+pub const GeolocationMode = union(enum) {
+    /// Default headless state: replies with `position_unavailable`.
+    unavailable,
+    /// Immediately replies with the scripted position (or error).
+    fixed: platform.PositionResult,
+    /// Holds pending requests until delivered via `deliverPendingGeolocation`
+    /// or cancelled via `cancelRequest` (e.g. timeout or document unload).
+    pending,
+};
+
+const GeolocationSource = struct {
+    const Pending = struct {
+        request_id: platform.RequestId,
+        reply: platform.Reply(platform.PositionResult),
+    };
+
+    mutex: std.Io.Mutex = .init,
+    allocator: std.mem.Allocator,
+    mode: GeolocationMode = .unavailable,
+    permission: ?platform.PermissionState = null,
+    next_watch_id: u64 = 1,
+    watches: std.ArrayListUnmanaged(u64) = .empty,
+    pending_requests: std.ArrayListUnmanaged(Pending) = .empty,
+    current_position_calls: usize = 0,
+
+    fn init(allocator: std.mem.Allocator) GeolocationSource {
+        return .{ .allocator = allocator };
+    }
+
+    fn deinit(self: *GeolocationSource) void {
+        for (self.pending_requests.items) |p| {
+            p.reply.drop(p.reply.context);
+        }
+        self.pending_requests.deinit(self.allocator);
+        self.watches.deinit(self.allocator);
+    }
+
+    fn currentPosition(self: *GeolocationSource, requester: *const platform.Requester, reply: platform.Reply(platform.PositionResult)) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        self.current_position_calls += 1;
+        const mode = self.mode;
+        switch (mode) {
+            .unavailable => {
+                std.Io.Threaded.mutexUnlock(&self.mutex);
+                const err_result: platform.PositionResult = .{ .error_code = .position_unavailable };
+                reply.deliver(reply.context, &err_result);
+            },
+            .fixed => |pos| {
+                std.Io.Threaded.mutexUnlock(&self.mutex);
+                var copy = pos;
+                reply.deliver(reply.context, &copy);
+            },
+            .pending => {
+                self.pending_requests.append(self.allocator, .{
+                    .request_id = requester.request_id,
+                    .reply = reply,
+                }) catch {
+                    std.Io.Threaded.mutexUnlock(&self.mutex);
+                    const err_result: platform.PositionResult = .{ .error_code = .position_unavailable };
+                    reply.deliver(reply.context, &err_result);
+                    return;
+                };
+                std.Io.Threaded.mutexUnlock(&self.mutex);
+            },
+        }
+    }
+
+    fn watchPosition(self: *GeolocationSource) platform.Error!platform.WatchId {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const id = self.next_watch_id;
+        self.next_watch_id += 1;
+        self.watches.append(self.allocator, id) catch return error.OutOfMemory;
+        return .{ .id = id };
+    }
+
+    fn clearWatch(self: *GeolocationSource, id: platform.WatchId) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.watches.items, 0..) |wid, i| {
+            if (wid == id.id) {
+                _ = self.watches.swapRemove(i);
+                return;
+            }
+        }
+    }
+
+    fn cancelRequest(self: *GeolocationSource, id: platform.RequestId) bool {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        for (self.pending_requests.items, 0..) |p, i| {
+            if (p.request_id == id) {
+                const removed = self.pending_requests.swapRemove(i);
+                std.Io.Threaded.mutexUnlock(&self.mutex);
+                removed.reply.drop(removed.reply.context);
+                return true;
+            }
+        }
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+        return false;
+    }
+
+    fn deliverPending(self: *GeolocationSource, result: platform.PositionResult) usize {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        var taken = self.pending_requests;
+        self.pending_requests = .empty;
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+        defer taken.deinit(self.allocator);
+        var copy = result;
+        for (taken.items) |p| {
+            p.reply.deliver(p.reply.context, &copy);
+        }
+        return taken.items.len;
+    }
+
+    fn pushWatch(self: *GeolocationSource, events: platform.EventSink, result: platform.PositionResult) usize {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        const ids = self.allocator.dupe(u64, self.watches.items) catch {
+            std.Io.Threaded.mutexUnlock(&self.mutex);
+            return 0;
+        };
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+        defer self.allocator.free(ids);
+        for (ids) |id| {
+            const event: platform.PlatformEvent = .{
+                .kind = .position,
+                .watch = .{ .id = id },
+                .position = result,
+            };
+            events.post(events.context, &event);
+        }
+        return ids.len;
+    }
+};
+
 /// Per-Browser test state: fresh for every Browser, so nothing one test does
 /// reaches the next (WebKitTestRunner's process-global mocks need a reset).
 const Extra = struct {
@@ -74,6 +211,8 @@ const Extra = struct {
     clock: VirtualClock,
     /// The Browser's random stream, when it has a seed (seeded_random.zig).
     random: SeededRandom,
+    /// Scripted per-Browser geolocation source and permission state.
+    geolocation: GeolocationSource,
 
     pub fn init(allocator: std.mem.Allocator, options: *const platform.BrowserOptions) error{OutOfMemory}!Extra {
         return .{
@@ -82,10 +221,12 @@ const Extra = struct {
             .environment = .init(allocator),
             .clock = .init(&options.platform),
             .random = .init(options.platform.random_seed),
+            .geolocation = .init(allocator),
         };
     }
 
     pub fn deinit(self: *Extra) void {
+        self.geolocation.deinit();
         self.clipboard.deinit();
         self.user_files.deinit();
         self.environment.deinit();
@@ -204,6 +345,10 @@ pub const protocol = struct {
         // is the renderer's (6.9), and an embedder without one builds with
         // -Dplatform-without=pdf_viewer.
         c.pdf_viewer = .native;
+        // Scripted per-Browser geolocation source & permission policy (lane geo1).
+        // Default: unavailable / ungoverned (matching headless darwin/linux).
+        c.geolocation = .emulated;
+        c.os_permissions = .emulated;
         break :blk c;
     };
 
@@ -388,9 +533,26 @@ pub const protocol = struct {
 
     pub const invalidateLayout = headless.invalidateLayout;
     pub const forceLayout = headless.forceLayout;
-    pub const platformPermissionState = headless.platformPermissionState;
+
+    pub fn platformPermissionState(browser: *platform.BrowserPlatform, requester: *const platform.Requester, descriptor: *const platform.PermissionDescriptor) platform.PlatformPermission {
+        _ = requester;
+        if (descriptor.name == .geolocation) {
+            const geo = &State.of(browser).extra.geolocation;
+            std.Io.Threaded.mutexLockUncancelable(&geo.mutex);
+            const perm = geo.permission;
+            std.Io.Threaded.mutexUnlock(&geo.mutex);
+            if (perm) |state| return .{ .governed = true, .state = state };
+        }
+        return .{ .governed = false, .state = .prompt };
+    }
+
     pub const requestPermission = headless.requestPermission;
-    pub const cancelRequest = headless.cancelRequest;
+
+    pub fn cancelRequest(browser: *platform.BrowserPlatform, id: platform.RequestId) void {
+        if (!State.of(browser).extra.geolocation.cancelRequest(id)) {
+            headless.cancelRequest(browser, id);
+        }
+    }
     pub const runSimpleDialog = headless.runSimpleDialog;
     pub const printDocument = headless.printDocument;
     pub const createTopLevelTraversable = headless.createTopLevelTraversable;
@@ -470,9 +632,73 @@ pub const protocol = struct {
     pub const startBackgroundFetch = headless.startBackgroundFetch;
     pub const setAppBadge = headless.setAppBadge;
     pub const registerProtocolHandler = headless.registerProtocolHandler;
-    pub const currentPosition = headless.currentPosition;
-    pub const watchPosition = headless.watchPosition;
-    pub const clearWatch = headless.clearWatch;
+    pub const GeolocationSourceMode = GeolocationMode;
+
+    pub fn currentPosition(browser: *platform.BrowserPlatform, requester: *const platform.Requester, options: *const platform.PositionOptions, reply: platform.Reply(platform.PositionResult)) void {
+        _ = options;
+        State.of(browser).extra.geolocation.currentPosition(requester, reply);
+    }
+
+    pub fn watchPosition(browser: *platform.BrowserPlatform, requester: *const platform.Requester, options: *const platform.PositionOptions) platform.Error!platform.WatchId {
+        _ = requester;
+        _ = options;
+        return State.of(browser).extra.geolocation.watchPosition();
+    }
+
+    pub fn clearWatch(browser: *platform.BrowserPlatform, id: platform.WatchId) void {
+        State.of(browser).extra.geolocation.clearWatch(id);
+    }
+
+    /// Test control: set this Browser's scripted geolocation position source mode.
+    pub fn setGeolocationMode(browser: *platform.BrowserPlatform, mode: GeolocationMode) void {
+        const geo = &State.of(browser).extra.geolocation;
+        std.Io.Threaded.mutexLockUncancelable(&geo.mutex);
+        defer std.Io.Threaded.mutexUnlock(&geo.mutex);
+        geo.mode = mode;
+    }
+
+    /// Test control: set this Browser's OS-level geolocation permission state (null = ungoverned).
+    pub fn setGeolocationPermission(browser: *platform.BrowserPlatform, state: ?platform.PermissionState) void {
+        const geo = &State.of(browser).extra.geolocation;
+        std.Io.Threaded.mutexLockUncancelable(&geo.mutex);
+        defer std.Io.Threaded.mutexUnlock(&geo.mutex);
+        geo.permission = state;
+    }
+
+    /// Test control: deliver a result to all currently pending geolocation requests.
+    pub fn deliverPendingGeolocation(browser: *platform.BrowserPlatform, result: platform.PositionResult) usize {
+        return State.of(browser).extra.geolocation.deliverPending(result);
+    }
+
+    /// Test control: push a position event to all active geolocation watches on this Browser.
+    pub fn pushGeolocationWatch(browser: *platform.BrowserPlatform, result: platform.PositionResult) usize {
+        const state = State.of(browser);
+        return state.extra.geolocation.pushWatch(state.events, result);
+    }
+
+    /// Test control: number of currently active platform geolocation watches on this Browser.
+    pub fn activeGeolocationWatchCount(browser: *platform.BrowserPlatform) usize {
+        const geo = &State.of(browser).extra.geolocation;
+        std.Io.Threaded.mutexLockUncancelable(&geo.mutex);
+        defer std.Io.Threaded.mutexUnlock(&geo.mutex);
+        return geo.watches.items.len;
+    }
+
+    /// Test control: number of currently pending single-shot geolocation requests.
+    pub fn pendingGeolocationRequestCount(browser: *platform.BrowserPlatform) usize {
+        const geo = &State.of(browser).extra.geolocation;
+        std.Io.Threaded.mutexLockUncancelable(&geo.mutex);
+        defer std.Io.Threaded.mutexUnlock(&geo.mutex);
+        return geo.pending_requests.items.len;
+    }
+
+    /// Test control: total calls made to `currentPosition` on this Browser.
+    pub fn geolocationRequestCalls(browser: *platform.BrowserPlatform) usize {
+        const geo = &State.of(browser).extra.geolocation;
+        std.Io.Threaded.mutexLockUncancelable(&geo.mutex);
+        defer std.Io.Threaded.mutexUnlock(&geo.mutex);
+        return geo.current_position_calls;
+    }
     pub const startSensor = headless.startSensor;
     pub const stopSensor = headless.stopSensor;
     pub const startDeviceOrientation = headless.startDeviceOrientation;

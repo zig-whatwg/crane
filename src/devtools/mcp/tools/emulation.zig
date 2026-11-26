@@ -10,10 +10,6 @@
 //! network, CPU, geolocation, user agent, media features, extra headers,
 //! viewport (a reload when mobile or touch changes, as Puppeteer's
 //! setViewport reloads).
-//!
-//! Not yet (lane mcp1 batch 4b): geolocation (the Geolocation API, queued by
-//! main) answers that Crane's MCP server does not support it yet; its "off"
-//! value - what every call sends - is Crane's CDP answer.
 
 const std = @import("std");
 const registry = @import("../tools.zig");
@@ -29,6 +25,8 @@ pub const list = [_]Tool{
 
 /// VIEWPORT_FORMAT.
 const viewport_format = "<width>x<height>x<devicePixelRatio>[,mobile][,touch][,landscape]";
+/// GEOLOCATION_FORMAT.
+const geolocation_format = "<latitude>,<longitude>";
 
 /// A transform's failure (zodTransform): ToolHandler's validation error.
 fn validationError(ctx: *Context, path: []const u8, message: []const u8) error{ToolFailed} {
@@ -36,6 +34,27 @@ fn validationError(ctx: *Context, path: []const u8, message: []const u8) error{T
 }
 
 const Viewport = session_mod.Emulation.Viewport;
+const Geolocation = session_mod.Emulation.Geolocation;
+
+/// geolocationTransform: '<latitude>,<longitude>', latitude in [-90, 90],
+/// longitude in [-180, 180].
+fn parseGeolocation(ctx: *Context, text: []const u8) !?Geolocation {
+    if (text.len == 0) return null;
+    var parts = std.mem.splitScalar(u8, text, ',');
+    const lat_str = parts.next().?;
+    const lon_str = parts.next() orelse return validationError(ctx, "geolocation", try std.fmt.allocPrint(ctx.arena, "Invalid geolocation \"{s}\". Expected '" ++ geolocation_format ++ "'.", .{text}));
+    if (parts.next() != null) return validationError(ctx, "geolocation", try std.fmt.allocPrint(ctx.arena, "Invalid geolocation \"{s}\". Expected '" ++ geolocation_format ++ "'.", .{text}));
+    const raw_lat = decimal(lat_str) orelse return validationError(ctx, "geolocation.latitude", "Expected a number");
+    if (raw_lat < -90) return validationError(ctx, "geolocation.latitude", "Too small: expected number to be >=-90");
+    if (raw_lat > 90) return validationError(ctx, "geolocation.latitude", "Too big: expected number to be <=90");
+    const raw_lon = decimal(lon_str) orelse return validationError(ctx, "geolocation.longitude", "Expected a number");
+    if (raw_lon < -180) return validationError(ctx, "geolocation.longitude", "Too small: expected number to be >=-180");
+    if (raw_lon > 180) return validationError(ctx, "geolocation.longitude", "Too big: expected number to be <=180");
+    return .{
+        .latitude = if (raw_lat == 0) 0 else raw_lat,
+        .longitude = if (raw_lon == 0) 0 else raw_lon,
+    };
+}
 
 /// viewportTransform: '<width>x<height>x<devicePixelRatio>[,mobile][,touch][,landscape]'.
 fn parseViewport(ctx: *Context, text: []const u8) !?Viewport {
@@ -117,6 +136,7 @@ fn predefinedNetworkCondition(name: []const u8) ?NetworkPreset {
 fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Response) anyerror!void {
     const target = page.?;
     // The transforms (zod's), before anything runs.
+    const geolocation = if (registry.stringArg(args, "geolocation")) |g| try parseGeolocation(ctx, g) else null;
     const viewport = if (registry.stringArg(args, "viewport")) |v| try parseViewport(ctx, v) else null;
     var headers_json: ?[]const u8 = null;
     if (registry.stringArg(args, "extraHttpHeaders")) |text| headers_json = try extraHeaders(ctx, text);
@@ -125,9 +145,6 @@ fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Res
         (if (nc.len == 0) null else predefinedNetworkCondition(nc) orelse return validationError(ctx, "networkConditions", "Invalid network condition"))
     else
         null;
-
-    // Not yet: the settings whose CDP Crane cannot apply.
-    if (registry.stringArg(args, "geolocation")) |g| if (g.len != 0) return ctx.fail("geolocation is not supported by Crane's MCP server yet.", .{});
 
     const cpu_rate: f64 = if (registry.numberArg(args, "cpuThrottlingRate")) |rate| (if (rate > 1) rate else 1) else 1;
 
@@ -159,8 +176,18 @@ fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Res
         defer r.deinit();
         if (r.errorMessage()) |message| return ctx.fail("Protocol error (Emulation.setCPUThrottlingRate): {s}", .{message});
     }
-    // setGeolocation(null).
-    try send(ctx, target, "Emulation.clearGeolocationOverride", "{}");
+    // setGeolocation: Emulation.setGeolocationOverride (Puppeteer defaults
+    // accuracy to 0) or Emulation.clearGeolocationOverride when null.
+    if (geolocation) |geo| {
+        const geo_params = try std.fmt.allocPrint(
+            ctx.arena,
+            "{{\"latitude\":{d},\"longitude\":{d},\"accuracy\":0}}",
+            .{ geo.latitude, geo.longitude },
+        );
+        try send(ctx, target, "Emulation.setGeolocationOverride", geo_params);
+    } else {
+        try send(ctx, target, "Emulation.clearGeolocationOverride", "{}");
+    }
 
     // setUserAgent: the override, or - to reset one applied - the
     // Browser's own user agent; nothing when none was ever applied.
@@ -193,7 +220,7 @@ fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Res
     // McpPage's emulationSettings, set before setViewport; a viewport that
     // fails keeps the one before it.
     const recorded_nc: ?[]const u8 = if (network_preset != null) network_conditions else null;
-    try recordSettings(ctx, target, args, user_agent, recorded_nc, cpu_rate);
+    try recordSettings(ctx, target, args, user_agent, recorded_nc, cpu_rate, geolocation);
     // setViewport: the override (or its clear), then a reload when mobile
     // or touch changed.
     try applyViewport(ctx, target, viewport);
@@ -203,9 +230,13 @@ fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Res
 
 /// McpPage.emulate's newSettings for what Crane applies: each setting the
 /// call names, none for one it leaves out or sets to "auto".
-fn recordSettings(ctx: *Context, page: *Page, args: std.json.ObjectMap, user_agent: []const u8, network_conditions: ?[]const u8, cpu_rate: f64) !void {
+fn recordSettings(ctx: *Context, page: *Page, args: std.json.ObjectMap, user_agent: []const u8, network_conditions: ?[]const u8, cpu_rate: f64, geolocation: ?Geolocation) !void {
     const allocator = ctx.session.allocator;
-    var next: session_mod.Emulation = .{ .viewport = page.emulation.viewport, .cpu_throttling_rate = cpu_rate };
+    var next: session_mod.Emulation = .{
+        .viewport = page.emulation.viewport,
+        .geolocation = geolocation,
+        .cpu_throttling_rate = cpu_rate,
+    };
     errdefer next.deinit(allocator);
     if (network_conditions) |nc| next.network_conditions = try allocator.dupe(u8, nc);
     if (user_agent.len != 0) next.user_agent = try allocator.dupe(u8, user_agent);

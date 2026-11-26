@@ -1,66 +1,84 @@
 //! Implementation for Geolocation interface
+//! Spec: https://www.w3.org/TR/geolocation/#geolocation_interface (specs/w3c/geolocation.md §6)
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const dom = @import("dom");
+const permissions = @import("permissions");
+const html = @import("html");
 const Geolocation = interfaces.Geolocation;
 
 pub const State = Geolocation.State;
 
 pub const ImplError = error{
     NotImplemented,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+/// Process-wide hook installation (called once at process start by crane.Process).
+pub fn installHooks() void {
+    // Document-only unloading cleanup: cancel active geolocation watches,
+    // timers, platform requests, and cached positions when a document unloads.
+    dom.unloading_cleanup.installDocumentOnly(&html.geolocation.unloadingCleanup);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    html.geolocation.geolocationDestroyed(instance);
 }
 
-/// Operation: getCurrentPosition
-pub fn call_getCurrentPosition(instance: *runtime.Instance, successCallback: callbacks.PositionCallback, errorCallback: webidl.Opt(?callbacks.PositionErrorCallback), options: webidl.Opt(dictionaries.PositionOptions)) anyerror!void {
-    _ = instance;
-    _ = successCallback;
-    _ = errorCallback;
-    _ = options;
-    return error.NotImplemented;
+/// Read this Browser's "geolocation" permission override from `BrowserStore`
+/// (same top-level origin key as Permissions.zig). Thread-safe under mutex.
+fn readGeolocationPermission(scope: *runtime.BrowserScope, key: []const u8) ?html.geolocation.PermissionState {
+    const store = scope.existing(permissions.BrowserStore) orelse return null;
+    std.Io.Threaded.mutexLockUncancelable(&store.mutex);
+    defer std.Io.Threaded.mutexUnlock(&store.mutex);
+    const state = store.get(key, permissions.PermissionDescriptor.simple(.geolocation)) orelse return null;
+    return switch (state) {
+        .granted => .granted,
+        .denied => .denied,
+        .prompt => .prompt,
+    };
 }
 
-/// Operation: clearWatch
+/// Operation: getCurrentPosition (§6.2)
+pub fn call_getCurrentPosition(
+    instance: *runtime.Instance,
+    successCallback: callbacks.PositionCallback,
+    errorCallback: webidl.Opt(?callbacks.PositionErrorCallback),
+    options: webidl.Opt(dictionaries.PositionOptions),
+) anyerror!void {
+    try html.geolocation.getCurrentPosition(
+        instance,
+        successCallback,
+        errorCallback,
+        options,
+        &readGeolocationPermission,
+    );
+}
+
+/// Operation: watchPosition (§6.3)
+pub fn call_watchPosition(
+    instance: *runtime.Instance,
+    successCallback: callbacks.PositionCallback,
+    errorCallback: webidl.Opt(?callbacks.PositionErrorCallback),
+    options: webidl.Opt(dictionaries.PositionOptions),
+) anyerror!i32 {
+    return try html.geolocation.watchPosition(
+        instance,
+        successCallback,
+        errorCallback,
+        options,
+        &readGeolocationPermission,
+    );
+}
+
+/// Operation: clearWatch (§6.4)
 pub fn call_clearWatch(instance: *runtime.Instance, watchId: i32) anyerror!void {
-    _ = instance;
-    _ = watchId;
-    return error.NotImplemented;
-}
-
-/// Operation: watchPosition
-pub fn call_watchPosition(instance: *runtime.Instance, successCallback: callbacks.PositionCallback, errorCallback: webidl.Opt(?callbacks.PositionErrorCallback), options: webidl.Opt(dictionaries.PositionOptions)) anyerror!i32 {
-    _ = instance;
-    _ = successCallback;
-    _ = errorCallback;
-    _ = options;
-    return error.NotImplemented;
+    html.geolocation.clearWatch(instance, watchId);
 }

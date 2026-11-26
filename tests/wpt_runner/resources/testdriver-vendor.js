@@ -54,6 +54,18 @@
       if (index !== -1) logListeners.splice(index, 1);
     };
   };
+  // WebDriver BiDi permissions.setPermission & emulation.setGeolocationOverride.
+  internal.bidi.permissions.set_permission = function(params = {}) {
+    const origin = params.origin ? new URL(params.origin, location.href).origin : undefined;
+    return __crane_test_driver_set_permission({
+      descriptor: params.descriptor,
+      state: params.state,
+      origin,
+    });
+  };
+  internal.bidi.emulation.set_geolocation_override = function(params = {}) {
+    return __crane_test_driver_bidi_set_geolocation_override(params);
+  };
   // A plain function, as upstream's is: tests call it with `new` too.
   window.test_driver.click = function(element) {
     return internal.click(element);
