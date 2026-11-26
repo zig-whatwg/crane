@@ -133,7 +133,7 @@ fn rejectedPromisesInBrowserObjects() !void {
     );
     const rejections = &page.browser.agent_host.rejections;
     try testing.expect(rejections.items.len >= 1);
-    try testing.expectEqual(Range.objects, rangeOf(heap, rejections.items.ptr));
+    try testing.expectEqual(Range.objects, rangeOf(heap, @ptrCast(rejections.items.ptr)));
     try testing.expectEqual(Range.objects, rangeOf(heap, rejections.items[0]));
 }
 

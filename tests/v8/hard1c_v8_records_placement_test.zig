@@ -47,6 +47,10 @@ const WindowHost = struct {
     }
 };
 
+const NoopReporter = struct {
+    fn report(_: ?*anyopaque, _: *const protocol.ErrorInfo) void {}
+};
+
 test "item 1: V8 agent record, wrapper-cache chunks & peers, and realm records live in .objects" {
     test_process.start();
 
@@ -89,7 +93,7 @@ test "item 1: V8 agent record, wrapper-cache chunks & peers, and realm records l
         "",
         null,
         testing.allocator,
-        .{},
+        .{ .report = NoopReporter.report, .host = null },
     );
     defer testing.allocator.free(result);
     try testing.expectEqualStrings("hard1c", result);

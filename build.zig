@@ -5762,6 +5762,62 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&lint_stack_arrays_check.step);
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_stack_arrays_module }), "tools-lint_stack_arrays", null).step);
 
+    // ========================================================================
+    // LINT: direct std.heap allocators outside src/platform/
+    // ========================================================================
+    // Every allocation a page can cause belongs in its Browser's hardened
+    // heap (allocator-hardening batch C, item 4). tools/lint_direct_allocator.zig
+    // flags std.heap.{c_allocator,smp_allocator,page_allocator,PageAllocator}
+    // in src/ outside src/platform/ without a reviewed `// direct-allocator:`
+    // (or `// page-allocator:`) marker directly above, as a ratchet against
+    // tools/direct_allocator_baseline.txt. `zig build test` depends on it.
+    const lint_direct_allocator_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_direct_allocator.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_direct_allocator_exe = b.addExecutable(.{
+        .name = "lint_direct_allocator",
+        .root_module = lint_direct_allocator_module,
+    });
+    const lint_direct_allocator_step = b.step("lint-direct-allocator", "Fail on unmarked direct std.heap allocator uses in src/ outside src/platform/ beyond tools/direct_allocator_baseline.txt");
+    const lint_direct_allocator = b.addRunArtifact(lint_direct_allocator_exe);
+    lint_direct_allocator.has_side_effects = true;
+    lint_direct_allocator.setCwd(b.path("."));
+    lint_direct_allocator.addPassthruArgs();
+    lint_direct_allocator_step.dependOn(&lint_direct_allocator.step);
+    const lint_direct_allocator_check = b.addRunArtifact(lint_direct_allocator_exe);
+    lint_direct_allocator_check.has_side_effects = true;
+    lint_direct_allocator_check.setCwd(b.path("."));
+    test_step.dependOn(&lint_direct_allocator_check.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_direct_allocator_module }), "tools-lint_direct_allocator", null).step);
+
+    // ========================================================================
+    // LINT: pointer-bearing fields declared align(1), align(2), or align(4)
+    // ========================================================================
+    // The general heap routes blocks by alignment: < @alignOf(usize) goes to
+    // .bytes, >= @alignOf(usize) goes to .objects (src/runtime/heap/general.zig,
+    // allocator-hardening batch C, item 4). A pointer-bearing field declared
+    // align(1), align(2), or align(4) lowers its struct's alignment below
+    // pointer alignment and breaks partition separation. `zig build test`
+    // depends on it.
+    const lint_pointer_align_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_pointer_align.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_pointer_align_exe = b.addExecutable(.{
+        .name = "lint_pointer_align",
+        .root_module = lint_pointer_align_module,
+    });
+    const lint_pointer_align_step = b.step("lint-pointer-align", "Fail on a pointer-bearing container field declared align(1), align(2), or align(4) in src/");
+    const lint_pointer_align = b.addRunArtifact(lint_pointer_align_exe);
+    lint_pointer_align.has_side_effects = true;
+    lint_pointer_align.setCwd(b.path("."));
+    lint_pointer_align_step.dependOn(&lint_pointer_align.step);
+    test_step.dependOn(&lint_pointer_align.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_pointer_align_module }), "tools-lint_pointer_align", null).step);
+
     // The generated tables' tools (`addGeneratedTables`): their own tests.
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.reverse_index_tool }), "tools-reverse_index_table", null).step);
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.psl_tool }), "tools-psl_table", null).step);
