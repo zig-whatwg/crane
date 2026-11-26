@@ -55,6 +55,8 @@ const browser_heap = @import("../browser_heap.zig");
 pub const classes = @import("classes.zig");
 /// The general allocator over the objects and bytes partitions (batch B).
 pub const general = @import("general.zig");
+/// The satellite allocator over the cage's satellite partition (batch B2).
+pub const satellite = @import("satellite.zig");
 
 const BrowserHeap = browser_heap.BrowserHeap;
 const Classes = classes.Classes;
@@ -277,7 +279,7 @@ pub const Violation = enum(u8) {
             .wrong_size => "a free whose size and alignment are of another class than the block's span",
             .other_heap => "a free of a block another Browser's heap issued, or no heap",
             .write_after_free => "a freed block was WRITTEN after its free: a pointer into it was kept past the free",
-            .wrong_thread => "a node block made or freed off the window agent's thread",
+            .wrong_thread => "a node or satellite block made or freed off the window agent's thread",
         };
     }
 };
@@ -293,11 +295,27 @@ pub const Target = union(enum) {
     objects,
 };
 
-/// The partitions of a Browser's heap. `bytes` (allocator-hardening batch B):
-/// the page's bytes, made through the general allocator (heap.general) -
-/// its own range, its own buckets, validated frees, no quarantine and no
-/// zeroing (design 1.2, 3.1).
-pub const PartitionId = enum(u2) { node = 0, objects = 1, bytes = 2 };
+/// The partitions of a Browser's heap.
+/// - `node`: node State blocks in the cage's lower half (window agent only).
+/// - `satellite` (batch B2): node-linked satellite blocks in the cage's upper
+///   half (window agent only, segregated from `node`, `objects`, and `bytes`).
+/// - `objects`: non-node States, Instance slots, and pointer-bearing general blocks.
+/// - `bytes` (batch B1): page-controlled pointer-free bytes (no quarantine, no
+///   production zeroing).
+pub const PartitionId = enum(u2) { node = 0, satellite = 1, objects = 2, bytes = 3 };
+
+/// Whether `pid` is accessed concurrently by multiple agent threads (requiring
+/// its mutex and atomic slot-map updates); `node` and `satellite` are
+/// window-agent-only and lock-free.
+inline fn isSharedPartition(pid: PartitionId) bool {
+    return pid == .objects or pid == .bytes;
+}
+
+/// Whether empty spans of `b` in `pid` use adaptive active retention + 200 ms
+/// idle decommit (general pools and satellites).
+inline fn usesAdaptiveRetention(pid: PartitionId, b: *const Bucket) bool {
+    return b.general or pid == .satellite;
+}
 
 // ============================================================================
 // Out-of-line metadata: span entries, slot maps, chunks
@@ -477,13 +495,15 @@ comptime {
     if (magazine_depth * @sizeOf(u32) > 256) @compileError("a magazine is one pool chunk");
 }
 
-/// Buckets: node = 3 kinds x K x classes, then the large runs; objects =
-/// the State blocks' classes, the Instance slots, the State blocks' large
-/// runs, then the GENERAL objects blocks' classes and large runs (batch B:
-/// a freed general block never becomes a State block, nor the reverse); bytes
-/// = classes, then the large runs.
+/// Buckets: node = 3 kinds x K x classes, then the large runs; satellite =
+/// exact 16-B classes (`Classes`), then the large runs; objects = the State
+/// blocks' classes, the Instance slots, the State blocks' large runs, then
+/// the GENERAL objects blocks' classes and large runs (batch B: a freed
+/// general block never becomes a State block, nor the reverse); bytes =
+/// classes, then the coalescing large-run sentinel.
 const node_groups = node_kinds * random_buckets;
 const node_bucket_count = node_groups * Classes.count + max_run_spans;
+const satellite_bucket_count = Classes.count + max_run_spans;
 const objects_state_count = Classes.count + 1 + max_run_spans;
 const objects_bucket_count = objects_state_count + GeneralClasses.count + max_run_spans;
 /// The first general objects bucket (batch B).
@@ -493,7 +513,7 @@ const general_objects_base: usize = objects_state_count;
 /// of `class`, or of a large run of `run` spans (`class` null).
 fn generalBucket(pid: PartitionId, class: ?usize, run: usize) u16 {
     return switch (pid) {
-        .node => unreachable,
+        .node, .satellite => unreachable,
         .objects => @intCast(if (class) |c| general_objects_base + c else general_objects_base + GeneralClasses.count + run - 1),
         .bytes => if (class) |c| @intCast(c) else bytes_large_bucket,
     };
@@ -502,7 +522,7 @@ fn generalBucket(pid: PartitionId, class: ?usize, run: usize) u16 {
 /// Whether `pid`'s bucket `index` serves general memory (batch B).
 fn isGeneralBucket(pid: PartitionId, index: usize) bool {
     return switch (pid) {
-        .node => false,
+        .node, .satellite => false,
         .objects => index >= general_objects_base,
         .bytes => true,
     };
@@ -521,6 +541,7 @@ fn nodeBucket(kind: NodeKind, k: usize, class: usize) u16 {
 fn largeBucket(pid: PartitionId, run: usize) u16 {
     const base: usize = switch (pid) {
         .node => node_groups * Classes.count,
+        .satellite => Classes.count,
         .objects => Classes.count + 1,
         .bytes => return bytes_large_bucket,
     };
@@ -785,6 +806,8 @@ pub const Error = error{OutOfMemory};
 
 pub const Stats = struct {
     node: PartitionStats,
+    /// Node-linked satellites in the cage (batch B2).
+    satellite: PartitionStats = .{},
     /// The objects partition: its span figures, and its State blocks' and
     /// Instance slots' live and total figures.
     objects: PartitionStats,
@@ -839,11 +862,15 @@ pub const Engine = struct {
     last_violation: ?Violation = null,
     page: usize,
     node: Partition,
+    /// Node-linked satellites in the cage's upper half (batch B2): window
+    /// agent only, no lock.
+    satellite: Partition,
     objects: Partition,
     /// The page's bytes (batch B): empty (lo == hi) in a rung without
     /// general pools, where general memory stays on the host's allocator.
     bytes: Partition,
     node_buckets: [node_bucket_count]Bucket,
+    satellite_buckets: [satellite_bucket_count]Bucket,
     objects_buckets: [objects_bucket_count]Bucket,
     bytes_buckets: [bytes_bucket_count]Bucket,
     quarantine: Quarantine = .{},
@@ -918,21 +945,33 @@ pub const Engine = struct {
         if (state_end > header_bytes) heap.commit(header_offset + header_bytes, state_end - header_bytes) catch return error.OutOfMemory;
         const engine: *Engine = @ptrFromInt(@intFromPtr(heap) + engine_offset);
 
-        // The partitions' address space: the cage's usable span for nodes,
-        // the objects range for the rest - or, in a rung without one, the
-        // cage's upper half (the integrator's ruling, 2026-11-23: one
-        // hardened path, the rung logged by Browser.init).
+        // The partitions' address space: inside the cage, `node` takes the
+        // lower half and `satellite` (batch B2) takes the upper half past a
+        // guard super page, so N10's future 32-bit links decode to both while
+        // the two partitions never share a super page. In a rung without an
+        // objects range, the cage splits 1/4 node, 1/4 satellite, 1/2 objects
+        // (with guard super pages between).
         const cage_lo = heap.cage_lo + super_page;
         const cage_hi = heap.cage_hi - super_page;
         const node_lo = cage_lo;
-        var node_hi = cage_hi;
+        var node_hi: usize = undefined;
+        var satellite_lo: usize = undefined;
+        var satellite_hi: usize = undefined;
         var objects_lo: usize = @intCast(layout.objects.offset);
         var objects_hi: usize = @intCast(layout.objects.end());
         if (!heap.general_pools or layout.objects.bytes == 0) {
+            const q1 = cage_lo + std.mem.alignBackward(usize, (cage_hi - cage_lo) / 4, super_page);
+            const q2 = cage_lo + std.mem.alignBackward(usize, (cage_hi - cage_lo) / 2, super_page);
+            node_hi = q1;
+            satellite_lo = q1 + super_page;
+            satellite_hi = q2;
+            objects_lo = q2 + super_page;
+            objects_hi = cage_hi;
+        } else {
             const mid = cage_lo + std.mem.alignBackward(usize, (cage_hi - cage_lo) / 2, super_page);
             node_hi = mid;
-            objects_lo = mid;
-            objects_hi = cage_hi;
+            satellite_lo = mid + super_page;
+            satellite_hi = cage_hi;
         }
         const pools: usize = @intCast(layout.meta_pools.offset);
         const total_pool_bytes: usize = @intCast(layout.meta_pools.bytes);
@@ -945,9 +984,11 @@ pub const Engine = struct {
             .config = config,
             .page = page,
             .node = partitionAt(.node, node_lo, node_hi, page),
+            .satellite = partitionAt(.satellite, satellite_lo, satellite_hi, page),
             .objects = partitionAt(.objects, objects_lo, objects_hi, page),
             .bytes = partitionAt(.bytes, bytes_lo, bytes_hi, page),
             .node_buckets = undefined,
+            .satellite_buckets = undefined,
             .objects_buckets = undefined,
             .bytes_buckets = undefined,
             .prng = .init(seed),
@@ -958,6 +999,7 @@ pub const Engine = struct {
         };
         engine.bucket_seed = engine.prng.random().int(u64);
         for (&engine.node_buckets, 0..) |*b, i| b.* = bucketShape(.node, i);
+        for (&engine.satellite_buckets, 0..) |*b, i| b.* = bucketShape(.satellite, i);
         for (&engine.objects_buckets, 0..) |*b, i| b.* = bucketShape(.objects, i);
         for (&engine.bytes_buckets, 0..) |*b, i| b.* = bucketShape(.bytes, i);
         return engine;
@@ -1001,9 +1043,27 @@ pub const Engine = struct {
             const run = local - GeneralClasses.count + 1;
             return .{ .block_bytes = @intCast(run * span_bytes), .fill_bytes = @intCast(run * span_bytes), .slots = 1, .run = @intCast(run), .kind = .large, .general = true, .empty_cap = 1 };
         }
+        // Satellite buckets (batch B2): exact 16-B classes (`Classes`) up to
+        // 4 KiB + 8/16 KiB, then large runs up to 2 MiB, with adaptive empty
+        // span retention matching general pools.
+        if (pid == .satellite) {
+            if (index < Classes.count) {
+                const bytes = Classes.bytes(index);
+                return .{
+                    .block_bytes = @intCast(bytes),
+                    .fill_bytes = @intCast(bytes),
+                    .slots = @intCast(span_bytes / bytes),
+                    .kind = .class,
+                    .empty_cap = if (bytes <= cache_max_bytes) empty_class_small_default else empty_class_large_default,
+                };
+            }
+            const run = index - Classes.count + 1;
+            return .{ .block_bytes = @intCast(run * span_bytes), .fill_bytes = @intCast(run * span_bytes), .slots = 1, .run = @intCast(run), .kind = .large, .empty_cap = 1 };
+        }
         const class_end: usize = switch (pid) {
             .node => node_groups * Classes.count,
             .objects, .bytes => Classes.count,
+            .satellite => unreachable,
         };
         if (index < class_end) {
             const bytes = Classes.bytes(index % Classes.count);
@@ -1022,6 +1082,7 @@ pub const Engine = struct {
     inline fn partition(self: *Engine, pid: PartitionId) *Partition {
         return switch (pid) {
             .node => &self.node,
+            .satellite => &self.satellite,
             .objects => &self.objects,
             .bytes => &self.bytes,
         };
@@ -1030,6 +1091,7 @@ pub const Engine = struct {
     inline fn buckets(self: *Engine, pid: PartitionId) []Bucket {
         return switch (pid) {
             .node => &self.node_buckets,
+            .satellite => &self.satellite_buckets,
             .objects => &self.objects_buckets,
             .bytes => &self.bytes_buckets,
         };
@@ -1053,6 +1115,7 @@ pub const Engine = struct {
 
     fn partitionOfOffset(self: *Engine, offset: usize) ?PartitionId {
         if (offset >= self.node.lo and offset < self.node.hi) return .node;
+        if (offset >= self.satellite.lo and offset < self.satellite.hi) return .satellite;
         if (offset >= self.objects.lo and offset < self.objects.hi) return .objects;
         if (offset >= self.bytes.lo and offset < self.bytes.hi) return .bytes;
         return null;
@@ -1310,7 +1373,7 @@ pub const Engine = struct {
         if (tier == .empty and was != on) {
             if (on) {
                 b.empty_count += 1;
-                if (b.general) {
+                if (usesAdaptiveRetention(p.id, b)) {
                     if (b.kind == .large) {
                         p.empty_large_bytes += b.block_bytes;
                     } else if (b.kind == .class) {
@@ -1319,7 +1382,7 @@ pub const Engine = struct {
                 }
             } else {
                 b.empty_count -= 1;
-                if (b.general) {
+                if (usesAdaptiveRetention(p.id, b)) {
                     if (b.kind == .large) {
                         p.empty_large_bytes -= b.block_bytes;
                         const span_idx = c.spans[e.ordinal];
@@ -1381,7 +1444,7 @@ pub const Engine = struct {
         // just decommitted (< general_decommit_age_ms ago) and is already needed
         // again, expand this bucket's and partition's active empty-span budget
         // up to `empty_class_thrash_cap` (resets on 200 ms idle reclaim).
-        if (b.general and b.kind == .class and b.block_bytes <= cache_max_bytes and !was_retired and
+        if (usesAdaptiveRetention(p.id, b) and b.kind == .class and b.block_bytes <= cache_max_bytes and !was_retired and
             now_ms -% e.empty_since < general_decommit_age_ms)
         {
             const next_cap: u16 = @min(empty_class_thrash_cap, @max(b.empty_cap, empty_class_small_default) *| 2);
@@ -1514,7 +1577,7 @@ pub const Engine = struct {
         const e = self.entry(index);
         const map = self.slotMap(index);
         const slot = findFree(map, e.hint, e.slots) orelse unreachable;
-        slotSet(map, slot, .allocated, p.id != .node);
+        slotSet(map, slot, .allocated, isSharedPartition(p.id));
         e.hint = @intCast(slot + 1);
         if (e.used == 0) {
             self.setTier(p, b, e, .empty, false);
@@ -1636,6 +1699,65 @@ pub const Engine = struct {
     }
 
     // ------------------------------------------------------------------
+    // Satellites (allocator-hardening batch B2, item 3)
+    // ------------------------------------------------------------------
+
+    /// A satellite block of `size`/`alignment` in the cage's `.satellite`
+    /// partition (window agent's thread only, lock-free), ZEROED (its
+    /// request's bytes). Past a large run, a huge block (`allocHuge`).
+    pub fn allocSatellite(self: *Engine, size: usize, alignment: usize, return_address: usize) Error![*]u8 {
+        if (alignment > span_bytes) @panic("heap: an alignment past a span");
+        const thread = platform.currentThreadToken();
+        if (!self.onNodeThread(0, thread)) return error.OutOfMemory;
+        const p = &self.satellite;
+        if (p.lo == p.hi) return error.OutOfMemory;
+        const bytes = classes.requestBytes(size, alignment);
+        if (bytes > huge_threshold_bytes) return self.allocHuge(p, bytes);
+        const bi: u16 = if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(.satellite, runOf(bytes));
+        return self.allocIn(p, bi, size, null, return_address);
+    }
+
+    /// Free a satellite block: validated (cage `.satellite`, window thread,
+    /// class, alignment, allocated), full-block zeroed (0xdd in poisoning
+    /// builds), and held in the task-scoped quarantine while a task runs.
+    pub fn freeSatellite(self: *Engine, ptr: [*]u8, size: usize, alignment: usize) void {
+        const address = @intFromPtr(ptr);
+        const offset = self.offsetOf(address) orelse return self.violation(.other_heap, address);
+        const pid = self.partitionOfOffset(offset) orelse return self.violation(.invalid_free, address);
+        if (pid != .satellite) return self.violation(.invalid_free, address);
+        const thread = platform.currentThreadToken();
+        if (!self.onNodeThread(address, thread)) return;
+        const p = &self.satellite;
+        const bytes = classes.requestBytes(size, alignment);
+        if (offset >= p.frontier) return self.violation(.invalid_free, address);
+        const e = self.entry(offset / span_bytes);
+        if (e.bucket == huge_bucket and e.state != .run_tail and e.state != .unopened) return self.freeHuge(p, offset, bytes);
+        if (bytes > huge_threshold_bytes) return self.violation(if (e.state == .active) .wrong_size else .invalid_free, address);
+        const want: u16 = if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(.satellite, runOf(bytes));
+        self.freeIn(p, offset, want, false, size, thread);
+    }
+
+    /// Free a satellite block whose caller knows it lives in a Browser's cage
+    /// (`browser_heap.heapOf` contract, e.g. `ElementStyle.destroy`).
+    pub fn freeSatelliteOf(ptr: *anyopaque, size: usize, alignment: usize) void {
+        Engine.of(browser_heap.heapOf(ptr)).freeSatellite(@ptrCast(ptr), size, alignment);
+    }
+
+    /// Whether a satellite block of `old_size` may become `new_size` in place:
+    /// the same class, large run, or huge span count.
+    pub fn resizesSatelliteInPlace(_: *Engine, old_size: usize, new_size: usize, alignment: usize) bool {
+        const old_bytes = classes.requestBytes(old_size, alignment);
+        const new_bytes = classes.requestBytes(new_size, alignment);
+        if (old_bytes > huge_threshold_bytes or new_bytes > huge_threshold_bytes)
+            return old_bytes > huge_threshold_bytes and new_bytes > huge_threshold_bytes and runOf(old_bytes) == runOf(new_bytes);
+        const old_class = classes.classOf(old_size, alignment);
+        const new_class = classes.classOf(new_size, alignment);
+        if (old_class) |o| return if (new_class) |n| o == n else false;
+        if (new_class != null) return false;
+        return runOf(old_bytes) == runOf(new_bytes);
+    }
+
+    // ------------------------------------------------------------------
     // General memory (allocator-hardening batch B)
     // ------------------------------------------------------------------
 
@@ -1646,7 +1768,7 @@ pub const Engine = struct {
     /// objects block is; a bytes block is not (std's allocator fills it on
     /// issue). Past a large run, a huge block (`allocHuge`).
     pub fn allocGeneral(self: *Engine, pid: PartitionId, size: usize, alignment: usize, return_address: usize) Error![*]u8 {
-        std.debug.assert(pid != .node);
+        std.debug.assert(pid == .objects or pid == .bytes);
         if (alignment > span_bytes) @panic("heap: an alignment past a span");
         const p = self.partition(pid);
         if (p.lo == p.hi) return error.OutOfMemory;
@@ -1668,7 +1790,7 @@ pub const Engine = struct {
         const address = @intFromPtr(ptr);
         const offset = self.offsetOf(address) orelse return self.violation(.other_heap, address);
         const pid = self.partitionOfOffset(offset) orelse return self.violation(.invalid_free, address);
-        if (pid == .node) return self.violation(.invalid_free, address);
+        if (pid == .node or pid == .satellite) return self.violation(.invalid_free, address);
         const p = self.partition(pid);
         const bytes = classes.requestBytes(size, alignment);
         std.Io.Threaded.mutexLockUncancelable(&p.mutex);
@@ -2130,7 +2252,7 @@ pub const Engine = struct {
         return switch (pid) {
             .objects => 0,
             .bytes => 1,
-            .node => unreachable,
+            .node, .satellite => unreachable,
         };
     }
 
@@ -2556,7 +2678,7 @@ pub const Engine = struct {
             // Its freed region was retired (inaccessible): bring the block's
             // spans back, a super page at a time.
             try self.hugeRange(@as(usize, r.first) * span_bytes, need * span_bytes, .recommit);
-            if (self.config.fill == .poison) @memset(@as([*]u8, @ptrFromInt(self.spanAddress(r.first)))[0 .. need * span_bytes], 0);
+            if (self.fills(p)) @memset(@as([*]u8, @ptrFromInt(self.spanAddress(r.first)))[0 .. need * span_bytes], 0);
             r.used = true;
             r.committed = @intCast(need);
             break :index r.first;
@@ -2651,8 +2773,8 @@ pub const Engine = struct {
             // The free is untyped: any kind of the class is the right one.
             .node => if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(.node, runOf(bytes)),
             .objects => if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(.objects, runOf(bytes)),
-            // A State block is never the page's bytes.
-            .bytes => return self.violation(.invalid_free, address),
+            // A State block is never in the page's bytes or satellite partition.
+            .bytes, .satellite => return self.violation(.invalid_free, address),
         };
         switch (pid) {
             .node => {
@@ -2665,7 +2787,7 @@ pub const Engine = struct {
                 defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
                 self.freeIn(&self.objects, offset, want, false, size, null);
             },
-            .bytes => unreachable,
+            .bytes, .satellite => unreachable,
         }
     }
 
@@ -2695,6 +2817,10 @@ pub const Engine = struct {
                 self.violation(.invalid_free, address);
                 break :at null;
             };
+            if (pid == .bytes or pid == .satellite) {
+                self.violation(.invalid_free, address);
+                break :at null;
+            }
             const bytes = classes.requestBytes(size, alignment);
             const want: u16 = if (classes.classOf(size, alignment)) |class| @intCast(class) else largeBucket(pid, runOf(bytes));
             break :at .{ .pid = pid, .offset = offset, .want = want };
@@ -2760,7 +2886,7 @@ pub const Engine = struct {
         b.requested -|= size;
 
         if (p.id != .bytes and self.holds(thread)) {
-            slotSet(map, slot, .quarantined, p.id != .node);
+            slotSet(map, slot, .quarantined, isSharedPartition(p.id));
             e.quarantined += 1;
             self.hold(address, b.block_bytes, p.id == .objects);
             return;
@@ -2807,7 +2933,7 @@ pub const Engine = struct {
         if (b.mag_count == magazine_depth) return false;
         if (b.mag == no_chunk) b.mag = self.poolAlloc(p, @sizeOf(Chunk)) catch return false;
         const mag = self.magazineOf(p, b);
-        slotSet(self.slotMap(index), slot, .cached, p.id != .node);
+        slotSet(self.slotMap(index), slot, .cached, isSharedPartition(p.id));
         // The span's last release: a span only the magazine keeps is aged
         // from it when the magazine gives the block back, as it would have
         // been with no magazine (a bucket-wide time made idle decommit miss
@@ -2836,7 +2962,7 @@ pub const Engine = struct {
         const slot = (offset - index * span_bytes) / b.block_bytes;
         const map = self.slotMap(index);
         std.debug.assert(slotGet(map, slot) == .cached);
-        slotSet(map, slot, .allocated, p.id != .node);
+        slotSet(map, slot, .allocated, isSharedPartition(p.id));
         b.live += 1;
         if (b.live > b.live_peak) b.live_peak = b.live;
         b.issued += 1;
@@ -2885,7 +3011,7 @@ pub const Engine = struct {
     fn releaseSlot(self: *Engine, p: *Partition, b: *Bucket, index: usize, slot: usize, since: u32) void {
         const e = self.entry(index);
         e.empty_since = since;
-        slotSet(self.slotMap(index), slot, .free, p.id != .node);
+        slotSet(self.slotMap(index), slot, .free, isSharedPartition(p.id));
         if (slot < e.hint) e.hint = @intCast(slot);
         const was_full = e.used == e.slots;
         e.used -= 1;
@@ -2897,13 +3023,13 @@ pub const Engine = struct {
             self.setTier(p, b, e, .empty, true);
             p.stats.spans_empty += 1;
             // M8-4b: tight default + thrash-adaptive active empty-span retention:
-            // - objects large runs keep up to 4 runs / 256 KiB in an MRU ring
+            // - objects/satellite large runs keep up to 4 runs / 256 KiB in an MRU ring
             //   (100% hit on hot 32-96 KiB loops, cuts `load.docs` empty large);
-            // - general class spans keep up to `b.empty_cap` (2 for <= 2 KiB,
+            // - general & satellite class spans keep up to `b.empty_cap` (2 for <= 2 KiB,
             //   1 for > 2 KiB, adapting up to 512 only on fast < 200 ms recommit
             //   thrashing) within `p.empty_class_budget`, and all reclaim at
             //   200 ms idle (`general_decommit_age_ms`).
-            if (b.general) {
+            if (usesAdaptiveRetention(p.id, b)) {
                 if (b.kind == .large) {
                     if (b.empty_count > 1) {
                         self.releaseSpan(p, b, @intCast(index), false);
@@ -3215,6 +3341,9 @@ pub const Engine = struct {
             self.drainMagazines(&self.node);
             self.decommitIn(&self.node, now_ms, min_age_ms, budget, &result);
             self.decommitBitmapPages(&self.node);
+            self.drainMagazines(&self.satellite);
+            self.decommitIn(&self.satellite, now_ms, gen_age, budget, &result);
+            self.decommitBitmapPages(&self.satellite);
         }
         {
             std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
@@ -3238,7 +3367,7 @@ pub const Engine = struct {
         if (p.stats.spans_empty == 0) return;
         var reset_budget = false;
         for (self.buckets(p.id)) |*b| {
-            const age_limit: u32 = if (b.general) @min(min_age_ms, general_decommit_age_ms) else min_age_ms;
+            const age_limit: u32 = if (usesAdaptiveRetention(p.id, b)) @min(min_age_ms, general_decommit_age_ms) else min_age_ms;
             var id = b.hints[@backingInt(Tier.empty)];
             while (id != no_chunk) : (id = self.chunk(p, id).next) {
                 const c = self.chunk(p, id);
@@ -3258,7 +3387,7 @@ pub const Engine = struct {
                     }
                     self.releaseSpan(p, b, index, false);
                     result.decommitted += 1;
-                    if (b.general and b.kind == .class) {
+                    if (usesAdaptiveRetention(p.id, b) and b.kind == .class) {
                         b.empty_cap = if (b.block_bytes <= cache_max_bytes) empty_class_small_default else empty_class_large_default;
                         reset_budget = true;
                     }
@@ -3351,6 +3480,7 @@ pub const Engine = struct {
         defer std.Io.Threaded.mutexUnlock(&self.bytes.mutex);
         var s: Stats = .{
             .node = self.node.stats,
+            .satellite = self.satellite.stats,
             .objects = self.objects.stats,
             .bytes = self.bytes.stats,
             .quarantine_blocks = self.quarantine.count,
@@ -3360,12 +3490,15 @@ pub const Engine = struct {
             .quarantine_total_evicted = self.quarantine.total_evicted,
         };
         sumBuckets(&s.node, &self.node_buckets);
+        sumBuckets(&s.satellite, &self.satellite_buckets);
         sumBuckets(&s.objects, self.objects_buckets[0..general_objects_base]);
         sumBuckets(&s.general_objects, self.objects_buckets[general_objects_base..]);
         sumBuckets(&s.bytes, &self.bytes_buckets);
         // `bytes` coalescing large runs (M8-3) track their live bytes on the partition.
         s.bytes.live_bytes += self.bytes.bytes_large_live_bytes;
-        // Huge blocks are general memory's.
+        // Huge blocks are counted in their partition's live figures.
+        s.satellite.live_blocks += s.satellite.huge_blocks;
+        s.satellite.live_bytes += s.satellite.huge_bytes;
         s.general_objects.live_blocks += s.objects.huge_blocks;
         s.general_objects.live_bytes += s.objects.huge_bytes;
         s.bytes.live_blocks += s.bytes.huge_blocks;
@@ -3387,6 +3520,7 @@ pub const Engine = struct {
             const pid = self.partitionOfOffset(offset).?;
             const ps = switch (pid) {
                 .node => &s.node,
+                .satellite => &s.satellite,
                 .objects => &s.objects,
                 .bytes => &s.bytes,
             };
@@ -3480,7 +3614,7 @@ pub const Engine = struct {
     /// where the heap records sites. `report(context, line)` for each.
     pub fn leakReport(self: *Engine, context: anytype, comptime report: fn (@TypeOf(context), LeakLine) void) usize {
         var total: usize = 0;
-        inline for (.{ PartitionId.node, PartitionId.objects, PartitionId.bytes }) |pid| {
+        inline for (.{ PartitionId.node, PartitionId.satellite, PartitionId.objects, PartitionId.bytes }) |pid| {
             const p = self.partition(pid);
             for (self.buckets(pid)) |*b| {
                 if (b.live == 0 or b.kind == .instance) continue;
@@ -3494,7 +3628,7 @@ pub const Engine = struct {
             // Huge blocks (batch B): one line per partition, by count.
             if (p.stats.huge_blocks != 0) {
                 total += p.stats.huge_blocks;
-                report(context, .{ .partition = pid, .block_bytes = p.stats.huge_bytes / p.stats.huge_blocks, .count = p.stats.huge_blocks, .type_name = null, .return_address = 0, .general = true });
+                report(context, .{ .partition = pid, .block_bytes = p.stats.huge_bytes / p.stats.huge_blocks, .count = p.stats.huge_blocks, .type_name = null, .return_address = 0, .general = pid != .satellite });
             }
         }
         return total;
@@ -3564,6 +3698,7 @@ pub const Engine = struct {
         const issued = issued: {
             var n: usize = 0;
             for (&self.node_buckets) |*b| n += b.issued;
+            for (&self.satellite_buckets) |*b| n += b.issued;
             for (&self.objects_buckets) |*b| n += b.issued;
             break :issued n;
         };

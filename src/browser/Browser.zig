@@ -363,11 +363,13 @@ pub const Browser = struct {
         if (scope.heap) |reserved| if (reserved.rung != .full) log.info("the Browser's heap got the {t} rung: its objects partition is in the cage's upper half", .{reserved.rung});
         // The Browser's general memory (allocator-hardening batch B): from
         // here on its agent, its realms, its tables and its states allocate
-        // from its heap's objects and bytes partitions, where the rung has
-        // them (runtime.heap.general); a smaller rung keeps the host's
+        // from its heap's objects and bytes partitions, when the platform
+        // selects Crane's pools (platform.general_memory == .crane_pools),
+        // the rung has them (runtime.heap.general), and the embedder did not
+        // ask for `.host`; otherwise general memory stays on the host's
         // allocator (design 4.2). The host's allocator keeps only the
         // Browser's own record and its scope, made before and ended after.
-        if (scope.heap) |reserved| if (reserved.general_pools and config.general_memory == .crane) {
+        if (scope.heap) |reserved| if (platform.general_memory == .crane_pools and reserved.general_pools and config.general_memory == .crane) {
             // The window agent's: its cache serves this thread - the
             // Browser's, which its window agent runs on - without a lock
             // (runtime.heap.AgentCache); another thread's call through it

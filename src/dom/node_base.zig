@@ -636,6 +636,14 @@ pub const NodeBase = extern struct {
         return runtime.allocatorOf(owner);
     }
 
+    /// The satellite allocator of this node's Browser (allocator-hardening
+    /// batch B2): allocates node-linked satellites in the cage's `.satellite`
+    /// partition (window agent's thread only, lock-free).
+    pub fn satelliteAllocator(self: *const NodeBase) Allocator {
+        const owner = self.registeredInstance() orelse @panic("a NodeBase with no Instance allocates: not registered yet, or released");
+        return runtime.satelliteAllocatorOf(owner);
+    }
+
     // ========================================================================
     // Rare data (lane perf2 batch 4, R6 part 1; one sparse block since lane nm2)
     // ========================================================================
@@ -644,7 +652,7 @@ pub const NodeBase = extern struct {
     /// is counted in: what dom.node_rare_data's writers take. Never
     /// called on a node that is not registered (`allocator`).
     pub fn rareContext(self: *const NodeBase) rare_data.Context {
-        return .{ .allocator = self.allocator(), .memory = self.domMemory() };
+        return .{ .allocator = self.allocator(), .satellite = self.satelliteAllocator(), .memory = self.domMemory() };
     }
 
     /// The DOM memory of this node's Browser (runtime.BrowserScope.dom_memory),
@@ -772,7 +780,7 @@ pub const NodeBase = extern struct {
     /// the node's first registration and kept until its teardown.
     pub fn appendRegisteredObserver(self: *NodeBase, registered: RegisteredObserverType) error{OutOfMemory}!*RegisteredObserverType {
         const list = try rare_data.ensureOwn(self.rareContext(), &self.rare, .registered_observers);
-        const record = try self.allocator().create(ObserverRegistration);
+        const record = try self.satelliteAllocator().create(ObserverRegistration);
         record.* = .{ .registered = registered };
         list.append(&record.link);
         if (self.domMemory()) |memory| memory.add(@sizeOf(ObserverRegistration));
@@ -785,7 +793,7 @@ pub const NodeBase = extern struct {
         const list = rare_data.get(self.rare, .registered_observers).?;
         const record: *ObserverRegistration = @fieldParentPtr("registered", registered);
         list.remove(&record.link);
-        self.allocator().destroy(record);
+        self.satelliteAllocator().destroy(record);
         if (self.domMemory()) |memory| memory.sub(@sizeOf(ObserverRegistration));
     }
 

@@ -143,6 +143,13 @@ pub fn allocatorOf(instance: *const Instance) std.mem.Allocator {
     return BrowserScope.ofInstance(instance).allocator;
 }
 
+/// The satellite allocator of `instance`'s Browser (allocator-hardening
+/// batch B2, item 3): node-linked satellites in the cage's `.satellite`
+/// partition (window agent's thread only, lock-free).
+pub fn satelliteAllocatorOf(instance: *const Instance) std.mem.Allocator {
+    return BrowserScope.ofInstance(instance).satelliteAllocator();
+}
+
 /// Whether `allocator` IS `instance`'s Browser's (`allocatorOf`): the same
 /// allocator object, not merely an equivalent one. A state that frees through
 /// `allocatorOf` what it was made with needs this to hold for every object
