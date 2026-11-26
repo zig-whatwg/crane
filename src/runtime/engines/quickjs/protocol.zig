@@ -257,6 +257,12 @@ pub fn inspectorWrap(_: *engine.InspectorSession, _: Context, _: JSValue, _: []c
 pub fn inspectorUnwrap(_: *engine.InspectorSession, _: []const u8) Error!?engine.InspectorUnwrapped {
     return error.NotSupported;
 }
+pub fn inspectorUnwrapWithGroup(_: *engine.InspectorSession, _: []const u8, _: std.mem.Allocator) Error!?engine.InspectorUnwrappedWithGroup {
+    return error.NotSupported;
+}
+pub fn inspectorFunctionLocation(_: Context, _: JSValue) Error!?engine.InspectorFunctionLocation {
+    return error.NotSupported;
+}
 pub fn inspectorConsoleMessage(_: Context, _: []const u8, _: []const JSValue) void {}
 pub fn inspectorExceptionThrown(_: Context, _: JSValue, _: *const engine.InspectorExceptionDetails) u32 {
     return 0;
