@@ -3295,7 +3295,10 @@ pub const Engine = struct {
             var sp = first_span;
             while (sp < end_span) : (sp += 1) {
                 const e = self.entry(sp);
-                if (e.state == .active and e.bucket != huge_bucket and e.bucket != bytes_large_bucket) {
+                // `bytes_large_bucket` (19) is a coalescing-run sentinel ONLY
+                // inside `.bytes`; in `.objects` and `.node` bucket 19 is a
+                // regular active 320 B State bucket (e.g. HTMLFormElement).
+                if (e.state == .active and e.bucket != huge_bucket and !(p.id == .bytes and e.bucket == bytes_large_bucket)) {
                     any_active = true;
                     break;
                 }

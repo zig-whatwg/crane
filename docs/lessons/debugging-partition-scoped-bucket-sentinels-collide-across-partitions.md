@@ -1,0 +1,12 @@
+# Debugging: Partition-scoped bucket sentinels collide with valid buckets in sibling partitions
+
+**Date**: 2026-11-25
+**Lesson**: A sentinel bucket index that is out-of-range only inside one heap partition (`bytes_large_bucket = GeneralClasses.count = 19` in `.bytes`) is a valid live bucket index in sibling partitions (320-byte State bucket `19` in `.objects` and `.node`); never test it without gating on `p.id`, and test bitmap decommit on Linux where `MADV_DONTNEED` zeroes pages immediately.
+
+**Why**: `Engine.decommitBitmapPages` runs generically over `.node`, `.objects`, and `.bytes` and checked `e.bucket != bytes_large_bucket` without checking `p.id == .bytes`. Because `bytes_large_bucket == 19` equals the `.quantum16` 320-byte State bucket (`(19 + 1) * 16 = 320`, which holds `HTMLFormElement.InternalState`), any bitmap page whose only active span in `.objects` or `.node` was a 320-byte State span looked completely inactive and was decommitted on idle turns.
+
+**What Happened**: On macOS (`MADV_FREE_REUSABLE`), the kernel kept the bitmap page's bytes intact unless under memory pressure, so all unit tests and cost runs passed. On Linux (`MADV_DONTNEED`), the kernel immediately zeroed the bitmap page, resetting live `HTMLFormElement.InternalState` slots from `.allocated` to `.free`. During the next navigation teardown (`notifyMemoryPressure -> drainAll -> HTMLFormElement.deinitOwn -> InstanceRegistry.remove -> heap.free`), `Engine.freeIn` saw `.free` and panicked with `.double_free` on 3 files across the 14,271-file WPT sweep (2 production, 1 bug-finding), always on pages that ran `>= 1,000 ms` (long enough for idle decommit to clear neighboring spans on the 4 KiB bitmap page).
+
+**Fix**: Guard the sentinel check with its partition id (`!(p.id == .bytes and e.bucket == bytes_large_bucket)`) in `Engine.decommitBitmapPages`, and pin both `.objects` and `.node` with a regression test (`M8-2b` in `tests/runtime/hard1b_general_engine_test.zig`) allocating a `(GeneralClasses.count + 1) * 16`-byte live State block and verifying `bitmap_pages_decommitted == 0` and clean `free()` after `decommitAged`.
+
+**Takeaway**: **Guard every partition-scoped sentinel index with `p.id == .<partition>` (or use a globally out-of-range sentinel like `huge_bucket = maxInt(u16) - 1`), and remember that Linux `MADV_DONTNEED` exposes accidental metadata decommits immediately where macOS `MADV_FREE_REUSABLE` masks them.**
