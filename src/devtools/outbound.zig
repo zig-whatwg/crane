@@ -171,6 +171,9 @@ pub const SessionLink = struct {
     id_len: u8 = 0,
     /// Set when the session detaches: nothing more is sent.
     ended: std.atomic.Value(bool) = .init(false),
+    /// True only for an in-process client (`LocalLink`: Crane's MCP server);
+    /// never set for WebSocket or pipe CDP clients.
+    is_local: bool = false,
     refs: std.atomic.Value(u32) = .init(1),
 
     pub fn create(allocator: Allocator, outbound: *Outbound, session_id: []const u8) Allocator.Error!*SessionLink {

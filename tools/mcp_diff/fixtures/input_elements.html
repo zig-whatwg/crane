@@ -1,0 +1,32 @@
+<!doctype html>
+<title>Input Elements</title>
+<button id="btn">Click Me</button>
+<button id="dlg" onclick="alert('hi from click')">Open Dialog</button>
+<button id="src" draggable="true">Drag Source</button>
+<button id="dst">Drop Target</button>
+<label>Name <input id="name" type="text"></label>
+<label>Bio <textarea id="bio"></textarea></label>
+<label>Color <select id="col"><option value="r">Red</option><option value="g">Green</option></select></label>
+<label><input id="cb" type="checkbox"> Agree</label>
+<label><input id="rad" type="radio" name="g" value="1"> Pick</label>
+<label>Locked <input id="ro" type="text" readonly value="fixed"></label>
+<input id="hidfile" type="file" style="display:none">
+<button id="chooser" onclick="document.getElementById('hidfile').click()">Choose File</button>
+<script>
+window.ev = [];
+const btn = document.getElementById('btn');
+for (const t of ['pointerdown','mousedown','focus','pointerup','mouseup','click','dblclick']) {
+  btn.addEventListener(t, (e) => ev.push(t + ':' + e.isTrusted + ':' + (e.detail ?? 0)));
+}
+window.dnd = [];
+const src = document.getElementById('src');
+const dst = document.getElementById('dst');
+src.addEventListener('dragstart', (e) => { dnd.push('dragstart:' + e.isTrusted); e.dataTransfer.setData('text/plain', 'box'); });
+dst.addEventListener('dragenter', (e) => { e.preventDefault(); dnd.push('dragenter:' + e.isTrusted); });
+dst.addEventListener('dragover', (e) => { e.preventDefault(); if (!dnd.includes('dragover')) dnd.push('dragover'); });
+dst.addEventListener('drop', (e) => { e.preventDefault(); dnd.push('drop:' + e.isTrusted + ':' + e.dataTransfer.getData('text/plain')); });
+src.addEventListener('dragend', (e) => { dnd.push('dragend:' + e.isTrusted); });
+window.fileEv = [];
+const hf = document.getElementById('hidfile');
+hf.addEventListener('change', () => fileEv.push(hf.files.length + ':' + (hf.files[0]?.name ?? '')));
+</script>

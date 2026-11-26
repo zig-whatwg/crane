@@ -2372,7 +2372,29 @@ fn showPickerIfApplicable(instance: *runtime.Instance, input_type: InputType) vo
     // activation behavior when inactive/immutable; otherwise consume.
     if (!activation.hasTransientActivation(window) or !isMutable(instance, input_type)) return;
     activation.consume(window);
-    // Step 4: a file dialog the platform cannot show is dismissed without a
+    // Step 4: if a host intercepts file chooser dialogs (CDP
+    // Page.setInterceptFileChooserDialog), tell it and suppress the native
+    // picker; only queue cancel when the interceptor asked for it.
+    if (input_type == .file) {
+        if (dom.browser_state.browsingContextOf(window)) |bc| {
+            var intercepted = false;
+            var cancel = false;
+            const multiple = interfaces.Element.call_hasAttribute(instance, runtime.DOMString.initInterned("multiple")) catch false;
+            @import("html").navigation.file_chooser.opened(bc.navigables, &.{
+                .tab = bc.getTop().id,
+                .navigable = bc.id,
+                .input = instance,
+                .multiple = multiple,
+                .intercepted = &intercepted,
+                .cancel = &cancel,
+            });
+            if (intercepted) {
+                if (cancel) form_associated.queueCancelEvent(instance, &pendingSelectTasks);
+                return;
+            }
+        }
+    }
+    // Otherwise a file dialog the platform cannot show is dismissed without a
     // selection: unsupported, or emulated - the built-in platforms' files a
     // host names by path, with no picker UI (their showFilePicker answers
     // none chosen; html/file_selection.zig takes the host's files). Use the

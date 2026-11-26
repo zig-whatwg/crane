@@ -316,11 +316,10 @@ test "upload_file: the files set on the input as Puppeteer's uploadFile sets the
     try expectResult(a, r.text, "[0,\"one:input,one:change\"]");
 
     // Not a file input: chrome-devtools-mcp clicks it and waits for a file
-    // chooser; element clicks come with batch 5, and the answer says no
-    // click happened.
+    // chooser (Page.setInterceptFileChooserDialog); no chooser opens here.
     r = try h.tool("upload_file", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"filePaths\":[\"{s}\"]}}", .{ go, first }));
     try testing.expect(r.is_error);
-    try testing.expectEqualStrings("Error: Failed to upload file. The element could not accept the file directly, and Crane's MCP server does not click elements yet, so no file chooser was opened.", r.text);
+    try testing.expectEqualStrings("Error: Failed to upload file. The element could not accept the file directly, and clicking it did not trigger a file chooser.", r.text);
 
     if (!dirs.outside_is_inside) {
         const outside = try write(a, dirs.outside, "c.txt", "x");
