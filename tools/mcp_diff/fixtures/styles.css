@@ -1,0 +1,27 @@
+@layer base {
+  .card {
+    color: green;
+    padding: 4px;
+  }
+}
+
+@media screen {
+  #hero {
+    letter-spacing: 1px;
+  }
+}
+
+@supports (display: block) {
+  .card, .unused {
+    font-weight: bold;
+  }
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 1;
+  }
+}

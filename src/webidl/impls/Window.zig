@@ -2854,8 +2854,13 @@ fn scrollViewportTo(instance: *runtime.Instance, left: ?f64, top: ?f64) !runtime
     // A window whose navigable has gone has no viewport: "If there is no
     // viewport, return a resolved Promise and abort the remaining steps."
     if (!internal.closed) {
+        const old_x = internal.scroll_x;
+        const old_y = internal.scroll_y;
         if (left) |x| internal.scroll_x = @max(0, normalizeNonFinite(x));
         if (top) |y| internal.scroll_y = @max(0, normalizeNonFinite(y));
+        if (internal.scroll_x != old_x or internal.scroll_y != old_y) {
+            if (internal.document) |doc| @import("dom").scroll_events.queueViewportScroll(doc);
+        }
     }
     const realm = engine.currentRealm() orelse instance.ctx;
     return (try engine.createResolvedPromise(realm, runtime.JSValue.jsUndefined)).take();
@@ -2868,8 +2873,13 @@ fn scrollViewportTo(instance: *runtime.Instance, left: ?f64, top: ?f64) !runtime
 fn performViewportScroll(window: *runtime.Instance, x: f64, y: f64) void {
     const internal = getInternal(window) orelse return;
     if (internal.closed) return;
+    const old_x = internal.scroll_x;
+    const old_y = internal.scroll_y;
     internal.scroll_x = @max(0, normalizeNonFinite(x));
     internal.scroll_y = @max(0, normalizeNonFinite(y));
+    if (internal.scroll_x != old_x or internal.scroll_y != old_y) {
+        if (internal.document) |doc| @import("dom").scroll_events.queueViewportScroll(doc);
+    }
 }
 
 /// Operation: resizeTo

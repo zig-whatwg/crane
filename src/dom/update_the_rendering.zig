@@ -36,7 +36,8 @@ pub const Step = enum(u5) {
     flush_autofocus_candidates = 7,
     /// 8. CSSOM View "run the resize steps".
     resize = 8,
-    /// 9. CSSOM View "run the scroll steps".
+    /// 9. CSSOM View "run the scroll steps": dom.scroll_events (called
+    /// directly by the rendering loop).
     scroll = 9,
     /// 10. CSSOM View "evaluate media queries and report changes".
     media_queries = 10,
@@ -46,7 +47,8 @@ pub const Step = enum(u5) {
     animations = 11,
     /// 12. Fullscreen "run the fullscreen steps".
     fullscreen = 12,
-    /// 13. The canvas context lost steps.
+    /// 13. The canvas context lost steps: dom.canvas_2d (called directly by
+    /// the rendering loop).
     context_lost = 13,
     /// 14. Run the animation frame callbacks.
     animation_frame_callbacks = 14,
@@ -61,14 +63,18 @@ pub const Step = enum(u5) {
     /// 19. Intersection Observer "run the update intersection observations
     /// steps".
     intersection_observations = 19,
-    /// 20. Long Animation Frames "record rendering time".
+    /// 20. Long Animation Frames "record rendering time": dom.frame_timing
+    /// (called directly by the rendering loop, given step 15's
+    /// style_and_layout_start_ns).
     rendering_time = 20,
-    /// 21. Paint Timing "mark paint timing".
+    /// 21. Paint Timing "mark paint timing": dom.frame_timing (called
+    /// directly by the rendering loop).
     paint_timing = 21,
     /// 22. Update the rendering or user interface (the host's: Crane draws
     /// nothing).
     update_ui = 22,
-    /// 23. CSS Position "process top layer removals".
+    /// 23. CSS Position 4 "process top layer removals": dom.top_layer
+    /// (called directly by the rendering loop).
     top_layer_removals = 23,
 };
 
@@ -79,6 +85,10 @@ pub const Frame = struct {
     /// that hands it to script converts it with the relative high
     /// resolution time of the document's relevant global.
     timestamp_ns: i64,
+    /// HTML 8.1.7.3 step 15: `unsafeStyleAndLayoutStartTime`, captured right
+    /// before step 16 (style and layout) in nanoseconds on the loop's clock,
+    /// and passed to step 20 ("record rendering time"). 0 before step 15.
+    style_and_layout_start_ns: i64 = 0,
 };
 
 /// One owner's step for one document. `document` is fully active and

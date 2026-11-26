@@ -297,7 +297,7 @@ fn mapOf(session: *PageSession) !*NodeMap {
 }
 
 /// The inspected frame's document: the session tab's top-level document.
-fn topDocument(session: *PageSession) ?*runtime.Instance {
+pub fn topDocument(session: *PageSession) ?*runtime.Instance {
     const top = frames.navigable(session, session.tab) orelse return null;
     return frames.documentOf(top);
 }
@@ -306,6 +306,12 @@ fn topDocument(session: *PageSession) ?*runtime.Instance {
 fn nodeIds(session: *PageSession) ?*NodeIds {
     const browser = session.browser orelse return null;
     return browser.scope.of(NodeIds) catch null;
+}
+
+/// Stable `DOM.BackendNodeId` for `node` in `session`'s Browser.
+pub fn backendNodeIdFor(session: *PageSession, node: *runtime.Instance) ?i64 {
+    const ids = nodeIds(session) orelse return null;
+    return ids.idOf(node) catch null;
 }
 
 /// Whether the engine has the inspector's remote objects (lane cdpw).
@@ -463,7 +469,7 @@ fn containerNamed(session: *PageSession, node_id: i64) !*runtime.Instance {
 // ============================================================================
 
 /// The bound element `node_id` (AssertElement: "Node is not an Element").
-fn elementNamed(session: *PageSession, node_id: i64) !*runtime.Instance {
+pub fn elementNamed(session: *PageSession, node_id: i64) !*runtime.Instance {
     const node = try nodeNamed(session, node_id, null, null);
     if ((interfaces.Node.get_nodeType(node) catch 0) != 1) return session.fail("Node is not an Element");
     return node;
@@ -671,7 +677,7 @@ pub fn getTopLayerElements(session: *PageSession, params: D.getTopLayerElements.
         const layer = (dom.top_layer.ofDocument(document, false) catch null) orelse continue;
         var members: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
         for (layer.entries.items) |entry| {
-            if (!(entry.showing or entry.modal or entry.fullscreen)) continue;
+            if (!entry.isTopLayerMember()) continue;
             const element = entry.node() orelse continue;
             // An element is in the top layer once, where it was last added.
             for (members.items, 0..) |m, i| if (m == element) {
@@ -1418,7 +1424,7 @@ fn updateBackdrops(session: *PageSession, document: *runtime.Instance) struct { 
     defer now.deinit(session.allocator);
     if (dom.top_layer.ofDocument(document, false) catch null) |layer| {
         for (layer.entries.items) |entry| {
-            if (!(entry.showing or entry.modal or entry.fullscreen)) continue;
+            if (!entry.isTopLayerMember()) continue;
             const element = entry.node() orelse continue;
             if (!dom.style.engine.generatedPseudos(element).backdrop) continue;
             const named: Backdrop = .{ .document = @intFromPtr(document), .element = @intFromPtr(element), .generation = runtime.SlabAllocator.generationOf(element) };

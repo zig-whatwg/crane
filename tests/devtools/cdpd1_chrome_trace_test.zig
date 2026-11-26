@@ -433,31 +433,6 @@ const deviations = [_]Deviation{
         \\
         ,
     },
-    // close(): Crane removes the dialog from the top layer at once, as
-    // WebKit (Element::removeFromTopLayer from HTMLDialogElement::close) and
-    // Gecko (RemoveFromTopLayerIfNeeded) do; Blink requests the removal and
-    // performs it at the next style update (Document::ScheduleForTopLayerRemoval
-    // / RemoveFinishedTopLayerElements: CSS Position 4's "request an element
-    // to be removed from the top layer", for overlay transitions), after the
-    // ::backdrop's PseudoElementDestroyed. Queued with lane rend1's
-    // update-the-rendering step 23, "top layer removals" (main's ruling):
-    // when it lands, this deviation goes.
-    .{
-        .chrome =
-        \\step top-layer-close
-        \\  event DOM.attributeRemoved {name:"open",nodeId:17}
-        \\  event DOM.pseudoElementRemoved {parentId:17,pseudoElementId:45}
-        \\  event DOM.topLayerElementsUpdated {}
-        \\
-        ,
-        .crane =
-        \\step top-layer-close
-        \\  event DOM.attributeRemoved {name:"open",nodeId:17}
-        \\  event DOM.topLayerElementsUpdated {}
-        \\  event DOM.pseudoElementRemoved {parentId:17,pseudoElementId:45}
-        \\
-        ,
-    },
 };
 
 /// The fixture with `deviations` applied, OWNED; error.DeviationNotFound when

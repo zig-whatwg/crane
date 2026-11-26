@@ -62,6 +62,7 @@ const selector_matching = @import("../selector_matching.zig");
 const hooks = @import("hooks.zig");
 const sheet_mod = @import("sheet.zig");
 const style_rules = @import("rules.zig");
+const inspect_mod = @import("inspect.zig");
 const ua_sheet = @import("ua_sheet.zig");
 const element_style = @import("element_style.zig");
 const held_style = @import("held_style.zig");
@@ -1239,6 +1240,9 @@ const Resolution = struct {
     /// set only for that read - null on every resolution a page makes, one
     /// test per candidate rule.
     container_probe: ?*ContainerProbe = null,
+    /// CDP's CSS.getMatchedStylesForNode (`inspectMatchedRules`): set only
+    /// during that read-only inspection - null on every normal resolution.
+    inspect_collector: ?*inspect_mod.Collector = null,
 
     /// Whether `element` currently matches `:focus` (including a shadow host
     /// containing the focused element). O(1) when the document has no focused
@@ -2426,6 +2430,202 @@ pub fn queriesContainer(element: *runtime.Instance, container: *runtime.Instance
     return probe.hit;
 }
 
+/// Active stylesheets of `document` (document tree, shadow trees, and
+/// watched top-level sheets including disabled / non-matching-media sheets),
+/// deduplicated in document order. Read-only, for CDP `CSS.enable` /
+/// `CSS.styleSheetAdded`.
+pub fn activeStyleSheets(allocator: Allocator, document: *runtime.Instance) Error![]inspect_mod.ActiveSheetEntry {
+    const engine = hooks.engineOf(document) orelse return &.{};
+    engine.enterResolution();
+    defer engine.resolving = false;
+    const active = try engine.ensureActive(document);
+    var out: std.ArrayList(inspect_mod.ActiveSheetEntry) = .empty;
+    errdefer out.deinit(allocator);
+    const appendUnique = struct {
+        fn add(a: Allocator, list: *std.ArrayList(inspect_mod.ActiveSheetEntry), rec: *SheetRecord, is_shadow: bool) Error!void {
+            for (list.items) |existing| if (existing.record == rec) return;
+            try list.append(a, .{ .record = rec, .is_shadow = is_shadow });
+        }
+    }.add;
+    for (active.sheets.items) |s| try appendUnique(allocator, &out, s.record, false);
+    for (active.watched.items) |w| try appendUnique(allocator, &out, w.record, false);
+    for (active.scopes.items) |scope| {
+        for (scope.sheets.items) |s| try appendUnique(allocator, &out, s.record, true);
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+const inspected_pseudos = [_][]const u8{
+    "before",
+    "after",
+    "marker",
+    "first-line",
+    "first-letter",
+    "selection",
+    "placeholder",
+    "backdrop",
+};
+
+/// Read-only inspection of all matched CSS rules, presentational hints,
+/// pseudo-element rules, referenced `@keyframes` rules, active `@property`
+/// rules, and `CSS.registerProperty` registrations for `element`.
+/// Used by CDP `CSS.getMatchedStylesForNode` and `CSS.getInlineStylesForNode`.
+pub fn inspectMatchedRules(allocator: Allocator, element: *runtime.Instance) Error!inspect_mod.Inspection {
+    // Ensure lineage styles are resolved so @container style queries and
+    // computed animation-name are current.
+    _ = (try resolvedStyle(element, null)) orelse return .{};
+    const node = instance_bridge.getNodeBase(element) orelse return .{};
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return .{};
+    const engine = hooks.engineOf(document) orelse return .{};
+    const state = element_style.of(element) orelse return .{};
+    const registry = try engine.propertyRegistry(document);
+    engine.enterResolution();
+    defer engine.resolving = false;
+    const active = try engine.ensureActive(document);
+
+    var collector: inspect_mod.Collector = .{ .allocator = allocator };
+    defer collector.deinit();
+
+    const singletons = singletonState(document);
+    var res: Resolution = .{
+        .allocator = engine.allocator,
+        .document = document,
+        .engine = engine,
+        .active = active,
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletons.key },
+        .focused_element = singletons.focused,
+        .inspect_collector = &collector,
+    };
+    defer res.deinit();
+
+    var result: inspect_mod.Inspection = .{};
+    errdefer result.deinit(allocator);
+
+    var reads: selector_matching.StateReads = .{};
+    try collectMatched(&res, element, node, state, null, &reads);
+    result.matched_rules = try collector.buildMatchedRules(allocator);
+    if (collector.presentation_hints.items.len > 0) {
+        result.presentation_hints = try allocator.dupe(*const css.declarations.DeclarationBlock, collector.presentation_hints.items);
+    }
+
+    // Pseudo-element matched rules.
+    var pseudos: std.ArrayList(inspect_mod.PseudoMatches) = .empty;
+    errdefer {
+        for (pseudos.items) |pm| {
+            for (pm.matches) |m| allocator.free(m.matching_selectors);
+            if (pm.matches.len > 0) allocator.free(pm.matches);
+        }
+        pseudos.deinit(allocator);
+    }
+    for (inspected_pseudos) |pseudo_name| {
+        res.matched.clearRetainingCapacity();
+        collector.reset();
+        try collectMatched(&res, element, node, state, pseudo_name, &reads);
+        if (collector.raw.items.len > 0) {
+            const pm_rules = try collector.buildMatchedRules(allocator);
+            try pseudos.append(allocator, .{ .pseudo_type = pseudo_name, .matches = pm_rules });
+        }
+    }
+    if (pseudos.items.len > 0) {
+        result.pseudo_matches = try pseudos.toOwnedSlice(allocator);
+    }
+
+    // Referenced @keyframes rules (from computed animation-name).
+    if (state.cached) |cached| {
+        const anim_names = cached.style.get(.animation_name);
+        if (anim_names == .animation_list) {
+            var kf_list: std.ArrayList(inspect_mod.KeyframesEntry) = .empty;
+            errdefer kf_list.deinit(allocator);
+            for (anim_names.animation_list.items.items) |item| {
+                if (item != .name) continue;
+                if (findKeyframesEntry(&res, node, anim_names.animation_list.tree_scope.serial, item.name)) |entry| {
+                    var dup = false;
+                    for (kf_list.items) |k| if (k.rule == entry.rule) {
+                        dup = true;
+                        break;
+                    };
+                    if (!dup) try kf_list.append(allocator, entry);
+                }
+            }
+            if (kf_list.items.len > 0) {
+                result.keyframes_rules = try kf_list.toOwnedSlice(allocator);
+            }
+        }
+    }
+
+    // Active @property rules.
+    {
+        var prop_rules: std.ArrayList(inspect_mod.PropertyRuleEntry) = .empty;
+        errdefer prop_rules.deinit(allocator);
+        for (active.sheets.items) |*s| {
+            for (s.contents.property_rules.items) |entry| {
+                if (!s.contents.conditionHoldsFor(entry.condition, &active.media, null)) continue;
+                try prop_rules.append(allocator, .{ .rule = entry.rule, .sheet = s.record });
+            }
+        }
+        if (prop_rules.items.len > 0) {
+            result.property_rules = try prop_rules.toOwnedSlice(allocator);
+        }
+    }
+
+    // Script-registered custom properties (`CSS.registerProperty`).
+    if (registry) |reg| {
+        if (reg.scripted.entries.count() > 0) {
+            var regs: std.ArrayList(inspect_mod.RegisteredPropertyEntry) = .empty;
+            errdefer regs.deinit(allocator);
+            var it = reg.scripted.entries.valueIterator();
+            while (it.next()) |rec_ptr| {
+                const rec = rec_ptr.*;
+                try regs.append(allocator, .{
+                    .name = rec.name,
+                    .syntax = rec.syntax_text,
+                    .inherits = rec.inherits,
+                    .initial_value = rec.initial_text,
+                });
+            }
+            result.registered_properties = try regs.toOwnedSlice(allocator);
+        }
+    }
+
+    return result;
+}
+
+fn findKeyframesEntry(res: *Resolution, node: *NodeBase, declaring_scope: u64, name: []const u8) ?inspect_mod.KeyframesEntry {
+    if (declaring_scope == 0) return keyframesEntryIn(res, res.active.sheets.items, name);
+    var current: ?*NodeBase = node;
+    while (current) |n| {
+        var root = n;
+        while (root.parent_node) |p| root = p;
+        if (scopeSerial(root) == declaring_scope) {
+            if (root.node_type == NodeBase.DOCUMENT_NODE) return keyframesEntryIn(res, res.active.sheets.items, name);
+            if (res.active.scopeOf(root)) |scope| {
+                if (keyframesEntryIn(res, scope.sheets.items, name)) |entry| return entry;
+            }
+            break;
+        }
+        if (isShadowRoot(root)) {
+            const host = interfaces.ShadowRoot.get_host(instanceOf(root) orelse break) catch break;
+            current = instance_bridge.getNodeBase(host);
+        } else break;
+    }
+    return keyframesEntryIn(res, res.active.sheets.items, name);
+}
+
+fn keyframesEntryIn(res: *Resolution, sheets: []const ActiveSheet, name: []const u8) ?inspect_mod.KeyframesEntry {
+    var best: ?inspect_mod.KeyframesEntry = null;
+    var best_layer: u16 = 0;
+    for (sheets) |*s| for (s.contents.keyframes_rules.items) |entry| {
+        if (!std.mem.eql(u8, entry.rule.prelude, name)) continue;
+        if (!s.contents.conditionHoldsFor(entry.condition, &res.active.media, null)) continue;
+        const layer = if (entry.layer) |l| s.layer_order[l] else s.import_layer orelse css.cascade.unlayered;
+        if (best == null or layer >= best_layer) {
+            best = .{ .rule = entry.rule, .sheet = s.record };
+            best_layer = layer;
+        }
+    };
+    return best;
+}
+
 /// The nearest flat-tree ancestor - the originating element first for a
 /// pseudo-element - that is a valid query container for `needs` and, with a
 /// name, lists it in its container-name (5.1-5.2): every element is a style
@@ -2476,7 +2676,7 @@ pub fn generatedPseudos(element: *runtime.Instance) GeneratedPseudos {
     out.before = pseudoGenerates(element, "before", true);
     out.after = pseudoGenerates(element, "after", true);
     if (display.list_item) out.marker = pseudoGenerates(element, "marker", false);
-    if (inTopLayerOf(element)) out.backdrop = pseudoGenerates(element, "backdrop", false);
+    if (inTopLayerOf(element) and style.keyword(.overlay) == .auto) out.backdrop = pseudoGenerates(element, "backdrop", false);
     return out;
 }
 
@@ -2806,16 +3006,19 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
     if (background_eligible) if (try resource_loading.backgroundHint(element, state, background)) |hint| {
         try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .per_element = true, .tree_scope = .{ .serial = own_scope } } });
         res.own_blocks = true;
+        if (res.inspect_collector) |ic| try ic.recordHint(hint);
     };
     if (font_eligible) if (try font_hints.fontHint(state, font_attributes)) |hint| {
         try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .per_element = true } });
         res.own_blocks = true;
+        if (res.inspect_collector) |ic| try ic.recordHint(hint);
     };
     // At the author presentational hint origin, specificity 0, before every
     // author rule (SVG 2 §6.6; CSS Cascade 5 §6.2), as HTML's hints.
     if (svg_eligible) if (try svg_hints.svgHint(element, state, data, local, res.engine.svgHintCache(), res.document)) |hint| {
         try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .per_element = true, .tree_scope = .{ .serial = own_scope } } });
         res.own_blocks = true;
+        if (res.inspect_collector) |ic| try ic.recordHint(hint);
     };
 
     // The author origin (CSS Scoping 3): the sheets of the element's own
@@ -2965,6 +3168,7 @@ fn matchHostRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, ho
         if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
         if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
+        if (res.inspect_collector) |ic| try ic.recordRule(contents, rule, source, active_sheet.record);
         if (res.container_probe) |probe| if (probe.pending) {
             probe.hit = true;
         };
@@ -3023,6 +3227,7 @@ fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
         if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
         if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
+        if (res.inspect_collector) |ic| try ic.recordRule(contents, rule, source, active_sheet.record);
         if (res.container_probe) |probe| if (probe.pending) {
             probe.hit = true;
         };
@@ -3066,6 +3271,7 @@ fn matchContents(res: *Resolution, matcher: *selector_matching.StyleMatcher, ele
         }
         if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
+        if (res.inspect_collector) |ic| try ic.recordRule(contents, rule, source, if (active_sheet) |s| s.record else null);
         if (res.container_probe) |probe| if (probe.pending) {
             probe.hit = true;
         };
@@ -3275,10 +3481,13 @@ fn ruleDeclaresAnimations(rule: *style_rules.Rule) bool {
 }
 
 fn sheetDeclaresAnimations(record: *SheetRecord) bool {
+    if (record.rules) |rules| {
+        for (rules.items) |rule| {
+            if (ruleDeclaresAnimations(rule)) return true;
+        }
+        return false;
+    }
     if (record.text) |text| if (textMentionsAnimation(text)) return true;
-    if (record.rules) |rules| for (rules.items) |rule| {
-        if (ruleDeclaresAnimations(rule)) return true;
-    };
     return false;
 }
 

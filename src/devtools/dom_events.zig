@@ -103,7 +103,13 @@ const vtable: inspector_probes.VTable = .{
     .title_may_have_changed = titleMayHaveChanged,
     .focused_area_changed = focusedAreaChanged,
     .control_value_changed = controlValueChanged,
+    .style_element_created = styleElementCreated,
 };
+
+fn styleElementCreated(context: *anyopaque, element: *runtime.Instance, start_line: u32, start_col: u32) void {
+    const side: *BrowserSide = @ptrCast(@alignCast(context));
+    side.recordStyleStart(element, start_line, start_col);
+}
 
 /// A document's title may have changed: the Browser's side reports a
 /// top-level document's to its target (not the DOM agents': Target info).
