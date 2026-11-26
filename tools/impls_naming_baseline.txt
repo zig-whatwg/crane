@@ -1,6 +1,0 @@
-# API-named functions in mixin impls that nothing calls: path function 1.
-# Every includer's generated interface binds the INCLUDER's impl, so these
-# never run. A ratchet - `zig build lint-impls`, part of `zig build test`,
-# fails on a new one. After deleting or routing some, lower it with
-# `zig build lint-impls -- --update`. Never raise it by hand.
-src/webidl/impls/GetSVGDocument.zig call_getSVGDocument 1

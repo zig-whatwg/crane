@@ -335,10 +335,12 @@ pub fn get_states(instance: *runtime.Instance) anyerror!*runtime.Instance {
 // WAI-ARIA 6.3.2/6.3.4: preserve case and invalid values; do not apply defaults.
 fn getAriaString(instance: *runtime.Instance, member: []const u8) anyerror!?runtime.DOMString {
     const state = instance.stateAs(State) orelse return error.InvalidStateError;
-    inline for (@typeInfo(@TypeOf(state.own)).@"struct".fields) |field| {
-        if (comptime field.type == ?runtime.DOMString) {
-            if (std.mem.eql(u8, field.name, member)) {
-                const value = @field(state.own, field.name) orelse return null;
+    inline for (comptime std.meta.fieldNames(@TypeOf(state.own)), comptime std.meta.fieldTypes(@TypeOf(state.own))) |field_name, field_type| {
+        if (comptime field_type == ?runtime.DOMString and
+            (std.mem.eql(u8, field_name, "role") or std.mem.startsWith(u8, field_name, "aria")))
+        {
+            if (std.mem.eql(u8, field_name, member)) {
+                const value = @field(state.own, field_name) orelse return null;
                 return try value.clone(instance.ctx.allocator);
             }
         }
@@ -349,10 +351,12 @@ fn getAriaString(instance: *runtime.Instance, member: []const u8) anyerror!?runt
 fn setAriaString(instance: *runtime.Instance, member: []const u8, value: ?runtime.DOMString) anyerror!void {
     const state = instance.stateAs(State) orelse return error.InvalidStateError;
     const internal = try getInternal(instance);
-    inline for (@typeInfo(@TypeOf(state.own)).@"struct".fields) |field| {
-        if (comptime field.type == ?runtime.DOMString) {
-            if (std.mem.eql(u8, field.name, member)) {
-                const stored = &@field(state.own, field.name);
+    inline for (comptime std.meta.fieldNames(@TypeOf(state.own)), comptime std.meta.fieldTypes(@TypeOf(state.own))) |field_name, field_type| {
+        if (comptime field_type == ?runtime.DOMString and
+            (std.mem.eql(u8, field_name, "role") or std.mem.startsWith(u8, field_name, "aria")))
+        {
+            if (std.mem.eql(u8, field_name, member)) {
+                const stored = &@field(state.own, field_name);
                 // Setter steps 1-2: null deletes the entry, otherwise store a copy.
                 // Allocate before replacing so an OOM leaves the previous value intact.
                 const replacement = if (value) |text| try text.clone(internal.allocator) else null;

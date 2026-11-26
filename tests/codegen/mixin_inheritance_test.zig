@@ -15,8 +15,7 @@ const types = codegen.types;
 const writer = codegen.writer;
 const testing = std.testing;
 
-/// Walkable stands in for any mixin on the inherited list.
-const options: writer.DelegateOptions = .{ .inherited_mixins = &.{"Walkable"} };
+const options: writer.DelegateOptions = .{};
 
 const same_object = [_]types.ExtendedAttribute{.{ .name = "SameObject" }};
 
@@ -126,7 +125,7 @@ test "a [SameObject] mixin attribute caches in the includer's state around the i
     try testing.expect(!contains(out, "pub const get_leash ="));
 }
 
-test "a mixin not yet on the inherited list keeps its includer delegates" {
+test "every mixin member is inherited unconditionally without a transitional allowlist" {
     const attrs = [_]types.Attribute{
         .{ .name = "role", .idlType = .{ .type = "DOMString" }, .mixin = "ARIAMixin" },
     };
@@ -134,15 +133,9 @@ test "a mixin not yet on the inherited list keeps its includer delegates" {
     defer buffer.deinit();
     const out = buffer.written();
 
-    try testing.expect(contains(out, "return try DogImpl.get_role(instance);"));
-    try testing.expect(contains(out, "try DogImpl.set_role(instance, value);"));
-    try testing.expect(!contains(out, "mixins.ARIAMixin"));
-}
-
-test "the default inherited list is the codegen's transitional list" {
-    const default: writer.DelegateOptions = .{};
-    try testing.expectEqual(codegen.inherited_mixins.names.len, default.inherited_mixins.len);
-    for (codegen.inherited_mixins.names, default.inherited_mixins) |a, b| try testing.expectEqualStrings(a, b);
+    try testing.expect(contains(out, "pub const get_role = mixins.ARIAMixin.get_role;"));
+    try testing.expect(contains(out, "pub const set_role = mixins.ARIAMixin.set_role;"));
+    try testing.expect(!contains(out, "DogImpl.get_role"));
 }
 
 test "a mixin module delegates its members to the mixin's impl and keeps no state" {
@@ -165,13 +158,4 @@ test "a mixin module delegates its members to the mixin's impl and keeps no stat
     try testing.expect(contains(out, "runtime.CEReactions.begin(instance);"));
     // A mixin has no instances and so no State of its own.
     try testing.expect(!contains(out, "getState(State)"));
-}
-
-test "HTML's hyperlink URL members are inherited from HyperlinkElementUtils, href and target from HTMLHyperlinkElementUtils" {
-    // HTML 4.6.3 splits the URL decomposition members (origin ... hash,
-    // hreflang, type) into HyperlinkElementUtils, which SVG's and MathML's
-    // `a` include too; href and target stay in HTMLHyperlinkElementUtils.
-    // Both are implemented once, in their mixin's impl.
-    try testing.expect(codegen.inherited_mixins.isInherited("HyperlinkElementUtils"));
-    try testing.expect(codegen.inherited_mixins.isInherited("HTMLHyperlinkElementUtils"));
 }

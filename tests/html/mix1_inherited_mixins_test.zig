@@ -65,6 +65,15 @@ test "includers of inherited mixins alias the exact same delegate function" {
     try testing.expectEqual(interfaces.HTMLButtonElement.get_popoverTargetAction, interfaces.HTMLInputElement.get_popoverTargetAction);
     // AnimationFrameProvider
     try testing.expectEqual(interfaces.Window.call_requestAnimationFrame, interfaces.DedicatedWorkerGlobalScope.call_requestAnimationFrame);
+    // ARIAMixin, Slottable, GeometryUtils, ARIANotifyMixin
+    try testing.expectEqual(interfaces.Element.get_role, interfaces.ElementInternals.get_role);
+    try testing.expectEqual(interfaces.Element.set_ariaLabel, interfaces.ElementInternals.set_ariaLabel);
+    try testing.expectEqual(interfaces.Element.get_ariaActiveDescendantElement, interfaces.ElementInternals.get_ariaActiveDescendantElement);
+    try testing.expectEqual(interfaces.Element.get_ariaControlsElements, interfaces.ElementInternals.get_ariaControlsElements);
+    try testing.expectEqual(interfaces.Element.get_assignedSlot, interfaces.Text.get_assignedSlot);
+    try testing.expectEqual(interfaces.Element.call_getBoxQuads, interfaces.Text.call_getBoxQuads);
+    try testing.expectEqual(interfaces.Element.call_getBoxQuads, interfaces.Document.call_getBoxQuads);
+    try testing.expectEqual(interfaces.Element.call_ariaNotify, interfaces.Document.call_ariaNotify);
 }
 
 fn bodyAndStreamsMixins() !void {
@@ -160,6 +169,64 @@ fn navigatorAndMessageEventTargetMixins() !void {
     try expectEval(page, "globalThis.__out", "ping|Mozilla|Netscape|Gecko|Crane|true|true|true|true|true");
 }
 
+fn ariaSlottableRegionGeometryMixins() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try expectEval(page,
+        \\(() => {
+        \\  // 1. ARIAMixin on Element (string + single/array element refs)
+        \\  const a = document.createElement('div');
+        \\  const b = document.createElement('span');
+        \\  document.body.append(a, b);
+        \\  a.role = 'button';
+        \\  a.ariaLabel = 'save';
+        \\  a.ariaActiveDescendantElement = b;
+        \\  a.ariaControlsElements = [b];
+        \\  const elOk = [
+        \\    a.getAttribute('role'), a.role,
+        \\    a.getAttribute('aria-label'), a.ariaLabel,
+        \\    a.ariaActiveDescendantElement === b,
+        \\    a.ariaControlsElements.length === 1 && a.ariaControlsElements[0] === b,
+        \\  ].join(',');
+        \\  // 2. ARIAMixin on ElementInternals (internal map, does not mutate element attrs)
+        \\  class MixWidget extends HTMLElement {
+        \\    constructor() { super(); this.i = this.attachInternals(); }
+        \\  }
+        \\  customElements.define('mix-widget', MixWidget);
+        \\  const w = document.createElement('mix-widget');
+        \\  document.body.append(w);
+        \\  w.i.role = 'slider';
+        \\  w.i.ariaValueNow = '42';
+        \\  w.i.ariaActiveDescendantElement = b;
+        \\  w.i.ariaLabelledByElements = [a, b];
+        \\  const intOk = [
+        \\    w.i.role, w.getAttribute('role') === null,
+        \\    w.i.ariaValueNow,
+        \\    w.i.ariaActiveDescendantElement === b,
+        \\    w.i.ariaLabelledByElements.length === 2 && w.i.ariaLabelledByElements[1] === b,
+        \\  ].join(',');
+        \\  // 3. Slottable on Element and Text
+        \\  const host = document.createElement('div');
+        \\  const sr = host.attachShadow({ mode: 'open' });
+        \\  sr.innerHTML = '<slot></slot>';
+        \\  const slot = sr.querySelector('slot');
+        \\  const childEl = document.createElement('p');
+        \\  const childTxt = document.createTextNode('hi');
+        \\  host.append(childEl, childTxt);
+        \\  // 4. Region & GeometryUtils
+        \\  return [
+        \\    elOk, intOk,
+        \\    childEl.assignedSlot === slot,
+        \\    childTxt.assignedSlot === slot,
+        \\    a.regionOverset === '',
+        \\    a.getRegionFlowRanges() === null,
+        \\    a.getBoxQuads() === undefined,
+        \\    childTxt.getBoxQuads() === undefined,
+        \\  ].join('|');
+        \\})()
+    , "button,button,save,save,true,true|slider,true,42,true,true|true|true|true|true|true|true");
+}
+
 test "shared Body, Streams, and Encoding mixin dispatch works across includers" {
     try helpers.onFreshThread(bodyAndStreamsMixins);
 }
@@ -170,4 +237,8 @@ test "shared DocumentOrShadowRoot, FontFaceSource, XPath, LinkStyle, Popover, an
 
 test "shared Navigator* and MessageEventTarget mixins work" {
     try helpers.onFreshThread(navigatorAndMessageEventTargetMixins);
+}
+
+test "shared ARIAMixin, Slottable, Region, and GeometryUtils mixins work across includers" {
+    try helpers.onFreshThread(ariaSlottableRegionGeometryMixins);
 }
