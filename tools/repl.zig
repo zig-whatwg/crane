@@ -132,6 +132,9 @@ pub const Options = struct {
     /// no per-allocation stack traces unless CRANE_LEAK_TRACES=1) instead of
     /// libc malloc; what leaked is reported when the console exits.
     check_leaks: bool = false,
+    /// `--memory-map`: print the per-interface byte table and 4-partition
+    /// Browser heap summary (`[ARCH] 7.3`, Batch C item 5) before exiting.
+    memory_map: bool = false,
     /// `--help`.
     help: bool = false,
     /// Chrome's `--remote-debugging-port=<n>` (0: any free port): the
@@ -204,6 +207,8 @@ pub const usage =
     \\                           (always, when input is piped)
     \\  --check-leaks            a leak-checking allocator; leaks reported at exit
     \\                           (CRANE_LEAK_TRACES=1 adds each one's stack trace)
+    \\  --memory-map             print the per-interface byte table and 4-partition
+    \\                           Browser heap summary before exiting
     \\
     \\Remote debugging (Chrome's switches; the console then reads no input and runs
     \\until Browser.close, the pipe's end, or a signal):
@@ -284,6 +289,8 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
             options.wait_for_navigation = true;
         } else if (std.mem.eql(u8, arg, "--check-leaks")) {
             options.check_leaks = true;
+        } else if (std.mem.eql(u8, arg, "--memory-map")) {
+            options.memory_map = true;
         } else if (valueOf(arg, "--user-agent")) |value| {
             options.user_agent = value;
         } else if (valueOf(arg, "--proxy")) |value| {
@@ -2306,5 +2313,9 @@ pub fn main(init: std.process.Init) !u8 {
     _ = browser.spinEventLoopUntil(.{ .context = &console, .met = Console.exitGoal }, std.math.maxInt(u64)) catch {};
     console.tell(.exit);
     terminal.stop();
+    if (options.memory_map) {
+        browser_mod.memory_map.write(browser.scope, allocator, &stdout.interface) catch {};
+        stdout.interface.flush() catch {};
+    }
     return 0;
 }

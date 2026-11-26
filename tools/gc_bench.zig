@@ -52,7 +52,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const engine = @import("engine");
 const memory = @import("memory");
-const Browser = @import("browser").Browser;
+const browser_mod = @import("browser");
+const Browser = browser_mod.Browser;
 const runtime = @import("runtime");
 const instance_bridge = @import("dom").instance_bridge;
 
@@ -264,6 +265,8 @@ const Sample = struct {
     malloc_in_use: usize,
     /// Total malloc heap, in use or not - fragmentation shows here, not above.
     malloc_heap: usize,
+    /// Browser heap 4-partition & quarantine snapshot (Batch C item 5).
+    heap_stats: ?runtime.heap.Stats = null,
 
     fn counters(self: *const Sample) []const engine.Counter {
         return self.counter_storage[0..self.counter_count];
@@ -318,17 +321,34 @@ fn readCounters(storage: *[max_counters]engine.Counter) usize {
     return read.len;
 }
 
-/// The Browser's heap's committed spans, node and objects partitions.
-fn heapCommitted() usize {
-    const scope = browser_scope orelse return 0;
-    const heap_engine = scope.existingHeapEngine() orelse return 0;
-    const stats = heap_engine.stats();
-    return stats.node.committed_span_bytes + stats.objects.committed_span_bytes;
+/// The Browser's heap's committed spans across all four partitions
+/// (`node`, `satellite`, `objects`, `bytes`).
+fn heapCommitted(stats: ?runtime.heap.Stats) usize {
+    const s = stats orelse return 0;
+    return s.node.committed_span_bytes +
+        s.satellite.committed_span_bytes +
+        s.objects.committed_span_bytes +
+        s.bytes.committed_span_bytes;
+}
+
+fn readBrowserHeapStats() ?runtime.heap.Stats {
+    const scope = browser_scope orelse return null;
+    const heap_engine = scope.existingHeapEngine() orelse return null;
+    return heap_engine.stats();
+}
+
+fn logHeapAllocCallback(_: ?*anyopaque, partition: runtime.heap.PartitionId, size: usize, address: usize) void {
+    memory.logHeapAlloc(memory.heap_zone_tag_base + @backingInt(partition), size, address);
+}
+
+fn logHeapFreeCallback(_: ?*anyopaque, partition: runtime.heap.PartitionId, address: usize) void {
+    memory.logHeapFree(memory.heap_zone_tag_base + @backingInt(partition), address);
 }
 
 fn takeSample(cycle: usize) Sample {
     const arena: ?*runtime.ArenaAllocator = if (browser_scope) |scope| &scope.arena else null;
     const slab: ?*runtime.SlabAllocator = if (browser_scope) |scope| &scope.slab else null;
+    const heap_stats = readBrowserHeapStats();
     var sample: Sample = .{
         .cycle = cycle,
         .resident = memory.residentBytes(),
@@ -336,7 +356,7 @@ fn takeSample(cycle: usize) Sample {
         // HELD. The cumulative figure rises identically whether or not anything is
         // freed, so it reported the arena as leaking even after recycling landed.
         .arena_bytes = if (arena) |a| a.stats().bytes_in_use else 0,
-        .arena_reserved = heapCommitted(),
+        .arena_reserved = heapCommitted(heap_stats),
         .arena_allocations = if (arena) |a| a.stats().total_allocations else 0,
         .arena_recycled = if (arena) |a| a.stats().total_recycled else 0,
         .live_instances = if (slab) |sl| sl.stats().currently_allocated else 0,
@@ -348,6 +368,7 @@ fn takeSample(cycle: usize) Sample {
         .counter_count = 0,
         .malloc_in_use = memory.mallocInUseBytes() orelse 0,
         .malloc_heap = memory.mallocHeapBytes() orelse 0,
+        .heap_stats = heap_stats,
     };
     // The next reading's peak is the highest since this one.
     counting.peak = counting.outstanding;
@@ -461,6 +482,20 @@ pub fn main(init: std.process.Init) !void {
     heap_agent = page.agent;
     browser_scope = browser.scope;
 
+    // Wire Darwin `malloc_logger` callouts in Debug / `-Dheap-alloc-log` builds
+    // (`[V2] D8`, Batch C item 5; zero cost in production builds).
+    if (comptime runtime.heap.alloc_log_compiled) {
+        if (browser.scope.existingHeapEngine()) |eng| {
+            eng.setAllocObserver(.{
+                .on_alloc = logHeapAllocCallback,
+                .on_free = logHeapFreeCallback,
+            });
+        }
+    }
+    defer if (comptime runtime.heap.alloc_log_compiled) {
+        if (browser.scope.existingHeapEngine()) |eng| eng.setAllocObserver(null);
+    };
+
     var samples: std.ArrayListUnmanaged(Sample) = .empty;
     defer samples.deinit(allocator);
 
@@ -554,6 +589,12 @@ pub fn main(init: std.process.Init) !void {
     report(samples.items, force_gc, control, body, drive_loop);
     reportCounters(samples.items);
     if (options.listsLiveTypes(args)) try reportLiveTypes(allocator, &browser.scope.slab);
+    if (options.printsMemoryMap(args)) {
+        var map_buf: [4096]u8 = undefined;
+        var map_err = std.Io.File.stderr().writerStreaming(init.io, &map_buf);
+        try browser_mod.memory_map.write(browser.scope, allocator, &map_err.interface);
+        try map_err.interface.flush();
+    }
     const shape_held = if (bench) |b| reportBench(b, samples.items) else true;
 
     if (profile) {
@@ -593,11 +634,13 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body:
     // Browser's platform objects (its slab's slots in use) at the reading,
     // "arena MB" what the Browser's heap keeps committed for its State
     // blocks and Instance slots (`Sample.arena_reserved`).
-    std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}  {s:>12}  {s:>13}  {s:>10}  {s:>12}  {s:>8}\n", .{
+    std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}  {s:>12}  {s:>13}  {s:>10}  {s:>12}  {s:>8}  {s:>7}  {s:>6}  {s:>6}  {s:>8}  {s:>7}\n", .{
         "cycle",        "resident MB",   "since start",
         "B/cycle",      "malloc MB",     "zig-side MB",
         "zig peak MB",  "queued at end", "queued now",
-        "live objects", "arena MB",
+        "live objects", "arena MB",      "node MB",
+        "sat MB",       "obj MB",        "bytes MB",
+        "quar KB",
     });
 
     const first = samples[0].resident;
@@ -627,7 +670,12 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body:
                     }
                 }
             }
-            std.debug.print("{d:>8}  {d:>11.1}  {d:>13.1}  {d:>12.1}  {d:>11.1}  {d:>10.1}  {d:>12.1}  {d:>13}  {d:>10}  {d:>12}  {d:>8.1}\n", .{
+            const hs_node: f64 = if (s.heap_stats) |hs| @as(f64, @floatFromInt(hs.node.committed_span_bytes)) / (1024.0 * 1024.0) else 0.0;
+            const hs_sat: f64 = if (s.heap_stats) |hs| @as(f64, @floatFromInt(hs.satellite.committed_span_bytes)) / (1024.0 * 1024.0) else 0.0;
+            const hs_obj: f64 = if (s.heap_stats) |hs| @as(f64, @floatFromInt(hs.objects.committed_span_bytes)) / (1024.0 * 1024.0) else 0.0;
+            const hs_bytes: f64 = if (s.heap_stats) |hs| @as(f64, @floatFromInt(hs.bytes.committed_span_bytes)) / (1024.0 * 1024.0) else 0.0;
+            const hs_quar: f64 = if (s.heap_stats) |hs| @as(f64, @floatFromInt(hs.quarantine_bytes)) / 1024.0 else 0.0;
+            std.debug.print("{d:>8}  {d:>11.1}  {d:>13.1}  {d:>12.1}  {d:>11.1}  {d:>10.1}  {d:>12.1}  {d:>13}  {d:>10}  {d:>12}  {d:>8.1}  {d:>7.2}  {d:>6.2}  {d:>6.2}  {d:>8.2}  {d:>7.1}\n", .{
                 s.cycle,
                 mb,
                 growth,
@@ -646,6 +694,11 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body:
                 s.queued_at_reading,
                 s.live_instances,
                 @as(f64, @floatFromInt(s.arena_reserved)) / (1024.0 * 1024.0),
+                hs_node,
+                hs_sat,
+                hs_obj,
+                hs_bytes,
+                hs_quar,
             });
         } else {
             std.debug.print("{d:>8}  {d:>11.1}\n", .{ s.cycle, mb });

@@ -140,3 +140,41 @@ fn rejectedPromisesInBrowserObjects() !void {
 test "item 2: rejected_promises tracking allocates from Browser heap .objects, not c_allocator" {
     try helpers.onFreshThread(rejectedPromisesInBrowserObjects);
 }
+
+fn memoryMapPerTypeAttribution() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+
+    try page.run(
+        \\globalThis.__divs = [];
+        \\for (let i = 0; i < 30; i++) {
+        \\  const d = document.createElement('div');
+        \\  d.setAttribute('data-k', 'v-' + i);
+        \\  d.addEventListener('click', () => {});
+        \\  globalThis.__divs.push(d);
+        \\}
+    );
+
+    const browser_mod = @import("browser");
+    var report = try browser_mod.memory_map.collect(page.browser.scope, testing.allocator);
+    defer report.deinit(testing.allocator);
+
+    const div_row = report.rowNamed("HTMLDivElement") orelse return error.MissingDivRow;
+    try testing.expect(div_row.count >= 30);
+    try testing.expect(div_row.state_bytes > 0);
+    try testing.expectEqual(div_row.count * runtime.SlabAllocator.slot_bytes, div_row.slot_bytes);
+    try testing.expect(div_row.satellite_bytes > 0);
+    try testing.expect(report.heap_stats != null);
+
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try browser_mod.memory_map.writeReport(&report, &out.writer);
+    const text = out.written();
+    try testing.expect(std.mem.indexOf(u8, text, "HTMLDivElement") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "Browser Heap Partitions:") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "satellite") != null);
+}
+
+test "item 5: memory_map reports per-interface state, slot, satellite bytes and 4-partition heap summary" {
+    try helpers.onFreshThread(memoryMapPerTypeAttribution);
+}

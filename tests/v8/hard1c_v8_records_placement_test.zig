@@ -117,8 +117,8 @@ test "item 1: V8 agent record, wrapper-cache chunks & peers, and realm records l
     // 3. Creating an isolated world allocates its WorldRealm record & maps in
     //    `.objects` (observable via `general_objects.live_blocks` rising).
     const before_world = heap_engine.stats().general_objects.live_blocks;
-    const world = try protocol.createWorldRealm(realm, .{ .world = 1, .name = "hard1c-world" });
-    defer protocol.destroyWorldRealm(world);
+    const world = try protocol.createWorldRealm(realm, &.{ .world = 1, .name = "hard1c-world" });
+    defer protocol.destroyWorldRealms(realm);
     const after_world = heap_engine.stats().general_objects.live_blocks;
     try testing.expect(after_world > before_world);
     try testing.expectEqual(Range.objects, rangeOf(heap, world));

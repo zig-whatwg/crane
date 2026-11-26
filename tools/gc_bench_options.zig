@@ -365,6 +365,15 @@ pub fn listsLiveTypes(args: []const [:0]const u8) bool {
     return false;
 }
 
+/// Whether the run ends with Crane's per-interface byte table and 4-partition
+/// Browser heap summary (`--memory-map`, `[ARCH] 7.3`, Batch C item 5).
+pub fn printsMemoryMap(args: []const [:0]const u8) bool {
+    for (args[@min(1, args.len)..]) |arg| {
+        if (std.mem.eql(u8, arg, "--memory-map")) return true;
+    }
+    return false;
+}
+
 /// Whether each batch's script is followed by turns of the page's event
 /// loop until it has nothing left to do (`--loop`): without it nothing a
 /// cycle queues - a timer, a port's message, a task - ever runs, since the
@@ -449,6 +458,14 @@ test "--live-types lists the live objects by interface at the end, wherever it i
     try std.testing.expect(listsLiveTypes(&.{ "gc_bench", "--live-types", "--body=void 0;" }));
     try std.testing.expect(!listsLiveTypes(&.{ "gc_bench", "--body=--live-types" }));
     try std.testing.expect(!listsLiveTypes(&.{"--live-types"}));
+}
+
+test "--memory-map prints the per-interface byte table at the end, wherever it is given; nothing else does" {
+    try std.testing.expect(!printsMemoryMap(&.{ "gc_bench", "10000", "5000", "--gc", "--settle" }));
+    try std.testing.expect(printsMemoryMap(&.{ "gc_bench", "10000", "5000", "--memory-map" }));
+    try std.testing.expect(printsMemoryMap(&.{ "gc_bench", "--memory-map", "--body=void 0;" }));
+    try std.testing.expect(!printsMemoryMap(&.{ "gc_bench", "--body=--memory-map" }));
+    try std.testing.expect(!printsMemoryMap(&.{"--memory-map"}));
 }
 
 test "an empty --body= is ignored" {
