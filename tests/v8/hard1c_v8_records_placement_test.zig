@@ -112,7 +112,7 @@ test "item 1: V8 agent record, wrapper-cache chunks & peers, and realm records l
     // `&record.caches` is inside `AgentRecord`.
     try testing.expectEqual(Range.objects, rangeOf(heap, peers));
     try testing.expect(peers.items.len >= 1);
-    try testing.expectEqual(Range.objects, rangeOf(heap, peers.items.ptr));
+    try testing.expectEqual(Range.objects, rangeOf(heap, @ptrCast(peers.items.ptr)));
 
     // 3. Creating an isolated world allocates its WorldRealm record & maps in
     //    `.objects` (observable via `general_objects.live_blocks` rising).
