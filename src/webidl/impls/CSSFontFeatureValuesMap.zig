@@ -9,7 +9,12 @@ const css = @import("css");
 const dom = @import("dom");
 
 pub const State = interfaces.CSSFontFeatureValuesMap.State;
-pub const InternalState = struct { rule: *dom.style.Rule, block: css.font_feature_values.Block };
+pub const MapView = webidl.maplike.View([]const u8, []const u32);
+pub const InternalState = struct {
+    rule: *dom.style.Rule,
+    block: css.font_feature_values.Block,
+    entries_view: MapView = undefined,
+};
 pub const construction_args = .{ "font_feature_values_of", "font_feature_block" };
 
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
@@ -70,31 +75,50 @@ pub fn call_set(instance: *runtime.Instance, featureValueName: typedefs.CSSOMStr
     changed(internal);
 }
 
-// Native sources for the routed generic maplike binding. No unbound IDL
-// names are added: the generated maplike delegates will own that routing.
-pub fn mapSize(instance: *runtime.Instance) !usize {
-    return mapOf(try stateOf(instance)).entries.count();
+/// The map entries (WebIDL 2.5.11) for the binding's maplike members; null
+/// once the instance's state is gone.
+pub fn maplikeEntries(instance: *runtime.Instance) ?*MapView {
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    internal.entries_view = .{ .context = internal, .vtable = &view_vtable };
+    return &internal.entries_view;
 }
-pub fn mapGet(instance: *runtime.Instance, name: []const u8) !?[]const u32 {
-    return mapOf(try stateOf(instance)).get(name);
+
+const view_vtable: MapView.VTable = .{
+    .size = viewSize,
+    .get = viewGet,
+    .after = viewAfter,
+    .remove = viewRemove,
+    .clear = viewClear,
+};
+
+fn fromContext(context: *anyopaque) *InternalState {
+    return @ptrCast(@alignCast(context));
 }
-pub fn mapHas(instance: *runtime.Instance, name: []const u8) !bool {
-    return (try mapGet(instance, name)) != null;
+
+fn viewSize(context: *anyopaque) usize {
+    return mapOf(fromContext(context)).entries.count();
 }
-pub fn mapDelete(instance: *runtime.Instance, name: []const u8) !bool {
-    const internal = try stateOf(instance);
-    const removed = mapOf(internal).remove(internal.rule.allocator, name);
+
+fn viewGet(context: *anyopaque, key: []const u8) ?[]const u32 {
+    return mapOf(fromContext(context)).get(key);
+}
+
+fn viewAfter(context: *anyopaque, sequence: u64) ?MapView.Entry {
+    const entry = mapOf(fromContext(context)).after(sequence) orelse return null;
+    return .{ .sequence = entry.sequence, .key = entry.key, .value = entry.value };
+}
+
+fn viewRemove(context: *anyopaque, key: []const u8) bool {
+    const internal = fromContext(context);
+    const removed = mapOf(internal).remove(internal.rule.allocator, key);
     if (removed) changed(internal);
     return removed;
 }
-pub fn mapClear(instance: *runtime.Instance) !void {
-    const internal = try stateOf(instance);
+
+fn viewClear(context: *anyopaque) void {
+    const internal = fromContext(context);
     if (mapOf(internal).entries.count() == 0) return;
     mapOf(internal).clear(internal.rule.allocator);
     changed(internal);
-}
-pub fn mapEntry(instance: *runtime.Instance, index: usize) !?struct { key: []const u8, value: []const u32 } {
-    const map = mapOf(try stateOf(instance));
-    if (index >= map.entries.count()) return null;
-    return .{ .key = map.entries.keys()[index], .value = map.entries.values()[index].indexes };
 }

@@ -1,40 +1,34 @@
-//! Implementation for GPUSupportedFeatures interface
+//! WebGPU: `interface GPUSupportedFeatures { readonly setlike<DOMString>; }`.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const GPUSupportedFeatures = interfaces.GPUSupportedFeatures;
+const webidl = @import("webidl");
 
-pub const State = GPUSupportedFeatures.State;
+pub const State = interfaces.GPUSupportedFeatures.State;
 
-pub const ImplError = error{
-    NotImplemented,
+pub const InternalState = struct {
+    values: webidl.setlike.Strings,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = args;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .values = .init(allocator) };
+    instance.getState(StateType).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    const allocator = internal.values.allocator;
+    internal.values.deinit();
+    allocator.destroy(internal);
+}
+
+pub fn setlikeEntries(instance: *runtime.Instance) ?*webidl.setlike.Strings {
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    return &internal.values;
 }

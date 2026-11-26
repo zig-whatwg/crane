@@ -51,6 +51,10 @@ pub const CSSFontFeatureValuesMap = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// Maplike declaration (WebIDL 2.5.11): the binding defines its members
+        /// (3.7.11) over the impl's map entries (`maplikeEntries`).
+        pub const maplike = .{ .key_type = "DOMString", .value_type = "sequence<unsigned long>", .readonly = false };
     };
 
     pub const State = runtime.FlattenedState(
@@ -60,10 +64,6 @@ pub const CSSFontFeatureValuesMap = struct {
             _internal: ?*CSSFontFeatureValuesMapImpl.InternalState = null,
         },
     );
-
-    // ========================================
-    // Constants (static getters)
-    // ========================================
 
     const delegates = .{
         .call_set = &call_set,
@@ -158,5 +158,11 @@ pub const CSSFontFeatureValuesMap = struct {
 
     pub fn call_set(instance: *runtime.Instance, featureValueName: CSSOMString, values: UnsignedLongOrSequenceOfUnsignedLong) anyerror!void {
         return try CSSFontFeatureValuesMapImpl.call_set(instance, featureValueName, values);
+    }
+
+    /// The map entries of this maplike object (WebIDL 2.5.11), for the
+    /// binding's maplike members.
+    pub fn maplikeEntries(instance: *runtime.Instance) ?*webidl.maplike.View([]const u8, []const u32) {
+        return CSSFontFeatureValuesMapImpl.maplikeEntries(instance);
     }
 };
