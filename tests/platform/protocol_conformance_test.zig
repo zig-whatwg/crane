@@ -180,9 +180,6 @@ test "the platform's declarations: name, identity, browser options" {
 }
 
 test "general_memory policy: platform declares GeneralMemoryPolicy and general_memory" {
-    try testing.expect(@hasDecl(platform, "GeneralMemoryPolicy"));
-    try testing.expect(@hasDecl(platform, "general_memory"));
-    try testing.expect(@hasDecl(platform.adapter, "general_memory"));
     try testing.expectEqual(platform.GeneralMemoryPolicy.crane_pools, platform.general_memory);
     try testing.expectEqual(platform.general_memory, platform.adapter.general_memory);
     // Both build-time policy variants exist (allocator-hardening design 4.2).
