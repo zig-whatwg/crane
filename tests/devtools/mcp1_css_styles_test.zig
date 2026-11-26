@@ -101,6 +101,13 @@ test "get_css_styles is listed in default tools/list" {
     try testing.expect(found);
 }
 
+fn dataUrl(arena: std.mem.Allocator, html: []const u8) ![]const u8 {
+    const enc = std.base64.standard.Encoder;
+    const b64 = try arena.alloc(u8, enc.calcSize(html.len));
+    _ = enc.encode(b64, html);
+    return std.fmt.allocPrint(arena, "data:text/html;base64,{s}", .{b64});
+}
+
 test "CDP CSS domain: enable, styleSheetAdded, getStyleSheetText, getComputedStyleForNode, getInlineStylesForNode, getMatchedStylesForNode" {
     var gpa = replay.LeakChecked.init;
     defer testing.expectEqual(.ok, gpa.deinit()) catch {};
@@ -110,7 +117,7 @@ test "CDP CSS domain: enable, styleSheetAdded, getStyleSheetText, getComputedSty
     try h.init(allocator);
     defer h.deinit();
 
-    const url = try std.fmt.allocPrint(h.arena(), "data:text/html,{s}", .{styled_html});
+    const url = try dataUrl(h.arena(), styled_html);
     _ = try h.call("Page.enable", "{}");
     const from_nav = h.seen.items.len;
     const nav_params = try std.fmt.allocPrint(h.arena(), "{{\"url\":{f}}}", .{std.json.fmt(url, .{})});
@@ -192,7 +199,7 @@ test "MCP get_css_styles: errors, cascade precedence, wrappers, inherited, pseud
     defer h.stop();
 
     const a = h.arena.allocator();
-    const url = try std.fmt.allocPrint(a, "data:text/html,{s}", .{styled_html});
+    const url = try dataUrl(a, styled_html);
     const nav_args = try std.fmt.allocPrint(a, "{{\"pageId\":1,\"url\":{f}}}", .{std.json.fmt(url, .{})});
     const nav = try h.tool("navigate_page", nav_args);
     try testing.expect(!nav.is_error);
