@@ -764,3 +764,32 @@ test "M8-4c: quarantine uses inline buffer up to 512 entries and spills cleanly 
     engine.endTask();
     try testing.expectEqual(@as(usize, 0), engine.stats().quarantine_blocks);
 }
+
+test "M8-2b: decommitBitmapPages preserves active State spans whose bucket index equals bytes_large_bucket (320 B)" {
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const engine = try generalEngine(&scope);
+
+    // State bucket index == GeneralClasses.count (19) in .quantum16 is 320 B
+    // (the exact bucket of HTMLFormElement.InternalState). `bytes_large_bucket`
+    // is a sentinel ONLY inside the `.bytes` partition; in `.objects` and
+    // `.node`, bucket 19 is a regular active State span whose slot bitmap MUST
+    // stay committed while live (on Linux MADV_DONTNEED immediately zeroes a
+    // decommitted bitmap page, turning live slots into `.free` -> double_free).
+    const colliding_bytes = (heap.GeneralClasses.count + 1) * 16;
+    engine.setNow(1_000);
+    const obj_blk = try engine.alloc(.objects, colliding_bytes, 8, null, @returnAddress());
+    const node_blk = try engine.alloc(.{ .node = .element }, colliding_bytes, 8, null, @returnAddress());
+
+    _ = engine.decommitAged(5_000, heap.decommit_age_ms, std.math.maxInt(usize));
+    const st = engine.stats();
+    try testing.expectEqual(@as(usize, 0), st.objects.bitmap_pages_decommitted);
+    try testing.expectEqual(@as(usize, 0), st.node.bitmap_pages_decommitted);
+
+    engine.checks = .report;
+    engine.free(obj_blk, colliding_bytes, 8);
+    try testing.expectEqual(@as(?heap.Violation, null), engine.takeViolation());
+    engine.free(node_blk, colliding_bytes, 8);
+    try testing.expectEqual(@as(?heap.Violation, null), engine.takeViolation());
+    engine.checks = .panic;
+}
