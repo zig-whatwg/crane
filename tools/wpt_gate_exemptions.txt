@@ -2643,3 +2643,193 @@ why       = waits for loadedmetadata, then plays past a box-less cue in a region
 media     = /media/test.mp4 (video/mp4)
 assertion = TIMEOUT: Box-less VTTCue attached to VTTRegion - Test timed out
 
+# media-elements/, the-audio-element/, the-video-element/ (lane media1, 2026-11-25;
+# integrator rulings 2026-11-25 4:46 PM ET; wpt.fyi aligned stable runs 94e2796a2a).
+
+[html/semantics/embedded-content/media-elements/autoplay-supported-by-permissions-policy.html]
+kind            = follows-majority
+why             = Crane leaves document.permissionsPolicy undefined, as Chrome, Firefox and Safari all do (all three fail with the same TypeError reading 'features')
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari ships document.permissionsPolicy on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/embedded-content/media-elements/track/track-element/cors/022.html]
+kind            = follows-majority
+why             = Fetch HTTP-redirect fetch taints request origin to opaque ("null") on cross-origin to same-origin redirect, so cors-tester.py's ACAO for the page origin fails the CORS check with error in Crane, Chrome, Firefox and Safari identically
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or the test is fixed upstream
+
+[html/semantics/embedded-content/media-elements/track/track-element/cors/025.html]
+kind            = follows-majority
+why             = Fetch HTTP-redirect fetch taints request origin to opaque ("null") on cross-origin to same-origin redirect, so cors-tester.py's ACAO for the page origin fails the CORS check with error in Crane, Chrome, Firefox and Safari identically
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or the test is fixed upstream
+
+[html/semantics/embedded-content/media-elements/track/track-element/cors/038.html]
+kind            = follows-majority
+why             = Fetch HTTP-redirect fetch taints request origin to opaque ("null") on cross-origin to same-origin redirect, so cors-tester.py's ACAO for the page origin fails the CORS check with error in Crane, Chrome, Firefox and Safari identically
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or the test is fixed upstream
+
+[html/semantics/embedded-content/media-elements/track/track-element/cors/041.html]
+kind            = follows-majority
+why             = Fetch HTTP-redirect fetch taints request origin to opaque ("null") on cross-origin to same-origin redirect, so cors-tester.py's ACAO for the page origin fails the CORS check with error in Crane, Chrome, Firefox and Safari identically
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or the test is fixed upstream
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-insert-source-networkState.html]
+kind            = follows-majority
+why             = Crane runs resource selection's stable section in a task after the parser task (required by media-src-7_1_2.sub.html, 3/3 pass), not between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome, Firefox and Safari
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-load.html]
+kind            = follows-majority
+why             = Crane runs resource selection's stable section in a task rather than between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome, Firefox and Safari
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-pause.html]
+kind            = follows-majority
+why             = Crane runs resource selection's stable section in a task rather than between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome, Firefox and Safari
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-play.html]
+kind            = follows-majority
+why             = Crane runs resource selection's stable section in a task rather than between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome, Firefox and Safari
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-remove-src.html]
+kind            = follows-majority
+why             = Crane runs resource selection's stable section in a task rather than between inline script tags, so removeAttribute('src') runs before selection chooses a mode and the child <source> fires error as in Chrome, Firefox and Safari
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-remove-source.html]
+kind            = follows-majority
+why             = Crane runs resource selection's stable section in a task rather than between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome, Firefox and Safari
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-remove-src.html]
+kind            = follows-majority
+why             = Crane runs resource selection's stable section in a task rather than between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome, Firefox and Safari
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-candidate-insert-before.html]
+kind            = follows-majority
+why             = Crane runs resource selection's stable section in a task rather than between inline script tags, so inserting #b before #a in the second script selects #b as in Chrome and Safari (both fail expected "#a" got "#b"); only Firefox runs selection between the scripts
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 1/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, safari
+revisit         = when Chrome or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-in-sync-event.html]
+kind            = follows-majority
+why             = Crane runs resource selection's stable section in a task rather than between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome and Safari (both fail expected 0 got 3); only Firefox runs selection between the scripts
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 1/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = chrome, safari
+revisit         = when Chrome or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-insert-source.html]
+kind            = follows-majority
+why             = Crane runs resource selection's stable section in a task (required by media-src-7_1_2.sub.html, 3/3 pass), so inserting source1 before a in the following script causes x1 to fire error (expected 0 got 1, identical to Firefox); Chrome and Safari also fail 0/1 (failing one line earlier on c)
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = firefox
+ruling          = the integrator (2026-11-25 4:46 PM ET, lane media1): all three browsers fail 0/1 due to task-based resource selection required by media-src-7_1_2.sub.html; Crane matches Firefox's exact x1 failure
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-remove-source.html]
+kind            = follows-majority
+why             = Crane runs resource selection's stable section in a task (required by media-src-7_1_2.sub.html, 3/3 pass), so removing x1 in the following script prevents x1 from being selected (expected 1 got 0, identical to Firefox); Chrome and Safari also fail 0/1 (failing one line earlier on c)
+chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
+firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
+safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
+matches         = firefox
+ruling          = the integrator (2026-11-25 4:46 PM ET, lane media1): all three browsers fail 0/1 due to task-based resource selection required by media-src-7_1_2.sub.html; Crane matches Firefox's exact x1 failure
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-source-media-env-change.html]
+kind      = needs-decoder
+why       = selects /media-source/mp4/test.mp4#a and waits 2 rAFs before resizing the iframe; without an MP4 decoder #a fails decoding immediately and falls through to #b
+media     = /media-source/mp4/test.mp4 (video/mp4)
+assertion = FAIL: the <source> media attribute: no reaction to environment change - assert_equals: beforeEnvChange expected "#a" but got "#b"
+
+[html/semantics/embedded-content/the-audio-element/audio-loading-eager.html]
+kind      = needs-decoder
+why       = waits for loadeddata on an MP3 audio resource; the default platform decodes WAV only
+media     = /media/sine440.mp3 (audio/mpeg)
+assertion = FAIL: Audio with loading='eager' loads immediately regardless of viewport position - assert_unreached: Eager audio should load data immediately Reached unreachable code
+
+[html/semantics/embedded-content/the-video-element/intrinsic_sizes.htm]
+kind      = needs-renderer
+why       = asserts replaced-element default object sizes (300px x 150px, 400px x 150px, 300px x 100px) from getComputedStyle(v).width/height, which requires layout boxes
+assertion = FAIL: default object size is 300x150 - assert_equals: expected "300px" but got "auto"
+
+[html/semantics/embedded-content/the-video-element/resize-during-playback.html]
+kind      = needs-decoder
+why       = checks video.canPlayType for MP4 and WebM and plays video to observe resize; the default platform decodes no video
+media     = /media/h264-resolution-change.mp4 (video/mp4), /media/vp9-resolution-change.webm (video/webm)
+assertion = FAIL: mp4 supported - assert_true: expected true got false
+
+[html/semantics/embedded-content/the-video-element/video-loading-eager.html]
+kind      = needs-decoder
+why       = waits for loadeddata on an MP4 video resource; the default platform decodes no video
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = FAIL: Video with loading='eager' loads immediately regardless of viewport position - assert_unreached: Eager video should load data immediately Reached unreachable code
+
+[html/semantics/embedded-content/the-video-element/video_size_preserved_after_ended.html]
+kind      = needs-decoder
+why       = plays a video resource to ended and checks videoWidth/videoHeight; the default platform decodes no video
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = TIMEOUT: videoWidth and videoHeight are preserved after playback ends - Test timed out
+
+[html/semantics/embedded-content/the-video-element/video_timeupdate_on_seek.html]
+kind      = needs-decoder
+why       = waits for a video resource to load and seek via timeout_on_seek.py; the default platform decodes no video (also 0/2 TIMEOUT in Chrome, Firefox and Safari on wpt.fyi)
+media     = /media/movie_5.mp4 (video/mp4)
+assertion = TIMEOUT: Test timed out
+
