@@ -1754,9 +1754,16 @@ fn run(init: std.process.Init) !u8 {
     if (discovery.total_manifest_urls > 0) {
         const pct = 100.0 * @as(f64, @floatFromInt(discovery.total_in_scope_urls)) /
             @as(f64, @floatFromInt(discovery.total_manifest_urls));
-        print("Scope: {d} of {d} testharness URLs ({d:.1}%), across {d} source files\n", .{
+        const url_kind: []const u8 = if (options.crashtests_only and !options.include_crashtests)
+            "crashtests"
+        else if (options.include_crashtests)
+            "test URLs"
+        else
+            "testharness URLs";
+        print("Scope: {d} of {d} {s} ({d:.1}%), across {d} source files\n", .{
             discovery.total_in_scope_urls,
             discovery.total_manifest_urls,
+            url_kind,
             pct,
             discovery.test_files.items.len,
         });

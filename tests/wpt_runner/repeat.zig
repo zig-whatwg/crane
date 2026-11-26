@@ -329,7 +329,12 @@ pub const Tally = struct {
 
             const h = try self.entry(&self.harness, url);
             h.seen[s][@backingInt(seenStatus(status))] += 1;
-            if (std.mem.eql(u8, status, "OK")) h.pass[s] += 1 else try self.noteFailure(h, status, stringField(obj, "message"));
+            // Testharness files report top-level status "OK"; passing crashtests
+            // report "PASS" (result_reporter.zig, crashtest_result_converter).
+            if (std.mem.eql(u8, status, "OK") or std.mem.eql(u8, status, "PASS"))
+                h.pass[s] += 1
+            else
+                try self.noteFailure(h, status, stringField(obj, "message"));
 
             const subs = switch (obj.get("subtests") orelse continue) {
                 .array => |a| a,
@@ -902,4 +907,20 @@ test "a file's journal counts that are the same in every run are stable, whateve
     const text = out.written();
     try testing.expect(std.mem.indexOf(u8, text, "by the journals' counts (this): 2 subtests passed in every run") != null);
     try testing.expect(std.mem.indexOf(u8, text, "by the journals' counts (with): 3 subtests passed in every run") != null);
+}
+
+test "a passing crashtest (wptreport status PASS) is not listed under harness status not OK" {
+    var t = Tally.init(testing.allocator);
+    defer t.deinit();
+    const crash_journal = "{\"index\":0,\"path\":\"accessibility/crashtests/add-detached-node.html\",\"context\":\"\",\"status\":\"OK\",\"passed\":0,\"failed\":0,\"timed_out\":0,\"notrun\":0,\"crashtest\":true}\n";
+    const crash_stream = "{\"test\":\"/accessibility/crashtests/add-detached-node.html\",\"status\":\"PASS\",\"message\":null,\"duration\":10,\"subtests\":[]}\n";
+    for (0..3) |_| try t.addRun(.this, crash_journal, crash_stream);
+    try testing.expectEqual(@as(usize, 0), t.unstable(.this));
+    try testing.expectEqual(@as(u8, 0), t.verifyExitCode());
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try t.write(&out.writer, .{ .this = "tip/wpt_runner", .with = null, .verify = true });
+    const text = out.written();
+    try testing.expect(std.mem.indexOf(u8, text, "harness status not OK (runs):\n  none\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "verify: STABLE over 3 runs") != null);
 }
