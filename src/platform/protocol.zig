@@ -22,9 +22,9 @@
 //! with exactly the same parameter and return types - every operation,
 //! including those gated on a capability it lacks (kit/headless answers those;
 //! the gate keeps them from being called). It must also declare `name`,
-//! `capabilities`, `identity` and `PlatformBrowserOptions` (contract 1.3). A
-//! missing or mis-typed declaration is a compile error in this file that names
-//! it, whether or not anything calls it
+//! `capabilities`, `identity`, `general_memory` and `PlatformBrowserOptions`
+//! (contract 1.3). A missing or mis-typed declaration is a compile error in
+//! this file that names it, whether or not anything calls it
 //! (docs/lessons/architecture-a-forwarding-facade-checks-only-what-gets-called.md).
 //!
 //! Capabilities are tri-state and comptime-known: `.native`, `.emulated` (with
@@ -459,6 +459,21 @@ pub const capabilities: Capabilities = withoutCapabilities(impl.capabilities, pl
 
 /// The platform this build selected, for messages ("darwin", "testing").
 pub const name: []const u8 = impl.name;
+
+/// Who supplies a Browser's general memory (objects and bytes partitions;
+/// allocator-hardening design 4.2). Not a `Support` tri-state: there is no
+/// "unsupported" general memory.
+pub const GeneralMemoryPolicy = enum(u8) {
+    /// Crane's built-in objects and bytes pools inside the Browser's
+    /// reservation (the default on platforms with reserved address space).
+    crane_pools,
+    /// The platform's own allocator (e.g. a future iOS typed-zone adapter, or
+    /// a headless platform without reserved address space).
+    platform_allocator,
+};
+
+/// How this platform supplies a Browser's general memory at build time.
+pub const general_memory: GeneralMemoryPolicy = impl.general_memory;
 
 /// A gated operation reached where the platform lacks its capability: a
 /// compile error that says so, and how to write the call.
@@ -3865,12 +3880,13 @@ comptime {
 fn checkPlatform(comptime platform: type) void {
     const label = "platform `" ++ (if (@hasDecl(platform, "name")) platform.name else "?") ++ "` (platform_impl.protocol)";
     // 1.3: the declarations.
-    for ([_][]const u8{ "name", "capabilities", "identity", "PlatformBrowserOptions" }) |required| {
+    for ([_][]const u8{ "name", "capabilities", "identity", "general_memory", "PlatformBrowserOptions" }) |required| {
         if (!@hasDecl(platform, required)) @compileError(label ++ " lacks `" ++ required ++ "` (docs/platform-protocol.md 1.3)");
     }
     if (@TypeOf(platform.name) != []const u8 and !isStringLiteral(@TypeOf(platform.name))) @compileError(label ++ ": `name` must be a []const u8");
     if (@TypeOf(platform.capabilities) != Capabilities) @compileError(label ++ ": `capabilities` must be a platform.Capabilities");
     if (@TypeOf(platform.identity) != Identity) @compileError(label ++ ": `identity` must be a platform.Identity");
+    if (@TypeOf(platform.general_memory) != GeneralMemoryPolicy) @compileError(label ++ ": `general_memory` must be a platform.GeneralMemoryPolicy");
     checkBrowserOptions(label, platform.PlatformBrowserOptions);
     // Every public inline function here is an operation.
     const protocol = @This();

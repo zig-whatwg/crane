@@ -156,6 +156,9 @@ pub const protocol = struct {
 
     pub const identity: platform.Identity = posix.identity;
 
+    /// Crane's built-in objects and bytes pools (allocator-hardening design 4.2).
+    pub const general_memory: platform.GeneralMemoryPolicy = .crane_pools;
+
     /// The host OS's services as darwin and linux declare them, and the test
     /// capabilities built so far.
     pub const capabilities: platform.Capabilities = blk: {
