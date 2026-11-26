@@ -45,6 +45,10 @@ pub const XRPlaneSet = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// Setlike declaration (WebIDL 2.5.12): the binding defines its members
+        /// (3.7.12) over the impl's set entries (`setlikeEntries`).
+        pub const setlike = .{ .value_type = "XRPlane", .readonly = true };
     };
 
     pub const State = runtime.FlattenedState(
@@ -54,10 +58,6 @@ pub const XRPlaneSet = struct {
             _internal: ?*XRPlaneSetImpl.InternalState = null,
         },
     );
-
-    // ========================================
-    // Constants (static getters)
-    // ========================================
 
     const delegates = .{
         .deinit = &deinit,
@@ -146,5 +146,11 @@ pub const XRPlaneSet = struct {
         if (comptime @hasDecl(impls, "XRPlaneSet")) {
             if (comptime @hasDecl(impls.XRPlaneSet, "installHooks")) impls.XRPlaneSet.installHooks();
         }
+    }
+
+    /// The set entries of this setlike object (WebIDL 2.5.12), for the
+    /// binding's setlike members.
+    pub fn setlikeEntries(instance: *runtime.Instance) ?*webidl.setlike.PlatformObjects {
+        return XRPlaneSetImpl.setlikeEntries(instance);
     }
 };

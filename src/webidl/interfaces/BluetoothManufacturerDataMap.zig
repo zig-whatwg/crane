@@ -46,6 +46,10 @@ pub const BluetoothManufacturerDataMap = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// Maplike declaration (WebIDL 2.5.11): the binding defines its members
+        /// (3.7.11) over the impl's map entries (`maplikeEntries`).
+        pub const maplike = .{ .key_type = "unsigned short", .value_type = "DataView", .readonly = true };
     };
 
     pub const State = runtime.FlattenedState(
@@ -55,10 +59,6 @@ pub const BluetoothManufacturerDataMap = struct {
             _internal: ?*BluetoothManufacturerDataMapImpl.InternalState = null,
         },
     );
-
-    // ========================================
-    // Constants (static getters)
-    // ========================================
 
     const delegates = .{
         .deinit = &deinit,
@@ -147,5 +147,11 @@ pub const BluetoothManufacturerDataMap = struct {
         if (comptime @hasDecl(impls, "BluetoothManufacturerDataMap")) {
             if (comptime @hasDecl(impls.BluetoothManufacturerDataMap, "installHooks")) impls.BluetoothManufacturerDataMap.installHooks();
         }
+    }
+
+    /// The map entries of this maplike object (WebIDL 2.5.11), for the
+    /// binding's maplike members.
+    pub fn maplikeEntries(instance: *runtime.Instance) ?*webidl.maplike.View(u16, *anyopaque) {
+        return BluetoothManufacturerDataMapImpl.maplikeEntries(instance);
     }
 };

@@ -46,6 +46,10 @@ pub const BluetoothServiceDataFilter = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+
+        /// Maplike declaration (WebIDL 2.5.11): the binding defines its members
+        /// (3.7.11) over the impl's map entries (`maplikeEntries`).
+        pub const maplike = .{ .key_type = "DOMString", .value_type = "BluetoothDataFilter", .readonly = true };
     };
 
     pub const State = runtime.FlattenedState(
@@ -55,10 +59,6 @@ pub const BluetoothServiceDataFilter = struct {
             _internal: ?*BluetoothServiceDataFilterImpl.InternalState = null,
         },
     );
-
-    // ========================================
-    // Constants (static getters)
-    // ========================================
 
     const delegates = .{
         .deinit = &deinit,
@@ -169,5 +169,11 @@ pub const BluetoothServiceDataFilter = struct {
             // step fails (tools/lint_constructors.zig).
             return try BluetoothServiceDataFilterImpl.call_constructor(ctx, init_data);
         }
+    }
+
+    /// The map entries of this maplike object (WebIDL 2.5.11), for the
+    /// binding's maplike members.
+    pub fn maplikeEntries(instance: *runtime.Instance) ?*webidl.maplike.PlatformObjects {
+        return BluetoothServiceDataFilterImpl.maplikeEntries(instance);
     }
 };

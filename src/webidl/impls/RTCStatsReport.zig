@@ -1,40 +1,33 @@
-//! Implementation for RTCStatsReport interface
+//! WebRTC: `interface RTCStatsReport { readonly maplike<DOMString, object>; }`.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const RTCStatsReport = interfaces.RTCStatsReport;
+const webidl = @import("webidl");
 
-pub const State = RTCStatsReport.State;
+pub const State = interfaces.RTCStatsReport.State;
 
-pub const ImplError = error{
-    NotImplemented,
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    entries: webidl.maplike.View([]const u8, *anyopaque),
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = args;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator, .entries = .initEmpty() };
+    instance.getState(StateType).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    internal.allocator.destroy(internal);
+}
+
+pub fn maplikeEntries(instance: *runtime.Instance) ?*webidl.maplike.View([]const u8, *anyopaque) {
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    return &internal.entries;
 }

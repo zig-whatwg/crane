@@ -1,49 +1,38 @@
-//! Implementation for BluetoothManufacturerDataFilter interface
+//! Web Bluetooth Scanning: `interface BluetoothManufacturerDataFilter { readonly maplike<unsigned short, BluetoothDataFilter>; }`.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const BluetoothManufacturerDataFilter = interfaces.BluetoothManufacturerDataFilter;
 
-pub const State = BluetoothManufacturerDataFilter.State;
+pub const State = interfaces.BluetoothManufacturerDataFilter.State;
 
-pub const ImplError = error{
-    NotImplemented,
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    entries: webidl.maplike.View(u16, *anyopaque),
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = args;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator, .entries = .initEmpty() };
+    instance.getState(StateType).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    internal.allocator.destroy(internal);
 }
 
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(instance: *runtime.Instance, init_data: webidl.Opt(runtime.JSValue)) !void {
     _ = instance;
     _ = init_data;
-    // TODO: Implement constructor logic with parameters
+}
+
+pub fn maplikeEntries(instance: *runtime.Instance) ?*webidl.maplike.View(u16, *anyopaque) {
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    return &internal.entries;
 }

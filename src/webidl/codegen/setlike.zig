@@ -10,42 +10,97 @@
 //! are-not-operations.md). It writes the declaration into Meta
 //! (`Meta.setlike`) for the binding, which defines the members, and a
 //! `setlikeEntries` delegate through which the binding reaches the impl's
-//! set entries (`webidl.setlike.SetEntries`). An add, delete or clear the
-//! interface declares itself stays an ordinary operation and overrides the
-//! binding's (3.7.12.8-10: "If A does not declare a member with identifier
-//! ...").
-//!
-//! Staged by owner: an interface is listed in `implemented` in the commit
-//! that gives its impl the set entries. The others keep the placeholder
-//! their declaration has always generated, byte for byte, until then.
+//! set entries (`webidl.setlike.SetEntries` or `webidl.setlike.PlatformObjects`).
+//! An add, delete or clear the interface declares itself stays an ordinary
+//! operation and overrides the binding's (3.7.12.8-10: "If A does not declare
+//! a member with identifier ...").
 
 const std = @import("std");
 const types = @import("types.zig");
+const ir_mod = @import("ir.zig");
 
-/// The setlike interfaces whose impls keep their set entries in a
-/// `webidl.setlike.SetEntries`.
-pub const implemented = [_][]const u8{ "CustomStateSet", "FontFaceSet", "Highlight", "ViewTransitionTypeSet" };
+/// Resolve typedefs (e.g. `UUID` -> `DOMString`) so Meta and entries delegates
+/// see the canonical IDL type.
+pub fn resolveType(ir: ?*const ir_mod.IR, idl_type: types.IDLType) types.IDLType {
+    const model = ir orelse return idl_type;
+    var current = idl_type;
+    var depth: usize = 0;
+    while (depth < 8) : (depth += 1) {
+        if (current.unionTypes != null or current.sequence != null or current.generic != null) break;
+        const td = model.typedefs.get(current.type) orelse break;
+        var next = td.idlType;
+        if (current.nullable) next.nullable = true;
+        current = next;
+    }
+    return current;
+}
 
-pub fn isImplemented(interface_name: []const u8) bool {
-    for (implemented) |name| {
-        if (std.mem.eql(u8, name, interface_name)) return true;
+/// Return a setlike declaration with its value type resolved through `ir`'s typedefs.
+pub fn resolve(ir: ?*const ir_mod.IR, set: types.Setlike) types.Setlike {
+    return .{
+        .value_type = resolveType(ir, set.value_type),
+        .readonly = set.readonly,
+    };
+}
+
+pub fn isStringType(name: []const u8) bool {
+    for ([_][]const u8{ "DOMString", "USVString", "ByteString", "CSSOMString" }) |s| {
+        if (std.mem.eql(u8, name, s)) return true;
     }
     return false;
 }
 
+/// Zig scalar type for a WebIDL primitive, or null for non-primitives.
+pub fn primitiveZigType(name: []const u8) ?[]const u8 {
+    const map = .{
+        .{ "boolean", "bool" },
+        .{ "byte", "i8" },
+        .{ "octet", "u8" },
+        .{ "short", "i16" },
+        .{ "unsigned short", "u16" },
+        .{ "long", "i32" },
+        .{ "unsigned long", "u32" },
+        .{ "long long", "i64" },
+        .{ "unsigned long long", "u64" },
+        .{ "float", "f32" },
+        .{ "unrestricted float", "f32" },
+        .{ "double", "f64" },
+        .{ "unrestricted double", "f64" },
+    };
+    inline for (map) |entry| {
+        if (std.mem.eql(u8, name, entry[0])) return entry[1];
+    }
+    return null;
+}
+
 /// The Zig type of the set entries of a setlike declaration whose value type
-/// is `value_type`: a string type's set keeps its own copies
-/// (`webidl.setlike.Strings`); an interface type's set is a view of a list
-/// its impl keeps and traces (`webidl.setlike.PlatformObjects`: FontFaceSet's
-/// FontFace, whose binding converts the values to and from platform
-/// objects). Any other type (nullable, a union, a sequence, a primitive) is
-/// an error, so an interface listed in `implemented` with one fails the
-/// regeneration.
+/// is `value_type`:
+/// - string types -> `webidl.setlike.Strings`
+/// - primitive types -> `webidl.setlike.SetEntries(<zig_prim>)`
+/// - interface types -> `webidl.setlike.PlatformObjects`
 pub fn entriesType(value_type: types.IDLType) error{UnsupportedSetlikeValueType}![]const u8 {
-    if (value_type.nullable or value_type.unionTypes != null or value_type.sequence != null) return error.UnsupportedSetlikeValueType;
+    if (value_type.nullable or value_type.unionTypes != null or value_type.sequence != null or value_type.generic != null) {
+        return error.UnsupportedSetlikeValueType;
+    }
     const name = value_type.type;
-    for ([_][]const u8{ "DOMString", "USVString", "ByteString", "CSSOMString" }) |string| {
-        if (std.mem.eql(u8, name, string)) return "webidl.setlike.Strings";
+    if (isStringType(name)) return "webidl.setlike.Strings";
+    const prim_entries = .{
+        .{ "boolean", "webidl.setlike.SetEntries(bool)" },
+        .{ "byte", "webidl.setlike.SetEntries(i8)" },
+        .{ "octet", "webidl.setlike.SetEntries(u8)" },
+        .{ "short", "webidl.setlike.SetEntries(i16)" },
+        .{ "unsigned short", "webidl.setlike.SetEntries(u16)" },
+        .{ "long", "webidl.setlike.SetEntries(i32)" },
+        .{ "unsigned long", "webidl.setlike.SetEntries(u32)" },
+        .{ "long long", "webidl.setlike.SetEntries(i64)" },
+        .{ "unsigned long long", "webidl.setlike.SetEntries(u64)" },
+        .{ "float", "webidl.setlike.SetEntries(f32)" },
+        .{ "unrestricted float", "webidl.setlike.SetEntries(f32)" },
+        .{ "double", "webidl.setlike.SetEntries(f64)" },
+        .{ "unrestricted double", "webidl.setlike.SetEntries(f64)" },
+    };
+    inline for (prim_entries) |entry| {
+        if (std.mem.eql(u8, name, entry[0])) return entry[1];
     }
     // An interface name: an identifier starting with an uppercase letter
     // (WebIDL's primitive and built-in types are lowercase keywords).
@@ -54,7 +109,7 @@ pub fn entriesType(value_type: types.IDLType) error{UnsupportedSetlikeValueType}
 }
 
 /// `Meta.setlike`, inside the interface's Meta: the declaration's value type
-/// (its IDL name) and whether it is readonly.
+/// (its resolved IDL name) and whether it is readonly.
 ///
 ///     pub const setlike = .{ .value_type = "DOMString", .readonly = false };
 pub fn writeMeta(writer: anytype, set: types.Setlike) !void {
