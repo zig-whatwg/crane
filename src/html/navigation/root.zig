@@ -50,7 +50,10 @@ pub const isXmlResponse = fetch_integration.isXmlResponse;
 pub const shouldNavigationProceed = fetch_integration.shouldNavigationProceed;
 
 pub const XFrameOptions = security_policies.XFrameOptions;
-pub const isFramingAllowed = security_policies.isFramingAllowed;
+pub const parseXFrameOptions = security_policies.parseXFrameOptions;
+pub const cspHasEnforcingFrameAncestors = security_policies.cspHasEnforcingFrameAncestors;
+pub const sameOriginAncestorsAdhere = security_policies.sameOriginAncestorsAdhere;
+pub const checkAdherence = security_policies.checkAdherence;
 
 test {
     @import("std").testing.refAllDecls(@This());

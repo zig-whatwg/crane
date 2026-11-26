@@ -662,6 +662,10 @@ INCLUDE = [
     # --- Tier 2: security, performance timing, service workers (the user, 2026-10-01). ---
     ('referrer-policy/',           'Referrer Policy'),
     ('content-security-policy/',   'Content Security Policy'),
+    # HTML 7.7 X-Frame-Options (the integrator, 2026-11-25 7:41 PM ET, lane xfo1):
+    # all 6 files are testharness, 0 geometry, merged HTML spec, shipped by all
+    # three browsers (wpt.fyi c197984917: Chrome 160 / Firefox 163 / Safari 257).
+    ('x-frame-options/',           'X-Frame-Options framing control (HTML 7.7)'),
     ('mixed-content/',             'Mixed Content'),
     ('cors/',                      'CORS'),
     ('subresource-integrity/',     'Subresource Integrity'),
