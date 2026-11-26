@@ -844,8 +844,10 @@ pub const InternalState = struct {
     fn reachedEnd(self: *InternalState) void {
         self.load.official_position = self.load.position;
         // Step 1: a loop attribute seeks to the earliest possible position.
+        // reachedEnd() runs inside advanceClock() while position is still at
+        // duration; perform the seek directly without re-entering advanceClock().
         if (self.looping()) {
-            self.seek(0) catch self.cancel();
+            self.performSeek(0) catch self.cancel();
             return;
         }
         // No more data in the direction of playback: HAVE_CURRENT_DATA, which
@@ -863,8 +865,15 @@ pub const InternalState = struct {
     /// The seek algorithm, to `target`. Every byte of the resource is held,
     /// so the data for any position is available at once (step 12).
     fn seek(self: *InternalState, target: f64) !void {
-        // Steps 2-11: nothing with no resource; the position moves now.
+        // Account for elapsed playback time up to the seek call before moving.
         self.advanceClock();
+        try self.performSeek(target);
+    }
+
+    /// Seek steps 2-13 without re-advancing the clock (called by `seek` after
+    /// advancing the clock and by `reachedEnd` from inside `advanceClock`).
+    fn performSeek(self: *InternalState, target: f64) !void {
+        // Steps 2-11: nothing with no resource; the position moves now.
         _ = self.load.beginSeek(target) orelse return;
         self.styleStateChanged();
         self.holdOfficial();
