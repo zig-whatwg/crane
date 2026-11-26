@@ -1964,6 +1964,122 @@
           }
         }
       ]
+    },
+    {
+      "name": "memory: heapsnapshot analysis advanced",
+      "about": "The 5 advanced --memoryDebugging heap snapshot analysis tools on deterministic V8 fixtures (sample + sample_v2): retaining paths (full + depth limit + missing node), duplicate strings (normal + truncated), query objects (className regex, propertyName, nodeType, retainedSize/selfSize ranges, isDetached, sortBy), compare_heapsnapshots (summary + detailed classIndex + invalid classIndex), and analyze_heapsnapshot_contexts (live vs dead fields, scriptsWithoutScopes, retainedSize & scopeInfoNodeId filters).",
+      "files": true,
+      "memory_debugging": true,
+      "copy_fixtures": [
+        "sample.heapsnapshot",
+        "sample_v2.heapsnapshot"
+      ],
+      "calls": [
+        {
+          "tool": "get_heapsnapshot_retaining_paths",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "nodeId": 81
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_retaining_paths",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "nodeId": 81,
+            "maxDepth": 1
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_retaining_paths",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "nodeId": 999999
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_duplicate_strings",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot"
+          }
+        },
+        {
+          "tool": "query_heapsnapshot_objects",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "className": "leakywidget|cache"
+          }
+        },
+        {
+          "tool": "query_heapsnapshot_objects",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "propertyName": "^detached",
+            "nodeType": "object"
+          }
+        },
+        {
+          "tool": "query_heapsnapshot_objects",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "isDetached": true,
+            "selfSize": "100B-600B"
+          }
+        },
+        {
+          "tool": "query_heapsnapshot_objects",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "nodeType": "string",
+            "retainedSize": "50B-100B",
+            "sortBy": "id"
+          }
+        },
+        {
+          "tool": "compare_heapsnapshots",
+          "args": {
+            "baseFilePath": "{files}/sample.heapsnapshot",
+            "currentFilePath": "{files}/sample_v2.heapsnapshot"
+          }
+        },
+        {
+          "tool": "compare_heapsnapshots",
+          "args": {
+            "baseFilePath": "{files}/sample.heapsnapshot",
+            "currentFilePath": "{files}/sample_v2.heapsnapshot",
+            "classIndex": 0
+          }
+        },
+        {
+          "tool": "compare_heapsnapshots",
+          "args": {
+            "baseFilePath": "{files}/sample.heapsnapshot",
+            "currentFilePath": "{files}/sample_v2.heapsnapshot",
+            "classIndex": 999
+          }
+        },
+        {
+          "tool": "analyze_heapsnapshot_contexts",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot"
+          }
+        },
+        {
+          "tool": "analyze_heapsnapshot_contexts",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "scopeInfoNodeId": 105,
+            "retainedSize": "1KB-"
+          }
+        },
+        {
+          "tool": "analyze_heapsnapshot_contexts",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "retainedSize": "10MB-"
+          }
+        }
+      ]
     }
   ],
   "expected": [
