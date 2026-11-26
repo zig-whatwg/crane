@@ -177,6 +177,7 @@ test {
     _ = script;
     _ = @import("heap_snapshot.zig");
     _ = @import("heap_formatter.zig");
+    _ = @import("heap_regex.zig");
 }
 
 test "disabled: a copied tool off by default, not one offered by default or unknown" {

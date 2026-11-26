@@ -91,6 +91,46 @@ pub const list = [_]Tool{
         .memory_debugging = true,
         .run = closeHeapSnapshot,
     },
+    .{
+        .name = "get_heapsnapshot_retaining_paths",
+        .page_tool = false,
+        .blocked_by_dialog = false,
+        .files = &.{.{ .name = "filePath" }},
+        .memory_debugging = true,
+        .run = getHeapSnapshotRetainingPaths,
+    },
+    .{
+        .name = "get_heapsnapshot_duplicate_strings",
+        .page_tool = false,
+        .blocked_by_dialog = false,
+        .files = &.{.{ .name = "filePath" }},
+        .memory_debugging = true,
+        .run = getHeapSnapshotDuplicateStrings,
+    },
+    .{
+        .name = "query_heapsnapshot_objects",
+        .page_tool = false,
+        .blocked_by_dialog = false,
+        .files = &.{.{ .name = "filePath" }},
+        .memory_debugging = true,
+        .run = queryHeapSnapshotObjects,
+    },
+    .{
+        .name = "compare_heapsnapshots",
+        .page_tool = false,
+        .blocked_by_dialog = false,
+        .files = &.{ .{ .name = "baseFilePath" }, .{ .name = "currentFilePath" } },
+        .memory_debugging = true,
+        .run = compareHeapSnapshots,
+    },
+    .{
+        .name = "analyze_heapsnapshot_contexts",
+        .page_tool = false,
+        .blocked_by_dialog = false,
+        .files = &.{.{ .name = "filePath" }},
+        .memory_debugging = true,
+        .run = analyzeHeapSnapshotContexts,
+    },
 };
 
 /// V8 heap snapshot walk timeout (generous for debug / TSan builds).
@@ -153,7 +193,11 @@ fn u64Arg(args: std.json.ObjectMap, key: []const u8) ?u64 {
 }
 
 fn loadSnapshot(ctx: *Context, args: std.json.ObjectMap) anyerror!*heap.HeapSnapshot {
-    const file_path = registry.stringArg(args, "filePath") orelse return ctx.fail("filePath is required", .{});
+    return loadSnapshotByKey(ctx, args, "filePath");
+}
+
+fn loadSnapshotByKey(ctx: *Context, args: std.json.ObjectMap, key: []const u8) anyerror!*heap.HeapSnapshot {
+    const file_path = registry.stringArg(args, key) orelse return ctx.fail("{s} is required", .{key});
     return switch (try ctx.session.heap_snapshots.getOrLoad(ctx.session.allocator, &ctx.session.paths, ctx.arena, file_path)) {
         .ok => |snap| snap,
         .err => |msg| ctx.fail("{s}", .{msg}),
@@ -167,6 +211,7 @@ fn mapQueryError(ctx: *Context, err: anyerror, node_id: ?u64, class_id: ?u64) an
         error.ClassNotFound => ctx.fail("Class with ID {d} not found in heap snapshot", .{class_id orelse 0}),
         error.MissingObjectId => ctx.fail("objectId is required when filterName is attributedToSpecificNativeContext", .{}),
         error.InvalidFilterName => ctx.fail("Invalid filter name", .{}),
+        error.InvalidRegex => ctx.fail("Invalid regular expression", .{}),
         else => err,
     };
 }
@@ -335,4 +380,167 @@ fn closeHeapSnapshot(ctx: *Context, args: std.json.ObjectMap, _: ?*Page, respons
         return ctx.fail("Failed to close heap snapshot: {s} was not loaded.", .{file_path});
     }
     try response.line("Closed heap snapshot: {s}", .{file_path});
+}
+
+fn usizeArg(args: std.json.ObjectMap, key: []const u8) ?usize {
+    const n = registry.numberArg(args, key) orelse return null;
+    if (n < 0 or !std.math.isFinite(n)) return null;
+    return @intFromFloat(n);
+}
+
+fn getHeapSnapshotRetainingPaths(ctx: *Context, args: std.json.ObjectMap, _: ?*Page, response: *Response) anyerror!void {
+    const snap = try loadSnapshot(ctx, args);
+    const max_len = maxNameLengthArg(args);
+    const raw_id = registry.numberArg(args, "nodeId") orelse return ctx.fail("Node with ID undefined not found", .{});
+    if (raw_id < 0 or raw_id != @floor(raw_id)) {
+        return ctx.fail("Node with ID {d} not found", .{raw_id});
+    }
+    const node_id: u64 = @intFromFloat(raw_id);
+    const result = snap.getRetainingPaths(
+        ctx.arena,
+        node_id,
+        usizeArg(args, "maxDepth"),
+        usizeArg(args, "maxNodes"),
+        usizeArg(args, "maxSiblings"),
+    ) catch |err| return mapQueryError(ctx, err, node_id, null);
+
+    try response.line("## Heap Snapshot Data", .{});
+    try response.line("### Retaining Paths", .{});
+    if (result.paths.len == 0) {
+        try response.line("No retaining paths found.", .{});
+    } else {
+        try response.line("{s}", .{try formatter.formatRetainingPaths(ctx.arena, result.paths, max_len)});
+    }
+    if (result.limits_reached.len > 0) {
+        var names: std.ArrayList([]const u8) = .empty;
+        for (result.limits_reached) |lim| try names.append(ctx.arena, lim.name());
+        try response.line("Note: results are truncated, the following limits were reached: {s}.", .{try std.mem.join(ctx.arena, ", ", names.items)});
+    }
+}
+
+fn getHeapSnapshotDuplicateStrings(ctx: *Context, args: std.json.ObjectMap, _: ?*Page, response: *Response) anyerror!void {
+    const snap = try loadSnapshot(ctx, args);
+    const max_len = maxNameLengthArg(args);
+    const groups = snap.getDuplicateStrings(ctx.arena) catch |err| return mapQueryError(ctx, err, null, null);
+
+    var pagination_lines: std.ArrayList([]const u8) = .empty;
+    const shown = try console_tools.paginate(ctx.arena, groups.len, heapPageSizeArg(args), heapPageIdxArg(args), &pagination_lines);
+
+    try response.line("## Heap Snapshot Data", .{});
+    try response.line("### Duplicate Strings", .{});
+    for (pagination_lines.items) |l| try response.line("{s}", .{l});
+    try response.line("{s}", .{try formatter.formatDuplicateStrings(ctx.arena, groups[shown.start..shown.end], max_len)});
+}
+
+fn queryHeapSnapshotObjects(ctx: *Context, args: std.json.ObjectMap, _: ?*Page, response: *Response) anyerror!void {
+    var ret_range: ?formatter.ByteSizeRange = null;
+    if (registry.stringArg(args, "retainedSize")) |s| {
+        switch (try formatter.parseByteSizeRange(ctx.arena, s)) {
+            .ok => |r| ret_range = r,
+            .err => |msg| return ctx.failPlain("Input validation error: Invalid arguments for tool query_heapsnapshot_objects: retainedSize: {s}", .{msg}),
+        }
+    }
+    var self_range: ?formatter.ByteSizeRange = null;
+    if (registry.stringArg(args, "selfSize")) |s| {
+        switch (try formatter.parseByteSizeRange(ctx.arena, s)) {
+            .ok => |r| self_range = r,
+            .err => |msg| return ctx.failPlain("Input validation error: Invalid arguments for tool query_heapsnapshot_objects: selfSize: {s}", .{msg}),
+        }
+    }
+
+    const snap = try loadSnapshot(ctx, args);
+    const max_len = maxNameLengthArg(args);
+    const sort_by: heap.ObjectQuerySortBy = if (registry.stringArg(args, "sortBy")) |sb| blk: {
+        if (std.mem.eql(u8, sb, "selfSize")) break :blk .self_size;
+        if (std.mem.eql(u8, sb, "id")) break :blk .id;
+        break :blk .retained_size;
+    } else .retained_size;
+
+    const nodes = snap.queryObjects(ctx.arena, .{
+        .class_name = registry.stringArg(args, "className"),
+        .property_name = registry.stringArg(args, "propertyName"),
+        .node_type = registry.stringArg(args, "nodeType"),
+        .min_retained_size = if (ret_range) |r| r.min else null,
+        .max_retained_size = if (ret_range) |r| r.max else null,
+        .min_self_size = if (self_range) |r| r.min else null,
+        .max_self_size = if (self_range) |r| r.max else null,
+        .is_detached = registry.boolArg(args, "isDetached"),
+        .sort_by = sort_by,
+    }) catch |err| return mapQueryError(ctx, err, null, null);
+
+    // McpResponse.ts:1419 stably re-sorts NodeLike items descending by retainedSize.
+    std.sort.block(heap.NodeItem, nodes, {}, struct {
+        fn lessThan(_: void, a: heap.NodeItem, b: heap.NodeItem) bool {
+            return a.retained_size > b.retained_size;
+        }
+    }.lessThan);
+
+    var pagination_lines: std.ArrayList([]const u8) = .empty;
+    const shown = try console_tools.paginate(ctx.arena, nodes.len, heapPageSizeArg(args), heapPageIdxArg(args), &pagination_lines);
+
+    try response.line("## Heap Snapshot Data", .{});
+    try response.line("{s}", .{try formatter.formatNodeItems(ctx.arena, nodes[shown.start..shown.end], max_len)});
+    for (pagination_lines.items) |l| try response.line("{s}", .{l});
+}
+
+fn compareHeapSnapshots(ctx: *Context, args: std.json.ObjectMap, _: ?*Page, response: *Response) anyerror!void {
+    const base_snap = try loadSnapshotByKey(ctx, args, "baseFilePath");
+    const cur_snap = try loadSnapshotByKey(ctx, args, "currentFilePath");
+    const max_len = maxNameLengthArg(args);
+
+    if (registry.numberArg(args, "classIndex")) |raw_idx| {
+        const idx: i64 = if (raw_idx == @floor(raw_idx) and std.math.isFinite(raw_idx)) @intFromFloat(raw_idx) else -1;
+        switch (try heap.HeapSnapshot.getDetailedClassDiff(ctx.arena, base_snap, cur_snap, idx)) {
+            .out_of_range => |total_changed| {
+                if (raw_idx == @floor(raw_idx) and std.math.isFinite(raw_idx)) {
+                    return ctx.fail("Invalid classIndex: {d}. Total classes with changes: {d}", .{ idx, total_changed });
+                }
+                return ctx.fail("Invalid classIndex: {d}. Total classes with changes: {d}", .{ raw_idx, total_changed });
+            },
+            .ok => |detailed| {
+                var pagination_lines: std.ArrayList([]const u8) = .empty;
+                const shown = try console_tools.paginate(ctx.arena, detailed.objects.len, heapPageSizeArg(args), heapPageIdxArg(args), &pagination_lines);
+
+                try response.line("## Heap Snapshot Data", .{});
+                try response.line("### Heap Snapshot Detailed Diff", .{});
+                try response.line("{s}", .{try formatter.formatDetailedClassDiffHeader(ctx.arena, detailed.class_diff, max_len)});
+                for (pagination_lines.items) |l| try response.line("{s}", .{l});
+                try response.line("{s}", .{try formatter.formatDetailedClassDiffObjects(ctx.arena, detailed.objects[shown.start..shown.end])});
+            },
+        }
+        return;
+    }
+
+    const diff = try heap.HeapSnapshot.compareSnapshots(ctx.arena, base_snap, cur_snap);
+    var pagination_lines: std.ArrayList([]const u8) = .empty;
+    const shown = try console_tools.paginate(ctx.arena, diff.class_diffs.len, heapPageSizeArg(args), heapPageIdxArg(args), &pagination_lines);
+
+    try response.line("## Heap Snapshot Data", .{});
+    try response.line("### Heap Snapshot Diff", .{});
+    try response.line("{s}", .{try formatter.formatDiffTotals(ctx.arena, diff.totals)});
+    for (pagination_lines.items) |l| try response.line("{s}", .{l});
+    try response.line("{s}", .{try formatter.formatDiffSummary(ctx.arena, diff.class_diffs[shown.start..shown.end], max_len)});
+}
+
+fn analyzeHeapSnapshotContexts(ctx: *Context, args: std.json.ObjectMap, _: ?*Page, response: *Response) anyerror!void {
+    var ret_range: ?formatter.ByteSizeRange = null;
+    if (registry.stringArg(args, "retainedSize")) |s| {
+        switch (try formatter.parseByteSizeRange(ctx.arena, s)) {
+            .ok => |r| ret_range = r,
+            .err => |msg| return ctx.failPlain("Input validation error: Invalid arguments for tool analyze_heapsnapshot_contexts: retainedSize: {s}", .{msg}),
+        }
+    }
+
+    const snap = try loadSnapshot(ctx, args);
+    const max_len = maxNameLengthArg(args);
+    const analysis = try snap.analyzeContexts(ctx.arena);
+    const ranked = try formatter.collectRankedContexts(ctx.arena, analysis, ret_range, u64Arg(args, "scopeInfoNodeId"));
+
+    var pagination_lines: std.ArrayList([]const u8) = .empty;
+    const shown = try console_tools.paginate(ctx.arena, ranked.len, heapPageSizeArg(args), heapPageIdxArg(args), &pagination_lines);
+
+    try response.line("## Heap Snapshot Data", .{});
+    try response.line("### Context Analysis", .{});
+    for (pagination_lines.items) |l| try response.line("{s}", .{l});
+    try response.line("{s}", .{try formatter.formatContextAnalysis(ctx.arena, ranked[shown.start..shown.end], analysis.scripts_without_scopes, max_len)});
 }

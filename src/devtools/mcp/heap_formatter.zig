@@ -399,6 +399,227 @@ pub fn formatDominators(arena: Allocator, dominators: []const heap.DominatorItem
     return std.mem.join(arena, "\n", lines.items);
 }
 
+pub fn formatRetainingPaths(arena: Allocator, paths: []const heap.RetainingPathNode, max_len: usize) Allocator.Error![]const u8 {
+    var lines: std.ArrayList([]const u8) = .empty;
+    const Helper = struct {
+        fn appendNode(ar: Allocator, out: *std.ArrayList([]const u8), edge: heap.RetainingPathNode, depth: usize, max_l: usize) Allocator.Error!void {
+            const indent = try ar.alloc(u8, depth * 2);
+            @memset(indent, ' ');
+            try out.append(ar, try std.fmt.allocPrint(ar, "{s}<- @{d} {s} via {s} {s} (distance: {d})", .{
+                indent,
+                edge.node_id,
+                try formatName(ar, edge.node_name, max_l),
+                edge.edge_type,
+                try formatName(ar, edge.edge_name, max_l),
+                edge.distance,
+            }));
+            for (edge.children) |child| {
+                try appendNode(ar, out, child, depth + 1, max_l);
+            }
+        }
+    };
+    for (paths) |p| {
+        try Helper.appendNode(arena, &lines, p, 0, max_len);
+    }
+    return std.mem.join(arena, "\n", lines.items);
+}
+
+pub fn formatDuplicateStrings(arena: Allocator, groups: []const heap.DuplicateStringGroup, max_len: usize) Allocator.Error![]const u8 {
+    var lines: std.ArrayList([]const u8) = .empty;
+    try lines.append(arena, "value,count,totalSelfSize,totalRetainedSize,truncated,nodeIds");
+    for (groups) |group| {
+        const display_val = try text_util.truncateText(arena, group.value, max_len, .{});
+        var json_val: std.Io.Writer.Allocating = .init(arena);
+        std.json.Stringify.encodeJsonString(display_val, .{}, &json_val.writer) catch return error.OutOfMemory;
+
+        var ids_buf: std.ArrayList(u8) = .empty;
+        for (group.nodes, 0..) |n, idx| {
+            if (idx > 0) try ids_buf.append(arena, ' ');
+            try ids_buf.print(arena, "@{d}", .{n.id});
+        }
+        try lines.append(arena, try std.fmt.allocPrint(arena, "{s},{d},{s},{s},{s},{s}", .{
+            json_val.written(),
+            group.count,
+            try formatBytesToKbU64(arena, group.total_self_size),
+            try formatBytesToKbU64(arena, group.total_retained_size),
+            if (group.truncated) "true" else "false",
+            ids_buf.items,
+        }));
+    }
+    return std.mem.join(arena, "\n", lines.items);
+}
+
+fn formatSignedCount(arena: Allocator, n: i64) Allocator.Error![]const u8 {
+    return if (n > 0) std.fmt.allocPrint(arena, "+{d}", .{n}) else std.fmt.allocPrint(arena, "{d}", .{n});
+}
+
+fn formatSignedSize(arena: Allocator, bytes: i64) Allocator.Error![]const u8 {
+    const formatted = try formatBytesToKb(arena, bytes);
+    return if (bytes > 0) std.fmt.allocPrint(arena, "+{s}", .{formatted}) else formatted;
+}
+
+fn formatSignedSizeU64(arena: Allocator, bytes: u64) Allocator.Error![]const u8 {
+    const formatted = try formatBytesToKbU64(arena, bytes);
+    return if (bytes > 0) std.fmt.allocPrint(arena, "+{s}", .{formatted}) else formatted;
+}
+
+fn formatDiffCounts(arena: Allocator, added_count: u64, removed_count: u64, count_delta: i64, added_size: u64, removed_size: u64, size_delta: i64) Allocator.Error![]const u8 {
+    return std.fmt.allocPrint(arena, "# new: {d}, # deleted: {d}, # delta: {s}, alloc size: {s}, freed size: {s}, size delta: {s}", .{
+        added_count,
+        removed_count,
+        try formatSignedCount(arena, count_delta),
+        try formatSignedSizeU64(arena, added_size),
+        try formatSignedSizeU64(arena, removed_size),
+        try formatSignedSize(arena, size_delta),
+    });
+}
+
+pub fn formatDiffTotals(arena: Allocator, totals: heap.DiffTotals) Allocator.Error![]const u8 {
+    return std.fmt.allocPrint(arena, "Total: {s}", .{
+        try formatDiffCounts(arena, totals.added_count, totals.removed_count, totals.count_delta, totals.added_size, totals.removed_size, totals.size_delta),
+    });
+}
+
+pub fn formatDiffSummary(arena: Allocator, diffs: []const heap.ClassDiff, max_len: usize) Allocator.Error![]const u8 {
+    var lines: std.ArrayList([]const u8) = .empty;
+    try lines.append(arena, "index,className,addedCount,removedCount,countDelta,addedSize,removedSize,sizeDelta");
+    for (diffs) |diff| {
+        try lines.append(arena, try std.fmt.allocPrint(arena, "{d},{s},{d},{d},{d},{s},{s},{s}", .{
+            diff.index,
+            try formatName(arena, diff.class_name, max_len),
+            diff.added_count,
+            diff.removed_count,
+            diff.count_delta,
+            try formatBytesToKbU64(arena, diff.added_size),
+            try formatBytesToKbU64(arena, diff.removed_size),
+            try formatBytesToKb(arena, diff.size_delta),
+        }));
+    }
+    return std.mem.join(arena, "\n", lines.items);
+}
+
+pub fn formatDetailedClassDiffHeader(arena: Allocator, diff: heap.ClassDiff, max_len: usize) Allocator.Error![]const u8 {
+    return std.fmt.allocPrint(arena, "{s}: {s}", .{
+        try formatName(arena, diff.class_name, max_len),
+        try formatDiffCounts(arena, diff.added_count, diff.removed_count, diff.count_delta, diff.added_size, diff.removed_size, diff.size_delta),
+    });
+}
+
+pub fn formatDetailedClassDiffObjects(arena: Allocator, objects: []const heap.DiffObject) Allocator.Error![]const u8 {
+    var lines: std.ArrayList([]const u8) = .empty;
+    try lines.append(arena, "Objects:");
+    for (objects) |obj| {
+        const sign: []const u8 = if (obj.change == .added) "+" else "-";
+        try lines.append(arena, try std.fmt.allocPrint(arena, "  {s} @{d} (self_size: {s})", .{
+            sign,
+            obj.id,
+            try formatBytesToKbU64(arena, obj.self_size),
+        }));
+    }
+    return std.mem.join(arena, "\n", lines.items);
+}
+
+pub const RankedContext = struct {
+    scope: heap.AnalyzedScope,
+    context: heap.AnalyzedContext,
+};
+
+pub fn collectRankedContexts(
+    arena: Allocator,
+    analysis: heap.ContextAnalysisResult,
+    retained_size: ?ByteSizeRange,
+    scope_info_node_id: ?u64,
+) Allocator.Error![]const RankedContext {
+    const min: u64 = if (retained_size) |r| r.min else 0;
+    const max: ?u64 = if (retained_size) |r| r.max else null;
+    var out: std.ArrayList(RankedContext) = .empty;
+    for (analysis.scopes) |scope| {
+        if (scope_info_node_id) |want_id| {
+            if (scope.scope_info_node_id != want_id) continue;
+        }
+        for (scope.contexts) |ctx| {
+            const score = ctx.dead_fields_retained_size_sum;
+            if (score < min) continue;
+            if (max) |m| if (score > m) continue;
+            try out.append(arena, .{ .scope = scope, .context = ctx });
+        }
+    }
+    std.sort.block(RankedContext, out.items, {}, struct {
+        fn lessThan(_: void, left: RankedContext, right: RankedContext) bool {
+            return left.context.dead_fields_retained_size_sum > right.context.dead_fields_retained_size_sum;
+        }
+    }.lessThan);
+    return out.items;
+}
+
+const em_dash = "\xe2\x80\x94";
+
+fn formatCount(arena: Allocator, count: usize, singular: []const u8) Allocator.Error![]const u8 {
+    return std.fmt.allocPrint(arena, "{d} {s}{s}", .{ count, singular, if (count == 1) "" else "s" });
+}
+
+fn formatScopeName(arena: Allocator, scope: heap.AnalyzedScope, max_len: usize) Allocator.Error![]const u8 {
+    const script_name = if (scope.script_name.len > 0)
+        try formatName(arena, scope.script_name, max_len)
+    else
+        try std.fmt.allocPrint(arena, "script @{d}", .{scope.script_node_id});
+    if (scope.scope_name) |sn| if (sn.len > 0) {
+        return std.fmt.allocPrint(arena, "{s} ({s})", .{ try formatName(arena, sn, max_len), script_name });
+    };
+    return script_name;
+}
+
+pub fn formatContextAnalysis(
+    arena: Allocator,
+    contexts: []const RankedContext,
+    scripts_without_scopes: []const heap.ScriptWithoutScopes,
+    max_len: usize,
+) Allocator.Error![]const u8 {
+    var lines: std.ArrayList([]const u8) = .empty;
+    if (contexts.len == 0) {
+        try lines.append(arena, "No live contexts with dead fields were found.");
+    }
+    for (contexts) |entry| {
+        if (lines.items.len > 0) try lines.append(arena, "");
+        try lines.append(arena, try std.fmt.allocPrint(arena, "#### Context @{d} in `{s}` " ++ em_dash ++ " {s}", .{
+            entry.context.context_node_id,
+            try formatScopeName(arena, entry.scope, max_len),
+            try formatBytesToKbU64(arena, entry.context.dead_fields_retained_size_sum),
+        }));
+        try lines.append(arena, try std.fmt.allocPrint(arena, "Script @{d}, ScopeInfo @{d}, offsets {d}-{d}, {s}", .{
+            entry.scope.script_node_id,
+            entry.scope.scope_info_node_id,
+            entry.scope.scope_start,
+            entry.scope.scope_end,
+            try formatCount(arena, entry.scope.context_field_count, "context field"),
+        }));
+        for (entry.context.dead_fields) |field| {
+            try lines.append(arena, try std.fmt.allocPrint(arena, "- `{s}` ({s} @{d}) " ++ em_dash ++ " {s}", .{
+                try formatName(arena, field.name, max_len),
+                try formatName(arena, field.value_name, max_len),
+                field.value_node_id,
+                try formatBytesToKbU64(arena, field.retained_size),
+            }));
+        }
+    }
+    if (scripts_without_scopes.len > 0) {
+        try lines.append(arena, "");
+        try lines.append(arena, "Scripts without scope metadata could not be analyzed:");
+        for (scripts_without_scopes) |script| {
+            const script_name = if (script.script_name.len > 0)
+                try formatName(arena, script.script_name, max_len)
+            else
+                try std.fmt.allocPrint(arena, "script @{d}", .{script.script_node_id});
+            try lines.append(arena, try std.fmt.allocPrint(arena, "- `{s}` (@{d}) " ++ em_dash ++ " {s}", .{
+                script_name,
+                script.script_node_id,
+                try formatCount(arena, script.context_count, "context"),
+            }));
+        }
+    }
+    return std.mem.join(arena, "\n", lines.items);
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

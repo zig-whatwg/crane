@@ -10,6 +10,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const paths_mod = @import("paths.zig");
+const heap_regex = @import("heap_regex.zig");
 
 pub const DomLinkState = enum(u8) {
     unknown = 0,
@@ -127,6 +128,174 @@ pub const EdgeQueryOptions = struct {
     exclude_primitives: bool = true,
 };
 
+pub const RetainingPathLimit = enum {
+    nodes,
+    depth,
+    siblings,
+
+    pub fn name(self: RetainingPathLimit) []const u8 {
+        return switch (self) {
+            .nodes => "nodes",
+            .depth => "depth",
+            .siblings => "siblings",
+        };
+    }
+};
+
+pub const RetainingPathNode = struct {
+    edge_index: u32,
+    edge_name: []const u8,
+    edge_type: []const u8,
+    node_id: u64,
+    node_index: u32,
+    node_name: []const u8,
+    distance: i32,
+    children: []const RetainingPathNode,
+};
+
+pub const RetainingPathsResult = struct {
+    paths: []const RetainingPathNode,
+    /// Limits reached in first-hit order (matching JS Object.entries insertion order).
+    limits_reached: []const RetainingPathLimit,
+};
+
+pub const DuplicateStringNode = struct {
+    id: u64,
+    self_size: u64,
+    retained_size: u64,
+    distance: i32,
+};
+
+pub const DuplicateStringGroup = struct {
+    value: []const u8,
+    count: u32,
+    total_self_size: u64,
+    total_retained_size: u64,
+    truncated: bool,
+    nodes: []const DuplicateStringNode,
+};
+
+pub const ObjectQuerySortBy = enum {
+    retained_size,
+    self_size,
+    id,
+};
+
+pub const ObjectQueryOptions = struct {
+    class_name: ?[]const u8 = null,
+    property_name: ?[]const u8 = null,
+    node_type: ?[]const u8 = null,
+    min_retained_size: ?u64 = null,
+    max_retained_size: ?u64 = null,
+    min_self_size: ?u64 = null,
+    max_self_size: ?u64 = null,
+    is_detached: ?bool = null,
+    sort_by: ObjectQuerySortBy = .retained_size,
+};
+
+pub const DiffTotals = struct {
+    added_count: u64,
+    removed_count: u64,
+    count_delta: i64,
+    added_size: u64,
+    removed_size: u64,
+    size_delta: i64,
+};
+
+pub const ClassDiff = struct {
+    index: usize,
+    class_name: []const u8,
+    added_count: u64,
+    removed_count: u64,
+    count_delta: i64,
+    added_size: u64,
+    removed_size: u64,
+    size_delta: i64,
+};
+
+pub const SnapshotDiffResult = struct {
+    class_diffs: []const ClassDiff,
+    totals: DiffTotals,
+};
+
+pub const DiffObjectChange = enum {
+    added,
+    deleted,
+};
+
+pub const DiffObject = struct {
+    id: u64,
+    self_size: u64,
+    change: DiffObjectChange,
+};
+
+pub const DetailedClassDiffResult = struct {
+    class_diff: ClassDiff,
+    objects: []const DiffObject,
+};
+
+pub const DeadContextField = struct {
+    name: []const u8,
+    value_node_index: u32,
+    value_node_id: u64,
+    value_name: []const u8,
+    value_type: []const u8,
+    self_size: u64,
+    retained_size: u64,
+};
+
+pub const AnalyzedContext = struct {
+    context_node_index: u32,
+    context_node_id: u64,
+    retained_size: u64,
+    dead_fields_retained_size_sum: u64,
+    dead_fields: []const DeadContextField,
+};
+
+pub const AnalyzedScope = struct {
+    scope_info_node_index: u32,
+    scope_info_node_id: u64,
+    script_node_index: u32,
+    script_node_id: u64,
+    script_name: []const u8,
+    scope_name: ?[]const u8,
+    scope_start: i64,
+    scope_end: i64,
+    context_field_count: usize,
+    contexts: []const AnalyzedContext,
+};
+
+pub const ScriptWithoutScopes = struct {
+    script_node_index: u32,
+    script_node_id: u64,
+    script_name: []const u8,
+    context_count: usize,
+};
+
+pub const ContextAnalysisResult = struct {
+    scopes: []const AnalyzedScope,
+    scripts_without_scopes: []const ScriptWithoutScopes,
+};
+
+const InterfaceDefinition = struct {
+    name: []const u8,
+    properties: []const []const u8,
+};
+
+const ScopeMetaOffsets = struct {
+    scope_stride: u32 = 0,
+    script_node_index_offset: ?u32 = null,
+    scope_id_offset: ?u32 = null,
+    depth_offset: ?u32 = null,
+    vars_count_offset: ?u32 = null,
+    uses_count_offset: ?u32 = null,
+    var_stride: u32 = 0,
+    var_name_offset: ?u32 = null,
+    use_stride: u32 = 0,
+    use_declaring_scope_id_offset: ?u32 = null,
+    use_slot_index_offset: ?u32 = null,
+};
+
 const Location = struct {
     script_id: u32,
     line: u32,
@@ -189,6 +358,8 @@ pub const Error = error{
     MissingObjectId,
     InvalidFilterName,
     InvalidExtension,
+    InvalidRegex,
+    InvalidClassIndex,
 } || Allocator.Error;
 
 pub const HeapSnapshot = struct {
@@ -230,6 +401,7 @@ pub const HeapSnapshot = struct {
     edge_to_node_offset: u32,
 
     edge_types: []const []const u8,
+    edge_context_type: u32,
     edge_element_type: u32,
     edge_hidden_type: u32,
     edge_internal_type: u32,
@@ -242,6 +414,12 @@ pub const HeapSnapshot = struct {
     edge_count: u32,
     root_node_index: u32,
     extra_native_bytes: u64,
+
+    // Optional V8 embedded scope metadata for ContextAnalyzer (owned by `allocator`).
+    scopes_raw: []i32,
+    scope_context_vars_raw: []i32,
+    scope_uses_raw: []i32,
+    scope_meta: ScopeMetaOffsets,
 
     // Computed graph structures (owned by `allocator`).
     first_edge_indexes: []u32,
@@ -261,6 +439,7 @@ pub const HeapSnapshot = struct {
     native_context_sizes: NativeContextSizes,
     statistics: Statistics,
     max_js_object_id: u64,
+    interface_definitions: []const InterfaceDefinition = &.{},
 
     // Deterministic 1-indexed class IDs (HeapSnapshotManager.ts constructor).
     id_to_class_key: std.ArrayList([]const u8),
@@ -279,6 +458,9 @@ pub const HeapSnapshot = struct {
             parsed.nodes.deinit(allocator);
             parsed.edges.deinit(allocator);
             parsed.locations.deinit(allocator);
+            parsed.scopes.deinit(allocator);
+            parsed.scope_context_vars.deinit(allocator);
+            parsed.scope_uses.deinit(allocator);
             parsed.strings.deinit(allocator);
         }
 
@@ -299,6 +481,12 @@ pub const HeapSnapshot = struct {
         errdefer allocator.free(nodes);
         const edges = try parsed.edges.toOwnedSlice(allocator);
         errdefer allocator.free(edges);
+        const scopes_raw = try parsed.scopes.toOwnedSlice(allocator);
+        errdefer allocator.free(scopes_raw);
+        const scope_context_vars_raw = try parsed.scope_context_vars.toOwnedSlice(allocator);
+        errdefer allocator.free(scope_context_vars_raw);
+        const scope_uses_raw = try parsed.scope_uses.toOwnedSlice(allocator);
+        errdefer allocator.free(scope_uses_raw);
         const locations = parsed.locations;
         defer {
             var loc_mut = locations;
@@ -346,6 +534,7 @@ pub const HeapSnapshot = struct {
             .edge_name_offset = parsed.edge_name_offset,
             .edge_to_node_offset = parsed.edge_to_node_offset,
             .edge_types = parsed.edge_types,
+            .edge_context_type = findTypeIndex(parsed.edge_types, "context"),
             .edge_element_type = findTypeIndex(parsed.edge_types, "element"),
             .edge_hidden_type = findTypeIndex(parsed.edge_types, "hidden"),
             .edge_internal_type = findTypeIndex(parsed.edge_types, "internal"),
@@ -357,6 +546,10 @@ pub const HeapSnapshot = struct {
             .edge_count = edge_count,
             .root_node_index = parsed.root_index,
             .extra_native_bytes = parsed.extra_native_bytes,
+            .scopes_raw = scopes_raw,
+            .scope_context_vars_raw = scope_context_vars_raw,
+            .scope_uses_raw = scope_uses_raw,
+            .scope_meta = parsed.scope_meta,
             .first_edge_indexes = &.{},
             .first_retainer_index = &.{},
             .retaining_nodes = &.{},
@@ -430,6 +623,9 @@ pub const HeapSnapshot = struct {
         self.id_to_class_key.deinit(a);
         self.class_key_to_id.deinit(a);
         self.strings.deinit(a);
+        if (self.scopes_raw.len > 0) a.free(self.scopes_raw);
+        if (self.scope_context_vars_raw.len > 0) a.free(self.scope_context_vars_raw);
+        if (self.scope_uses_raw.len > 0) a.free(self.scope_uses_raw);
         a.free(self.nodes);
         a.free(self.edges);
         self.arena_state.deinit();
@@ -1550,6 +1746,20 @@ pub const HeapSnapshot = struct {
         if (kept_len == 0) return;
         const definitions = sorted[0..kept_len];
 
+        // Persist inferred interface definitions in self.arena_state for compareSnapshots.
+        const saved_defs = try self.arena_state.allocator().alloc(InterfaceDefinition, definitions.len);
+        for (definitions, 0..) |def, idx| {
+            const props_copy = try self.arena_state.allocator().alloc([]const u8, def.properties.len);
+            for (def.properties, 0..) |prop, pi| {
+                props_copy[pi] = try self.arena_state.allocator().dupe(u8, prop);
+            }
+            saved_defs[idx] = .{
+                .name = try self.arena_state.allocator().dupe(u8, def.name),
+                .properties = props_copy,
+            };
+        }
+        self.interface_definitions = saved_defs;
+
         // Build property trie (applyInterfaceDefinitions).
         const MatchInfo = struct {
             name: []const u8,
@@ -2464,7 +2674,1274 @@ pub const HeapSnapshot = struct {
             .node_index = node_index,
         };
     }
+
+    // -----------------------------------------------------------------------
+    // Internal node helpers (strings, virtual bool/int nodes)
+    // -----------------------------------------------------------------------
+
+    fn findInternalEdgeTarget(self: *const HeapSnapshot, node_index: u32, edge_name: []const u8) ?u32 {
+        const ord = self.nodeOrdinal(node_index);
+        var ei = self.first_edge_indexes[ord];
+        const end = self.first_edge_indexes[ord + 1];
+        while (ei < end) : (ei += self.edge_fields_count) {
+            if (self.edgeRawType(ei) != self.edge_internal_type) continue;
+            if (std.mem.eql(u8, self.stringAt(self.edgeNameOrIndex(ei)), edge_name)) {
+                return self.edgeToNode(ei);
+            }
+        }
+        return null;
+    }
+
+    fn nodeValueAsBool(self: *const HeapSnapshot, node_index: u32) ?bool {
+        if (self.nodeRawType(node_index) != self.node_number_type) return null;
+        if (!std.mem.eql(u8, self.nodeRawName(node_index), "bool")) return null;
+        const val_node = self.findInternalEdgeTarget(node_index, "value") orelse return null;
+        const raw = self.nodeRawName(val_node);
+        if (std.mem.eql(u8, raw, "true")) return true;
+        if (std.mem.eql(u8, raw, "false")) return false;
+        return null;
+    }
+
+    fn nodeValueAsInt(self: *const HeapSnapshot, node_index: u32) ?i64 {
+        if (self.nodeRawType(node_index) != self.node_number_type) return null;
+        if (!std.mem.eql(u8, self.nodeRawName(node_index), "int")) return null;
+        const val_node = self.findInternalEdgeTarget(node_index, "value") orelse return null;
+        return parseJsIntPrefix(self.nodeRawName(val_node));
+    }
+
+    fn nodeIsTruncatedString(self: *const HeapSnapshot, node_index: u32) bool {
+        const trunc = self.findInternalEdgeTarget(node_index, "truncated") orelse return false;
+        return self.nodeValueAsBool(trunc) == true;
+    }
+
+    fn nodeStringLength(self: *const HeapSnapshot, node_index: u32) ?i64 {
+        const len_node = self.findInternalEdgeTarget(node_index, "length") orelse return null;
+        return self.nodeValueAsInt(len_node);
+    }
+
+    fn nodeStringHash(self: *const HeapSnapshot, node_index: u32) ?i64 {
+        const hash_node = self.findInternalEdgeTarget(node_index, "hash") orelse return null;
+        return self.nodeValueAsInt(hash_node);
+    }
+
+    fn isFlatConsString(self: *const HeapSnapshot, arena: Allocator, node_index: u32) Allocator.Error!bool {
+        if (self.nodeRawType(node_index) != self.node_cons_string_type) return false;
+        const ord = self.nodeOrdinal(node_index);
+        var ei = self.first_edge_indexes[ord];
+        const end = self.first_edge_indexes[ord + 1];
+        while (ei < end) : (ei += self.edge_fields_count) {
+            if (self.edgeRawType(ei) != self.edge_internal_type) continue;
+            const en = self.stringAt(self.edgeNameOrIndex(ei));
+            if (std.mem.eql(u8, en, "first") or std.mem.eql(u8, en, "second")) {
+                const target_name = try self.nodeNameAlloc(arena, self.edgeToNode(ei));
+                if (target_name.len == 0) return true;
+            }
+        }
+        return false;
+    }
+
+    // -----------------------------------------------------------------------
+    // Item 10b: getRetainingPaths (HeapSnapshot.ts:22700-22808)
+    // -----------------------------------------------------------------------
+
+    pub fn getRetainingPaths(
+        self: *const HeapSnapshot,
+        arena: Allocator,
+        node_id: u64,
+        max_depth_opt: ?usize,
+        max_nodes_opt: ?usize,
+        max_siblings_opt: ?usize,
+    ) Error!RetainingPathsResult {
+        const start_index = self.nodeIndexForId(node_id) orelse return error.NodeNotFound;
+        const max_depth = max_depth_opt orelse 30;
+        const max_nodes = max_nodes_opt orelse 5000;
+        const max_siblings = max_siblings_opt orelse 100;
+
+        const Builder = struct {
+            snap: *const HeapSnapshot,
+            arena: Allocator,
+            max_depth: usize,
+            max_nodes: usize,
+            max_siblings: usize,
+            traversed: usize = 0,
+            visiting: std.AutoArrayHashMapUnmanaged(u32, void) = .empty,
+            visited: std.AutoHashMapUnmanaged(u32, usize) = .empty,
+            limits: std.ArrayList(RetainingPathLimit) = .empty,
+
+            const root_distance: i32 = 2;
+
+            fn markLimit(b: *@This(), kind: RetainingPathLimit) Allocator.Error!void {
+                for (b.limits.items) |existing| if (existing == kind) return;
+                try b.limits.append(b.arena, kind);
+            }
+
+            fn buildForest(b: *@This(), current_index: u32, current_depth: usize) Allocator.Error![]const RetainingPathNode {
+                b.traversed += 1;
+                if (b.traversed > b.max_nodes) {
+                    try b.markLimit(.nodes);
+                    return &.{};
+                }
+                if (current_depth >= b.max_depth) {
+                    try b.markLimit(.depth);
+                    return &.{};
+                }
+                const ord = b.snap.nodeOrdinal(current_index);
+                const cur_dist = b.snap.node_distances[ord];
+                if (cur_dist <= root_distance) return &.{};
+                if (b.visiting.contains(current_index)) return &.{};
+                if (b.visited.get(current_index)) |cached_depth| {
+                    if (current_depth >= cached_depth) return &.{};
+                }
+
+                try b.visiting.put(b.arena, current_index, {});
+
+                const RetainerCand = struct {
+                    retainer_idx: usize,
+                    dist: i32,
+                    node_index: u32,
+                };
+                var retainers: std.ArrayList(RetainerCand) = .empty;
+                const r_begin = b.snap.first_retainer_index[ord];
+                const r_end = b.snap.first_retainer_index[ord + 1];
+                for (r_begin..r_end) |ri| {
+                    const global_edge = b.snap.retaining_edges[ri];
+                    if (b.snap.edgeRawType(global_edge) == b.snap.edge_weak_type) continue;
+                    const ret_node = b.snap.retaining_nodes[ri];
+                    const ret_ord = b.snap.nodeOrdinal(ret_node);
+                    const dist = b.snap.node_distances[ret_ord];
+                    if (dist >= 0) {
+                        const remaining_depth: i64 = @as(i64, @intCast(b.max_depth)) - @as(i64, @intCast(current_depth));
+                        const needed_depth: i64 = @as(i64, dist) - root_distance;
+                        if (needed_depth < remaining_depth) {
+                            try retainers.append(b.arena, .{
+                                .retainer_idx = ri,
+                                .dist = dist,
+                                .node_index = ret_node,
+                            });
+                        } else {
+                            try b.markLimit(.depth);
+                        }
+                    }
+                }
+
+                std.sort.block(RetainerCand, retainers.items, {}, struct {
+                    fn lessThan(_: void, a: RetainerCand, c: RetainerCand) bool {
+                        return a.dist < c.dist;
+                    }
+                }.lessThan);
+
+                const take_len = @min(retainers.items.len, b.max_siblings);
+                if (retainers.items.len > b.max_siblings) {
+                    try b.markLimit(.siblings);
+                }
+
+                var forest: std.ArrayList(RetainingPathNode) = .empty;
+                for (retainers.items[0..take_len]) |ret| {
+                    const global_edge = b.snap.retaining_edges[ret.retainer_idx];
+                    var children: []const RetainingPathNode = &.{};
+                    if (ret.dist == root_distance) {
+                        b.traversed += 1;
+                        if (b.traversed > b.max_nodes) {
+                            try b.markLimit(.nodes);
+                            break;
+                        }
+                    } else {
+                        children = try b.buildForest(ret.node_index, current_depth + 1);
+                        if (children.len == 0) continue;
+                    }
+                    try forest.append(b.arena, .{
+                        .edge_index = global_edge,
+                        .edge_name = try b.snap.edgeNameAlloc(b.arena, global_edge),
+                        .edge_type = b.snap.edgeTypeName(global_edge),
+                        .node_id = b.snap.nodeId(ret.node_index),
+                        .node_index = ret.node_index,
+                        .node_name = try b.snap.nodeNameAlloc(b.arena, ret.node_index),
+                        .distance = ret.dist,
+                        .children = children,
+                    });
+                }
+
+                _ = b.visiting.swapRemove(current_index);
+                try b.visited.put(b.arena, current_index, current_depth);
+                return forest.items;
+            }
+        };
+
+        var builder: Builder = .{
+            .snap = self,
+            .arena = arena,
+            .max_depth = max_depth,
+            .max_nodes = max_nodes,
+            .max_siblings = max_siblings,
+        };
+        const paths = try builder.buildForest(start_index, 0);
+        return .{
+            .paths = paths,
+            .limits_reached = builder.limits.items,
+        };
+    }
+
+    // -----------------------------------------------------------------------
+    // Item 10b: getDuplicateStrings (HeapSnapshot.ts:21123-21194, 21329-21376)
+    // -----------------------------------------------------------------------
+
+    pub fn getDuplicateStrings(self: *const HeapSnapshot, arena: Allocator) Error![]const DuplicateStringGroup {
+        var dup_bitmap = try BitVector.init(self.allocator, self.node_count);
+        defer dup_bitmap.deinit(self.allocator);
+
+        const TruncEntry = struct {
+            node_index: u32,
+            length: ?i64,
+            hash: ?i64,
+        };
+
+        // Pass 1: createDuplicatedStringsFilter
+        var untrunc_seen: std.StringHashMapUnmanaged(u32) = .empty;
+        var trunc_seen: std.StringHashMapUnmanaged(std.ArrayList(TruncEntry)) = .empty;
+
+        for (0..self.node_count) |ord| {
+            const node_index: u32 = @intCast(ord * self.node_field_count);
+            const rt = self.nodeRawType(node_index);
+            if (rt != self.node_string_type and rt != self.node_cons_string_type) continue;
+            if (try self.isFlatConsString(arena, node_index)) continue;
+            if (self.nodeSelfSize(node_index) == 0) continue;
+
+            const name = try self.nodeNameAlloc(arena, node_index);
+            if (self.nodeIsTruncatedString(node_index)) {
+                const length = self.nodeStringLength(node_index);
+                const hash = self.nodeStringHash(node_index);
+                const gop = try trunc_seen.getOrPut(arena, name);
+                if (!gop.found_existing) gop.value_ptr.* = .empty;
+                var matched: ?u32 = null;
+                for (gop.value_ptr.items) |e| {
+                    if (e.length == length and e.hash == hash) {
+                        matched = e.node_index;
+                        break;
+                    }
+                }
+                if (matched) |m_idx| {
+                    dup_bitmap.set(self.nodeOrdinal(m_idx));
+                    dup_bitmap.set(ord);
+                } else {
+                    try gop.value_ptr.append(arena, .{ .node_index = node_index, .length = length, .hash = hash });
+                }
+            } else {
+                const gop = try untrunc_seen.getOrPut(arena, name);
+                if (!gop.found_existing) {
+                    gop.value_ptr.* = node_index;
+                } else {
+                    dup_bitmap.set(self.nodeOrdinal(gop.value_ptr.*));
+                    dup_bitmap.set(ord);
+                }
+            }
+        }
+
+        // Pass 2: group duplicated strings (untruncated first, then truncated).
+        const MutableGroup = struct {
+            value: []const u8,
+            count: u32 = 0,
+            total_self_size: u64 = 0,
+            total_retained_size: u64 = 0,
+            truncated: bool,
+            length: ?i64 = null,
+            hash: ?i64 = null,
+            nodes: std.ArrayList(DuplicateStringNode) = .empty,
+        };
+
+        var untrunc_groups: std.StringArrayHashMapUnmanaged(MutableGroup) = .empty;
+        var trunc_groups: std.StringArrayHashMapUnmanaged(std.ArrayList(MutableGroup)) = .empty;
+
+        for (0..self.node_count) |ord| {
+            if (!dup_bitmap.get(ord)) continue;
+            const node_index: u32 = @intCast(ord * self.node_field_count);
+            const name = try self.nodeNameAlloc(arena, node_index);
+            const node_entry: DuplicateStringNode = .{
+                .id = self.nodeId(node_index),
+                .self_size = self.nodeSelfSize(node_index),
+                .retained_size = self.nodeRetainedSize(node_index),
+                .distance = self.nodeDistance(node_index),
+            };
+            if (self.nodeIsTruncatedString(node_index)) {
+                const length = self.nodeStringLength(node_index);
+                const hash = self.nodeStringHash(node_index);
+                const gop = try trunc_groups.getOrPut(arena, name);
+                if (!gop.found_existing) gop.value_ptr.* = .empty;
+                var grp_ptr: ?*MutableGroup = null;
+                for (gop.value_ptr.items) |*g| {
+                    if (g.length == length and g.hash == hash) {
+                        grp_ptr = g;
+                        break;
+                    }
+                }
+                if (grp_ptr == null) {
+                    try gop.value_ptr.append(arena, .{
+                        .value = name,
+                        .truncated = true,
+                        .length = length,
+                        .hash = hash,
+                    });
+                    grp_ptr = &gop.value_ptr.items[gop.value_ptr.items.len - 1];
+                }
+                grp_ptr.?.count += 1;
+                grp_ptr.?.total_self_size += node_entry.self_size;
+                grp_ptr.?.total_retained_size += node_entry.retained_size;
+                try grp_ptr.?.nodes.append(arena, node_entry);
+            } else {
+                const gop = try untrunc_groups.getOrPut(arena, name);
+                if (!gop.found_existing) {
+                    gop.value_ptr.* = .{ .value = name, .truncated = false };
+                }
+                gop.value_ptr.count += 1;
+                gop.value_ptr.total_self_size += node_entry.self_size;
+                gop.value_ptr.total_retained_size += node_entry.retained_size;
+                try gop.value_ptr.nodes.append(arena, node_entry);
+            }
+        }
+
+        var all_groups: std.ArrayList(DuplicateStringGroup) = .empty;
+        for (untrunc_groups.values()) |g| {
+            try all_groups.append(arena, .{
+                .value = g.value,
+                .count = g.count,
+                .total_self_size = g.total_self_size,
+                .total_retained_size = g.total_retained_size,
+                .truncated = false,
+                .nodes = g.nodes.items,
+            });
+        }
+        for (trunc_groups.values()) |list| {
+            for (list.items) |g| {
+                try all_groups.append(arena, .{
+                    .value = g.value,
+                    .count = g.count,
+                    .total_self_size = g.total_self_size,
+                    .total_retained_size = g.total_retained_size,
+                    .truncated = true,
+                    .nodes = g.nodes.items,
+                });
+            }
+        }
+
+        std.sort.block(DuplicateStringGroup, all_groups.items, {}, struct {
+            fn lessThan(_: void, a: DuplicateStringGroup, b: DuplicateStringGroup) bool {
+                return a.total_retained_size > b.total_retained_size;
+            }
+        }.lessThan);
+
+        return all_groups.items;
+    }
+
+    // -----------------------------------------------------------------------
+    // Item 10b: queryObjects (HeapSnapshot.ts:22844-22920)
+    // -----------------------------------------------------------------------
+
+    pub fn queryObjects(self: *const HeapSnapshot, arena: Allocator, options: ObjectQueryOptions) Error![]NodeItem {
+        const class_re: ?heap_regex.Regex = if (options.class_name) |pat|
+            heap_regex.Regex.compile(arena, pat) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.InvalidRegex => return error.InvalidRegex,
+            }
+        else
+            null;
+        const prop_re: ?heap_regex.Regex = if (options.property_name) |pat|
+            heap_regex.Regex.compile(arena, pat) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.InvalidRegex => return error.InvalidRegex,
+            }
+        else
+            null;
+
+        var matching: std.ArrayList(u32) = .empty;
+        for (0..self.node_count) |ord| {
+            const node_index: u32 = @intCast(ord * self.node_field_count);
+            const self_size = self.nodeSelfSize(node_index);
+            if (options.min_self_size) |min_s| if (self_size < min_s) continue;
+            if (options.max_self_size) |max_s| if (self_size > max_s) continue;
+
+            const ret_size = self.retained_sizes[ord];
+            if (options.min_retained_size) |min_r| if (ret_size < min_r) continue;
+            if (options.max_retained_size) |max_r| if (ret_size > max_r) continue;
+
+            if (options.is_detached) |want_det| {
+                const is_det = self.nodeDetachedness(node_index) == .detached;
+                if (is_det != want_det) continue;
+            }
+            if (options.node_type) |want_type| {
+                if (!std.ascii.eqlIgnoreCase(self.nodeTypeName(node_index), want_type)) continue;
+            }
+            if (class_re) |re| {
+                const name = try self.nodeNameAlloc(arena, node_index);
+                if (!try re.testMatch(arena, name)) continue;
+            }
+            if (prop_re) |re| {
+                var matched_prop = false;
+                var ei = self.first_edge_indexes[ord];
+                const end = self.first_edge_indexes[ord + 1];
+                while (ei < end) : (ei += self.edge_fields_count) {
+                    const en = try self.edgeNameAlloc(arena, ei);
+                    if (try re.testMatch(arena, en)) {
+                        matched_prop = true;
+                        break;
+                    }
+                }
+                if (!matched_prop) continue;
+            }
+            try matching.append(arena, node_index);
+        }
+
+        const SortCtx = struct {
+            snap: *const HeapSnapshot,
+            sort_by: ObjectQuerySortBy,
+        };
+        std.sort.block(u32, matching.items, SortCtx{ .snap = self, .sort_by = options.sort_by }, struct {
+            fn lessThan(ctx: SortCtx, a: u32, b: u32) bool {
+                return switch (ctx.sort_by) {
+                    .retained_size => ctx.snap.nodeRetainedSize(a) > ctx.snap.nodeRetainedSize(b),
+                    .self_size => ctx.snap.nodeSelfSize(a) > ctx.snap.nodeSelfSize(b),
+                    .id => ctx.snap.nodeId(a) < ctx.snap.nodeId(b),
+                };
+            }
+        }.lessThan);
+
+        var items: std.ArrayList(NodeItem) = .empty;
+        try items.ensureTotalCapacity(arena, matching.items.len);
+        for (matching.items) |idx| {
+            try items.append(arena, try self.serializeNode(arena, idx));
+        }
+        return items.items;
+    }
+
+    // -----------------------------------------------------------------------
+    // Item 10b: compareSnapshots & getDetailedClassDiff
+    // (HeapSnapshot.ts:21415-21439, 22534-22615; HeapSnapshotManager.ts:396-471)
+    // -----------------------------------------------------------------------
+
+    const DiffAggregate = struct {
+        name: []const u8,
+        ids: []u64,
+        self_sizes: []u64,
+    };
+
+    const RawClassDiff = struct {
+        name: []const u8,
+        added_count: u64 = 0,
+        removed_count: u64 = 0,
+        count_delta: i64 = 0,
+        added_size: u64 = 0,
+        removed_size: u64 = 0,
+        size_delta: i64 = 0,
+        added_ids: std.ArrayList(u64) = .empty,
+        added_self_sizes: std.ArrayList(u64) = .empty,
+        deleted_ids: std.ArrayList(u64) = .empty,
+        deleted_self_sizes: std.ArrayList(u64) = .empty,
+    };
+
+    /// Computes plain-JS-object class name overrides using `definitions` without
+    /// mutating `self` (matches `aggregatesForDiff(interfaceDefinitions)`).
+    fn buildDiffAggregates(
+        self: *const HeapSnapshot,
+        arena: Allocator,
+        override_interfaces: ?[]const InterfaceDefinition,
+    ) Allocator.Error!std.StringArrayHashMapUnmanaged(DiffAggregate) {
+        var plain_overrides: ?[]?[]const u8 = null;
+        if (override_interfaces) |defs| {
+            const ov = try arena.alloc(?[]const u8, self.node_count);
+            @memset(ov, null);
+            if (defs.len > 0) {
+                const MatchInfo = struct {
+                    name: []const u8,
+                    property_count: usize,
+                    index: usize,
+                };
+                const TrieNode = struct {
+                    next: std.StringHashMapUnmanaged(*@This()) = .empty,
+                    match_info: ?MatchInfo = null,
+                    greatest_next: ?[]const u8 = null,
+                };
+                const selectBetter = struct {
+                    fn call(a_m: MatchInfo, b_opt: ?MatchInfo) MatchInfo {
+                        const b_m = b_opt orelse return a_m;
+                        if (a_m.property_count > b_m.property_count) return a_m;
+                        if (b_m.property_count > a_m.property_count) return b_m;
+                        return if (a_m.index <= b_m.index) a_m else b_m;
+                    }
+                }.call;
+
+                const root = try arena.create(TrieNode);
+                root.* = .{};
+                for (defs, 0..) |def, def_idx| {
+                    const props_sorted = try arena.dupe([]const u8, def.properties);
+                    std.sort.block([]const u8, props_sorted, {}, stringLessThan);
+                    var cur = root;
+                    for (props_sorted) |prop| {
+                        const next_node = cur.next.get(prop) orelse blk: {
+                            const created = try arena.create(TrieNode);
+                            created.* = .{};
+                            try cur.next.put(arena, prop, created);
+                            if (cur.greatest_next == null or std.mem.order(u8, cur.greatest_next.?, prop) == .lt) {
+                                cur.greatest_next = prop;
+                            }
+                            break :blk created;
+                        };
+                        cur = next_node;
+                    }
+                    if (cur.match_info == null) {
+                        cur.match_info = .{ .name = def.name, .property_count = props_sorted.len, .index = def_idx };
+                    }
+                }
+
+                const initial_match: MatchInfo = .{ .name = "Object", .property_count = 0, .index = std.math.maxInt(usize) };
+                var node_props: std.ArrayList([]const u8) = .empty;
+                var states: std.AutoArrayHashMapUnmanaged(*TrieNode, void) = .empty;
+                var state_snap: std.ArrayList(*TrieNode) = .empty;
+
+                for (0..self.node_count) |ord| {
+                    const node_index: u32 = @intCast(ord * self.node_field_count);
+                    if (!self.isPlainJsObject(node_index)) continue;
+                    node_props.clearRetainingCapacity();
+                    var ei = self.first_edge_indexes[ord];
+                    const end = self.first_edge_indexes[ord + 1];
+                    while (ei < end) : (ei += self.edge_fields_count) {
+                        if (self.edgeRawType(ei) == self.edge_property_type) {
+                            try node_props.append(arena, try self.edgeNameAlloc(arena, ei));
+                        }
+                    }
+                    std.sort.block([]const u8, node_props.items, {}, stringLessThan);
+                    states.clearRetainingCapacity();
+                    try states.put(arena, root, {});
+                    var best = selectBetter(initial_match, root.match_info);
+                    for (node_props.items) |prop| {
+                        state_snap.clearRetainingCapacity();
+                        try state_snap.appendSlice(arena, states.keys());
+                        for (state_snap.items) |st| {
+                            if (st.greatest_next == null or std.mem.order(u8, prop, st.greatest_next.?) != .lt) {
+                                _ = states.swapRemove(st);
+                            }
+                            if (st.next.get(prop)) |nxt| {
+                                try states.put(arena, nxt, {});
+                                best = selectBetter(best, nxt.match_info);
+                            }
+                        }
+                    }
+                    ov[ord] = if (best.index == std.math.maxInt(usize)) "Object" else best.name;
+                }
+            } else {
+                for (0..self.node_count) |ord| {
+                    const node_index: u32 = @intCast(ord * self.node_field_count);
+                    if (self.isPlainJsObject(node_index)) ov[ord] = "Object";
+                }
+            }
+            plain_overrides = ov;
+        }
+
+        const EntryList = struct {
+            name: []const u8,
+            idxs: std.ArrayList(u32) = .empty,
+        };
+        var map: std.StringArrayHashMapUnmanaged(EntryList) = .empty;
+
+        for (0..self.node_count) |ord| {
+            const node_index: u32 = @intCast(ord * self.node_field_count);
+            if (self.nodeSelfSize(node_index) == 0) continue;
+            const cls_name = if (plain_overrides) |ov| (ov[ord] orelse self.nodeClassName(node_index)) else self.nodeClassName(node_index);
+            const public_key = if (self.nodeRawType(node_index) == self.node_object_type) blk: {
+                if (self.location_map.get(node_index)) |loc| {
+                    break :blk try std.fmt.allocPrint(arena, "{d},{d},{d},{s}", .{ loc.script_id, loc.line, loc.column, cls_name });
+                }
+                break :blk try std.fmt.allocPrint(arena, ",{s}", .{cls_name});
+            } else try std.fmt.allocPrint(arena, ",{s}", .{cls_name});
+
+            const gop = try map.getOrPut(arena, public_key);
+            if (!gop.found_existing) {
+                gop.value_ptr.* = .{ .name = cls_name };
+            }
+            try gop.value_ptr.idxs.append(arena, node_index);
+        }
+
+        var out: std.StringArrayHashMapUnmanaged(DiffAggregate) = .empty;
+        for (map.keys(), map.values()) |key, entry| {
+            const idxs = entry.idxs.items;
+            std.sort.block(u32, idxs, self, struct {
+                fn lessThan(snap: *const HeapSnapshot, a: u32, b: u32) bool {
+                    return snap.nodeId(a) < snap.nodeId(b);
+                }
+            }.lessThan);
+            const ids = try arena.alloc(u64, idxs.len);
+            const sizes = try arena.alloc(u64, idxs.len);
+            for (idxs, 0..) |idx, i| {
+                ids[i] = self.nodeId(idx);
+                sizes[i] = self.nodeSelfSize(idx);
+            }
+            try out.put(arena, key, .{
+                .name = entry.name,
+                .ids = ids,
+                .self_sizes = sizes,
+            });
+        }
+        return out;
+    }
+
+    fn diffClassAggregates(arena: Allocator, base_opt: ?DiffAggregate, cur_opt: ?DiffAggregate) Allocator.Error!?RawClassDiff {
+        const base_ids: []const u64 = if (base_opt) |b| b.ids else &.{};
+        const base_sizes: []const u64 = if (base_opt) |b| b.self_sizes else &.{};
+        const cur_ids: []const u64 = if (cur_opt) |c| c.ids else &.{};
+        const cur_sizes: []const u64 = if (cur_opt) |c| c.self_sizes else &.{};
+        const name = if (cur_opt) |c| c.name else base_opt.?.name;
+
+        var diff: RawClassDiff = .{ .name = name };
+        var i: usize = 0;
+        var j: usize = 0;
+        while (i < base_ids.len and j < cur_ids.len) {
+            if (base_ids[i] < cur_ids[j]) {
+                try diff.deleted_ids.append(arena, base_ids[i]);
+                try diff.deleted_self_sizes.append(arena, base_sizes[i]);
+                diff.removed_count += 1;
+                diff.removed_size += base_sizes[i];
+                i += 1;
+            } else if (base_ids[i] > cur_ids[j]) {
+                try diff.added_ids.append(arena, cur_ids[j]);
+                try diff.added_self_sizes.append(arena, cur_sizes[j]);
+                diff.added_count += 1;
+                diff.added_size += cur_sizes[j];
+                j += 1;
+            } else {
+                i += 1;
+                j += 1;
+            }
+        }
+        while (i < base_ids.len) : (i += 1) {
+            try diff.deleted_ids.append(arena, base_ids[i]);
+            try diff.deleted_self_sizes.append(arena, base_sizes[i]);
+            diff.removed_count += 1;
+            diff.removed_size += base_sizes[i];
+        }
+        while (j < cur_ids.len) : (j += 1) {
+            try diff.added_ids.append(arena, cur_ids[j]);
+            try diff.added_self_sizes.append(arena, cur_sizes[j]);
+            diff.added_count += 1;
+            diff.added_size += cur_sizes[j];
+        }
+        diff.count_delta = @as(i64, @intCast(diff.added_count)) - @as(i64, @intCast(diff.removed_count));
+        diff.size_delta = @as(i64, @intCast(diff.added_size)) - @as(i64, @intCast(diff.removed_size));
+        if (diff.added_count == 0 and diff.removed_count == 0) return null;
+        return diff;
+    }
+
+    fn computeSortedRawDiffs(arena: Allocator, base: *const HeapSnapshot, current: *const HeapSnapshot) Allocator.Error![]RawClassDiff {
+        const base_aggs = try base.buildDiffAggregates(arena, current.interface_definitions);
+        const cur_aggs = try current.buildDiffAggregates(arena, null);
+
+        var diffs: std.ArrayList(RawClassDiff) = .empty;
+        for (base_aggs.keys(), base_aggs.values()) |key, base_agg| {
+            if (try diffClassAggregates(arena, base_agg, cur_aggs.get(key))) |d| {
+                try diffs.append(arena, d);
+            }
+        }
+        for (cur_aggs.keys(), cur_aggs.values()) |key, cur_agg| {
+            if (base_aggs.contains(key)) continue;
+            if (try diffClassAggregates(arena, null, cur_agg)) |d| {
+                try diffs.append(arena, d);
+            }
+        }
+
+        std.sort.block(RawClassDiff, diffs.items, {}, struct {
+            fn lessThan(_: void, a: RawClassDiff, b: RawClassDiff) bool {
+                return a.size_delta > b.size_delta;
+            }
+        }.lessThan);
+        return diffs.items;
+    }
+
+    pub fn compareSnapshots(arena: Allocator, base: *const HeapSnapshot, current: *const HeapSnapshot) Allocator.Error!SnapshotDiffResult {
+        const raw_diffs = try computeSortedRawDiffs(arena, base, current);
+        var class_diffs = try arena.alloc(ClassDiff, raw_diffs.len);
+        var totals: DiffTotals = .{
+            .added_count = 0,
+            .removed_count = 0,
+            .count_delta = 0,
+            .added_size = 0,
+            .removed_size = 0,
+            .size_delta = 0,
+        };
+        for (raw_diffs, 0..) |d, idx| {
+            class_diffs[idx] = .{
+                .index = idx,
+                .class_name = d.name,
+                .added_count = d.added_count,
+                .removed_count = d.removed_count,
+                .count_delta = d.count_delta,
+                .added_size = d.added_size,
+                .removed_size = d.removed_size,
+                .size_delta = d.size_delta,
+            };
+            totals.added_count += d.added_count;
+            totals.removed_count += d.removed_count;
+            totals.count_delta += d.count_delta;
+            totals.added_size += d.added_size;
+            totals.removed_size += d.removed_size;
+            totals.size_delta += d.size_delta;
+        }
+        return .{ .class_diffs = class_diffs, .totals = totals };
+    }
+
+    pub const DetailedClassDiffOutcome = union(enum) {
+        ok: DetailedClassDiffResult,
+        out_of_range: usize, // total classes with changes
+    };
+
+    pub fn getDetailedClassDiff(
+        arena: Allocator,
+        base: *const HeapSnapshot,
+        current: *const HeapSnapshot,
+        class_index: i64,
+    ) Allocator.Error!DetailedClassDiffOutcome {
+        const raw_diffs = try computeSortedRawDiffs(arena, base, current);
+        if (class_index < 0 or class_index >= raw_diffs.len) {
+            return .{ .out_of_range = raw_diffs.len };
+        }
+        const idx: usize = @intCast(class_index);
+        const raw = raw_diffs[idx];
+        var objects: std.ArrayList(DiffObject) = .empty;
+        try objects.ensureTotalCapacity(arena, raw.added_ids.items.len + raw.deleted_ids.items.len);
+        for (raw.added_ids.items, raw.added_self_sizes.items) |id, sz| {
+            try objects.append(arena, .{ .id = id, .self_size = sz, .change = .added });
+        }
+        for (raw.deleted_ids.items, raw.deleted_self_sizes.items) |id, sz| {
+            try objects.append(arena, .{ .id = id, .self_size = sz, .change = .deleted });
+        }
+        std.sort.block(DiffObject, objects.items, {}, struct {
+            fn lessThan(_: void, a: DiffObject, b: DiffObject) bool {
+                return a.self_size > b.self_size;
+            }
+        }.lessThan);
+        return .{
+            .ok = .{
+                .class_diff = .{
+                    .index = idx,
+                    .class_name = raw.name,
+                    .added_count = raw.added_count,
+                    .removed_count = raw.removed_count,
+                    .count_delta = raw.count_delta,
+                    .added_size = raw.added_size,
+                    .removed_size = raw.removed_size,
+                    .size_delta = raw.size_delta,
+                },
+                .objects = objects.items,
+            },
+        };
+    }
+
+    // -----------------------------------------------------------------------
+    // Item 10b: analyzeContexts (ContextAnalyzer.ts:19487-20023)
+    // -----------------------------------------------------------------------
+
+    pub fn analyzeContexts(self: *const HeapSnapshot, arena: Allocator) Allocator.Error!ContextAnalysisResult {
+        const EmbeddedScope = struct {
+            const SelfScope = @This();
+            const Variable = struct {
+                name: []const u8,
+                uses: std.ArrayList(*SelfScope) = .empty,
+            };
+
+            script_node_index: u32,
+            scope_id: i64,
+            parent: ?*SelfScope = null,
+            variables: []Variable = &.{},
+        };
+
+        // 1. parseEmbeddedScopes
+        var scopes_by_script: std.AutoHashMapUnmanaged(u32, std.AutoHashMapUnmanaged(i64, *EmbeddedScope)) = .empty;
+        if (self.scope_meta.scope_stride > 0 and
+            self.scope_meta.script_node_index_offset != null and
+            self.scope_meta.scope_id_offset != null and
+            self.scope_meta.depth_offset != null and
+            self.scope_meta.vars_count_offset != null and
+            self.scope_meta.uses_count_offset != null)
+        {
+            const stride: usize = self.scope_meta.scope_stride;
+            const script_off: usize = self.scope_meta.script_node_index_offset.?;
+            const sid_off: usize = self.scope_meta.scope_id_offset.?;
+            const depth_off: usize = self.scope_meta.depth_offset.?;
+            const vars_off: usize = self.scope_meta.vars_count_offset.?;
+            const uses_off: usize = self.scope_meta.uses_count_offset.?;
+            const var_stride: usize = self.scope_meta.var_stride;
+            const var_name_off: usize = self.scope_meta.var_name_offset orelse 0;
+            const use_stride: usize = self.scope_meta.use_stride;
+            const use_decl_off: usize = self.scope_meta.use_declaring_scope_id_offset orelse 0;
+            const use_slot_off: usize = self.scope_meta.use_slot_index_offset orelse 0;
+
+            var var_offset: usize = 0;
+            var cur_script: ?u32 = null;
+            var scope_stack: std.ArrayList(*EmbeddedScope) = .empty;
+
+            var i: usize = 0;
+            while (i + stride <= self.scopes_raw.len) : (i += stride) {
+                const raw_script = self.scopes_raw[i + script_off];
+                if (raw_script < 0) continue;
+                const script_idx: u32 = @intCast(raw_script);
+                const scope_id: i64 = self.scopes_raw[i + sid_off];
+                const raw_depth = self.scopes_raw[i + depth_off];
+                const raw_vc = self.scopes_raw[i + vars_off];
+                const vars_count: usize = if (raw_vc > 0) @intCast(raw_vc) else 0;
+
+                const variables = try arena.alloc(EmbeddedScope.Variable, vars_count);
+                for (0..vars_count) |j| {
+                    const pos = var_offset + j * var_stride + var_name_off;
+                    const name = if (var_stride > 0 and pos < self.scope_context_vars_raw.len and self.scope_context_vars_raw[pos] >= 0)
+                        self.stringAt(@intCast(self.scope_context_vars_raw[pos]))
+                    else
+                        "";
+                    variables[j] = .{ .name = name };
+                }
+                var_offset += vars_count * var_stride;
+
+                const scope = try arena.create(EmbeddedScope);
+                scope.* = .{
+                    .script_node_index = script_idx,
+                    .scope_id = scope_id,
+                    .variables = variables,
+                };
+
+                if (cur_script == null or cur_script.? != script_idx) {
+                    cur_script = script_idx;
+                    scope_stack.clearRetainingCapacity();
+                }
+                const depth: usize = if (raw_depth > 0) @intCast(raw_depth) else 0;
+                if (depth > 0 and depth - 1 < scope_stack.items.len) {
+                    scope.parent = scope_stack.items[depth - 1];
+                }
+                if (depth < scope_stack.items.len) {
+                    scope_stack.items[depth] = scope;
+                    scope_stack.shrinkRetainingCapacity(depth + 1);
+                } else {
+                    while (scope_stack.items.len < depth) try scope_stack.append(arena, scope);
+                    try scope_stack.append(arena, scope);
+                }
+
+                const gop = try scopes_by_script.getOrPut(arena, script_idx);
+                if (!gop.found_existing) gop.value_ptr.* = .empty;
+                try gop.value_ptr.put(arena, scope_id, scope);
+            }
+
+            var use_offset: usize = 0;
+            i = 0;
+            while (i + stride <= self.scopes_raw.len) : (i += stride) {
+                const raw_script = self.scopes_raw[i + script_off];
+                const raw_uc = self.scopes_raw[i + uses_off];
+                const uses_count: usize = if (raw_uc > 0) @intCast(raw_uc) else 0;
+                if (raw_script >= 0) {
+                    const script_idx: u32 = @intCast(raw_script);
+                    const scope_id: i64 = self.scopes_raw[i + sid_off];
+                    if (scopes_by_script.getPtr(script_idx)) |script_map| {
+                        if (script_map.get(scope_id)) |scope| {
+                            for (0..uses_count) |j| {
+                                if (use_stride == 0) break;
+                                const base_pos = use_offset + j * use_stride;
+                                if (base_pos + use_stride > self.scope_uses_raw.len) break;
+                                const decl_id: i64 = self.scope_uses_raw[base_pos + use_decl_off];
+                                const slot_raw = self.scope_uses_raw[base_pos + use_slot_off];
+                                if (slot_raw < 0) continue;
+                                const slot: usize = @intCast(slot_raw);
+                                if (script_map.get(decl_id)) |decl_scope| {
+                                    if (slot < decl_scope.variables.len) {
+                                        var dup = false;
+                                        for (decl_scope.variables[slot].uses.items) |u| {
+                                            if (u == scope) {
+                                                dup = true;
+                                                break;
+                                            }
+                                        }
+                                        if (!dup) try decl_scope.variables[slot].uses.append(arena, scope);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                use_offset += uses_count * use_stride;
+            }
+        }
+
+        // 2. scanHeap
+        const ScriptInfo = struct { name: []const u8, node_id: u64 };
+        const ContextEntry = struct { context_node_index: u32, context_node_id: u64, scope_info_node_index: u32 };
+        const LiveClosure = struct { owner_node_index: u32, context_node_index: u32, script_node_index: u32, scope_id: i64 };
+
+        var scripts: std.AutoHashMapUnmanaged(u32, ScriptInfo) = .empty;
+        var context_nodes: std.ArrayList(ContextEntry) = .empty;
+        var live_closures: std.ArrayList(LiveClosure) = .empty;
+        var finished_module_fns: std.AutoHashMapUnmanaged(u32, void) = .empty;
+        var gen_map_cache: std.AutoHashMapUnmanaged(u32, bool) = .empty;
+        var scope_info_to_script: std.AutoHashMapUnmanaged(u32, ?u32) = .empty;
+
+        const attributeChain = struct {
+            fn call(snap: *const HeapSnapshot, ar: Allocator, map: *std.AutoHashMapUnmanaged(u32, ?u32), start_si: u32, stop_at: ?u32, script_idx: u32) Allocator.Error!void {
+                var cur = start_si;
+                while (true) {
+                    if (stop_at != null and cur == stop_at.?) return;
+                    if (map.contains(cur)) return;
+                    try map.put(ar, cur, script_idx);
+                    if (snap.findInternalEdgeTarget(cur, "scope_id")) |sid_node| {
+                        if (snap.nodeValueAsInt(sid_node) == -2) return;
+                    }
+                    const outer = snap.findInternalEdgeTarget(cur, "outer_scope_info") orelse return;
+                    cur = outer;
+                }
+            }
+        }.call;
+
+        const addLiveClosure = struct {
+            fn call(snap: *const HeapSnapshot, ar: Allocator, list: *std.ArrayList(LiveClosure), owner_idx: u32, sfi_idx: u32, ctx_idx: u32) Allocator.Error!void {
+                const script_idx = snap.findInternalEdgeTarget(sfi_idx, "script") orelse return;
+                const sid_node = snap.findInternalEdgeTarget(sfi_idx, "scope_id") orelse return;
+                const sid = snap.nodeValueAsInt(sid_node) orelse return;
+                try list.append(ar, .{
+                    .owner_node_index = owner_idx,
+                    .context_node_index = ctx_idx,
+                    .script_node_index = script_idx,
+                    .scope_id = sid,
+                });
+            }
+        }.call;
+
+        for (0..self.node_count) |ord| {
+            const node_index: u32 = @intCast(ord * self.node_field_count);
+            const raw_name = self.nodeRawName(node_index);
+            if (std.mem.startsWith(u8, raw_name, "system / Script")) {
+                const prefix = "system / Script / ";
+                var s_name: []const u8 = if (std.mem.startsWith(u8, raw_name, prefix)) raw_name[prefix.len..] else "";
+                if (s_name.len == 0) {
+                    if (self.findInternalEdgeTarget(node_index, "source_url")) |url_node| {
+                        s_name = try self.nodeNameAlloc(arena, url_node);
+                    }
+                }
+                try scripts.put(arena, node_index, .{ .name = s_name, .node_id = self.nodeId(node_index) });
+
+                // processScriptScopeInfos
+                if (self.findInternalEdgeTarget(node_index, "infos")) |infos_idx| {
+                    const eval_from = self.findInternalEdgeTarget(node_index, "eval_from_scope_info");
+                    const stop_at: ?u32 = if (eval_from) |ef|
+                        (if (std.mem.eql(u8, self.nodeRawName(ef), "system / ScopeInfo")) ef else null)
+                    else
+                        null;
+                    const infos_ord = self.nodeOrdinal(infos_idx);
+                    var ei = self.first_edge_indexes[infos_ord];
+                    const end = self.first_edge_indexes[infos_ord + 1];
+                    while (ei < end) : (ei += self.edge_fields_count) {
+                        const info_idx = self.edgeToNode(ei);
+                        const info_name = self.nodeRawName(info_idx);
+                        if (std.mem.eql(u8, info_name, "system / ScopeInfo")) {
+                            try attributeChain(self, arena, &scope_info_to_script, info_idx, stop_at, node_index);
+                            continue;
+                        }
+                        if (!std.mem.startsWith(u8, info_name, "system / SharedFunctionInfo")) continue;
+                        if (self.findInternalEdgeTarget(info_idx, "name_or_scope_info")) |si| {
+                            if (std.mem.eql(u8, self.nodeRawName(si), "system / ScopeInfo")) {
+                                try attributeChain(self, arena, &scope_info_to_script, si, stop_at, node_index);
+                                continue;
+                            }
+                        }
+                        const sid_node = self.findInternalEdgeTarget(info_idx, "scope_id") orelse continue;
+                        const sid = self.nodeValueAsInt(sid_node) orelse continue;
+                        if (sid == -2) continue;
+                        if (self.findInternalEdgeTarget(info_idx, "raw_outer_scope_info_or_feedback_metadata")) |outer_si| {
+                            if (std.mem.eql(u8, self.nodeRawName(outer_si), "system / ScopeInfo")) {
+                                try attributeChain(self, arena, &scope_info_to_script, outer_si, stop_at, node_index);
+                            }
+                        }
+                    }
+                }
+            } else if (self.isContextObject(node_index)) {
+                if (self.findInternalEdgeTarget(node_index, "scope_info")) |si_idx| {
+                    try context_nodes.append(arena, .{
+                        .context_node_index = node_index,
+                        .context_node_id = self.nodeId(node_index),
+                        .scope_info_node_index = si_idx,
+                    });
+                }
+            } else if (self.nodeRawType(node_index) == self.node_closure_type) {
+                const sfi = self.findInternalEdgeTarget(node_index, "shared") orelse continue;
+                const ctx = self.findInternalEdgeTarget(node_index, "context") orelse continue;
+                try addLiveClosure(self, arena, &live_closures, node_index, sfi, ctx);
+            } else if (self.nodeRawType(node_index) == self.node_object_type) {
+                if (self.findInternalEdgeTarget(node_index, "map")) |map_idx| {
+                    const is_gen = if (gen_map_cache.get(map_idx)) |cached| cached else blk: {
+                        const inst_type = if (self.findInternalEdgeTarget(map_idx, "instance_type_name")) |itn| self.nodeRawName(itn) else "";
+                        const g = std.mem.eql(u8, inst_type, "JS_GENERATOR_OBJECT_TYPE") or
+                            std.mem.eql(u8, inst_type, "JS_ASYNC_FUNCTION_OBJECT_TYPE") or
+                            std.mem.eql(u8, inst_type, "JS_ASYNC_GENERATOR_OBJECT_TYPE");
+                        try gen_map_cache.put(arena, map_idx, g);
+                        break :blk g;
+                    };
+                    if (is_gen) {
+                        const cont_node = self.findInternalEdgeTarget(node_index, "continuation") orelse continue;
+                        const cont = self.nodeValueAsInt(cont_node) orelse continue;
+                        const gen_fn = self.findInternalEdgeTarget(node_index, "function") orelse continue;
+                        if (self.nodeRawType(gen_fn) != self.node_closure_type) continue;
+                        const sfi = self.findInternalEdgeTarget(gen_fn, "shared") orelse continue;
+                        if (cont == -1) {
+                            if (self.findInternalEdgeTarget(sfi, "scope_id")) |sid_node| {
+                                if (self.nodeValueAsInt(sid_node) == -2) {
+                                    try finished_module_fns.put(arena, gen_fn, {});
+                                }
+                            }
+                        } else if (self.findInternalEdgeTarget(node_index, "context")) |gen_ctx| {
+                            try addLiveClosure(self, arena, &live_closures, node_index, sfi, gen_ctx);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. buildLiveFunctions
+        var live_fns_by_script: std.AutoHashMapUnmanaged(u32, std.AutoHashMapUnmanaged(i64, std.AutoHashMapUnmanaged(u32, void))) = .empty;
+        for (live_closures.items) |cl| {
+            if (finished_module_fns.contains(cl.owner_node_index)) continue;
+            const s_gop = try live_fns_by_script.getOrPut(arena, cl.script_node_index);
+            if (!s_gop.found_existing) s_gop.value_ptr.* = .empty;
+            const f_gop = try s_gop.value_ptr.getOrPut(arena, cl.scope_id);
+            if (!f_gop.found_existing) f_gop.value_ptr.* = .empty;
+
+            var ctx_opt: ?u32 = cl.context_node_index;
+            while (ctx_opt) |ctx_idx| {
+                if (f_gop.value_ptr.contains(ctx_idx)) break;
+                if (!self.isContextObject(ctx_idx)) break;
+                try f_gop.value_ptr.put(arena, ctx_idx, {});
+                ctx_opt = self.findInternalEdgeTarget(ctx_idx, "previous");
+            }
+        }
+
+        // 4. correlateContextsWithScopes
+        const CorrelatedCtx = struct {
+            context_node_index: u32,
+            context_node_id: u64,
+            field_value_node_indexes: []u32,
+        };
+        const CorrelatedScope = struct {
+            scope_info_node_index: u32,
+            scope_info_node_id: u64,
+            script_node_index: u32,
+            script_node_id: u64,
+            script_name: []const u8,
+            scope_name: ?[]const u8,
+            scope_start: i64,
+            scope_end: i64,
+            scope: *EmbeddedScope,
+            field_names: [][]const u8,
+            contexts: std.ArrayList(CorrelatedCtx) = .empty,
+        };
+
+        var correlated_scopes: std.AutoArrayHashMapUnmanaged(u32, CorrelatedScope) = .empty;
+        var scripts_without_scopes_map: std.AutoArrayHashMapUnmanaged(u32, ScriptWithoutScopes) = .empty;
+
+        for (context_nodes.items) |ctx| {
+            const si_idx = ctx.scope_info_node_index;
+            if (correlated_scopes.getPtr(si_idx)) |existing| {
+                var fvals: std.ArrayList(u32) = .empty;
+                const ord = self.nodeOrdinal(ctx.context_node_index);
+                var ei = self.first_edge_indexes[ord];
+                const end = self.first_edge_indexes[ord + 1];
+                while (ei < end) : (ei += self.edge_fields_count) {
+                    if (self.edgeRawType(ei) == self.edge_context_type) {
+                        try fvals.append(arena, self.edgeToNode(ei));
+                    }
+                }
+                try existing.contexts.append(arena, .{
+                    .context_node_index = ctx.context_node_index,
+                    .context_node_id = ctx.context_node_id,
+                    .field_value_node_indexes = fvals.items,
+                });
+                continue;
+            }
+
+            const sid_node = self.findInternalEdgeTarget(si_idx, "scope_id") orelse continue;
+            const scope_id = self.nodeValueAsInt(sid_node) orelse continue;
+            const scope_start = if (self.findInternalEdgeTarget(si_idx, "start_position")) |n| (self.nodeValueAsInt(n) orelse 0) else 0;
+            const scope_end = if (self.findInternalEdgeTarget(si_idx, "end_position")) |n| (self.nodeValueAsInt(n) orelse 0) else 0;
+            const scope_name: ?[]const u8 = if (self.findInternalEdgeTarget(si_idx, "function_name")) |n| try self.nodeNameAlloc(arena, n) else null;
+
+            // resolveScopeInfoScriptNodeIndex
+            const script_idx_opt: ?u32 = if (scope_info_to_script.get(si_idx)) |cached| cached else blk: {
+                var visited_list: std.ArrayList(u32) = .empty;
+                var seen_set: std.AutoHashMapUnmanaged(u32, void) = .empty;
+                var cur = si_idx;
+                var found_script: ?u32 = null;
+                while (!seen_set.contains(cur)) {
+                    if (scope_info_to_script.get(cur)) |cached| {
+                        found_script = cached;
+                        break;
+                    }
+                    try seen_set.put(arena, cur, {});
+                    try visited_list.append(arena, cur);
+                    if (self.findInternalEdgeTarget(cur, "scope_id")) |sn| {
+                        if (self.nodeValueAsInt(sn) == -2) break;
+                    }
+                    cur = self.findInternalEdgeTarget(cur, "outer_scope_info") orelse break;
+                }
+                for (visited_list.items) |v| try scope_info_to_script.put(arena, v, found_script);
+                break :blk found_script;
+            };
+            const script_idx = script_idx_opt orelse continue;
+            const script_info = scripts.get(script_idx) orelse continue;
+
+            if (scripts_without_scopes_map.getPtr(script_idx)) |existing_sws| {
+                existing_sws.context_count += 1;
+                continue;
+            }
+            const embedded_script = scopes_by_script.getPtr(script_idx) orelse {
+                try scripts_without_scopes_map.put(arena, script_idx, .{
+                    .script_node_index = script_idx,
+                    .script_node_id = script_info.node_id,
+                    .script_name = script_info.name,
+                    .context_count = 1,
+                });
+                continue;
+            };
+            const embedded_scope = embedded_script.get(scope_id) orelse continue;
+
+            var fnames: std.ArrayList([]const u8) = .empty;
+            var fvals: std.ArrayList(u32) = .empty;
+            const ord = self.nodeOrdinal(ctx.context_node_index);
+            var ei = self.first_edge_indexes[ord];
+            const end = self.first_edge_indexes[ord + 1];
+            while (ei < end) : (ei += self.edge_fields_count) {
+                if (self.edgeRawType(ei) == self.edge_context_type) {
+                    try fnames.append(arena, try self.edgeNameAlloc(arena, ei));
+                    try fvals.append(arena, self.edgeToNode(ei));
+                }
+            }
+            var ctxs: std.ArrayList(CorrelatedCtx) = .empty;
+            try ctxs.append(arena, .{
+                .context_node_index = ctx.context_node_index,
+                .context_node_id = ctx.context_node_id,
+                .field_value_node_indexes = fvals.items,
+            });
+            try correlated_scopes.put(arena, si_idx, .{
+                .scope_info_node_index = si_idx,
+                .scope_info_node_id = self.nodeId(si_idx),
+                .script_node_index = script_idx,
+                .script_node_id = script_info.node_id,
+                .script_name = script_info.name,
+                .scope_name = scope_name,
+                .scope_start = scope_start,
+                .scope_end = scope_end,
+                .scope = embedded_scope,
+                .field_names = fnames.items,
+                .contexts = ctxs,
+            });
+        }
+
+        // 5. classifyFields & sortAndBuildResult
+        var scope_analyses: std.ArrayList(AnalyzedScope) = .empty;
+        for (correlated_scopes.values()) |cs| {
+            var analyzed_ctxs: std.ArrayList(AnalyzedContext) = .empty;
+            for (cs.contexts.items) |ctx| {
+                var dead_sum: u64 = 0;
+                var dead_fields: std.ArrayList(DeadContextField) = .empty;
+                for (ctx.field_value_node_indexes, 0..) |val_idx, fi| {
+                    if (fi >= cs.field_names.len) break;
+                    const fname = cs.field_names[fi];
+                    var var_ptr: ?*const EmbeddedScope.Variable = null;
+                    for (cs.scope.variables) |*v| {
+                        if (std.mem.eql(u8, v.name, fname)) {
+                            var_ptr = v;
+                            break;
+                        }
+                    }
+                    const variable = var_ptr orelse continue;
+
+                    // isVariableUsedInContext
+                    var used = false;
+                    if (live_fns_by_script.getPtr(cs.script_node_index)) |live_by_sid| {
+                        outer: for (variable.uses.items) |using_scope| {
+                            var curr_opt: ?*EmbeddedScope = using_scope;
+                            while (curr_opt) |curr| {
+                                if (live_by_sid.getPtr(curr.scope_id)) |live_ctx_set| {
+                                    if (live_ctx_set.contains(ctx.context_node_index)) {
+                                        used = true;
+                                        break :outer;
+                                    }
+                                }
+                                curr_opt = curr.parent;
+                            }
+                        }
+                    }
+                    if (used) continue;
+
+                    const ret_size = self.nodeRetainedSize(val_idx);
+                    try dead_fields.append(arena, .{
+                        .name = fname,
+                        .value_node_index = val_idx,
+                        .value_node_id = self.nodeId(val_idx),
+                        .value_name = try self.nodeNameAlloc(arena, val_idx),
+                        .value_type = self.nodeTypeName(val_idx),
+                        .self_size = self.nodeSelfSize(val_idx),
+                        .retained_size = ret_size,
+                    });
+                    dead_sum += ret_size;
+                }
+                if (dead_fields.items.len == 0) continue;
+
+                std.sort.block(DeadContextField, dead_fields.items, {}, struct {
+                    fn lessThan(_: void, a: DeadContextField, b: DeadContextField) bool {
+                        return a.retained_size > b.retained_size;
+                    }
+                }.lessThan);
+
+                try analyzed_ctxs.append(arena, .{
+                    .context_node_index = ctx.context_node_index,
+                    .context_node_id = self.nodeId(ctx.context_node_index),
+                    .retained_size = self.nodeRetainedSize(ctx.context_node_index),
+                    .dead_fields_retained_size_sum = dead_sum,
+                    .dead_fields = dead_fields.items,
+                });
+            }
+            if (analyzed_ctxs.items.len == 0) continue;
+
+            std.sort.block(AnalyzedContext, analyzed_ctxs.items, {}, compareAnalyzedContextLess);
+            try scope_analyses.append(arena, .{
+                .scope_info_node_index = cs.scope_info_node_index,
+                .scope_info_node_id = cs.scope_info_node_id,
+                .script_node_index = cs.script_node_index,
+                .script_node_id = cs.script_node_id,
+                .script_name = cs.script_name,
+                .scope_name = cs.scope_name,
+                .scope_start = cs.scope_start,
+                .scope_end = cs.scope_end,
+                .context_field_count = cs.field_names.len,
+                .contexts = analyzed_ctxs.items,
+            });
+        }
+
+        std.sort.block(AnalyzedScope, scope_analyses.items, {}, struct {
+            fn lessThan(_: void, a: AnalyzedScope, b: AnalyzedScope) bool {
+                return compareAnalyzedContextLess({}, a.contexts[0], b.contexts[0]);
+            }
+        }.lessThan);
+
+        const sws = try arena.dupe(ScriptWithoutScopes, scripts_without_scopes_map.values());
+        std.sort.block(ScriptWithoutScopes, sws, {}, struct {
+            fn lessThan(_: void, a: ScriptWithoutScopes, b: ScriptWithoutScopes) bool {
+                return a.script_node_index < b.script_node_index;
+            }
+        }.lessThan);
+
+        return .{
+            .scopes = scope_analyses.items,
+            .scripts_without_scopes = sws,
+        };
+    }
 };
+
+fn compareAnalyzedContextLess(_: void, left: AnalyzedContext, right: AnalyzedContext) bool {
+    if (left.dead_fields_retained_size_sum != right.dead_fields_retained_size_sum) {
+        return left.dead_fields_retained_size_sum > right.dead_fields_retained_size_sum;
+    }
+    if (left.retained_size != right.retained_size) {
+        return left.retained_size > right.retained_size;
+    }
+    return left.context_node_index < right.context_node_index;
+}
 
 // ---------------------------------------------------------------------------
 // Session cache (HeapSnapshotManager)
@@ -2598,6 +4075,9 @@ const ParsedSnapshot = struct {
     nodes: std.ArrayList(u32) = .empty,
     edges: std.ArrayList(u32) = .empty,
     locations: std.ArrayList(u32) = .empty,
+    scopes: std.ArrayList(i32) = .empty,
+    scope_context_vars: std.ArrayList(i32) = .empty,
+    scope_uses: std.ArrayList(i32) = .empty,
     strings: std.ArrayList([]const u8) = .empty,
 
     node_field_count: u32 = 0,
@@ -2622,6 +4102,8 @@ const ParsedSnapshot = struct {
     location_line_offset: ?u32 = null,
     location_column_offset: ?u32 = null,
 
+    scope_meta: ScopeMetaOffsets = .{},
+
     root_index: u32 = 0,
     extra_native_bytes: u64 = 0,
 };
@@ -2632,6 +4114,9 @@ fn parseSnapshotJson(allocator: Allocator, arena: Allocator, bytes: []const u8) 
         result.nodes.deinit(allocator);
         result.edges.deinit(allocator);
         result.locations.deinit(allocator);
+        result.scopes.deinit(allocator);
+        result.scope_context_vars.deinit(allocator);
+        result.scope_uses.deinit(allocator);
         result.strings.deinit(allocator);
     }
 
@@ -2668,6 +4153,12 @@ fn parseSnapshotJson(allocator: Allocator, arena: Allocator, bytes: []const u8) 
                     try parseU32Array(&scanner, allocator, arena, &result.edges);
                 } else if (std.mem.eql(u8, key, "locations")) {
                     try parseU32Array(&scanner, allocator, arena, &result.locations);
+                } else if (std.mem.eql(u8, key, "scopes")) {
+                    try parseI32Array(&scanner, allocator, arena, &result.scopes);
+                } else if (std.mem.eql(u8, key, "scope_context_vars")) {
+                    try parseI32Array(&scanner, allocator, arena, &result.scope_context_vars);
+                } else if (std.mem.eql(u8, key, "scope_uses")) {
+                    try parseI32Array(&scanner, allocator, arena, &result.scope_uses);
                 } else if (std.mem.eql(u8, key, "strings")) {
                     try parseStringArray(&scanner, allocator, arena, &result.strings);
                 } else {
@@ -2767,6 +4258,23 @@ fn parseMeta(scanner: *std.json.Scanner, arena: Allocator, result: *ParsedSnapsh
                     result.location_script_id_offset = findFieldOffset(fields, "script_id");
                     result.location_line_offset = findFieldOffset(fields, "line");
                     result.location_column_offset = findFieldOffset(fields, "column");
+                } else if (std.mem.eql(u8, key, "scope_fields")) {
+                    const fields = try parseMetaStringList(scanner, arena);
+                    result.scope_meta.scope_stride = @intCast(fields.len);
+                    result.scope_meta.script_node_index_offset = findFieldOffset(fields, "script_node_index");
+                    result.scope_meta.scope_id_offset = findFieldOffset(fields, "scope_id");
+                    result.scope_meta.depth_offset = findFieldOffset(fields, "depth");
+                    result.scope_meta.vars_count_offset = findFieldOffset(fields, "scope_context_vars_count");
+                    result.scope_meta.uses_count_offset = findFieldOffset(fields, "scope_uses_count");
+                } else if (std.mem.eql(u8, key, "scope_context_var_fields")) {
+                    const fields = try parseMetaStringList(scanner, arena);
+                    result.scope_meta.var_stride = @intCast(fields.len);
+                    result.scope_meta.var_name_offset = findFieldOffset(fields, "name");
+                } else if (std.mem.eql(u8, key, "scope_use_fields")) {
+                    const fields = try parseMetaStringList(scanner, arena);
+                    result.scope_meta.use_stride = @intCast(fields.len);
+                    result.scope_meta.use_declaring_scope_id_offset = findFieldOffset(fields, "declaring_scope_id");
+                    result.scope_meta.use_slot_index_offset = findFieldOffset(fields, "slot_index");
                 } else {
                     scanner.skipValue() catch |err| switch (err) {
                         error.OutOfMemory => return error.OutOfMemory,
@@ -2859,6 +4367,25 @@ fn parseU32Array(scanner: *std.json.Scanner, allocator: Allocator, arena: Alloca
             .number, .allocated_number => |s| {
                 const v = std.fmt.parseInt(u64, s, 10) catch return error.InvalidSnapshot;
                 try out.append(allocator, if (v > std.math.maxInt(u32)) std.math.maxInt(u32) else @intCast(v));
+            },
+            else => return error.InvalidSnapshot,
+        }
+    }
+}
+
+fn parseI32Array(scanner: *std.json.Scanner, allocator: Allocator, arena: Allocator, out: *std.ArrayList(i32)) Error!void {
+    const begin = scanner.next() catch return error.InvalidSnapshot;
+    if (begin != .array_begin) return error.InvalidSnapshot;
+    while (true) {
+        const tok = scanner.nextAlloc(arena, .alloc_if_needed) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return error.InvalidSnapshot,
+        };
+        switch (tok) {
+            .array_end => break,
+            .number, .allocated_number => |s| {
+                const v = std.fmt.parseInt(i64, s, 10) catch return error.InvalidSnapshot;
+                try out.append(allocator, std.math.lossyCast(i32, v));
             },
             else => return error.InvalidSnapshot,
         }
