@@ -330,6 +330,15 @@ pub const HeapCapture = struct {
     failed: bool = false,
 };
 
+/// Active `upload_file` file-chooser wait (tools/input.zig): records
+/// `Page.fileChooserOpened` while `Page.setInterceptFileChooserDialog` is on.
+pub const FileChooserWait = struct {
+    session_id: []const u8,
+    opened: bool = false,
+    is_multiple: bool = false,
+    backend_node_id: ?i64 = null,
+};
+
 pub const Session = struct {
     allocator: Allocator,
     client: Client,
@@ -346,6 +355,8 @@ pub const Session = struct {
     watch: ?*Watch = null,
     /// Active heap snapshot capture (tools/memory.zig), if any.
     heap_capture: ?*HeapCapture = null,
+    /// Active file-chooser interception wait (tools/input.zig), if any.
+    file_chooser: ?*FileChooserWait = null,
     /// The tools' definitions (tools/list's array), parsed: the input
     /// schemas calls are checked against (validate.zig).
     schemas: ?std.json.Parsed(std.json.Value) = null,
@@ -596,6 +607,18 @@ pub const Session = struct {
         }
         if (std.mem.eql(u8, method, "Page.javascriptDialogClosed")) {
             page.clearDialog(self.allocator);
+            return;
+        }
+        if (std.mem.eql(u8, method, "Page.fileChooserOpened")) {
+            if (self.file_chooser) |fc| {
+                if (std.mem.eql(u8, fc.session_id, session_id) and !fc.opened) {
+                    fc.opened = true;
+                    fc.is_multiple = std.mem.eql(u8, str(p.get("mode")), "selectMultiple");
+                    if (p.get("backendNodeId")) |bid| if (bid == .integer) {
+                        fc.backend_node_id = bid.integer;
+                    };
+                }
+            }
             return;
         }
         if (std.mem.eql(u8, method, "Page.loadEventFired")) {

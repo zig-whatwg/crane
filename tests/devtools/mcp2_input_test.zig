@@ -17,6 +17,11 @@ fn expectResult(text: []const u8, json: []const u8) !void {
     try testing.expectEqualStrings(want, text);
 }
 
+fn navigate(h: *Harness, a: std.mem.Allocator, url: []const u8) !void {
+    const r = try h.tool("navigate_page", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"url\":{f}}}", .{std.json.fmt(url, .{})}));
+    try testing.expect(!r.is_error);
+}
+
 fn uidOf(text: []const u8, needle: []const u8) ![]const u8 {
     var lines = std.mem.splitScalar(u8, text, '\n');
     while (lines.next()) |line| {
@@ -55,7 +60,7 @@ test "click: single, double, trusted event order, option, dialog, includeSnapsho
     const a = h.arena.allocator();
 
     const html =
-        \\data:text/html,<title>Click</title>
+        \\data:text/html,<!doctype html><title>Click</title>
         \\<button id=b>Go</button>
         \\<button id=dlg onclick="alert('clicked!')">Alert</button>
         \\<select id=sel><option value=a>Alpha</option><option value=b>Beta</option></select>
@@ -76,10 +81,9 @@ test "click: single, double, trusted event order, option, dialog, includeSnapsho
         \\sel.addEventListener('change', () => selEv.push('change:' + sel.value));
         \\</script>
     ;
-    var r = try h.tool("navigate_page", "{\"pageId\":1,\"url\":\"" ++ html ++ "\"}");
-    try testing.expect(!r.is_error);
+    try navigate(&h, a, html);
 
-    r = try h.tool("take_snapshot", "{\"pageId\":1,\"verbose\":true}");
+    var r = try h.tool("take_snapshot", "{\"pageId\":1,\"verbose\":true}");
     try testing.expect(!r.is_error);
     const snap = try a.dupe(u8, r.text);
     const b_uid = try a.dupe(u8, try uidOf(snap, "button \"Go\""));
@@ -160,7 +164,7 @@ test "hover: sets :hover, fires boundary events, allows disabled, refuses hidden
     const a = h.arena.allocator();
 
     const html =
-        \\data:text/html,<title>Hover</title>
+        \\data:text/html,<!doctype html><title>Hover</title>
         \\<button id=a>One</button>
         \\<button id=b>Two</button>
         \\<button id=dis disabled>Disabled</button>
@@ -175,9 +179,8 @@ test "hover: sets :hover, fires boundary events, allows disabled, refuses hidden
         \\}
         \\</script>
     ;
-    var r = try h.tool("navigate_page", "{\"pageId\":1,\"url\":\"" ++ html ++ "\"}");
-    try testing.expect(!r.is_error);
-    r = try h.tool("take_snapshot", "{\"pageId\":1}");
+    try navigate(&h, a, html);
+    var r = try h.tool("take_snapshot", "{\"pageId\":1}");
     try testing.expect(!r.is_error);
     const snap = try a.dupe(u8, r.text);
     const a_uid = try a.dupe(u8, try uidOf(snap, "button \"One\""));
@@ -231,9 +234,8 @@ test "drag: HTML5 drag-and-drop transfers DataTransfer and fires trusted DnD eve
         \\src.addEventListener('dragend', e => { dnd.push('dragend:' + e.isTrusted); });
         \\</script>
     ;
-    var r = try h.tool("navigate_page", "{\"pageId\":1,\"url\":\"" ++ html ++ "\"}");
-    try testing.expect(!r.is_error);
-    r = try h.tool("take_snapshot", "{\"pageId\":1}");
+    try navigate(&h, a, html);
+    var r = try h.tool("take_snapshot", "{\"pageId\":1}");
     try testing.expect(!r.is_error);
     const snap = try a.dupe(u8, r.text);
     const src_uid = try a.dupe(u8, try uidOf(snap, "button \"Source\""));
@@ -262,12 +264,11 @@ test "fill and fill_form: text, textarea, select, checkbox, radio, contenteditab
         \\<label><input id=rad type=radio name=g value=1> Choice</label>
         \\<div id=ce contenteditable="true" role=textbox aria-label="Editor"></div>
         \\<label>Locked <input id=ro type=text readonly value="fixed"></label>
-        \\<label>Trigger <input id=trig type=checkbox onchange="alert('changed!')"> Trigger</label>
+        \\<label><input id=trig type=checkbox onchange="alert('changed!')"> Trigger</label>
         \\<button id=notinput>Plain</button>
     ;
-    var r = try h.tool("navigate_page", "{\"pageId\":1,\"url\":\"" ++ html ++ "\"}");
-    try testing.expect(!r.is_error);
-    r = try h.tool("take_snapshot", "{\"pageId\":1}");
+    try navigate(&h, a, html);
+    var r = try h.tool("take_snapshot", "{\"pageId\":1}");
     try testing.expect(!r.is_error);
     const snap = try a.dupe(u8, r.text);
     const name_uid = try a.dupe(u8, try uidOf(snap, "textbox \"Name\""));
@@ -379,9 +380,8 @@ test "upload_file file-chooser fallback and press_key includeSnapshot" {
         \\f.addEventListener('change', () => seen.push('change:' + f.files.length + ':' + (f.files[0]?.name ?? '')));
         \\</script>
     ;
-    var r = try h.tool("navigate_page", "{\"pageId\":1,\"url\":\"" ++ html ++ "\"}");
-    try testing.expect(!r.is_error);
-    r = try h.tool("take_snapshot", "{\"pageId\":1}");
+    try navigate(&h, a, html);
+    var r = try h.tool("take_snapshot", "{\"pageId\":1}");
     try testing.expect(!r.is_error);
     const snap = try a.dupe(u8, r.text);
     const choose_uid = try a.dupe(u8, try uidOf(snap, "button \"Choose\""));
@@ -405,4 +405,43 @@ test "upload_file file-chooser fallback and press_key includeSnapshot" {
     r = try h.tool("press_key", "{\"pageId\":1,\"key\":\"Tab\",\"includeSnapshot\":true}");
     try testing.expect(!r.is_error);
     try testing.expect(std.mem.startsWith(u8, r.text, "Successfully pressed key: Tab\n## Latest page snapshot\n"));
+}
+
+test "external WebSocket CDP clients cannot call local-only element actions (-32601)" {
+    const browser_mod = @import("browser");
+    const devtools = @import("devtools");
+    const cdp = @import("cdp_client.zig");
+    const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true });
+
+    var gpa: LeakChecked = .init;
+    defer testing.expect(gpa.deinit() == .ok) catch @panic("leak");
+    const allocator = gpa.allocator();
+
+    const host = try browser_mod.BrowserHost.start(allocator, .{});
+    defer host.stop();
+    const server = try devtools.Server.start(allocator, .{ .port = 0, .default_host = host });
+    defer server.stop();
+
+    var path_buf: [96]u8 = undefined;
+    const client = try cdp.Client.openWebSocket(allocator, server.port, try std.fmt.bufPrint(&path_buf, "/devtools/browser/{s}", .{server.browser_id.slice()}), null);
+    defer client.close();
+
+    const targets = try client.call("Target.getTargets", "{}", "");
+    defer targets.deinit();
+    const infos = cdp.at(targets.value, "result.targetInfos").?.array.items;
+    var params_buf: [128]u8 = undefined;
+    const attached = try client.call("Target.attachToTarget", try std.fmt.bufPrint(&params_buf, "{{\"targetId\":\"{s}\",\"flatten\":true}}", .{cdp.stringAt(infos[0], "targetId").?}), "");
+    defer attached.deinit();
+    const session = cdp.stringAt(attached.value, "result.sessionId").?;
+
+    // Local-only MCP element command must be rejected with standard -32601 on WebSocket.
+    const refused = try client.call("Input._craneClickElement", "{}", session);
+    defer refused.deinit();
+    const err_obj = refused.value.object.get("error").?.object;
+    try testing.expectEqual(@as(i64, -32601), err_obj.get("code").?.integer);
+
+    // Standard CDP Page.setInterceptFileChooserDialog works on WebSocket too.
+    const fc = try client.call("Page.setInterceptFileChooserDialog", "{\"enabled\":true}", session);
+    defer fc.deinit();
+    try testing.expect(fc.value.object.get("error") == null);
 }
