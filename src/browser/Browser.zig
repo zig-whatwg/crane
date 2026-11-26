@@ -518,6 +518,8 @@ pub const Browser = struct {
         navigables.user_prompts = .{ .context = browser, .opening = dialogOpening, .closed = dialogClosed };
         // And its new-window hook (html.navigation.window_open).
         navigables.window_open = .{ .context = browser, .opened = windowOpened };
+        // And its file chooser hook (html.navigation.file_chooser).
+        navigables.file_chooser = .{ .context = browser, .opening = fileChooserOpening };
         // And its first-touch hook for frames on their initial about:blank.
         navigables.frame_touched = .{ .context = browser, .touched = frameTouched };
         // The agent's inspector client (the engine protocol's
@@ -2005,6 +2007,13 @@ pub const Browser = struct {
     fn windowOpened(context: *anyopaque, opened: *const html_mod.navigation.window_open.Opened) void {
         const self: *Browser = @ptrCast(@alignCast(context));
         self.listeners.emit(.{ .window_open = opened });
+    }
+
+    /// html.navigation.file_chooser: an `<input type="file">` is opening a
+    /// file chooser.
+    fn fileChooserOpening(context: *anyopaque, opening: *const html_mod.navigation.file_chooser.Opening) void {
+        const self: *Browser = @ptrCast(@alignCast(context));
+        self.listeners.emit(.{ .file_chooser_opening = opening });
     }
 
     /// The inspector client's runIfWaitingForDebugger: group `group` is a

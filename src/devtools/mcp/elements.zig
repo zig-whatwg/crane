@@ -14,6 +14,7 @@ const Context = registry.Context;
 const session_mod = @import("session.zig");
 const Page = session_mod.Page;
 const str = session_mod.str;
+const snapshot_mod = @import("snapshot.zig");
 
 pub const Frame = struct {
     id: []const u8,
@@ -56,19 +57,44 @@ pub const Element = struct {
     frame_id: []const u8,
 };
 
+/// Snapshot metadata for `uid` (copied into `ctx.arena`, safe across a
+/// snapshot replacement). Fails with chrome-devtools-mcp's exact messages
+/// when there is no snapshot or the uid is unknown.
+pub fn targetByUid(ctx: *Context, page: *Page, uid: []const u8) !snapshot_mod.Target {
+    const snapshot = page.text_snapshot orelse return ctx.fail("No snapshot found for page {d}. Use take_snapshot to capture one.", .{page.id});
+    const target = snapshot.targets.get(uid) orelse return ctx.fail("Element uid \"{s}\" not found on page {d}.", .{ uid, page.id });
+    const opts = try ctx.arena.alloc(snapshot_mod.OptionChild, target.options.len);
+    for (target.options, opts) |o, *dst| {
+        dst.* = .{
+            .name = try ctx.arena.dupe(u8, o.name),
+            .backend_node_id = o.backend_node_id,
+            .loader_id = try ctx.arena.dupe(u8, o.loader_id),
+            .frame_id = try ctx.arena.dupe(u8, o.frame_id),
+        };
+    }
+    return .{
+        .backend_node_id = target.backend_node_id,
+        .loader_id = try ctx.arena.dupe(u8, target.loader_id),
+        .frame_id = try ctx.arena.dupe(u8, target.frame_id),
+        .role = try ctx.arena.dupe(u8, target.role),
+        .options = opts,
+    };
+}
+
 /// McpPage.getElementByUid: the tool fails with chrome-devtools-mcp's
 /// messages when there is no snapshot, no such uid, or the node is gone.
 pub fn byUid(ctx: *Context, page: *Page, uid: []const u8) !Element {
-    const snapshot = page.text_snapshot orelse return ctx.fail("No snapshot found for page {d}. Use take_snapshot to capture one.", .{page.id});
-    const target = snapshot.targets.get(uid) orelse return ctx.fail("Element uid \"{s}\" not found on page {d}.", .{ uid, page.id });
-    // Copied: the snapshot may go while events are dispatched.
-    const backend = target.backend_node_id;
-    const loader = try ctx.arena.dupe(u8, target.loader_id);
-    const frame_id = try ctx.arena.dupe(u8, target.frame_id);
-    return resolve(ctx, page, backend, loader, frame_id) catch |err| switch (err) {
+    const target = try targetByUid(ctx, page, uid);
+    return resolve(ctx, page, target.backend_node_id, target.loader_id, target.frame_id) catch |err| switch (err) {
         error.OutOfMemory => error.OutOfMemory,
         else => ctx.fail("Element with uid {s} no longer exists on the page.", .{uid}),
     };
+}
+
+/// Adopt a backend node (such as a combobox's `<option>` child) into its
+/// frame's main world.
+pub fn resolveNode(ctx: *Context, page: *Page, backend: i64, loader: []const u8, frame_id: []const u8) !Element {
+    return resolve(ctx, page, backend, loader, frame_id);
 }
 
 /// elementHandle(): null (an error here) after a navigation, else the node

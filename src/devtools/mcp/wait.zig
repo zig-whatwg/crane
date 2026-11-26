@@ -33,6 +33,7 @@ const navigation_timeout_ms = 3000;
 
 pub const Result = struct {
     navigated_to_url: ?[]const u8 = null,
+    dialog_detected: bool = false,
     dialog_handled: bool = false,
     opened_pages: []const *Page = &.{},
 
@@ -76,6 +77,7 @@ pub fn afterAction(ctx: *Context, page: *Page, options: Options, action: anytype
     if (!watch.dialog_detected and options.wait_for_stable_dom and !page.closed) try stableDom(ctx, page);
     return .{
         .navigated_to_url = if (watch.loaded_new_document or !std.mem.eql(u8, page.url, initial_url)) try ctx.arena.dupe(u8, page.url) else null,
+        .dialog_detected = watch.dialog_detected,
         .dialog_handled = watch.dialog_handled,
         .opened_pages = try ctx.arena.dupe(*Page, watch.opened.items),
     };

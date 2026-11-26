@@ -2230,6 +2230,204 @@
           }
         }
       ]
+    },
+    {
+      "name": "input: click, hover, drag, dialog",
+      "about": "Batch 5 element-targeted trusted input: click (single, double, includeSnapshot), hover, drag (HTML5 DnD), and click opening a JS dialog.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/input_elements.html"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "click",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1",
+            "includeSnapshot": true
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [ev.join(','), document.activeElement.id, document.getElementById('btn').matches(':hover')]"
+          }
+        },
+        {
+          "tool": "click",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1",
+            "dblClick": true
+          }
+        },
+        {
+          "tool": "hover",
+          "args": {
+            "pageId": 1,
+            "uid": "1_4"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [document.getElementById('btn').matches(':hover'), document.getElementById('dst').matches(':hover')]"
+          }
+        },
+        {
+          "tool": "drag",
+          "args": {
+            "pageId": 1,
+            "from_uid": "1_3",
+            "to_uid": "1_4"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => dnd.join(',')"
+          }
+        },
+        {
+          "tool": "click",
+          "args": {
+            "pageId": 1,
+            "uid": "1_2"
+          }
+        },
+        {
+          "tool": "handle_dialog",
+          "args": {
+            "pageId": 1,
+            "action": "accept"
+          }
+        }
+      ]
+    },
+    {
+      "name": "input: fill, fill_form, press_key snapshot, upload chooser",
+      "about": "Batch 5 form filling (text, textarea, combobox by label, fill_form with checkbox/radio, refusals), press_key includeSnapshot, and upload_file file-chooser fallback.",
+      "files": true,
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/input_elements.html"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "fill",
+          "args": {
+            "pageId": 1,
+            "uid": "1_6",
+            "value": "Ada"
+          }
+        },
+        {
+          "tool": "fill",
+          "args": {
+            "pageId": 1,
+            "uid": "1_8",
+            "value": "Pioneer"
+          }
+        },
+        {
+          "tool": "fill",
+          "args": {
+            "pageId": 1,
+            "uid": "1_10",
+            "value": "Green"
+          }
+        },
+        {
+          "tool": "fill_form",
+          "args": {
+            "pageId": 1,
+            "elements": [
+              {
+                "uid": "1_6",
+                "value": "Grace"
+              },
+              {
+                "uid": "1_13",
+                "value": "true"
+              },
+              {
+                "uid": "1_14",
+                "value": "true"
+              }
+            ],
+            "includeSnapshot": true
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [document.getElementById('name').value, document.getElementById('bio').value, document.getElementById('col').value, document.getElementById('cb').checked, document.getElementById('rad').checked]"
+          }
+        },
+        {
+          "tool": "fill",
+          "args": {
+            "pageId": 1,
+            "uid": "1_10",
+            "value": "Purple"
+          }
+        },
+        {
+          "tool": "fill",
+          "args": {
+            "pageId": 1,
+            "uid": "1_13",
+            "value": "yes"
+          }
+        },
+        {
+          "tool": "press_key",
+          "args": {
+            "pageId": 1,
+            "key": "Tab",
+            "includeSnapshot": true
+          }
+        },
+        {
+          "tool": "upload_file",
+          "args": {
+            "pageId": 1,
+            "uid": "1_18",
+            "filePaths": [
+              "{files}/upload.txt"
+            ]
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => fileEv.join(',')"
+          }
+        }
+      ]
     }
   ],
   "expected": [
@@ -2262,11 +2460,6 @@
       "case": "files: network bodies",
       "call": 2,
       "reason": "The request headers differ as in \"network: list, filter, details\" call 5 (Chrome's UA client hints and user-agent; Blink's header order), Crane's POST carries no content-length request header (a Network domain finding, queued by main 2026-11-24), and the response's date header is the second it was served. The bodies' sections and the saved files are compared: the files listing must be equal."
-    },
-    {
-      "case": "files: upload",
-      "call": 9,
-      "reason": "Not a file input: chrome-devtools-mcp clicks the element and waits 3 s for a file chooser (Page.setInterceptFileChooserDialog); element clicks are batch 5, so Crane says no click happened (main's ruling 3, 2026-11-24). Batch 5 switches to Google's text and the file-chooser path."
     },
     {
       "case": "history: back right after the first navigation",

@@ -234,11 +234,24 @@ pub fn capture(ctx: *Context, page: *Page, verbose: bool) ![]const u8 {
     }
     const keep = kept.arena.allocator();
     var it = targets.iterator();
-    while (it.next()) |e| try kept.targets.put(keep, try keep.dupe(u8, e.key_ptr.*), .{
-        .backend_node_id = e.value_ptr.backend_node_id,
-        .loader_id = try keep.dupe(u8, e.value_ptr.loader_id),
-        .frame_id = try keep.dupe(u8, e.value_ptr.frame_id),
-    });
+    while (it.next()) |e| {
+        const opts = try keep.alloc(snapshot.OptionChild, e.value_ptr.options.len);
+        for (e.value_ptr.options, opts) |o, *dst| {
+            dst.* = .{
+                .name = try keep.dupe(u8, o.name),
+                .backend_node_id = o.backend_node_id,
+                .loader_id = try keep.dupe(u8, o.loader_id),
+                .frame_id = try keep.dupe(u8, o.frame_id),
+            };
+        }
+        try kept.targets.put(keep, try keep.dupe(u8, e.key_ptr.*), .{
+            .backend_node_id = e.value_ptr.backend_node_id,
+            .loader_id = try keep.dupe(u8, e.value_ptr.loader_id),
+            .frame_id = try keep.dupe(u8, e.value_ptr.frame_id),
+            .role = try keep.dupe(u8, e.value_ptr.role),
+            .options = opts,
+        });
+    }
     page.setSnapshot(session.allocator, kept);
     return text;
 }
