@@ -1026,65 +1026,37 @@ pub const Navigator = struct {
 
     pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
 
-    pub fn get_appCodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try NavigatorImpl.get_appCodeName(instance);
-    }
+    pub const get_appCodeName = mixins.NavigatorID.get_appCodeName;
 
-    pub fn get_appName(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try NavigatorImpl.get_appName(instance);
-    }
+    pub const get_appName = mixins.NavigatorID.get_appName;
 
-    pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try NavigatorImpl.get_appVersion(instance);
-    }
+    pub const get_appVersion = mixins.NavigatorID.get_appVersion;
 
-    pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try NavigatorImpl.get_platform(instance);
-    }
+    pub const get_platform = mixins.NavigatorID.get_platform;
 
-    pub fn get_product(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try NavigatorImpl.get_product(instance);
-    }
+    pub const get_product = mixins.NavigatorID.get_product;
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try NavigatorImpl.get_productSub(instance);
-    }
+    pub const get_productSub = mixins.NavigatorID.get_productSub;
 
-    pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try NavigatorImpl.get_userAgent(instance);
-    }
+    pub const get_userAgent = mixins.NavigatorID.get_userAgent;
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try NavigatorImpl.get_vendor(instance);
-    }
+    pub const get_vendor = mixins.NavigatorID.get_vendor;
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_vendorSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try NavigatorImpl.get_vendorSub(instance);
-    }
+    pub const get_vendorSub = mixins.NavigatorID.get_vendorSub;
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try NavigatorImpl.get_oscpu(instance);
-    }
+    pub const get_oscpu = mixins.NavigatorID.get_oscpu;
 
-    pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try NavigatorImpl.get_language(instance);
-    }
+    pub const get_language = mixins.NavigatorLanguage.get_language;
 
-    pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try NavigatorImpl.get_languages(instance);
-    }
+    pub const get_languages = mixins.NavigatorLanguage.get_languages;
 
-    pub fn get_onLine(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.get_onLine(instance);
-    }
+    pub const get_onLine = mixins.NavigatorOnLine.get_onLine;
 
-    pub fn get_cookieEnabled(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.get_cookieEnabled(instance);
-    }
+    pub const get_cookieEnabled = mixins.NavigatorCookies.get_cookieEnabled;
 
     /// Extended attributes: [SameObject]
     pub fn get_plugins(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -1114,9 +1086,7 @@ pub const Navigator = struct {
 
     pub const get_pdfViewerEnabled = mixins.NavigatorPlugins.get_pdfViewerEnabled;
 
-    pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
-        return try NavigatorImpl.get_hardwareConcurrency(instance);
-    }
+    pub const get_hardwareConcurrency = mixins.NavigatorConcurrentHardware.get_hardwareConcurrency;
 
     /// Extended attributes: [SameObject]
     pub fn get_connection(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -1151,7 +1121,7 @@ pub const Navigator = struct {
         if (state.own.cached_storage) |cached| {
             return cached;
         }
-        const value = try NavigatorImpl.get_storage(instance);
+        const value = try mixins.NavigatorStorage.get_storage(instance);
         state.own.cached_storage = value;
         @import("dom").same_object_cache.made(instance, value, "storage");
         return value;
@@ -1211,10 +1181,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_canShare(instance, data);
     }
 
-    /// Extended attributes: [Exposed=Window]
-    pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.call_taintEnabled(instance);
-    }
+    pub const call_taintEnabled = mixins.NavigatorID.call_taintEnabled;
 
     /// Extended attributes: [SecureContext]
     pub fn call_queryHandwritingRecognizer(instance: *runtime.Instance, constraint: HandwritingModelConstraint) anyerror!runtime.JSValue {
