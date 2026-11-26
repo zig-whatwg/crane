@@ -62,6 +62,11 @@ test "heap analysis tools are disabled without memory_debugging and enabled with
         "get_heapsnapshot_retainers",
         "get_heapsnapshot_dominators",
         "close_heapsnapshot",
+        "get_heapsnapshot_retaining_paths",
+        "get_heapsnapshot_duplicate_strings",
+        "query_heapsnapshot_objects",
+        "compare_heapsnapshots",
+        "analyze_heapsnapshot_contexts",
     };
     for (expected) |want| {
         var found = false;
@@ -241,4 +246,98 @@ test "live V8 take_heapsnapshot round-trip analyzed by summary, details, and clo
 
     const closed = try callTool(srv, arena, "close_heapsnapshot", try std.fmt.allocPrint(arena, "{{\"filePath\":{f}}}", .{std.json.fmt(snap_path, .{})}));
     try testing.expect(!closed.is_error);
+}
+
+test "heap snapshot advanced analysis tools: retaining paths, duplicate strings, query objects, compare, analyze contexts" {
+    var gpa = replay.LeakChecked.init;
+    defer testing.expectEqual(.ok, gpa.deinit()) catch {};
+    const allocator = gpa.allocator();
+
+    const sample_v1 = try std.Io.Dir.cwd().readFileAlloc(testing.io, "tools/mcp_diff/fixtures/sample.heapsnapshot", allocator, .limited(1 << 20));
+    defer allocator.free(sample_v1);
+    const sample_v2 = try std.Io.Dir.cwd().readFileAlloc(testing.io, "tools/mcp_diff/fixtures/sample_v2.heapsnapshot", allocator, .limited(1 << 20));
+    defer allocator.free(sample_v2);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "v1.heapsnapshot", .data = sample_v1 });
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "v2.heapsnapshot", .data = sample_v2 });
+    const dir_path = try tmp.dir.realPathFileAlloc(testing.io, ".", allocator);
+    defer allocator.free(dir_path);
+    const v1_path = try std.fmt.allocPrint(allocator, "{s}/v1.heapsnapshot", .{dir_path});
+    defer allocator.free(v1_path);
+    const v2_path = try std.fmt.allocPrint(allocator, "{s}/v2.heapsnapshot", .{dir_path});
+    defer allocator.free(v2_path);
+
+    var host = try browser_mod.BrowserHost.start(allocator, .{});
+    defer host.stop();
+    const dt = try devtools.Server.start(allocator, .{ .port = 0, .default_host = host });
+    defer dt.stop();
+
+    const roots = [_][]const u8{dir_path};
+    const srv = try McpServer.createWith(allocator, dt, .{
+        .filesystem_roots = &roots,
+        .memory_debugging = true,
+    });
+    defer srv.destroy();
+
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    // 1. Retaining paths for deepTarget (@81): SubCache (@79) -> CacheHolder (@77) (distance 2).
+    const paths = try callTool(srv, arena, "get_heapsnapshot_retaining_paths", try std.fmt.allocPrint(arena, "{{\"filePath\":{f},\"nodeId\":81}}", .{std.json.fmt(v2_path, .{})}));
+    try testing.expect(!paths.is_error);
+    try testing.expect(std.mem.indexOf(u8, paths.text, "### Retaining Paths\n<- @79 SubCache via property entry (distance: 3)\n  <- @77 CacheHolder via property sub (distance: 2)") != null);
+
+    // Depth-limited retaining paths reports truncation note.
+    const paths_limited = try callTool(srv, arena, "get_heapsnapshot_retaining_paths", try std.fmt.allocPrint(arena, "{{\"filePath\":{f},\"nodeId\":81,\"maxDepth\":1}}", .{std.json.fmt(v2_path, .{})}));
+    try testing.expect(!paths_limited.is_error);
+    try testing.expect(std.mem.indexOf(u8, paths_limited.text, "No retaining paths found.") != null);
+    try testing.expect(std.mem.indexOf(u8, paths_limited.text, "limits were reached: depth.") != null);
+
+    // 2. Duplicate strings: normal ("dup-token" x3, "dup-other" x2) and truncated ("long-prefix..." x2).
+    const dups = try callTool(srv, arena, "get_heapsnapshot_duplicate_strings", try std.fmt.allocPrint(arena, "{{\"filePath\":{f}}}", .{std.json.fmt(v2_path, .{})}));
+    try testing.expect(!dups.is_error);
+    try testing.expect(std.mem.indexOf(u8, dups.text, "### Duplicate Strings") != null);
+    try testing.expect(std.mem.indexOf(u8, dups.text, "\"long-prefix...\",2,") != null);
+    try testing.expect(std.mem.indexOf(u8, dups.text, ",true,@61 @63") != null);
+    try testing.expect(std.mem.indexOf(u8, dups.text, "\"dup-token\",3,") != null);
+    try testing.expect(std.mem.indexOf(u8, dups.text, ",false,@51 @53 @55") != null);
+
+    // 3. Query objects: className regex, propertyName, isDetached, selfSize range.
+    const q1 = try callTool(srv, arena, "query_heapsnapshot_objects", try std.fmt.allocPrint(arena, "{{\"filePath\":{f},\"className\":\"leakywidget|cache\"}}", .{std.json.fmt(v2_path, .{})}));
+    try testing.expect(!q1.is_error);
+    try testing.expect(std.mem.indexOf(u8, q1.text, "13,LeakyWidget,object,") != null);
+    try testing.expect(std.mem.indexOf(u8, q1.text, "47,LeakyWidget,object,") != null);
+    try testing.expect(std.mem.indexOf(u8, q1.text, "77,CacheHolder,object,") != null);
+
+    const q_det = try callTool(srv, arena, "query_heapsnapshot_objects", try std.fmt.allocPrint(arena, "{{\"filePath\":{f},\"isDetached\":true,\"selfSize\":\"100B-600B\"}}", .{std.json.fmt(v2_path, .{})}));
+    try testing.expect(!q_det.is_error);
+    try testing.expect(std.mem.indexOf(u8, q_det.text, "25,Detached HTMLSpanElement,") != null);
+    try testing.expect(std.mem.indexOf(u8, q_det.text, "39,Detached Text,") != null);
+
+    // 4. Compare heap snapshots: summary + detailed classIndex + invalid classIndex error.
+    const cmp_sum = try callTool(srv, arena, "compare_heapsnapshots", try std.fmt.allocPrint(arena, "{{\"baseFilePath\":{f},\"currentFilePath\":{f}}}", .{ std.json.fmt(v1_path, .{}), std.json.fmt(v2_path, .{}) }));
+    try testing.expect(!cmp_sum.is_error);
+    try testing.expect(std.mem.indexOf(u8, cmp_sum.text, "### Heap Snapshot Diff") != null);
+    try testing.expect(std.mem.indexOf(u8, cmp_sum.text, ",LeakyWidget,1,1,0,") != null);
+
+    const cmp_det = try callTool(srv, arena, "compare_heapsnapshots", try std.fmt.allocPrint(arena, "{{\"baseFilePath\":{f},\"currentFilePath\":{f},\"classIndex\":0}}", .{ std.json.fmt(v1_path, .{}), std.json.fmt(v2_path, .{}) }));
+    try testing.expect(!cmp_det.is_error);
+    try testing.expect(std.mem.indexOf(u8, cmp_det.text, "### Heap Snapshot Detailed Diff") != null);
+    try testing.expect(std.mem.indexOf(u8, cmp_det.text, "Objects:\n  + @") != null);
+
+    const cmp_bad = try callTool(srv, arena, "compare_heapsnapshots", try std.fmt.allocPrint(arena, "{{\"baseFilePath\":{f},\"currentFilePath\":{f},\"classIndex\":999}}", .{ std.json.fmt(v1_path, .{}), std.json.fmt(v2_path, .{}) }));
+    try testing.expect(cmp_bad.is_error);
+    try testing.expect(std.mem.indexOf(u8, cmp_bad.text, "Invalid classIndex: 999.") != null);
+
+    // 5. Analyze contexts: deadBuf reported as dead (liveVar is live), plus legacy.js in scriptsWithoutScopes.
+    const ctx_res = try callTool(srv, arena, "analyze_heapsnapshot_contexts", try std.fmt.allocPrint(arena, "{{\"filePath\":{f}}}", .{std.json.fmt(v2_path, .{})}));
+    try testing.expect(!ctx_res.is_error);
+    try testing.expect(std.mem.indexOf(u8, ctx_res.text, "### Context Analysis") != null);
+    try testing.expect(std.mem.indexOf(u8, ctx_res.text, "#### Context @121 in `setupHandler (app.js)`") != null);
+    try testing.expect(std.mem.indexOf(u8, ctx_res.text, "- `deadBuf` (system / JSArrayBufferData @125)") != null);
+    try testing.expect(std.mem.indexOf(u8, ctx_res.text, "`liveVar`") == null);
+    try testing.expect(std.mem.indexOf(u8, ctx_res.text, "Scripts without scope metadata could not be analyzed:\n- `legacy.js` (@141)") != null);
 }
