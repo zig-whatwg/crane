@@ -763,24 +763,27 @@ pub const Table = struct {
     }
 };
 
-/// One record and its strings in ONE block of `allocator`: the local name,
-/// the prefix, and the namespace unless it is one of the six named ones
-/// (Infra's string). Written in full at once, so it takes the allocator's
-/// raw entry point (review zig/report.md Z5: `std.mem.Allocator.alloc`
-/// fills a new block with 0xaa in ReleaseSafe). Its one reference is the
+/// One record header (in `.objects`, via `allocator.create`) plus its page-
+/// chosen strings in a separate pointer-free block (in `.bytes`, align 1 via
+/// `rawAlloc`): allocator-hardening design 3.1 / batch B2 item 4 (no page-
+/// chosen bytes share a block with pointers). Its one reference is the
 /// caller's.
 fn create(allocator: std.mem.Allocator, namespace_uri: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) error{OutOfMemory}!*QualifiedName {
     const static_namespace: ?[]const u8 = if (namespace_uri) |ns| element_name.internNamespace(ns) else null;
     const namespace_bytes: usize = if (namespace_uri) |ns| (if (static_namespace == null) ns.len else 0) else 0;
     const prefix_bytes: usize = if (prefix) |p| p.len else 0;
-    const total = @sizeOf(QualifiedName) + local_name.len + prefix_bytes + namespace_bytes;
-    const memory = allocator.rawAlloc(total, .of(QualifiedName), @returnAddress()) orelse return error.OutOfMemory;
-    var tail: []u8 = memory[@sizeOf(QualifiedName)..total];
-    const local = copyInto(&tail, local_name);
+    const string_bytes = local_name.len + prefix_bytes + namespace_bytes;
+    const name = try allocator.create(QualifiedName);
+    errdefer allocator.destroy(name);
+    const bytes_buf: []u8 = if (string_bytes > 0) blk: {
+        const mem = allocator.rawAlloc(string_bytes, .@"1", @returnAddress()) orelse return error.OutOfMemory;
+        break :blk mem[0..string_bytes];
+    } else &.{};
+    var tail: []u8 = bytes_buf;
+    const local: []const u8 = if (string_bytes > 0) copyInto(&tail, local_name) else "";
     const own_prefix: ?[]const u8 = if (prefix) |p| copyInto(&tail, p) else null;
     const own_namespace: ?[]const u8 = if (namespace_uri) |ns| (static_namespace orelse copyInto(&tail, ns)) else null;
-    if (debug_checks and tail.len != 0) @panic("an attribute name record's strings did not fill its block");
-    const name: *QualifiedName = @ptrCast(@alignCast(memory));
+    if (debug_checks and tail.len != 0) @panic("an attribute name record's strings did not fill its bytes block");
     name.* = .{
         .namespace_uri = own_namespace,
         .prefix = own_prefix,
@@ -791,9 +794,9 @@ fn create(allocator: std.mem.Allocator, namespace_uri: ?[]const u8, prefix: ?[]c
     return name;
 }
 
-/// The size of a dynamic record's block, from its names.
-fn blockSize(name: *const QualifiedName) usize {
-    var total = @sizeOf(QualifiedName) + name.local_name.len;
+/// The size of a dynamic record's separate `.bytes` buffer, from its names.
+fn stringBytes(name: *const QualifiedName) usize {
+    var total = name.local_name.len;
     if (name.prefix) |p| total += p.len;
     if (name.namespace_uri) |ns| if (element_name.internNamespace(ns) == null) {
         total += ns.len;
@@ -801,13 +804,16 @@ fn blockSize(name: *const QualifiedName) usize {
     return total;
 }
 
-/// Free a dynamic record's block; Debug poisons it first (the raw entry
-/// point does not).
+/// Free a dynamic record's bytes buffer and header; Debug poisons the raw
+/// bytes buffer first (the raw entry point does not).
 fn destroy(allocator: std.mem.Allocator, name: *const QualifiedName) void {
-    const block: [*]u8 = @ptrCast(@constCast(name));
-    const bytes = block[0..blockSize(name)];
-    if (debug_checks) @memset(bytes, 0xAA);
-    allocator.rawFree(bytes, .of(QualifiedName), @returnAddress());
+    const n = stringBytes(name);
+    if (n > 0) {
+        const bytes = @constCast(name.local_name.ptr)[0..n];
+        if (debug_checks) @memset(bytes, 0xAA);
+        allocator.rawFree(bytes, .@"1", @returnAddress());
+    }
+    allocator.destroy(@constCast(name));
 }
 
 fn copyInto(tail: *[]u8, bytes: []const u8) []const u8 {
@@ -910,7 +916,7 @@ test "a dynamic name is one counted record with a dense id, freed and its slot r
     const ns = try intern(&scope, infra.namespaces.SVG_NAMESPACE, "p", "data-a");
     try std.testing.expect(ns != a);
     try std.testing.expect(table.get(ns).namespace_uri.?.ptr == infra.namespaces.SVG_NAMESPACE.ptr);
-    try std.testing.expectEqual(@sizeOf(QualifiedName) + "data-a".len + "p".len, blockSize(table.get(ns)));
+    try std.testing.expectEqual("data-a".len + "p".len, stringBytes(table.get(ns)));
     // A static name never reaches the table.
     try std.testing.expect((try intern(&scope, null, null, "class")).isStatic());
     try std.testing.expectEqual(@as(usize, 2), table.count());
