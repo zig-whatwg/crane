@@ -473,6 +473,14 @@ pub fn inspectorUnwrap(session: *engine.InspectorSession, object_id: []const u8)
     return protocol_inspector.inspectorUnwrap(session, object_id);
 }
 
+pub fn inspectorUnwrapWithGroup(session: *engine.InspectorSession, object_id: []const u8, allocator: std.mem.Allocator) Error!?engine.InspectorUnwrappedWithGroup {
+    return protocol_inspector.inspectorUnwrapWithGroup(session, object_id, allocator);
+}
+
+pub fn inspectorFunctionLocation(realm: Context, callback: JSValue) Error!?engine.InspectorFunctionLocation {
+    return protocol_inspector.inspectorFunctionLocation(realm, callback);
+}
+
 pub fn inspectorConsoleMessage(realm: Context, method: []const u8, args: []const JSValue) void {
     protocol_inspector.inspectorConsoleMessage(realm, method, args);
 }

@@ -22012,6 +22012,16 @@ public:
         return session_->unwrapObject(&error, CraneView(object_id, length), value, context, &group);
     }
 
+    /// Like Unwrap, also copying the RemoteObject's objectGroup (if any).
+    bool UnwrapWithGroup(const uint8_t* object_id, size_t length, Local<Value>* value, Local<Context>* context, std::string* group_out) {
+        if (!session_) return false;
+        std::unique_ptr<v8_inspector::StringBuffer> error;
+        std::unique_ptr<v8_inspector::StringBuffer> group;
+        if (!session_->unwrapObject(&error, CraneView(object_id, length), value, context, &group)) return false;
+        if (group_out && group) CraneAppendUtf8(*group_out, group->string());
+        return true;
+    }
+
     void ReleaseObjectGroup(const uint8_t* group, size_t length) {
         if (session_) session_->releaseObjectGroup(CraneView(group, length));
     }
@@ -22334,6 +22344,77 @@ Global<Value>* v8_InspectorSession_Unwrap(CraneInspectorSession* session, const 
     if (!session->Unwrap(object_id, length, &value, &context)) return nullptr;
     if (context_key) *context_key = context.IsEmpty() ? nullptr : CraneContextIdOf(context);
     return trackHandle(new Global<Value>(isolate, value));
+}
+
+/// engine.inspectorUnwrapWithGroup: like v8_InspectorSession_Unwrap, also
+/// passing the object's non-empty objectGroup UTF-8 bytes to `group_sink`.
+Global<Value>* v8_InspectorSession_UnwrapWithGroup(
+    CraneInspectorSession* session,
+    const uint8_t* object_id,
+    size_t length,
+    void** context_key,
+    CraneInspectorSession::Send group_sink,
+    void* group_host) {
+    if (!session || !object_id) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> value;
+    Local<Context> context;
+    std::string group;
+    if (!session->UnwrapWithGroup(object_id, length, &value, &context, &group)) return nullptr;
+    if (context_key) *context_key = context.IsEmpty() ? nullptr : CraneContextIdOf(context);
+    if (group_sink && !group.empty()) {
+        group_sink(group_host, reinterpret_cast<const uint8_t*>(group.data()), group.size());
+    }
+    return trackHandle(new Global<Value>(isolate, value));
+}
+
+/// engine.inspectorFunctionLocation: resolve Blink's GetEffectiveFunction
+/// (JSEventListener::GetEffectiveFunction + JSEventHandler::GetEffectiveFunction:
+/// unwrap Function.prototype.bind chains; for non-function objects read
+/// `.handleEvent` under TryCatch + NativeStepScope without running microtasks)
+/// and report ScriptId + 0-based line/column via v8::Function::GetScriptLocation.
+/// Returns a new Global<Value> for the effective function (caller owns), or
+/// nullptr if `callback` is not callable.
+Global<Value>* v8_Function_InspectorLocation(
+    Global<Context>* context,
+    Global<Value>* callback,
+    int32_t* script_id_out,
+    int32_t* line_out,
+    int32_t* column_out) {
+    if (!context || context->IsEmpty() || !callback || callback->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local_ctx = context->Get(isolate);
+    Context::Scope context_scope(local_ctx);
+    NativeStepScope native_step(isolate);
+    TryCatch try_catch(isolate);
+
+    Local<Value> val = callback->Get(isolate);
+    Local<Function> fn;
+    if (val->IsFunction()) {
+        fn = val.As<Function>();
+    } else if (val->IsObject()) {
+        Local<Value> prop;
+        if (!val.As<Object>()->Get(local_ctx, String::NewFromUtf8Literal(isolate, "handleEvent")).ToLocal(&prop) || !prop->IsFunction()) {
+            return nullptr;
+        }
+        fn = prop.As<Function>();
+    } else {
+        return nullptr;
+    }
+
+    while (true) {
+        Local<Value> bound = fn->GetBoundFunction();
+        if (bound.IsEmpty() || !bound->IsFunction()) break;
+        fn = bound.As<Function>();
+    }
+
+    Location loc = fn->GetScriptLocation();
+    if (script_id_out) *script_id_out = static_cast<int32_t>(fn->ScriptId());
+    if (line_out) *line_out = static_cast<int32_t>(loc.GetLineNumber());
+    if (column_out) *column_out = static_cast<int32_t>(loc.GetColumnNumber());
+    return trackHandle(new Global<Value>(isolate, fn));
 }
 
 void v8_InspectorSession_ReleaseObjectGroup(CraneInspectorSession* session, const uint8_t* group, size_t length) {
