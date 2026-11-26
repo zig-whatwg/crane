@@ -3527,6 +3527,17 @@ fn runCommit(context: ?*anyopaque) void {
             return endLoadDelay(integration);
         }
     }
+    // HTML "attempt to populate the history entry's document" step 5.4
+    // (after CSP and COEP, before Content-Disposition: attachment and 204/205):
+    // "check a navigation response's adherence to `X-Frame-Options`".
+    if (xFrameOptionsBlocks(integration, record, response)) {
+        response.deinit();
+        record.response = navigation_fetch.networkErrorResult(integration.allocator, record.url) catch null;
+        if (record.response == null) {
+            integration.ongoing_navigation = .none;
+            return endLoadDelay(integration);
+        }
+    }
 
     // A 204, a 205 or a download commits no document: the navigable keeps
     // the one it has, and no load event is owed. Decided before anything is
@@ -4719,6 +4730,77 @@ fn frameAncestorsBlock(integration: *IFrameIntegration, record: *Navigation, res
         .endpoints = container.endpoints,
     };
     return csp.directives.frame_ancestors.checkNavigationResponse(&container.csp_list, is_local, ancestors.items, response_url, .{ .context = &report_context, .report = NavigationResponseReporter.report });
+}
+
+/// HTML §7.7 "check a navigation response's adherence to `X-Frame-Options`":
+/// returns true when the response does NOT adhere (must be blocked as a
+/// network error). Fails closed on allocation failure so an OOM never lets a
+/// frame bypass `X-Frame-Options`.
+fn xFrameOptionsBlocks(integration: *IFrameIntegration, record: *const Navigation, response: *const navigation_fetch.NavigationFetchResult) bool {
+    // Step 1: If navigable is not a child navigable, return true (does not block).
+    if (integration.iframe_element == null or response.is_network_error) return false;
+    const headers = response.headers orelse return false;
+    // Fast path: no X-Frame-Options header -> step 3 returns null -> adheres.
+    // Step 2 has no observable side effects, so skipping CSP parsing here is
+    // observationally identical and avoids allocation on the common path.
+    const raw_xfo = headers.get("x-frame-options") orelse return false;
+    const allocator = integration.allocator;
+    const response_url = if (response.final_url.len > 0) response.final_url else record.url;
+
+    // Step 2: An enforcing CSP `frame-ancestors` directive overrides XFO;
+    // `Content-Security-Policy-Report-Only` does not.
+    if (headers.get("content-security-policy")) |csp_value| {
+        var container = fetch_mod.internal.PolicyContainer.fromResponseHeaders(allocator, .{
+            .url = response_url,
+            .csp = csp_value,
+        }) catch return true;
+        defer container.deinit();
+        if (html_core.navigation.security_policies.cspHasEnforcingFrameAncestors(&container.csp_list)) {
+            return false;
+        }
+    }
+
+    // Steps 3–8 & 10: Parse `X-Frame-Options` via Fetch "get, decode, and split".
+    const parsed = html_core.navigation.security_policies.parseXFrameOptions(allocator, raw_xfo) catch return true;
+    switch (parsed) {
+        .none => return false,
+        .deny, .conflict => return true,
+        .sameorigin => {},
+    }
+
+    // Step 9: SAMEORIGIN — compare every ancestor container document's origin
+    // against the response URL's tuple origin (Golden Rule 2: Chromium
+    // ancestor_throttle.cc, WebKit FrameLoader.cpp, and Gecko
+    // FramingChecker.cpp all compare against the response URL's origin rather
+    // than a sandboxed target's opaque origin, while still blocking when any
+    // ancestor has an opaque origin).
+    var url_record = basic_parser.parse(allocator, response_url, null) catch return true;
+    defer url_record.deinit();
+    const dest_origin_val = url_origin.getOrigin(allocator, &url_record) catch return true;
+    defer dest_origin_val.deinit(allocator);
+    const dest_origin = dest_origin_val.serialize(allocator) catch return true;
+    defer allocator.free(dest_origin);
+
+    var ancestors: std.ArrayListUnmanaged(?[]const u8) = .empty;
+    defer {
+        for (ancestors.items) |maybe_origin| {
+            if (maybe_origin) |owned| allocator.free(owned);
+        }
+        ancestors.deinit(allocator);
+    }
+    var document = containerDocumentOf(integration);
+    while (document) |doc| {
+        const origin = documentOriginOf(doc, allocator);
+        ancestors.append(allocator, origin) catch {
+            if (origin) |owned| allocator.free(owned);
+            return true;
+        };
+        const window = (interfaces.Document.get_defaultView(doc) catch null) orelse break;
+        const parent_container = dom_module.navigable_container.of(window) orelse break;
+        document = interfaces.Node.get_ownerDocument(parent_container) catch null;
+    }
+
+    return !html_core.navigation.security_policies.sameOriginAncestorsAdhere(dest_origin, ancestors.items);
 }
 
 /// Borrowed only during the synchronous CSP check; the public reporting
