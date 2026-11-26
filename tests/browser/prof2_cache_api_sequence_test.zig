@@ -195,3 +195,33 @@ fn workerCalls() !void {
 test "a worker's Cache Storage calls answer on its loop, and a worker ending with a call waiting releases it" {
     try onThread(workerCalls);
 }
+
+fn cacheResponseCloneLocksOriginalStream() !void {
+    const browser = try openPage(null);
+    defer browser.deinit();
+    // Pattern of service-workers/cache-storage/crashtests/cache-response-clone.https.html:
+    // Fetch "clone a body" tees resp1.body's stream, locking the previously captured
+    // readStream (Chrome/Safari + Fetch spec), while both resp1.body and resp2.body
+    // remain readable without hanging, crashing, or leaking.
+    try expectInPage(browser,
+        \\const cache = await window.caches.open('cache_name_0');
+        \\await cache.put('https://example.test/doc', new Response('cached-payload'));
+        \\const resp1 = await cache.match('https://example.test/doc');
+        \\const readStream = resp1.body;
+        \\const resp2 = resp1.clone();
+        \\await new Promise(r => setTimeout(r, 0));
+        \\let errName = 'none';
+        \\try {
+        \\  await readStream.getReader().read();
+        \\} catch (e) {
+        \\  errName = e.name;
+        \\}
+        \\const t1 = await resp1.text();
+        \\const t2 = await resp2.text();
+        \\return `${readStream.locked}|${errName}|${t1}|${t2}`;
+    , "true|TypeError|cached-payload|cached-payload");
+}
+
+test "Cache.match response clone locks captured body stream and serves both branches cleanly" {
+    try onThread(cacheResponseCloneLocksOriginalStream);
+}
