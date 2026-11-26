@@ -550,8 +550,12 @@ INCLUDE = [
     ('html/webappapis/timers/',                   'setTimeout/setInterval and their clamping'),
     ('html/webappapis/microtask-queuing/',        'queueMicrotask and microtask ordering'),
     ('html/webappapis/structured-clone/',         'postMessage payloads'),
-    ('html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/',
-     'SharedArrayBuffer across postMessage, BroadcastChannel, workers, history and IndexedDB: cross-origin isolation and agent clusters (roadmap audit 2026-11-22; lane flk4 swept it first)'),
+    # HTML Infrastructure (surveyed and approved 2026-11-26 4:14 AM ET, lane sab1):
+    # 69 testharness files in MANIFEST (1 reftest excluded by testharness-only rule;
+    # 1 .xhtml file excluded by blanket XML-format rule; 5 query-encoding geometry+decoder
+    # files and 3 WebCodecs/MSE transfer files excluded below -> 60 files in 0.1).
+    ('html/infrastructure/',
+     'HTML infrastructure: common DOM collections, structured clone / SharedArrayBuffer, URL resolution and base URLs (geometry/decoder/WebCodecs/MSE exclusions below)'),
     ('html/webappapis/scripting/',                'onX handlers, error reporting'),
     ('html/webappapis/atob/',                     'base64'),
     ('html/webappapis/dynamic-markup-insertion/', 'innerHTML, document.write'),
@@ -1736,6 +1740,29 @@ EXCLUDE = [
      'offscreen viewport geometry for loading=lazy to eager video'),
     ('html/semantics/embedded-content/the-video-element/video-loading-poster-deferred.html',
      'offscreen viewport geometry for loading=lazy video poster deferral'),
+
+    # html/infrastructure/ exclusions (surveyed 2026-11-26, lane sab1):
+    # - 3 WebCodecs / MSE transfer tests (0.2 media/codecs; MediaSourceHandle is also Safari-only: C 0/1, F 0/1, S 1/1).
+    ('html/infrastructure/safe-passing-of-structured-data/transfer-audiodata.html',
+     'WebCodecs AudioData transfer: 0.2 media/codecs'),
+    ('html/infrastructure/safe-passing-of-structured-data/transfer-videoframe.html',
+     'WebCodecs VideoFrame transfer: 0.2 media/codecs'),
+    ('html/infrastructure/safe-passing-of-structured-data/transfer-mediasourcehandle.html',
+     'MediaSource Extensions ManagedMediaSource handle transfer: 0.2 media (matches fetch/api/basic/mediasource.window.js)'),
+    # - 5 query-encoding umbrella files whose ?include=loading/?include=svg/?include=css variants
+    #   assert layout box offsetWidth (<img>/<embed>/<object>/<input>), poll video.offsetWidth forever
+    #   for <video poster> (TIMEOUT without renderer), require WebM/MP4 video decoders, and wait on
+    #   painted SVG <feImage> and CSS border-image-source/list-style-image/cursor loads.
+    ('html/infrastructure/urls/resolving-urls/query-encoding/utf-8.html',
+     'query-encoding loading/svg/css variants assert elm.offsetWidth, poll video.offsetWidth, and require video decoders/painted CSS images'),
+    ('html/infrastructure/urls/resolving-urls/query-encoding/utf-16be.html',
+     'query-encoding loading/svg/css variants assert elm.offsetWidth, poll video.offsetWidth, and require video decoders/painted CSS images'),
+    ('html/infrastructure/urls/resolving-urls/query-encoding/utf-16le.html',
+     'query-encoding loading/svg/css variants assert elm.offsetWidth, poll video.offsetWidth, and require video decoders/painted CSS images'),
+    ('html/infrastructure/urls/resolving-urls/query-encoding/windows-1251.html',
+     'query-encoding loading/svg/css variants assert elm.offsetWidth, poll video.offsetWidth, and require video decoders/painted CSS images'),
+    ('html/infrastructure/urls/resolving-urls/query-encoding/windows-1252.html',
+     'query-encoding loading/svg/css variants assert elm.offsetWidth, poll video.offsetWidth, and require video decoders/painted CSS images'),
 
     ('/resources/',                    'harness resources'),
     ('-manual.',                       'requires a human'),

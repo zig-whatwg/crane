@@ -115,11 +115,21 @@ pub const Received = struct {
     /// in the receiving realm, in transfer-list order: the engine's
     /// `transferred` for the value's references.
     values: []*runtime.Instance,
+    /// The slab generation of each object in `values`, captured as
+    /// `receiveAll` made it: `deinit` releases any object that stayed
+    /// unwrapped (neither referenced by the deserialized payload nor kept in
+    /// `MessageEvent.ports`, or left behind when deserialization threw), while
+    /// never touching a slot that script wrapped and the collector later reused.
+    generations: []u64,
     /// The MessagePorts among them, in order: MessageEvent's ports.
     ports: []*runtime.Instance,
 
     pub fn deinit(self: *Received) void {
+        for (self.values, self.generations) |object, generation| {
+            object.releaseIfUnwrapped(generation);
+        }
         self.allocator.free(self.values);
+        self.allocator.free(self.generations);
         self.allocator.free(self.ports);
         self.* = undefined;
     }
@@ -133,6 +143,10 @@ pub const Received = struct {
 /// `holders` stays the caller's slice to free.
 pub fn receiveAll(realm: runtime.Context, holders: []const TransferDataHolder, allocator: Allocator) !Received {
     const values = try allocator.alloc(*runtime.Instance, holders.len);
+    const generations = allocator.alloc(u64, holders.len) catch |err| {
+        allocator.free(values);
+        return err;
+    };
     var made: usize = 0;
     var port_count: usize = 0;
     var failed = false;
@@ -146,16 +160,19 @@ pub fn receiveAll(realm: runtime.Context, holders: []const TransferDataHolder, a
             continue;
         };
         values[made] = object;
+        generations[made] = runtime.SlabAllocator.generationOf(object);
         made += 1;
         if (holder == .message_port) port_count += 1;
     }
     if (failed) {
-        for (values[0..made]) |object| object.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(object));
+        for (values[0..made], generations[0..made]) |object, generation| object.releaseIfUnwrapped(generation);
+        allocator.free(generations);
         allocator.free(values);
         return error.DataCloneError;
     }
     const ports = allocator.alloc(*runtime.Instance, port_count) catch |err| {
-        for (values) |object| object.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(object));
+        for (values, generations) |object, generation| object.releaseIfUnwrapped(generation);
+        allocator.free(generations);
         allocator.free(values);
         return err;
     };
@@ -165,5 +182,5 @@ pub fn receiveAll(realm: runtime.Context, holders: []const TransferDataHolder, a
         ports[next] = object;
         next += 1;
     }
-    return .{ .allocator = allocator, .values = values, .ports = ports };
+    return .{ .allocator = allocator, .values = values, .generations = generations, .ports = ports };
 }
