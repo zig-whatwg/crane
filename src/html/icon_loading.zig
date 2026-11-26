@@ -210,6 +210,7 @@ const IconLoad = struct {
     next_candidate: usize = 0,
     active_fetch: ?*AsyncFetch = null,
     update_queued: bool = false,
+    allow_default_fallback: bool = false,
     document_abort_pending: bool = false,
     destroying: bool = false,
 
@@ -334,24 +335,22 @@ fn isTopLevel(document: *runtime.Instance) bool {
 /// Called from `Document` `completeLoading` right after `loadEventFired`,
 /// `pageshow`, `completely_loaded = true`, `frameStoppedLoading`, and
 /// `queueNavigationTimingEntry`.
+///
+/// Queues an event-loop task rather than starting the network transfer
+/// synchronously inside `completeLoading` (matching Blink's async
+/// `DidFinishLoad` IPC -> `FaviconHandler`, Gecko's `LinkHandlerChild` async
+/// dispatch, and WebKit's `IconController` -> `IconLoader`). This ensures
+/// tasks already queued during document parse (e.g. `PerformanceObserver`
+/// delivery in `resource-timing/connection-reuse*.html`) run before the
+/// background `/favicon.ico` fetch can check out the origin's idle keep-alive
+/// connection from the pool.
 pub fn onDocumentLoaded(document: *runtime.Instance) void {
     if (!document.ctx.hasEngine()) return;
     if (!isTopLevel(document)) return;
 
     const load = getOrCreateLoad(document) orelse return;
-    load.terminateActiveFetch();
-    load.clearCandidates();
-
-    const has_declared = collectLinkCandidates(document, load);
-    if (!has_declared) {
-        appendDefaultFaviconCandidate(document, load);
-    }
-    if (load.candidates.items.len == 0) {
-        load.releaseIfIdle();
-        return;
-    }
-
-    startNextCandidate(load);
+    load.allow_default_fallback = true;
+    queueRefreshTask(load);
 }
 
 /// Called from `HTMLLinkElement` on insertion, removal, or icon-relevant
@@ -364,16 +363,29 @@ pub fn onLinkChanged(document: *runtime.Instance) void {
     if (!isTopLevel(document)) return;
 
     const load = getOrCreateLoad(document) orelse return;
+    queueRefreshTask(load);
+}
+
+fn queueRefreshTask(load: *IconLoad) void {
     if (load.update_queued) return;
 
+    const document = load.document;
     const loop = document.ctx.getOptionalEventLoop() orelse {
-        refreshDynamicIcons(load);
+        const allow_default = load.allow_default_fallback;
+        load.allow_default_fallback = false;
+        refreshIcons(load, allow_default);
         return;
     };
     const allocator = document.ctx.allocator;
-    const task = allocator.create(UpdateTask) catch return;
+    const task = allocator.create(UpdateTask) catch {
+        load.allow_default_fallback = false;
+        load.releaseIfIdle();
+        return;
+    };
     const pin = engine.retainValue(document.ctx, .{ .instance = document }) catch {
         allocator.destroy(task);
+        load.allow_default_fallback = false;
+        load.releaseIfIdle();
         return;
     };
     task.* = .{
@@ -409,7 +421,9 @@ const UpdateTask = struct {
         if (!realm.hasEngine() or runtime.SlabAllocator.generationOf(document) != generation) return;
         const load = findForDocument(document) orelse return;
         load.update_queued = false;
-        refreshDynamicIcons(load);
+        const allow_default = load.allow_default_fallback;
+        load.allow_default_fallback = false;
+        refreshIcons(load, allow_default);
     }
 
     fn drop(context: ?*anyopaque) void {
@@ -417,6 +431,7 @@ const UpdateTask = struct {
         if (runtime.SlabAllocator.generationOf(self.document) == self.generation) {
             if (findForDocument(self.document)) |load| {
                 load.update_queued = false;
+                load.allow_default_fallback = false;
                 load.releaseIfIdle();
             }
         }
@@ -429,7 +444,7 @@ const UpdateTask = struct {
     }
 };
 
-fn refreshDynamicIcons(load: *IconLoad) void {
+fn refreshIcons(load: *IconLoad, allow_default_fallback: bool) void {
     if (!load.documentIsLive() or !load.realm.hasEngine() or !isTopLevel(load.document)) {
         load.releaseIfIdle();
         return;
@@ -438,9 +453,13 @@ fn refreshDynamicIcons(load: *IconLoad) void {
     load.terminateActiveFetch();
     load.clearCandidates();
 
-    _ = collectLinkCandidates(load.document, load);
-    // Dynamic removal of <link rel="icon"> after load does NOT re-trigger
-    // default `/favicon.ico`.
+    const has_declared = collectLinkCandidates(load.document, load);
+    if (!has_declared and allow_default_fallback) {
+        // Only the initial post-load pass falls back to `/favicon.ico`.
+        // Dynamic removal of `<link rel="icon">` after load does NOT
+        // re-trigger default `/favicon.ico`.
+        appendDefaultFaviconCandidate(load.document, load);
+    }
     if (load.candidates.items.len == 0) {
         load.releaseIfIdle();
         return;

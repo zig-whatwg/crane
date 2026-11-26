@@ -103,6 +103,15 @@ const Server = struct {
         return n;
     }
 
+    fn indexOfPath(self: *Server, path: []const u8) ?usize {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.requests.items, 0..) |req, i| {
+            if (std.mem.eql(u8, req.path, path)) return i;
+        }
+        return null;
+    }
+
     fn findRequest(self: *Server, allocator: std.mem.Allocator, path: []const u8) !?RecordedRequest {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
@@ -637,6 +646,50 @@ test "zero leaks when document tears down or navigates away mid-icon-fetch" {
             }
 
             server.release_slow.store(true, .release);
+        }
+    }.run);
+}
+
+test "post-load icon fetch runs in a queued task after tasks already queued during parse" {
+    try onFreshThread(struct {
+        fn run() !void {
+            const routes = [_]Route{
+                .{
+                    .path = "/order.html",
+                    .body =
+                    \\<!doctype html>
+                    \\<head>
+                    \\  <script>
+                    \\    const ch = new MessageChannel();
+                    \\    ch.port1.onmessage = () => {
+                    \\      const xhr = new XMLHttpRequest();
+                    \\      xhr.open('GET', '/queued-during-parse', false);
+                    \\      xhr.send();
+                    \\      globalThis.__taskRan = true;
+                    \\    };
+                    \\    ch.port2.postMessage('go');
+                    \\  </script>
+                    \\</head><body>ok</body>
+                    ,
+                },
+                .{ .path = "/queued-during-parse", .content_type = "text/plain", .body = "ok" },
+                .{ .path = "/favicon.ico", .content_type = "image/x-icon", .body = png_bytes },
+            };
+            const server = try Server.start(testing.allocator, &routes);
+            defer server.stop();
+
+            const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
+            defer browser.deinit();
+
+            var url_buf: [128]u8 = undefined;
+            try browser.navigate(try server.url(&url_buf, "/order.html"), .window);
+            const ctx = browser.current_context orelse return error.NoPage;
+            try waitForJsTrue(browser, ctx, "Boolean(globalThis.__taskRan)");
+            try waitForServerPath(browser, server, "/favicon.ico");
+
+            const task_idx = server.indexOfPath("/queued-during-parse") orelse return error.MissingTaskRequest;
+            const icon_idx = server.indexOfPath("/favicon.ico") orelse return error.MissingFaviconRequest;
+            try testing.expect(task_idx < icon_idx);
         }
     }.run);
 }
