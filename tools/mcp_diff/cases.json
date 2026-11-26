@@ -1828,6 +1828,142 @@
           }
         }
       ]
+    },
+    {
+      "name": "memory: heapsnapshot analysis",
+      "about": "The 8 core --memoryDebugging heap snapshot analysis tools on a deterministic V8 .heapsnapshot fixture: summary (stats, staticData, nativeContexts, retainedByContextSummary), details (all + detached DOM + context + nativeContext filters + pagination), class nodes, object details (detached DOM, cons string, plain object), outgoing edges (sort + excludePrimitives + byte range), retainers, dominators, close, and extension/missing-node errors.",
+      "files": true,
+      "memory_debugging": true,
+      "copy_fixtures": [
+        "sample.heapsnapshot"
+      ],
+      "calls": [
+        {
+          "tool": "get_heapsnapshot_summary",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "filterName": "objectsRetainedByDetachedDomNodes"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "filterName": "objectsRetainedByContexts"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "filterName": "attributedToSpecificNativeContext",
+            "objectId": 9
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_class_nodes",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "id": 3
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_object_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 25
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_object_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 33
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_object_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 31
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_edges",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 13
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_edges",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 13,
+            "excludePrimitives": false,
+            "sortBy": "name"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_edges",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 13,
+            "retainedSize": "100B-"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_retainers",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 25
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_dominators",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 39
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_object_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 999999
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_summary",
+          "args": {
+            "filePath": "{files}/bad.txt"
+          }
+        },
+        {
+          "tool": "close_heapsnapshot",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot"
+          }
+        },
+        {
+          "tool": "close_heapsnapshot",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot"
+          }
+        }
+      ]
     }
   ],
   "expected": [

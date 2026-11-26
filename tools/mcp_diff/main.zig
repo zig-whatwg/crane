@@ -58,6 +58,10 @@ pub const Case = struct {
     files: bool = false,
     /// The directory reached through the client's MCP roots instead.
     client_roots: bool = false,
+    /// Pass --memoryDebugging to both servers (enables heap analysis tools).
+    memory_debugging: bool = false,
+    /// Fixture files (under --fixtures) copied into each server's `{files}` dir.
+    copy_fixtures: []const []const u8 = &.{},
 };
 
 /// A call whose answers are known to differ, and why (main, 2:24 PM ET
@@ -435,9 +439,19 @@ pub fn main(init: std.process.Init) !void {
         try chrome_argv.appendSlice(arena, &.{ options.node, options.chrome_mcp, "--executablePath", options.chrome, "--headless", "--isolated", "--no-usage-statistics", "--no-performance-crux", port_arg });
         var crane_argv: std.ArrayList([]const u8) = .empty;
         try crane_argv.appendSlice(arena, &.{ options.crane, "--mcp" });
+        if (case.memory_debugging) {
+            try chrome_argv.append(arena, "--memoryDebugging");
+            try crane_argv.append(arena, "--memoryDebugging");
+        }
         if (case.files or case.client_roots) {
             chrome_places.files = try filesDirectory(arena, io, options, slug, "chrome");
             crane_places.files = try filesDirectory(arena, io, options, slug, "crane");
+            for (case.copy_fixtures) |fixture_name| {
+                const src = try std.fmt.allocPrint(arena, "{s}/{s}", .{ options.fixtures, fixture_name });
+                const data = try Io.Dir.cwd().readFileAlloc(io, src, arena, .limited(64 * 1024 * 1024));
+                try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ chrome_places.files.?, fixture_name }), .data = data });
+                try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ crane_places.files.?, fixture_name }), .data = data });
+            }
             if (!case.client_roots) {
                 try chrome_argv.appendSlice(arena, &.{ "--filesystemRoot", chrome_places.files.? });
                 try crane_argv.appendSlice(arena, &.{ "--filesystemRoot", crane_places.files.? });
