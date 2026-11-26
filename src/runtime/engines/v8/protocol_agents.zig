@@ -306,6 +306,12 @@ pub const AgentRecord = struct {
     /// when `runQueuedMicrotask` runs; any still left after `endAgent`'s final
     /// microtask checkpoints are freed before the isolate is disposed.
     pending_microtasks: ?*QueuedMicrotask = null,
+    /// Small L1-hot freelist of `.objects`-allocated `QueuedMicrotask` nodes
+    /// (capped at `free_microtasks_cap`), avoiding per-microtask quarantine
+    /// churn on tight microtask chains (`observers.mutation-deliver`). Every
+    /// cached node is freed in `endAgent`.
+    free_microtasks: ?*QueuedMicrotask = null,
+    free_microtasks_count: u8 = 0,
     /// The agent is ending (`endAgent`): its hooks are forgotten, and
     /// `recordOf` no longer finds it - nothing reaches the host from here on,
     /// and nothing is made for the agent - while its realms end, which still
@@ -980,13 +986,19 @@ pub fn endAgent(agent: *Agent) void {
         queue.close();
     }
     // Transfer any queued callback microtasks off `record` before `removeAgent`
-    // destroys it: microtasks that run during the final checkpoints below unlink
-    // themselves from `pending_microtasks`, and any still left after the final
-    // checkpoint (e.g. discarded by an aborted checkpoint / TerminateExecution)
-    // are freed so nothing leaks into the Browser heap.
+    // destroys it: clear `owner` so microtasks running in the final checkpoints
+    // below destroy themselves directly instead of touching freed `record`, and
+    // drain the small L1-hot `free_microtasks` freelist now.
     var pending_microtasks: ?*QueuedMicrotask = if (record) |r| blk: {
+        while (r.free_microtasks) |cached| {
+            r.free_microtasks = cached.next;
+            cached.allocator.destroy(cached);
+        }
+        r.free_microtasks_count = 0;
         const head = r.pending_microtasks;
         r.pending_microtasks = null;
+        var cur = head;
+        while (cur) |node| : (cur = node.next) node.owner = null;
         break :blk head;
     } else null;
     if (pending_microtasks) |first| first.prev_link = &pending_microtasks;
@@ -1066,12 +1078,15 @@ pub fn performMicrotaskCheckpoint(agent: *Agent) void {
     if (!in_algorithm) @import("external_memory.zig").reportIfMovedOn(entered.isolate);
 }
 
+const free_microtasks_cap: u8 = 8;
+
 /// A queued microtask's steps and their data, until the microtask runs (or
 /// `endAgent` frees discarded records after the final microtask checkpoint).
 const QueuedMicrotask = struct {
     allocator: std.mem.Allocator,
     steps: engine.RealmSteps,
     data: ?*anyopaque,
+    owner: ?*AgentRecord = null,
     prev_link: ?*?*QueuedMicrotask = null,
     next: ?*QueuedMicrotask = null,
 
@@ -1088,10 +1103,19 @@ const QueuedMicrotask = struct {
 fn runQueuedMicrotask(raw: ?*anyopaque) callconv(.c) void {
     const queued: *QueuedMicrotask = @ptrCast(@alignCast(raw orelse return));
     queued.unlink();
-    const alloc = queued.allocator;
     const steps = queued.steps;
     const data = queued.data;
-    alloc.destroy(queued);
+    if (queued.owner) |r| {
+        if (r.free_microtasks_count < free_microtasks_cap) {
+            queued.data = null;
+            queued.next = r.free_microtasks;
+            r.free_microtasks = queued;
+            r.free_microtasks_count += 1;
+            steps(data);
+            return;
+        }
+    }
+    queued.allocator.destroy(queued);
     steps(data);
 }
 
@@ -1100,9 +1124,26 @@ fn runQueuedMicrotask(raw: ?*anyopaque) callconv(.c) void {
 /// disposal) is freed at `endAgent` instead of leaking.
 pub fn enqueueMicrotask(isolate: *ffi.Isolate, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
     const record = callbackRecordOf(isolate);
-    const alloc = if (record) |r| r.allocator else allocatorOf(isolate);
-    const queued = alloc.create(QueuedMicrotask) catch return error.OutOfMemory;
-    queued.* = .{ .allocator = alloc, .steps = steps, .data = data };
+    const queued: *QueuedMicrotask = if (record) |r| blk: {
+        if (r.free_microtasks) |cached| {
+            r.free_microtasks = cached.next;
+            r.free_microtasks_count -= 1;
+            cached.steps = steps;
+            cached.data = data;
+            cached.owner = r;
+            cached.prev_link = null;
+            cached.next = null;
+            break :blk cached;
+        }
+        const made = r.allocator.create(QueuedMicrotask) catch return error.OutOfMemory;
+        made.* = .{ .allocator = r.allocator, .steps = steps, .data = data, .owner = r };
+        break :blk made;
+    } else blk: {
+        const alloc = allocatorOf(isolate);
+        const made = alloc.create(QueuedMicrotask) catch return error.OutOfMemory;
+        made.* = .{ .allocator = alloc, .steps = steps, .data = data, .owner = null };
+        break :blk made;
+    };
     if (record) |r| {
         queued.prev_link = &r.pending_microtasks;
         queued.next = r.pending_microtasks;
