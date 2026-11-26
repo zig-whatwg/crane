@@ -71,7 +71,8 @@ const CdpPage = struct {
 };
 
 /// Async JS workload: 5 sequential macrotasks each burning 6 ms of CPU
-/// (~30 ms total work). At 4x slowdown wall time is ~120 ms; at 1x ~30 ms.
+/// (~30 ms total work), followed by a final macrotask so all 5 throttle sleeps
+/// have completed before reading elapsed time (~120 ms at 4x; ~30 ms at 1x).
 const busy_tasks_expr =
     \\(async () => {
     \\  const start = performance.now();
@@ -82,6 +83,7 @@ const busy_tasks_expr =
     \\      resolve();
     \\    }, 0));
     \\  }
+    \\  await new Promise(resolve => setTimeout(resolve, 0));
     \\  return performance.now() - start;
     \\})()
 ;
@@ -217,7 +219,7 @@ test "MCP emulate cpuThrottlingRate formats output, scales timeout, persists acr
     try testing.expect(!r.is_error);
     try testing.expect(std.mem.indexOf(u8, r.text, "Emulating CPU throttling: 4x slowdown") != null);
 
-    const throttled_resp = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"async () => { const s = performance.now(); for (let i = 0; i < 5; i++) { await new Promise(r => setTimeout(() => { const t = performance.now(); while (performance.now() - t < 6) {} r(); }, 0)); } return performance.now() - s; }\"}");
+    const throttled_resp = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"async () => { const s = performance.now(); for (let i = 0; i < 5; i++) { await new Promise(r => setTimeout(() => { const t = performance.now(); while (performance.now() - t < 6) {} r(); }, 0)); } await new Promise(r => setTimeout(r, 0)); return performance.now() - s; }\"}");
     try testing.expect(!throttled_resp.is_error);
     const throttled_ms = try parseScriptNumber(throttled_resp.text);
     try testing.expect(throttled_ms >= 95.0);
@@ -227,7 +229,7 @@ test "MCP emulate cpuThrottlingRate formats output, scales timeout, persists acr
     try testing.expect(!r.is_error);
     try testing.expectEqualStrings("Emulation configured successfully", r.text);
 
-    const fast_resp = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"async () => { const s = performance.now(); for (let i = 0; i < 5; i++) { await new Promise(r => setTimeout(() => { const t = performance.now(); while (performance.now() - t < 6) {} r(); }, 0)); } return performance.now() - s; }\"}");
+    const fast_resp = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"async () => { const s = performance.now(); for (let i = 0; i < 5; i++) { await new Promise(r => setTimeout(() => { const t = performance.now(); while (performance.now() - t < 6) {} r(); }, 0)); } await new Promise(r => setTimeout(r, 0)); return performance.now() - s; }\"}");
     try testing.expect(!fast_resp.is_error);
     const fast_ms = try parseScriptNumber(fast_resp.text);
     try testing.expect(fast_ms < throttled_ms * 0.75);

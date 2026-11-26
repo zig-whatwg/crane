@@ -117,12 +117,16 @@ test "Browser JS setTimeout chain slows under EventLoop CPU throttling and resto
         \\  let n = 0;
         \\  function step() {
         \\    const t = performance.now();
-        \\    while (performance.now() - t < 5) {}
+        \\    while (performance.now() - t < 8) {}
         \\    if (++n < 5) {
         \\      setTimeout(step, 0);
         \\    } else {
-        \\      window.__elapsed = performance.now() - start;
-        \\      window.__done = true;
+        \\      // Measure in a follow-up macrotask so the 5th step's throttle
+        \\      // sleep has also elapsed (5 * 32 ms = ~160 ms at 4x vs ~40 ms at 1x).
+        \\      setTimeout(() => {
+        \\        window.__elapsed = performance.now() - start;
+        \\        window.__done = true;
+        \\      }, 0);
         \\    }
         \\  }
         \\  setTimeout(step, 0);
@@ -141,16 +145,22 @@ test "Browser JS setTimeout chain slows under EventLoop CPU throttling and resto
     };
     var wait: Wait = .{ .c = ctx };
 
-    // Unthrottled baseline.
+    // Warm up V8/timers (especially under TSan) so baseline does not include
+    // cold script compilation latency.
+    const rw = try ctx.evaluateScriptToString(run_chain, testing.allocator);
+    testing.allocator.free(rw);
+    _ = try browser.spinEventLoopUntil(.{ .context = &wait, .met = Wait.met }, 5_000);
+
+    // Unthrottled baseline: ~40 ms.
     const r0 = try ctx.evaluateScriptToString(run_chain, testing.allocator);
     testing.allocator.free(r0);
     _ = try browser.spinEventLoopUntil(.{ .context = &wait, .met = Wait.met }, 5_000);
     const base_str = try ctx.evaluateScriptToString("String(window.__elapsed)", testing.allocator);
     defer testing.allocator.free(base_str);
     const base_ms = try std.fmt.parseFloat(f64, base_str);
-    try testing.expect(base_ms >= 20.0);
+    try testing.expect(base_ms >= 30.0);
 
-    // 4x throttled.
+    // 4x throttled: ~160 ms.
     loop.setCpuThrottlingRate(4.0);
     const r1 = try ctx.evaluateScriptToString(run_chain, testing.allocator);
     testing.allocator.free(r1);
@@ -158,7 +168,7 @@ test "Browser JS setTimeout chain slows under EventLoop CPU throttling and resto
     const thr_str = try ctx.evaluateScriptToString("String(window.__elapsed)", testing.allocator);
     defer testing.allocator.free(thr_str);
     const thr_ms = try std.fmt.parseFloat(f64, thr_str);
-    try testing.expect(thr_ms >= 85.0);
+    try testing.expect(thr_ms >= 130.0);
     try testing.expect(thr_ms >= base_ms * 2.0);
 
     // Restored to 1.0.
