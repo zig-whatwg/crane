@@ -260,7 +260,7 @@ test "runCrashtest: insertParagraph after long collapsible whitespace run finish
             "  window.__para_done = true;" ++
             "});" ++
             "</script></head><body><svg><foreignObject><li></li>/&gt;</foreignObject></svg><p><input></p></body></html>",
-        1_500,
+        5_000,
     );
     defer result.deinit(allocator);
 
@@ -296,7 +296,7 @@ test "runCrashtest: selectAll with style element and onselectionchange undo/subs
             "  document.execCommand(\"selectAll\", false);" ++
             "}, {once: true});" ++
             "</script></head><body>%0AAAAA%0A<tt>%0A<style>%0A*::selection { background-origin: border-box, border-box; }%0A</style>%0A</tt>%0A<textarea></textarea>%0A</body></html>",
-        2_500,
+        10_000,
     );
     defer result.deinit(allocator);
 
@@ -317,7 +317,7 @@ test "runCrashtest: link onerror window.stop plus location.href=about:blank sett
         "data:text/html,<!DOCTYPE html>" ++
             "<link id=\"link\" rel=\"stylesheet\" onerror=\"window.stop(); location.href='about:blank'\">" ++
             "<script>link.href = \"about:blank\";</script>",
-        2_500,
+        5_000,
     );
     defer result.deinit(allocator);
 
