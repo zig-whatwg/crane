@@ -461,16 +461,23 @@ pub fn fastRecordOf(isolate: *ffi.Isolate) ?*AgentRecord {
 }
 
 /// The agent's allocator (its Browser's heap general allocator), available
-/// through the agent's end; falls back to the isolate's allocator or libc for
+/// through the agent's end; falls back to the isolate's registry or libc for
 /// raw V8 test isolates not created by `createAgent`.
-pub fn allocatorOf(isolate: *ffi.Isolate) std.mem.Allocator {
+/// Hot path reads V8 embedder data slot 0 (`isolate_allocator`) directly in one
+/// call with no `GetCurrent` or mutex.
+pub inline fn allocatorOf(isolate: *ffi.Isolate) std.mem.Allocator {
+    if (isolate_allocator.getIsolateAllocator(isolate)) |a| return a;
+    return allocatorOfSlow(isolate);
+}
+
+fn allocatorOfSlow(isolate: *ffi.Isolate) std.mem.Allocator {
+    @branchHint(.cold);
     if (fastRecordOf(isolate)) |r| return r.allocator;
     {
         std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
         if (agents.get(isolate)) |r| return r.allocator;
     }
-    if (isolate_allocator.getIsolateAllocator(isolate)) |a| return a;
     // direct-allocator: fallback for raw V8 test isolates not created by createAgent
     return std.heap.c_allocator;
 }
@@ -1092,7 +1099,7 @@ fn runQueuedMicrotask(raw: ?*anyopaque) callconv(.c) void {
 /// on its `AgentRecord` so a discarded microtask (aborted checkpoint or isolate
 /// disposal) is freed at `endAgent` instead of leaking.
 pub fn enqueueMicrotask(isolate: *ffi.Isolate, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
-    const record = recordOf(isolate);
+    const record = callbackRecordOf(isolate);
     const alloc = if (record) |r| r.allocator else allocatorOf(isolate);
     const queued = alloc.create(QueuedMicrotask) catch return error.OutOfMemory;
     queued.* = .{ .allocator = alloc, .steps = steps, .data = data };

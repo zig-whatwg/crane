@@ -4331,7 +4331,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
             defer v8.v8_Context_Dispose(context);
             const isolate_alloc = @import("isolate_allocator.zig");
-            const allocator = isolate_alloc.getOrInitAllocator(isolate, @import("protocol_agents.zig").allocatorOf(isolate)) catch return;
+            const allocator = isolate_alloc.getOrInitAgentAllocator(isolate) catch return;
             inline for (set, 0..) |overload, k| {
                 if (k == prefix.entry) {
                     // The generated delegate: (instance, arguments...).
@@ -5248,7 +5248,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // and nothing converted below keeps it.
             defer v8.v8_Context_Dispose(v8_context);
             const isolate_alloc = @import("isolate_allocator.zig");
-            const allocator = isolate_alloc.getOrInitAllocator(isolate, @import("protocol_agents.zig").allocatorOf(isolate)) catch {
+            const allocator = isolate_alloc.getOrInitAgentAllocator(isolate) catch {
                 conv.throwError(isolate, "Out of memory");
                 return;
             };
@@ -6180,16 +6180,20 @@ pub fn V8Interface(comptime Interface: type) type {
             /// buffer, keeps every check.
             fn of(info: *const anyopaque, key: []const u8) NameState {
                 @setRuntimeSafety(false);
-                var fallback_buffer: [1024]u8 = undefined;
+                var fallback_buffer: [512]u16 = undefined;
                 return ofIn(&fallback_buffer, info, key);
             }
 
-            fn ofIn(fallback_buffer: *[1024]u8, info: *const anyopaque, key: []const u8) NameState {
+            fn ofIn(fallback_buffer: *[512]u16, info: *const anyopaque, key: []const u8) NameState {
                 // The name's code units: a lone surrogate stays itself.
-                var fallback: std.heap.BufferFirstAllocator = .init(fallback_buffer, @import("protocol_agents.zig").currentAllocator());
-                const allocator = fallback.allocator();
-                const units = allocator.alloc(u16, key.len) catch return .{ .own = false, .in_prototype_chain = false };
-                defer allocator.free(units);
+                // Stay on the stack buffer for short names without looking up
+                // the current isolate's allocator.
+                const heap_units: ?[]u16 = if (key.len <= fallback_buffer.len) null else blk: {
+                    @branchHint(.cold);
+                    break :blk @import("protocol_agents.zig").currentAllocator().alloc(u16, key.len) catch return .{ .own = false, .in_prototype_chain = false };
+                };
+                defer if (heap_units) |h| @import("protocol_agents.zig").currentAllocator().free(h);
+                const units = heap_units orelse fallback_buffer[0..key.len];
                 const count = value_operations.wtf8ToUtf16(key, units);
                 const bits = v8.v8_LegacyPlatformObject_NamedPropertyState(info, units.ptr, @intCast(count));
                 return .{ .own = bits & 1 != 0, .in_prototype_chain = bits & 2 != 0 };
@@ -9202,7 +9206,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get allocator
                     const isolate_alloc = @import("isolate_allocator.zig");
-                    const allocator = isolate_alloc.getOrInitAllocator(isolate, @import("protocol_agents.zig").allocatorOf(isolate)) catch {
+                    const allocator = isolate_alloc.getOrInitAgentAllocator(isolate) catch {
                         conv.throwError(isolate, "Failed to get isolate allocator");
                         return;
                     };

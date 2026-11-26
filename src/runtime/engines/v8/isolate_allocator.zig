@@ -195,6 +195,19 @@ pub fn getOrInitAllocator(
     return getIsolateAllocator(isolate).?;
 }
 
+/// Hot-path variant of `getOrInitAllocator` for V8 callbacks & dispatchers:
+/// avoids eagerly calling `protocol_agents.allocatorOf(isolate)` on every DOM
+/// call when the isolate's allocator is already installed in slot 0.
+pub inline fn getOrInitAgentAllocator(isolate: *v8.Isolate) !std.mem.Allocator {
+    if (getIsolateAllocator(isolate)) |alloc| return alloc;
+    return initAgentAllocatorSlow(isolate);
+}
+
+fn initAgentAllocatorSlow(isolate: *v8.Isolate) !std.mem.Allocator {
+    @branchHint(.cold);
+    return getOrInitAllocator(isolate, @import("protocol_agents.zig").allocatorOf(isolate));
+}
+
 // ============================================================================
 // V8 FFI Functions (need to be added to ffi.zig)
 // ============================================================================

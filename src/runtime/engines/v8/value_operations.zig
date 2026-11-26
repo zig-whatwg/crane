@@ -54,12 +54,14 @@ pub fn hasSurrogateCodePoint(bytes: []const u8) bool {
 
 /// A new V8 string of the code units `bytes` encodes as WTF-8. OWNED.
 pub fn stringFromWtf8(isolate: *ffi.Isolate, bytes: []const u8) EngineError!*ffi.Value {
-    var fallback_buffer: [2048]u8 = undefined;
-    var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, @import("protocol_agents.zig").allocatorOf(isolate));
-    const allocator = fallback.allocator();
+    var stack_units: [1024]u16 = undefined;
+    const heap_units: ?[]u16 = if (bytes.len <= stack_units.len) null else blk: {
+        @branchHint(.cold);
+        break :blk @import("protocol_agents.zig").allocatorOf(isolate).alloc(u16, bytes.len) catch return EngineError.OutOfMemory;
+    };
+    defer if (heap_units) |h| @import("protocol_agents.zig").allocatorOf(isolate).free(h);
     // Never more code units than bytes: each decodes from at least one.
-    const units = allocator.alloc(u16, bytes.len) catch return EngineError.OutOfMemory;
-    defer allocator.free(units);
+    const units = heap_units orelse stack_units[0..bytes.len];
     const count = wtf8ToUtf16(bytes, units);
     if (count > std.math.maxInt(c_int)) return EngineError.OperationFailed;
     return ffi.v8_Value_StringFromTwoByte(isolate, units.ptr, @intCast(count)) orelse EngineError.OperationFailed;
