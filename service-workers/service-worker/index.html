@@ -19,10 +19,10 @@
 <main class="doc" id="main">
 <header class="head head-page">
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../service-workers/"><code>service-<wbr>workers/</code></a></li><li aria-current="page"><code>service-<wbr>worker/</code></li></ol></nav>
-<h1 class="page-title"><span class="secno">41.2</span><code>service-<wbr>workers/<wbr>service-<wbr>worker/</code></h1>
+<h1 class="page-title"><span class="secno">45.2</span><code>service-<wbr>workers/<wbr>service-<wbr>worker/</code></h1>
 <div class="figures" role="group" aria-label="service-workers/service-worker/">
-<p class="figures-main"><span class="fg-pass">1,703</span><span class="fg-of"> / 1,827</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>124</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>261</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">1,700</span><span class="fg-of"> / 1,827</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>125</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>1</dd></div><div><dt>Test files</dt><dd>261</dd></div><div class="blk"><dt>Blocking files</dt><dd>1</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>1,698</b> / 1,827 WPT subtests passing on the same files, <span class="blk">18 blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of service-workers/service-worker/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">261 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="226 clean, 32 with failures, 0 blocking, 0 with no subtests, 0 not run, 3 exempt, of 261 files"><span class="m-clean" style="width:86.590%"></span><span class="m-partial" style="width:12.261%"></span><span class="m-exempt" style="width:1.149%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>226</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>32</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div><div><dt><span class="key key-exempt"></span>Exempt</dt><dd>3</dd></div></dl>
+<div class="meter" role="img" aria-label="224 clean, 32 with failures, 1 blocking, 0 with no subtests, 0 not run, 4 exempt, of 261 files"><span class="m-clean" style="width:85.824%"></span><span class="m-partial" style="width:12.261%"></span><span class="m-exempt" style="width:1.533%"></span><span class="m-blocking" style="width:0.383%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>224</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>32</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>1</dd></div><p class="kinds"><b>1</b> TIMEOUT</p><div><dt><span class="key key-exempt"></span>Exempt</dt><dd>4</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -68,9 +68,9 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-6ee7b5b75b04"><details><summary><span class="mark">FAIL</span><span class="sub-name">Initial about:blank is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;f5c7296e-57fc-47c2-b582-2b46f26e608e&quot; but got &quot;fb9653a5-7d20-42c4-a18d-3d3e3f00825a&quot;</pre></details><a class="self" href="#s-6ee7b5b75b04" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-45d839f0b836"><details><summary><span class="mark">FAIL</span><span class="sub-name">Initial about:blank modified by parent is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;af4284d2-2ce4-4ae5-982d-112defd211c6&quot; but got &quot;58f25a09-a299-453d-ac34-1052958af761&quot;</pre></details><a class="self" href="#s-45d839f0b836" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9a02e1c30911"><details><summary><span class="mark">FAIL</span><span class="sub-name">Popup initial about:blank is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;1c0b5f85-96b2-453d-9d04-f5eeb6cecf1c&quot; but got &quot;ef6dd0d7-3b99-4490-bd6a-4994bf0f9c0c&quot;</pre></details><a class="self" href="#s-9a02e1c30911" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6ee7b5b75b04"><details><summary><span class="mark">FAIL</span><span class="sub-name">Initial about:blank is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;1647a0d2-a10c-47a9-8815-97e1f079ceca&quot; but got &quot;a602310d-dada-478a-a3eb-138b7da43a3e&quot;</pre></details><a class="self" href="#s-6ee7b5b75b04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-45d839f0b836"><details><summary><span class="mark">FAIL</span><span class="sub-name">Initial about:blank modified by parent is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;e2fe68ee-a4ec-4a2b-ba16-74003e4de4c2&quot; but got &quot;80c5cb86-3565-45fe-8b10-d3ee5bc94f3e&quot;</pre></details><a class="self" href="#s-45d839f0b836" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9a02e1c30911"><details><summary><span class="mark">FAIL</span><span class="sub-name">Popup initial about:blank is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;15b40b37-9c6d-46ca-b0b2-01dd64f3b229&quot; but got &quot;9a57c3a5-9153-4a72-a289-808212053cf6&quot;</pre></details><a class="self" href="#s-9a02e1c30911" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-9ca26ac04137"><details><summary><span class="mark">FAIL</span><span class="sub-name">Nested about:srcdoc is controlled and is exposed to clients.matchAll().</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of null (reading &#39;scriptURL&#39;)&quot;</pre></details><a class="self" href="#s-9ca26ac04137" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Initial about:blank is controlled, exposed to clients.matchAll(), and final Client is not controlled by a service worker.</li><li>Simple about:blank is controlled and is exposed to clients.matchAll().</li><li>Dynamic about:blank is controlled and is exposed to clients.matchAll().</li></ol></details>
@@ -259,15 +259,20 @@
 </div>
 </div>
 </details>
-<details class="tf" id="client-url-creation-url.https.html" data-gate="clean" data-pass="10" data-of="10" data-failed="0" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>client-<wbr>url-<wbr>creation-<wbr>url.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>10</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<details class="tf" id="client-url-creation-url.https.html" data-gate="timeout" data-pass="8" data-of="10" data-failed="0" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>client-<wbr>url-<wbr>creation-<wbr>url.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>8</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-timeout g-block">TIMEOUT</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>10</b> / 10 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/service-worker/client-url-creation-url.https.html"><code>service-<wbr>workers/<wbr>service-<wbr>worker/<wbr>client-<wbr>url-<wbr>creation-<wbr>url.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>No navigation creation URL is same as window URL</li><li>Fragment only navigation doesn&#39;t change creation URL</li><li>Pushstate doesn&#39;t change creation URL</li><li>Replacestate doesn&#39;t change creation URL</li><li>Going back over pushstate to other pushstate via back</li><li>Query navigation changes creation URL</li><li>Reloading doesn&#39;t change creation URL</li><li>Reloading pushstate URL changes creation URL</li><li>Going back over pushstate to creation URL</li><li>Going back to new document changes creation URL</li></ol></details>
+<h3 class="run-head"><code>/service-workers/service-worker/client-url-creation-url.https.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>8</b> / 10</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-3756660ccaff"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Going back over pushstate to creation URL</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-3756660ccaff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-ad02b27acc53"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Going back to new document changes creation URL</span></div><a class="self" href="#s-ad02b27acc53" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>8 passing subtests</summary><ol class="pass-list"><li>No navigation creation URL is same as window URL</li><li>Fragment only navigation doesn&#39;t change creation URL</li><li>Pushstate doesn&#39;t change creation URL</li><li>Replacestate doesn&#39;t change creation URL</li><li>Going back over pushstate to other pushstate via back</li><li>Query navigation changes creation URL</li><li>Reloading doesn&#39;t change creation URL</li><li>Reloading pushstate URL changes creation URL</li></ol></details>
 </div>
 </div>
 </details>
@@ -1663,10 +1668,10 @@
 </div>
 </div>
 </details>
-<details class="tf" id="navigation-timing-extended.https.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>navigation-<wbr>timing-<wbr>extended.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<details class="tf" id="navigation-timing-extended.https.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>navigation-<wbr>timing-<wbr>extended.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-exempt">Exempt</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/service-workers/service-worker/navigation-timing-extended.https.html"><code>service-<wbr>workers/<wbr>service-<wbr>worker/<wbr>navigation-<wbr>timing-<wbr>extended.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
@@ -1675,7 +1680,9 @@
 <dl class="evidence"><div><dt>Crane matches</dt><dd>none - the spec (see the ruling)</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)</dd></div><div><dt>Ruling</dt><dd>golden rule 2, timing-bound (main, 2026-11-20 1:37 PM ET): the order the test asserts is Crane&#39;s (fetchStart is marked before the fetch event is dispatched); the strict comparison between coarsened marks fails on a sub-tick gap (lane flakes2&#39;s upstream draft)</dd></div><div><dt>Revisit</dt><dd>when the test compares coarsened marks with &gt;= upstream, or Chrome, Firefox or Safari passes, or Crane&#39;s result moves</dd></div></dl>
 </div>
 <div class="run">
-<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Service worker controlled navigation timing</li></ol></details>
+<ol class="subtests">
+<li class="sub s-fail" id="s-c7d239931278"><details><summary><span class="mark">FAIL</span><span class="sub-name">Service worker controlled navigation timing</span></summary><pre class="msg">assert_greater_than: fetchStart should be marked before the Fetch event handler is called expected a number greater than 1795727692915.75 but got 1795727692915.75</pre></details><a class="self" href="#s-c7d239931278" aria-label="Link to this subtest">&para;</a></li>
+</ol>
 </div>
 </div>
 </details>
@@ -2246,8 +2253,8 @@
 </div>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-7f7231621b4c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that timing allow check fails when service worker changes origin from same to cross origin (cors).</span></summary><pre class="msg">assert_equals: domainLookupStart and fetchStart should be the same in cross-origin request. expected 6.875 but got 0</pre></details><a class="self" href="#s-7f7231621b4c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-51b42e850b97"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that timing allow check fails when service worker changes origin from same to cross origin (no-cors).</span></summary><pre class="msg">assert_equals: domainLookupStart and fetchStart should be the same in cross-origin request. expected 4.75 but got 0</pre></details><a class="self" href="#s-51b42e850b97" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7f7231621b4c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that timing allow check fails when service worker changes origin from same to cross origin (cors).</span></summary><pre class="msg">assert_equals: domainLookupStart and fetchStart should be the same in cross-origin request. expected 3.75 but got 0</pre></details><a class="self" href="#s-7f7231621b4c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-51b42e850b97"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that timing allow check fails when service worker changes origin from same to cross origin (no-cors).</span></summary><pre class="msg">assert_equals: domainLookupStart and fetchStart should be the same in cross-origin request. expected 3.75 but got 0</pre></details><a class="self" href="#s-51b42e850b97" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </div>
@@ -2277,7 +2284,7 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-2459fc990a2e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Controlled resource loads</span></summary><pre class="msg">assert_greater_than_equal: Generated response expected a number greater than or equal to 6.625 but got 0</pre></details><a class="self" href="#s-2459fc990a2e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2459fc990a2e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Controlled resource loads</span></summary><pre class="msg">assert_greater_than_equal: Generated response expected a number greater than or equal to 6.125 but got 0</pre></details><a class="self" href="#s-2459fc990a2e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Non-controlled resource loads</li></ol></details>
 </div>
@@ -3131,63 +3138,70 @@
 <li class="toc-suite"><a href="../../FileAPI/"><span class="secno">1</span><span class="toc-name">FileAPI/</span><span class="toc-count" title="72 test files">72</span></a></li>
 <li class="toc-suite"><a href="../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="228 test files">228</span></a></li>
 <li class="toc-suite"><a href="../../WebCryptoAPI/"><span class="secno">3</span><span class="toc-name">WebCryptoAPI/</span><span class="toc-count" title="82 test files">82</span></a></li>
-<li class="toc-suite"><a href="../../accname/"><span class="secno">4</span><span class="toc-name">accname/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../../accname/"><span class="secno">4</span><span class="toc-name">accname/</span><span class="toc-count" title="17 test files">17</span></a></li>
 <li class="toc-suite"><a href="../../beacon/"><span class="secno">5</span><span class="toc-name">beacon/</span><span class="toc-count" title="16 test files">16</span></a></li>
 <li class="toc-suite"><a href="../../compression/"><span class="secno">6</span><span class="toc-name">compression/</span><span class="toc-count" title="19 test files">19</span></a></li>
 <li class="toc-suite"><a href="../../console/"><span class="secno">7</span><span class="toc-name">console/</span><span class="toc-count" title="11 test files">11</span></a></li>
 <li class="toc-suite"><a href="../../content-security-policy/"><span class="secno">8</span><span class="toc-name">content-security-policy/</span><span class="toc-count" title="883 test files">883</span></a></li>
 <li class="toc-suite"><a href="../../cookies/"><span class="secno">9</span><span class="toc-name">cookies/</span><span class="toc-count" title="76 test files">76</span></a></li>
 <li class="toc-suite"><a href="../../cookiestore/"><span class="secno">10</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
-<li class="toc-suite"><a href="../../cors/"><span class="secno">11</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
-<li class="toc-suite"><a href="../../css/"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,318 test files">2,318</span></a></li>
-<li class="toc-suite"><a href="../../custom-elements/"><span class="secno">13</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="191 test files">191</span></a></li>
-<li class="toc-suite"><a href="../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="547 test files">547</span></a></li>
-<li class="toc-suite"><a href="../../domparsing/"><span class="secno">15</span><span class="toc-name">domparsing/</span><span class="toc-count" title="88 test files">88</span></a></li>
-<li class="toc-suite"><a href="../../domxpath/"><span class="secno">16</span><span class="toc-name">domxpath/</span><span class="toc-count" title="29 test files">29</span></a></li>
-<li class="toc-suite"><a href="../../ecmascript/"><span class="secno">17</span><span class="toc-name">ecmascript/</span><span class="toc-count" title="2 test files">2</span></a></li>
-<li class="toc-suite"><a href="../../editing/"><span class="secno">18</span><span class="toc-name">editing/</span><span class="toc-count" title="127 test files">127</span></a></li>
-<li class="toc-suite"><a href="../../encoding/"><span class="secno">19</span><span class="toc-name">encoding/</span><span class="toc-count" title="153 test files">153</span></a></li>
-<li class="toc-suite"><a href="../../eventsource/"><span class="secno">20</span><span class="toc-name">eventsource/</span><span class="toc-count" title="67 test files">67</span></a></li>
-<li class="toc-suite"><a href="../../fetch/"><span class="secno">21</span><span class="toc-name">fetch/</span><span class="toc-count" title="311 test files">311</span></a></li>
-<li class="toc-suite"><a href="../../fullscreen/"><span class="secno">22</span><span class="toc-name">fullscreen/</span><span class="toc-count" title="83 test files">83</span></a></li>
-<li class="toc-suite"><a href="../../hr-time/"><span class="secno">23</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
-<li class="toc-suite"><a href="../../html-aam/"><span class="secno">24</span><span class="toc-name">html-aam/</span><span class="toc-count" title="26 test files">26</span></a></li>
-<li class="toc-suite"><a href="../../html/"><span class="secno">25</span><span class="toc-name">html/</span><span class="toc-count" title="3,018 test files">3,018</span></a></li>
-<li class="toc-suite"><a href="../../mathml/"><span class="secno">26</span><span class="toc-name">mathml/</span><span class="toc-count" title="35 test files">35</span></a></li>
-<li class="toc-suite"><a href="../../mimesniff/"><span class="secno">27</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
-<li class="toc-suite"><a href="../../mixed-content/"><span class="secno">28</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
-<li class="toc-suite"><a href="../../navigation-api/"><span class="secno">29</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="446 test files">446</span></a></li>
-<li class="toc-suite"><a href="../../navigation-timing/"><span class="secno">30</span><span class="toc-name">navigation-timing/</span><span class="toc-count" title="59 test files">59</span></a></li>
-<li class="toc-suite"><a href="../../page-visibility/"><span class="secno">31</span><span class="toc-name">page-visibility/</span><span class="toc-count" title="10 test files">10</span></a></li>
-<li class="toc-suite"><a href="../../performance-timeline/"><span class="secno">32</span><span class="toc-name">performance-timeline/</span><span class="toc-count" title="44 test files">44</span></a></li>
-<li class="toc-suite"><a href="../../permissions/"><span class="secno">33</span><span class="toc-name">permissions/</span><span class="toc-count" title="15 test files">15</span></a></li>
-<li class="toc-suite"><a href="../../quirks/"><span class="secno">34</span><span class="toc-name">quirks/</span><span class="toc-count" title="11 test files">11</span></a></li>
-<li class="toc-suite"><a href="../../referrer-policy/"><span class="secno">35</span><span class="toc-name">referrer-policy/</span><span class="toc-count" title="1,478 test files">1,478</span></a></li>
-<li class="toc-suite"><a href="../../resize-observer/"><span class="secno">36</span><span class="toc-name">resize-observer/</span><span class="toc-count" title="15 test files">15</span></a></li>
-<li class="toc-suite"><a href="../../resource-timing/"><span class="secno">37</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="118 test files">118</span></a></li>
-<li class="toc-suite"><a href="../../sanitizer-api/"><span class="secno">38</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="47 test files">47</span></a></li>
-<li class="toc-suite"><a href="../../screen-orientation/"><span class="secno">39</span><span class="toc-name">screen-orientation/</span><span class="toc-count" title="8 test files">8</span></a></li>
-<li class="toc-suite"><a href="../../selection/"><span class="secno">40</span><span class="toc-name">selection/</span><span class="toc-count" title="79 test files">79</span></a></li>
-<li class="toc-suite"><a href="../../service-workers/" aria-current="page"><span class="secno">41</span><span class="toc-name">service-workers/</span><span class="toc-count" title="277 test files">277</span></a></li>
-<li class="toc-suite"><a href="../../shadow-dom/"><span class="secno">42</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="188 test files">188</span></a></li>
-<li class="toc-suite"><a href="../../streams/"><span class="secno">43</span><span class="toc-name">streams/</span><span class="toc-count" title="85 test files">85</span></a></li>
-<li class="toc-suite"><a href="../../subresource-integrity/"><span class="secno">44</span><span class="toc-name">subresource-integrity/</span><span class="toc-count" title="7 test files">7</span></a></li>
-<li class="toc-suite"><a href="../../trusted-types/"><span class="secno">45</span><span class="toc-name">trusted-types/</span><span class="toc-count" title="221 test files">221</span></a></li>
-<li class="toc-suite"><a href="../../upgrade-insecure-requests/"><span class="secno">46</span><span class="toc-name">upgrade-insecure-requests/</span><span class="toc-count" title="194 test files">194</span></a></li>
-<li class="toc-suite"><a href="../../url/"><span class="secno">47</span><span class="toc-name">url/</span><span class="toc-count" title="32 test files">32</span></a></li>
-<li class="toc-suite"><a href="../../urlpattern/"><span class="secno">48</span><span class="toc-name">urlpattern/</span><span class="toc-count" title="6 test files">6</span></a></li>
-<li class="toc-suite"><a href="../../user-timing/"><span class="secno">49</span><span class="toc-name">user-timing/</span><span class="toc-count" title="38 test files">38</span></a></li>
-<li class="toc-suite"><a href="../../wai-aria/"><span class="secno">50</span><span class="toc-name">wai-aria/</span><span class="toc-count" title="21 test files">21</span></a></li>
-<li class="toc-suite"><a href="../../wasm/"><span class="secno">51</span><span class="toc-name">wasm/</span><span class="toc-count" title="340 test files">340</span></a></li>
-<li class="toc-suite"><a href="../../web-animations/"><span class="secno">52</span><span class="toc-name">web-animations/</span><span class="toc-count" title="134 test files">134</span></a></li>
-<li class="toc-suite"><a href="../../web-locks/"><span class="secno">53</span><span class="toc-name">web-locks/</span><span class="toc-count" title="23 test files">23</span></a></li>
-<li class="toc-suite"><a href="../../webidl/"><span class="secno">54</span><span class="toc-name">webidl/</span><span class="toc-count" title="45 test files">45</span></a></li>
-<li class="toc-suite"><a href="../../webmessaging/"><span class="secno">55</span><span class="toc-name">webmessaging/</span><span class="toc-count" title="132 test files">132</span></a></li>
-<li class="toc-suite"><a href="../../websockets/"><span class="secno">56</span><span class="toc-name">websockets/</span><span class="toc-count" title="202 test files">202</span></a></li>
-<li class="toc-suite"><a href="../../webstorage/"><span class="secno">57</span><span class="toc-name">webstorage/</span><span class="toc-count" title="54 test files">54</span></a></li>
-<li class="toc-suite"><a href="../../workers/"><span class="secno">58</span><span class="toc-name">workers/</span><span class="toc-count" title="290 test files">290</span></a></li>
-<li class="toc-suite"><a href="../../xhr/"><span class="secno">59</span><span class="toc-name">xhr/</span><span class="toc-count" title="329 test files">329</span></a></li>
-<li class="toc-back"><a href="../../#history"><span class="secno">60</span><span class="toc-name">Revision history</span></a></li>
+<li class="toc-suite"><a href="../../core-aam/"><span class="secno">11</span><span class="toc-name">core-aam/</span><span class="toc-count" title="1 test file">1</span></a></li>
+<li class="toc-suite"><a href="../../cors/"><span class="secno">12</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
+<li class="toc-suite"><a href="../../css/"><span class="secno">13</span><span class="toc-name">css/</span><span class="toc-count" title="2,323 test files">2,323</span></a></li>
+<li class="toc-suite"><a href="../../custom-elements/"><span class="secno">14</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="191 test files">191</span></a></li>
+<li class="toc-suite"><a href="../../dom/"><span class="secno">15</span><span class="toc-name">dom/</span><span class="toc-count" title="547 test files">547</span></a></li>
+<li class="toc-suite"><a href="../../domparsing/"><span class="secno">16</span><span class="toc-name">domparsing/</span><span class="toc-count" title="88 test files">88</span></a></li>
+<li class="toc-suite"><a href="../../domxpath/"><span class="secno">17</span><span class="toc-name">domxpath/</span><span class="toc-count" title="29 test files">29</span></a></li>
+<li class="toc-suite"><a href="../../dpub-aam/"><span class="secno">18</span><span class="toc-name">dpub-aam/</span><span class="toc-count" title="1 test file">1</span></a></li>
+<li class="toc-suite"><a href="../../ecmascript/"><span class="secno">19</span><span class="toc-name">ecmascript/</span><span class="toc-count" title="2 test files">2</span></a></li>
+<li class="toc-suite"><a href="../../editing/"><span class="secno">20</span><span class="toc-name">editing/</span><span class="toc-count" title="127 test files">127</span></a></li>
+<li class="toc-suite"><a href="../../encoding/"><span class="secno">21</span><span class="toc-name">encoding/</span><span class="toc-count" title="153 test files">153</span></a></li>
+<li class="toc-suite"><a href="../../eventsource/"><span class="secno">22</span><span class="toc-name">eventsource/</span><span class="toc-count" title="67 test files">67</span></a></li>
+<li class="toc-suite"><a href="../../fetch/"><span class="secno">23</span><span class="toc-name">fetch/</span><span class="toc-count" title="314 test files">314</span></a></li>
+<li class="toc-suite"><a href="../../fullscreen/"><span class="secno">24</span><span class="toc-name">fullscreen/</span><span class="toc-count" title="83 test files">83</span></a></li>
+<li class="toc-suite"><a href="../../geolocation/"><span class="secno">25</span><span class="toc-name">geolocation/</span><span class="toc-count" title="24 test files">24</span></a></li>
+<li class="toc-suite"><a href="../../graphics-aria/"><span class="secno">26</span><span class="toc-name">graphics-aria/</span><span class="toc-count" title="1 test file">1</span></a></li>
+<li class="toc-suite"><a href="../../hr-time/"><span class="secno">27</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
+<li class="toc-suite"><a href="../../html-aam/"><span class="secno">28</span><span class="toc-name">html-aam/</span><span class="toc-count" title="26 test files">26</span></a></li>
+<li class="toc-suite"><a href="../../html/"><span class="secno">29</span><span class="toc-name">html/</span><span class="toc-count" title="3,410 test files">3,410</span></a></li>
+<li class="toc-suite"><a href="../../mathml/"><span class="secno">30</span><span class="toc-name">mathml/</span><span class="toc-count" title="35 test files">35</span></a></li>
+<li class="toc-suite"><a href="../../mimesniff/"><span class="secno">31</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
+<li class="toc-suite"><a href="../../mixed-content/"><span class="secno">32</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
+<li class="toc-suite"><a href="../../navigation-api/"><span class="secno">33</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="446 test files">446</span></a></li>
+<li class="toc-suite"><a href="../../navigation-timing/"><span class="secno">34</span><span class="toc-name">navigation-timing/</span><span class="toc-count" title="59 test files">59</span></a></li>
+<li class="toc-suite"><a href="../../page-visibility/"><span class="secno">35</span><span class="toc-name">page-visibility/</span><span class="toc-count" title="10 test files">10</span></a></li>
+<li class="toc-suite"><a href="../../performance-timeline/"><span class="secno">36</span><span class="toc-name">performance-timeline/</span><span class="toc-count" title="44 test files">44</span></a></li>
+<li class="toc-suite"><a href="../../permissions/"><span class="secno">37</span><span class="toc-name">permissions/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../../quirks/"><span class="secno">38</span><span class="toc-name">quirks/</span><span class="toc-count" title="11 test files">11</span></a></li>
+<li class="toc-suite"><a href="../../referrer-policy/"><span class="secno">39</span><span class="toc-name">referrer-policy/</span><span class="toc-count" title="1,478 test files">1,478</span></a></li>
+<li class="toc-suite"><a href="../../resize-observer/"><span class="secno">40</span><span class="toc-name">resize-observer/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../../resource-timing/"><span class="secno">41</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="118 test files">118</span></a></li>
+<li class="toc-suite"><a href="../../sanitizer-api/"><span class="secno">42</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="47 test files">47</span></a></li>
+<li class="toc-suite"><a href="../../screen-orientation/"><span class="secno">43</span><span class="toc-name">screen-orientation/</span><span class="toc-count" title="8 test files">8</span></a></li>
+<li class="toc-suite"><a href="../../selection/"><span class="secno">44</span><span class="toc-name">selection/</span><span class="toc-count" title="79 test files">79</span></a></li>
+<li class="toc-suite"><a href="../../service-workers/" aria-current="page"><span class="secno">45</span><span class="toc-name">service-workers/</span><span class="toc-count" title="277 test files">277</span></a></li>
+<li class="toc-suite"><a href="../../shadow-dom/"><span class="secno">46</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="188 test files">188</span></a></li>
+<li class="toc-suite"><a href="../../streams/"><span class="secno">47</span><span class="toc-name">streams/</span><span class="toc-count" title="85 test files">85</span></a></li>
+<li class="toc-suite"><a href="../../subresource-integrity/"><span class="secno">48</span><span class="toc-name">subresource-integrity/</span><span class="toc-count" title="7 test files">7</span></a></li>
+<li class="toc-suite"><a href="../../svg-aam/"><span class="secno">49</span><span class="toc-name">svg-aam/</span><span class="toc-count" title="5 test files">5</span></a></li>
+<li class="toc-suite"><a href="../../trusted-types/"><span class="secno">50</span><span class="toc-name">trusted-types/</span><span class="toc-count" title="221 test files">221</span></a></li>
+<li class="toc-suite"><a href="../../upgrade-insecure-requests/"><span class="secno">51</span><span class="toc-name">upgrade-insecure-requests/</span><span class="toc-count" title="194 test files">194</span></a></li>
+<li class="toc-suite"><a href="../../url/"><span class="secno">52</span><span class="toc-name">url/</span><span class="toc-count" title="32 test files">32</span></a></li>
+<li class="toc-suite"><a href="../../urlpattern/"><span class="secno">53</span><span class="toc-name">urlpattern/</span><span class="toc-count" title="6 test files">6</span></a></li>
+<li class="toc-suite"><a href="../../user-timing/"><span class="secno">54</span><span class="toc-name">user-timing/</span><span class="toc-count" title="38 test files">38</span></a></li>
+<li class="toc-suite"><a href="../../wai-aria/"><span class="secno">55</span><span class="toc-name">wai-aria/</span><span class="toc-count" title="21 test files">21</span></a></li>
+<li class="toc-suite"><a href="../../wasm/"><span class="secno">56</span><span class="toc-name">wasm/</span><span class="toc-count" title="340 test files">340</span></a></li>
+<li class="toc-suite"><a href="../../web-animations/"><span class="secno">57</span><span class="toc-name">web-animations/</span><span class="toc-count" title="134 test files">134</span></a></li>
+<li class="toc-suite"><a href="../../web-locks/"><span class="secno">58</span><span class="toc-name">web-locks/</span><span class="toc-count" title="23 test files">23</span></a></li>
+<li class="toc-suite"><a href="../../webidl/"><span class="secno">59</span><span class="toc-name">webidl/</span><span class="toc-count" title="45 test files">45</span></a></li>
+<li class="toc-suite"><a href="../../webmessaging/"><span class="secno">60</span><span class="toc-name">webmessaging/</span><span class="toc-count" title="132 test files">132</span></a></li>
+<li class="toc-suite"><a href="../../websockets/"><span class="secno">61</span><span class="toc-name">websockets/</span><span class="toc-count" title="202 test files">202</span></a></li>
+<li class="toc-suite"><a href="../../webstorage/"><span class="secno">62</span><span class="toc-name">webstorage/</span><span class="toc-count" title="54 test files">54</span></a></li>
+<li class="toc-suite"><a href="../../webvtt/"><span class="secno">63</span><span class="toc-name">webvtt/</span><span class="toc-count" title="75 test files">75</span></a></li>
+<li class="toc-suite"><a href="../../workers/"><span class="secno">64</span><span class="toc-name">workers/</span><span class="toc-count" title="290 test files">290</span></a></li>
+<li class="toc-suite"><a href="../../x-frame-options/"><span class="secno">65</span><span class="toc-name">x-frame-options/</span><span class="toc-count" title="6 test files">6</span></a></li>
+<li class="toc-suite"><a href="../../xhr/"><span class="secno">66</span><span class="toc-name">xhr/</span><span class="toc-count" title="329 test files">329</span></a></li>
+<li class="toc-back"><a href="../../#history"><span class="secno">67</span><span class="toc-name">Revision history</span></a></li>
 </ol>
 </nav>
 </div>

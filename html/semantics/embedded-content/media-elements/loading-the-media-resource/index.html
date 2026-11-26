@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>html/semantics/embedded-content/media-elements/loading-the-media-resource/ - Crane WPT Results</title>
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
+<link rel="preload" href="../../../../../fonts/source-serif-4-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../../../../../fonts/public-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../../../../../site.css">
+<link rel="icon" href="data:,">
+<script src="../../../../../site.js" defer></script>
+</head>
+<body>
+<div class="frame">
+<main class="doc" id="main">
+<header class="head head-page">
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../../">Crane WPT results</a></li><li><a href="../../../../../html/"><code>html/</code></a></li><li><a href="../../../../../html/semantics/"><code>semantics/</code></a></li><li><a href="../../../../../html/semantics/embedded-content/"><code>embedded-<wbr>content/</code></a></li><li><a href="../../../../../html/semantics/embedded-content/media-elements/"><code>media-<wbr>elements/</code></a></li><li aria-current="page"><code>loading-<wbr>the-<wbr>media-<wbr>resource/</code></li></ol></nav>
+<h1 class="page-title"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/</code></h1>
+<div class="figures" role="group" aria-label="html/semantics/embedded-content/media-elements/loading-the-media-resource/">
+<p class="figures-main"><span class="fg-pass">41</span><span class="fg-of"> / 63</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>21</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>52</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
+</div>
+<p class="figures-ref"><span class="ref-name">Chrome</span> <span class="quiet">none reported</span> WPT subtests passing on the same files, <span class="quiet">none blocking</span>, <span class="quiet">52 without a result</span></p>
+</header>
+<div class="boxes">
+<aside class="box conf" aria-label="Conformance of html/semantics/embedded-content/media-elements/loading-the-media-resource/">
+<div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">52 files</span></div>
+<div class="conf-body">
+<div class="meter" role="img" aria-label="35 clean, 3 with failures, 0 blocking, 0 with no subtests, 0 not run, 14 exempt, of 52 files"><span class="m-clean" style="width:67.308%"></span><span class="m-partial" style="width:5.769%"></span><span class="m-exempt" style="width:26.923%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>35</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>3</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div><div><dt><span class="key key-exempt"></span>Exempt</dt><dd>14</dd></div></dl>
+</div>
+</aside>
+<div class="box tests">
+<div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">52 test files here</span></div>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="autoplay-overrides-preload.html" data-gate="exempt" data-pass="0" data-of="4" data-failed="4"><summary><span class="tf-name"><code>autoplay-<wbr>overrides-<wbr>preload.<wbr>html</code></span><span class="tf-n"><b>0</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/autoplay-overrides-preload.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>autoplay-<wbr>overrides-<wbr>preload.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate until a decoder plays its media</p>
+<p>each subtest waits for an autoplaying MP3 audio to load past preload; it is not decoded, so the element fires error</p>
+<dl class="evidence"><div><dt>Media</dt><dd>/media/sound_5.mp3 (audio/mpeg)</dd></div><div><dt>Failing assertion</dt><dd>FAIL: autoplay (set first) overrides preload &quot;none&quot; - assert_unreached: Reached unreachable code (and 3 more not passing)</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-ea485b1aa481"><details><summary><span class="mark">FAIL</span><span class="sub-name">autoplay (set first) overrides preload &quot;none&quot;</span></summary><pre class="msg">assert_unreached: Reached unreachable code</pre></details><a class="self" href="#s-ea485b1aa481" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-54e331babdcc"><details><summary><span class="mark">FAIL</span><span class="sub-name">autoplay (set last) overrides preload &quot;none&quot;</span></summary><pre class="msg">assert_unreached: Reached unreachable code</pre></details><a class="self" href="#s-54e331babdcc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a3d93fafde72"><details><summary><span class="mark">FAIL</span><span class="sub-name">autoplay (set first) overrides preload &quot;metadata&quot;</span></summary><pre class="msg">assert_unreached: Reached unreachable code</pre></details><a class="self" href="#s-a3d93fafde72" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b60f29be87b6"><details><summary><span class="mark">FAIL</span><span class="sub-name">autoplay (set last) overrides preload &quot;metadata&quot;</span></summary><pre class="msg">assert_unreached: Reached unreachable code</pre></details><a class="self" href="#s-b60f29be87b6" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="load-events-networkState.html" data-gate="partial" data-pass="2" data-of="4" data-failed="2"><summary><span class="tf-name"><code>load-<wbr>events-<wbr>networkState.<wbr>html</code></span><span class="tf-n"><b>2</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/load-events-networkState.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>load-<wbr>events-<wbr>networkState.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-8d939b272028"><details><summary><span class="mark">FAIL</span><span class="sub-name">NETWORK_IDLE</span></summary><pre class="msg">assert_unreached: Reached unreachable code</pre></details><a class="self" href="#s-8d939b272028" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-224104d42e3d"><details><summary><span class="mark">FAIL</span><span class="sub-name">NETWORK_DISPATCH_EMPTIED_BEFORE_TIMEUPDATE</span></summary><pre class="msg">assert_unreached: Reached unreachable code</pre></details><a class="self" href="#s-224104d42e3d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>NETWORK_LOADING</li><li>NETWORK_NO_SOURCE</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="load-removes-queued-error-event.html" data-gate="partial" data-pass="2" data-of="3" data-failed="1"><summary><span class="tf-name"><code>load-<wbr>removes-<wbr>queued-<wbr>error-<wbr>event.<wbr>html</code></span><span class="tf-n"><b>2</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/load-removes-queued-error-event.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>load-<wbr>removes-<wbr>queued-<wbr>error-<wbr>event.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-f68bf5213700"><details><summary><span class="mark">FAIL</span><span class="sub-name">video error event with src resource</span></summary><pre class="msg">assert_array_equals: expected property 2 to be &quot;suspend&quot; but got &quot;error&quot; (expected array [&quot;loadstart&quot;, &quot;loadstart&quot;, &quot;suspend&quot;] got [&quot;loadstart&quot;, &quot;loadstart&quot;, &quot;error&quot;])</pre></details><a class="self" href="#s-f68bf5213700" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>video error event with load()</li><li>source error event</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="media-blob-url-revoked.window.js" data-gate="partial" data-pass="1" data-of="3" data-failed="2"><summary><span class="tf-name"><code>media-<wbr>blob-<wbr>url-<wbr>revoked.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>1</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/media-blob-url-revoked.window.js"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>media-<wbr>blob-<wbr>url-<wbr>revoked.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-560f3e163dfd"><details><summary><span class="mark">FAIL</span><span class="sub-name">media loads from a blob: URL</span></summary><pre class="msg">assert_equals: Expected loadeddata event, but got error event instead expected &quot;loadeddata&quot; but got &quot;error&quot;</pre></details><a class="self" href="#s-560f3e163dfd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ce4f1513ae08"><details><summary><span class="mark">FAIL</span><span class="sub-name">media loads from a blob: URL revoked after the fetch started</span></summary><pre class="msg">assert_equals: Expected loadeddata event, but got error event instead expected &quot;loadeddata&quot; but got &quot;error&quot;</pre></details><a class="self" href="#s-ce4f1513ae08" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>media fails to load from a blob: URL revoked before the fetch started</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-candidate-insert-before.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>candidate-<wbr>insert-<wbr>before.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-candidate-insert-before.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>candidate-<wbr>insert-<wbr>before.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate: Crane follows the browser majority</p>
+<p>Crane runs resource selection&#39;s stable section in a task rather than between inline script tags, so inserting #b before #a in the second script selects #b as in Chrome and Safari (both fail expected &quot;#a&quot; got &quot;#b&quot;); only Firefox runs selection between the scripts</p>
+<dl class="evidence"><div><dt>Crane matches</dt><dd>Chrome, Safari</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 6526273757904896: 1/1 (Firefox 161, 94e2796a2a)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)</dd></div><div><dt>Revisit</dt><dd>when Chrome or Safari changes its result on a newer aligned wpt.fyi run, or Crane&#39;s result moves</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-0bde52f12f29"><details><summary><span class="mark">FAIL</span><span class="sub-name">inserting another source before the candidate</span></summary><pre class="msg">assert_equals: expected &quot;#a&quot; but got &quot;#b&quot;</pre></details><a class="self" href="#s-0bde52f12f29" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-candidate-moved.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>candidate-<wbr>moved.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-candidate-moved.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>candidate-<wbr>moved.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>moving the candidate source</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-candidate-remove-addEventListener.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>candidate-<wbr>remove-<wbr>addEventListener.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-candidate-remove-addEventListener.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>candidate-<wbr>remove-<wbr>addEventListener.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>removing the candidate source, addEventListener</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-candidate-remove-no-listener.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>candidate-<wbr>remove-<wbr>no-<wbr>listener.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-candidate-remove-no-listener.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>candidate-<wbr>remove-<wbr>no-<wbr>listener.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>removing the candidate source, no listener</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-candidate-remove-onerror.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>candidate-<wbr>remove-<wbr>onerror.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-candidate-remove-onerror.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>candidate-<wbr>remove-<wbr>onerror.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>removing the candidate source, onerror</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-currentSrc.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>currentSrc.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-currentSrc.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>currentSrc.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate until a decoder plays its media</p>
+<p>plays MP3 sources to read currentSrc in each scenario; they are not decoded, so play() rejects</p>
+<dl class="evidence"><div><dt>Media</dt><dd>/media/sound_0.mp3, /media/sine440.mp3 (audio/mpeg)</dd></div><div><dt>Failing assertion</dt><dd>ERROR: NotSupportedError: NotSupportedError - TIMEOUT: Test currentSrc behaviour in various playback scenarios - Test timed out</dd></div></dl>
+</div>
+<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">NotSupportedError: NotSupportedError</pre></div>
+<div class="run">
+<h3 class="run-head"><code>/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-currentSrc.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<pre class="msg harness-msg">NotSupportedError: NotSupportedError</pre>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-cc157bf5562f"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Test currentSrc behaviour in various playback scenarios</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-cc157bf5562f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-encoding-parse.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>encoding-<wbr>parse.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-encoding-parse.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>encoding-<wbr>parse.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>src attribute</li><li>source element</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-audio-constructor-no-src.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>audio-<wbr>constructor-<wbr>no-<wbr>src.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-audio-constructor-no-src.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>audio-<wbr>constructor-<wbr>no-<wbr>src.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking resource selection with new Audio() sans src</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-audio-constructor.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>audio-<wbr>constructor.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-audio-constructor.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>audio-<wbr>constructor.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>invoking resource selection with new Audio(src)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-in-sync-event.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>in-<wbr>sync-<wbr>event.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-in-sync-event.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>in-<wbr>sync-<wbr>event.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate: Crane follows the browser majority</p>
+<p>Crane runs resource selection&#39;s stable section in a task rather than between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome and Safari (both fail expected 0 got 3); only Firefox runs selection between the scripts</p>
+<dl class="evidence"><div><dt>Crane matches</dt><dd>Chrome, Safari</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 6526273757904896: 1/1 (Firefox 161, 94e2796a2a)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)</dd></div><div><dt>Revisit</dt><dd>when Chrome or Safari changes its result on a newer aligned wpt.fyi run, or Crane&#39;s result moves</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-e3de26b12f16"><details><summary><span class="mark">FAIL</span><span class="sub-name">await a stable state and sync event handlers</span></summary><pre class="msg">assert_equals: networkState after src removed expected 0 but got 3</pre></details><a class="self" href="#s-e3de26b12f16" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-insert-fragment-into-document.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>fragment-<wbr>into-<wbr>document.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-insert-fragment-into-document.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>fragment-<wbr>into-<wbr>document.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking resource selection by inserting document fragment into a document</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-insert-into-document.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>into-<wbr>document.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-insert-into-document.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>into-<wbr>document.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking resource selection by inserting into a document</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-insert-into-iframe.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>into-<wbr>iframe.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-insert-into-iframe.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>into-<wbr>iframe.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking resource selection by inserting into other document with src set</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-insert-parent-into-document.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>parent-<wbr>into-<wbr>document.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-insert-parent-into-document.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>parent-<wbr>into-<wbr>document.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking resource selection by inserting parent into a document</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-insert-source-in-div.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>source-<wbr>in-<wbr>div.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-insert-source-in-div.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>source-<wbr>in-<wbr>div.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking resource selection by inserting &lt;source&gt; in &lt;div&gt; in &lt;video&gt;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-insert-source-in-namespace.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>source-<wbr>in-<wbr>namespace.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-insert-source-in-namespace.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>source-<wbr>in-<wbr>namespace.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking resource selection by inserting &lt;source&gt; in the wrong namespace</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-insert-source-networkState.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>source-<wbr>networkState.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-insert-source-networkState.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>source-<wbr>networkState.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate: Crane follows the browser majority</p>
+<p>Crane runs resource selection&#39;s stable section in a task after the parser task (required by media-src-7_1_2.sub.html, 3/3 pass), not between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome, Firefox and Safari</p>
+<dl class="evidence"><div><dt>Crane matches</dt><dd>Chrome, Firefox, Safari</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)</dd></div><div><dt>Revisit</dt><dd>when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane&#39;s result moves</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-3e51e058f2d0"><details><summary><span class="mark">FAIL</span><span class="sub-name">NOT invoking resource selection by inserting &lt;source&gt; when networkState is not NETWORK_EMPTY</span></summary><pre class="msg">assert_equals: networkState in second script expected 2 but got 3</pre></details><a class="self" href="#s-3e51e058f2d0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-insert-source-not-in-document.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>source-<wbr>not-<wbr>in-<wbr>document.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-insert-source-not-in-document.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>source-<wbr>not-<wbr>in-<wbr>document.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>invoking resource selection by inserting &lt;source&gt; in video not in a document</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-insert-source.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>source.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-insert-source.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>insert-<wbr>source.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>invoking resource selection by inserting &lt;source&gt;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-load.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>load.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-load.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>load.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate: Crane follows the browser majority</p>
+<p>Crane runs resource selection&#39;s stable section in a task rather than between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome, Firefox and Safari</p>
+<dl class="evidence"><div><dt>Crane matches</dt><dd>Chrome, Firefox, Safari</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)</dd></div><div><dt>Revisit</dt><dd>when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane&#39;s result moves</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-f60ebd131cad"><details><summary><span class="mark">FAIL</span><span class="sub-name">invoking resource selection with load()</span></summary><pre class="msg">assert_equals: networkState in separate script expected 0 but got 3</pre></details><a class="self" href="#s-f60ebd131cad" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-move-source-audio.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>move-<wbr>source-<wbr>audio.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-move-source-audio.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>move-<wbr>source-<wbr>audio.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>invoking resource selection by moving &lt;source&gt; (audio element)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-move-source-in-div.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>move-<wbr>source-<wbr>in-<wbr>div.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-move-source-in-div.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>move-<wbr>source-<wbr>in-<wbr>div.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking resource selection by moving &lt;source&gt; into a &lt;div&gt; in &lt;video&gt;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-move-source-in-namespace.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>move-<wbr>source-<wbr>in-<wbr>namespace.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-move-source-in-namespace.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>move-<wbr>source-<wbr>in-<wbr>namespace.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking resource selection by moving &lt;source&gt; in the wrong namespace</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-move-source-not-in-document.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>move-<wbr>source-<wbr>not-<wbr>in-<wbr>document.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-move-source-not-in-document.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>move-<wbr>source-<wbr>not-<wbr>in-<wbr>document.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>invoking resource selection by moving &lt;source&gt; in video not in a document</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-move-source-same-parent.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>move-<wbr>source-<wbr>same-<wbr>parent.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-move-source-same-parent.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>move-<wbr>source-<wbr>same-<wbr>parent.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>invoking resource selection by moving &lt;source&gt; within the same media element</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-move-source.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>move-<wbr>source.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-move-source.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>move-<wbr>source.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>invoking resource selection by moving &lt;source&gt;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-pause-networkState.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>pause-<wbr>networkState.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-pause-networkState.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>pause-<wbr>networkState.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking resource selection with pause() when networkState is not NETWORK_EMPTY</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-pause.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>pause.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-pause.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>pause.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate: Crane follows the browser majority</p>
+<p>Crane runs resource selection&#39;s stable section in a task rather than between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome, Firefox and Safari</p>
+<dl class="evidence"><div><dt>Crane matches</dt><dd>Chrome, Firefox, Safari</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)</dd></div><div><dt>Revisit</dt><dd>when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane&#39;s result moves</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-7301e2589e75"><details><summary><span class="mark">FAIL</span><span class="sub-name">invoking resource selection with pause()</span></summary><pre class="msg">assert_equals: networkState in separate script expected 0 but got 3</pre></details><a class="self" href="#s-7301e2589e75" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-play.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>play.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-play.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>play.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate: Crane follows the browser majority</p>
+<p>Crane runs resource selection&#39;s stable section in a task rather than between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome, Firefox and Safari</p>
+<dl class="evidence"><div><dt>Crane matches</dt><dd>Chrome, Firefox, Safari</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)</dd></div><div><dt>Revisit</dt><dd>when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane&#39;s result moves</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-e1997a07d2be"><details><summary><span class="mark">FAIL</span><span class="sub-name">invoking resource selection with play()</span></summary><pre class="msg">assert_equals: networkState in separate script expected 0 but got 3</pre></details><a class="self" href="#s-e1997a07d2be" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-remove-from-document-networkState.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>remove-<wbr>from-<wbr>document-<wbr>networkState.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-remove-from-document-networkState.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>remove-<wbr>from-<wbr>document-<wbr>networkState.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking resource selection with implicit pause() when networkState is not NETWORK_EMPTY</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-remove-from-document.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>remove-<wbr>from-<wbr>document.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-remove-from-document.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>remove-<wbr>from-<wbr>document.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking resource selection by removing from document with NETWORK_EMPTY</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-remove-src.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>remove-<wbr>src.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-remove-src.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>remove-<wbr>src.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate: Crane follows the browser majority</p>
+<p>Crane runs resource selection&#39;s stable section in a task rather than between inline script tags, so removeAttribute(&#39;src&#39;) runs before selection chooses a mode and the child &lt;source&gt; fires error as in Chrome, Firefox and Safari</p>
+<dl class="evidence"><div><dt>Crane matches</dt><dd>Chrome, Firefox, Safari</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)</dd></div><div><dt>Revisit</dt><dd>when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane&#39;s result moves</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-b0ac30a1c95e"><details><summary><span class="mark">FAIL</span><span class="sub-name">NOT invoking media load or resource selection when removing the src attribute</span></summary><pre class="msg">assert_unreached: Reached unreachable code</pre></details><a class="self" href="#s-b0ac30a1c95e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-set-src-in-namespace.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>set-<wbr>src-<wbr>in-<wbr>namespace.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-set-src-in-namespace.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>set-<wbr>src-<wbr>in-<wbr>namespace.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>NOT invoking load by setting src in the wrong namespace</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-set-src-networkState.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>set-<wbr>src-<wbr>networkState.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-set-src-networkState.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>set-<wbr>src-<wbr>networkState.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>invoking load by setting src when networkState is not NETWORK_EMPTY</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-set-src-not-in-document.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>set-<wbr>src-<wbr>not-<wbr>in-<wbr>document.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-set-src-not-in-document.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>set-<wbr>src-<wbr>not-<wbr>in-<wbr>document.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>invoking load by setting src on video not in a document</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-invoke-set-src.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>invoke-<wbr>set-<wbr>src.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-invoke-set-src.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>invoke-<wbr>set-<wbr>src.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>invoking load by setting src</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-pointer-control.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>pointer-<wbr>control.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-control.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>pointer-<wbr>control.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>pointer updates (control test)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-pointer-insert-br.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>pointer-<wbr>insert-<wbr>br.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-insert-br.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>pointer-<wbr>insert-<wbr>br.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>pointer updates (adding br elements)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-pointer-insert-source.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>pointer-<wbr>insert-<wbr>source.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-insert-source.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>pointer-<wbr>insert-<wbr>source.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate: Crane follows the browser majority</p>
+<p>Crane runs resource selection&#39;s stable section in a task (required by media-src-7_1_2.sub.html, 3/3 pass), so inserting source1 before a in the following script causes x1 to fire error (expected 0 got 1, identical to Firefox); Chrome and Safari also fail 0/1 (failing one line earlier on c)</p>
+<dl class="evidence"><div><dt>Crane matches</dt><dd>Firefox</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)</dd></div><div><dt>Ruling</dt><dd>the integrator (2026-11-25 4:46 PM ET, lane media1): all three browsers fail 0/1 due to task-based resource selection required by media-src-7_1_2.sub.html; Crane matches Firefox&#39;s exact x1 failure</dd></div><div><dt>Revisit</dt><dd>when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane&#39;s result moves</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-807fd0e17a58"><details><summary><span class="mark">FAIL</span><span class="sub-name">pointer updates (adding source elements)</span></summary><pre class="msg">assert_equals: error events on x1 expected 0 but got 1</pre></details><a class="self" href="#s-807fd0e17a58" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-pointer-insert-text.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>pointer-<wbr>insert-<wbr>text.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-insert-text.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>pointer-<wbr>insert-<wbr>text.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>pointer updates (adding text nodes)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-pointer-remove-source-after.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>pointer-<wbr>remove-<wbr>source-<wbr>after.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-remove-source-after.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>pointer-<wbr>remove-<wbr>source-<wbr>after.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>pointer updates (removing source element after pointer)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-pointer-remove-source.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>pointer-<wbr>remove-<wbr>source.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-remove-source.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>pointer-<wbr>remove-<wbr>source.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate: Crane follows the browser majority</p>
+<p>Crane runs resource selection&#39;s stable section in a task (required by media-src-7_1_2.sub.html, 3/3 pass), so removing x1 in the following script prevents x1 from being selected (expected 1 got 0, identical to Firefox); Chrome and Safari also fail 0/1 (failing one line earlier on c)</p>
+<dl class="evidence"><div><dt>Crane matches</dt><dd>Firefox</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)</dd></div><div><dt>Ruling</dt><dd>the integrator (2026-11-25 4:46 PM ET, lane media1): all three browsers fail 0/1 due to task-based resource selection required by media-src-7_1_2.sub.html; Crane matches Firefox&#39;s exact x1 failure</dd></div><div><dt>Revisit</dt><dd>when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane&#39;s result moves</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-402764426056"><details><summary><span class="mark">FAIL</span><span class="sub-name">pointer updates (removing source elements)</span></summary><pre class="msg">assert_equals: error events on x1 expected 1 but got 0</pre></details><a class="self" href="#s-402764426056" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-pointer-remove-text.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>pointer-<wbr>remove-<wbr>text.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-remove-text.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>pointer-<wbr>remove-<wbr>text.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>pointer updates (removing text nodes)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-remove-source.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>remove-<wbr>source.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-remove-source.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>remove-<wbr>source.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate: Crane follows the browser majority</p>
+<p>Crane runs resource selection&#39;s stable section in a task rather than between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome, Firefox and Safari</p>
+<dl class="evidence"><div><dt>Crane matches</dt><dd>Chrome, Firefox, Safari</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)</dd></div><div><dt>Revisit</dt><dd>when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane&#39;s result moves</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-f7812ce2aa27"><details><summary><span class="mark">FAIL</span><span class="sub-name">Changes to networkState when inserting and removing a &lt;source&gt;</span></summary><pre class="msg">assert_equals: networkState after letting the sync section of resource selection run expected 0 but got 3</pre></details><a class="self" href="#s-f7812ce2aa27" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-remove-src.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>remove-<wbr>src.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-remove-src.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>remove-<wbr>src.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate: Crane follows the browser majority</p>
+<p>Crane runs resource selection&#39;s stable section in a task rather than between inline script tags, so networkState in the second script is still NETWORK_NO_SOURCE (3) as in Chrome, Firefox and Safari</p>
+<dl class="evidence"><div><dt>Crane matches</dt><dd>Chrome, Firefox, Safari</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)</dd></div><div><dt>Revisit</dt><dd>when Chrome, Firefox or Safari changes resource selection from a task to a microtask on a newer aligned wpt.fyi run, or Crane&#39;s result moves</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-acf9b9c6875e"><details><summary><span class="mark">FAIL</span><span class="sub-name">invoking resource selection by setting src; await stable state</span></summary><pre class="msg">assert_equals: expected 0 but got 3</pre></details><a class="self" href="#s-acf9b9c6875e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-resumes-onload.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>resumes-<wbr>onload.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-resumes-onload.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>resumes-<wbr>onload.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>resource selection should not delay the load event indefinitely</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-source-media-env-change.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>source-<wbr>media-<wbr>env-<wbr>change.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-source-media-env-change.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>source-<wbr>media-<wbr>env-<wbr>change.<wbr>html</code></a></dd></div>
+</dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate until a decoder plays its media</p>
+<p>selects /media-source/mp4/test.mp4#a and waits 2 rAFs before resizing the iframe; without an MP4 decoder #a fails decoding immediately and falls through to #b</p>
+<dl class="evidence"><div><dt>Media</dt><dd>/media-source/mp4/test.mp4 (video/mp4)</dd></div><div><dt>Failing assertion</dt><dd>FAIL: the &lt;source&gt; media attribute: no reaction to environment change - assert_equals: beforeEnvChange expected &quot;#a&quot; but got &quot;#b&quot;</dd></div></dl>
+</div>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-1ec8c4b8fb14"><details><summary><span class="mark">FAIL</span><span class="sub-name">the &lt;source&gt; media attribute: no reaction to environment change</span></summary><pre class="msg">assert_equals: beforeEnvChange expected &quot;#a&quot; but got &quot;#b&quot;</pre></details><a class="self" href="#s-1ec8c4b8fb14" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="resource-selection-source-media.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0"><summary><span class="tf-name"><code>resource-<wbr>selection-<wbr>source-<wbr>media.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">&mdash;</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="quiet">no result in the reference run</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-source-media.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>media-<wbr>elements/<wbr>loading-<wbr>the-<wbr>media-<wbr>resource/<wbr>resource-<wbr>selection-<wbr>source-<wbr>media.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>the &lt;source&gt; media attribute</li></ol></details>
+</div>
+</div>
+</details>
+</div>
+</div>
+</div>
+<footer class="foot">
+<p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>
+</footer>
+</main>
+<nav class="toc" aria-labelledby="toc-title">
+<p class="toc-title" id="toc-title">Contents</p>
+<ol class="toc-list">
+<li class="toc-front"><a href="../../../../../"><span class="secno"></span><span class="toc-name">Subtest totals</span></a></li>
+<li class="toc-front"><a href="../../../../../#status"><span class="secno"></span><span class="toc-name">Status of this document</span></a></li>
+<li class="toc-front"><a href="../../../../../chrome.html"><span class="secno"></span><span class="toc-name">Crane and Chrome</span></a></li>
+<li class="toc-suite"><a href="../../../../../FileAPI/"><span class="secno">1</span><span class="toc-name">FileAPI/</span><span class="toc-count" title="72 test files">72</span></a></li>
+<li class="toc-suite"><a href="../../../../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="228 test files">228</span></a></li>
+<li class="toc-suite"><a href="../../../../../WebCryptoAPI/"><span class="secno">3</span><span class="toc-name">WebCryptoAPI/</span><span class="toc-count" title="82 test files">82</span></a></li>
+<li class="toc-suite"><a href="../../../../../accname/"><span class="secno">4</span><span class="toc-name">accname/</span><span class="toc-count" title="17 test files">17</span></a></li>
+<li class="toc-suite"><a href="../../../../../beacon/"><span class="secno">5</span><span class="toc-name">beacon/</span><span class="toc-count" title="16 test files">16</span></a></li>
+<li class="toc-suite"><a href="../../../../../compression/"><span class="secno">6</span><span class="toc-name">compression/</span><span class="toc-count" title="19 test files">19</span></a></li>
+<li class="toc-suite"><a href="../../../../../console/"><span class="secno">7</span><span class="toc-name">console/</span><span class="toc-count" title="11 test files">11</span></a></li>
+<li class="toc-suite"><a href="../../../../../content-security-policy/"><span class="secno">8</span><span class="toc-name">content-security-policy/</span><span class="toc-count" title="883 test files">883</span></a></li>
+<li class="toc-suite"><a href="../../../../../cookies/"><span class="secno">9</span><span class="toc-name">cookies/</span><span class="toc-count" title="76 test files">76</span></a></li>
+<li class="toc-suite"><a href="../../../../../cookiestore/"><span class="secno">10</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
+<li class="toc-suite"><a href="../../../../../core-aam/"><span class="secno">11</span><span class="toc-name">core-aam/</span><span class="toc-count" title="1 test file">1</span></a></li>
+<li class="toc-suite"><a href="../../../../../cors/"><span class="secno">12</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
+<li class="toc-suite"><a href="../../../../../css/"><span class="secno">13</span><span class="toc-name">css/</span><span class="toc-count" title="2,323 test files">2,323</span></a></li>
+<li class="toc-suite"><a href="../../../../../custom-elements/"><span class="secno">14</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="191 test files">191</span></a></li>
+<li class="toc-suite"><a href="../../../../../dom/"><span class="secno">15</span><span class="toc-name">dom/</span><span class="toc-count" title="547 test files">547</span></a></li>
+<li class="toc-suite"><a href="../../../../../domparsing/"><span class="secno">16</span><span class="toc-name">domparsing/</span><span class="toc-count" title="88 test files">88</span></a></li>
+<li class="toc-suite"><a href="../../../../../domxpath/"><span class="secno">17</span><span class="toc-name">domxpath/</span><span class="toc-count" title="29 test files">29</span></a></li>
+<li class="toc-suite"><a href="../../../../../dpub-aam/"><span class="secno">18</span><span class="toc-name">dpub-aam/</span><span class="toc-count" title="1 test file">1</span></a></li>
+<li class="toc-suite"><a href="../../../../../ecmascript/"><span class="secno">19</span><span class="toc-name">ecmascript/</span><span class="toc-count" title="2 test files">2</span></a></li>
+<li class="toc-suite"><a href="../../../../../editing/"><span class="secno">20</span><span class="toc-name">editing/</span><span class="toc-count" title="127 test files">127</span></a></li>
+<li class="toc-suite"><a href="../../../../../encoding/"><span class="secno">21</span><span class="toc-name">encoding/</span><span class="toc-count" title="153 test files">153</span></a></li>
+<li class="toc-suite"><a href="../../../../../eventsource/"><span class="secno">22</span><span class="toc-name">eventsource/</span><span class="toc-count" title="67 test files">67</span></a></li>
+<li class="toc-suite"><a href="../../../../../fetch/"><span class="secno">23</span><span class="toc-name">fetch/</span><span class="toc-count" title="314 test files">314</span></a></li>
+<li class="toc-suite"><a href="../../../../../fullscreen/"><span class="secno">24</span><span class="toc-name">fullscreen/</span><span class="toc-count" title="83 test files">83</span></a></li>
+<li class="toc-suite"><a href="../../../../../geolocation/"><span class="secno">25</span><span class="toc-name">geolocation/</span><span class="toc-count" title="24 test files">24</span></a></li>
+<li class="toc-suite"><a href="../../../../../graphics-aria/"><span class="secno">26</span><span class="toc-name">graphics-aria/</span><span class="toc-count" title="1 test file">1</span></a></li>
+<li class="toc-suite"><a href="../../../../../hr-time/"><span class="secno">27</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
+<li class="toc-suite"><a href="../../../../../html-aam/"><span class="secno">28</span><span class="toc-name">html-aam/</span><span class="toc-count" title="26 test files">26</span></a></li>
+<li class="toc-suite"><a href="../../../../../html/" aria-current="page"><span class="secno">29</span><span class="toc-name">html/</span><span class="toc-count" title="3,410 test files">3,410</span></a></li>
+<li class="toc-suite"><a href="../../../../../mathml/"><span class="secno">30</span><span class="toc-name">mathml/</span><span class="toc-count" title="35 test files">35</span></a></li>
+<li class="toc-suite"><a href="../../../../../mimesniff/"><span class="secno">31</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
+<li class="toc-suite"><a href="../../../../../mixed-content/"><span class="secno">32</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
+<li class="toc-suite"><a href="../../../../../navigation-api/"><span class="secno">33</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="446 test files">446</span></a></li>
+<li class="toc-suite"><a href="../../../../../navigation-timing/"><span class="secno">34</span><span class="toc-name">navigation-timing/</span><span class="toc-count" title="59 test files">59</span></a></li>
+<li class="toc-suite"><a href="../../../../../page-visibility/"><span class="secno">35</span><span class="toc-name">page-visibility/</span><span class="toc-count" title="10 test files">10</span></a></li>
+<li class="toc-suite"><a href="../../../../../performance-timeline/"><span class="secno">36</span><span class="toc-name">performance-timeline/</span><span class="toc-count" title="44 test files">44</span></a></li>
+<li class="toc-suite"><a href="../../../../../permissions/"><span class="secno">37</span><span class="toc-name">permissions/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../../../../../quirks/"><span class="secno">38</span><span class="toc-name">quirks/</span><span class="toc-count" title="11 test files">11</span></a></li>
+<li class="toc-suite"><a href="../../../../../referrer-policy/"><span class="secno">39</span><span class="toc-name">referrer-policy/</span><span class="toc-count" title="1,478 test files">1,478</span></a></li>
+<li class="toc-suite"><a href="../../../../../resize-observer/"><span class="secno">40</span><span class="toc-name">resize-observer/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../../../../../resource-timing/"><span class="secno">41</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="118 test files">118</span></a></li>
+<li class="toc-suite"><a href="../../../../../sanitizer-api/"><span class="secno">42</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="47 test files">47</span></a></li>
+<li class="toc-suite"><a href="../../../../../screen-orientation/"><span class="secno">43</span><span class="toc-name">screen-orientation/</span><span class="toc-count" title="8 test files">8</span></a></li>
+<li class="toc-suite"><a href="../../../../../selection/"><span class="secno">44</span><span class="toc-name">selection/</span><span class="toc-count" title="79 test files">79</span></a></li>
+<li class="toc-suite"><a href="../../../../../service-workers/"><span class="secno">45</span><span class="toc-name">service-workers/</span><span class="toc-count" title="277 test files">277</span></a></li>
+<li class="toc-suite"><a href="../../../../../shadow-dom/"><span class="secno">46</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="188 test files">188</span></a></li>
+<li class="toc-suite"><a href="../../../../../streams/"><span class="secno">47</span><span class="toc-name">streams/</span><span class="toc-count" title="85 test files">85</span></a></li>
+<li class="toc-suite"><a href="../../../../../subresource-integrity/"><span class="secno">48</span><span class="toc-name">subresource-integrity/</span><span class="toc-count" title="7 test files">7</span></a></li>
+<li class="toc-suite"><a href="../../../../../svg-aam/"><span class="secno">49</span><span class="toc-name">svg-aam/</span><span class="toc-count" title="5 test files">5</span></a></li>
+<li class="toc-suite"><a href="../../../../../trusted-types/"><span class="secno">50</span><span class="toc-name">trusted-types/</span><span class="toc-count" title="221 test files">221</span></a></li>
+<li class="toc-suite"><a href="../../../../../upgrade-insecure-requests/"><span class="secno">51</span><span class="toc-name">upgrade-insecure-requests/</span><span class="toc-count" title="194 test files">194</span></a></li>
+<li class="toc-suite"><a href="../../../../../url/"><span class="secno">52</span><span class="toc-name">url/</span><span class="toc-count" title="32 test files">32</span></a></li>
+<li class="toc-suite"><a href="../../../../../urlpattern/"><span class="secno">53</span><span class="toc-name">urlpattern/</span><span class="toc-count" title="6 test files">6</span></a></li>
+<li class="toc-suite"><a href="../../../../../user-timing/"><span class="secno">54</span><span class="toc-name">user-timing/</span><span class="toc-count" title="38 test files">38</span></a></li>
+<li class="toc-suite"><a href="../../../../../wai-aria/"><span class="secno">55</span><span class="toc-name">wai-aria/</span><span class="toc-count" title="21 test files">21</span></a></li>
+<li class="toc-suite"><a href="../../../../../wasm/"><span class="secno">56</span><span class="toc-name">wasm/</span><span class="toc-count" title="340 test files">340</span></a></li>
+<li class="toc-suite"><a href="../../../../../web-animations/"><span class="secno">57</span><span class="toc-name">web-animations/</span><span class="toc-count" title="134 test files">134</span></a></li>
+<li class="toc-suite"><a href="../../../../../web-locks/"><span class="secno">58</span><span class="toc-name">web-locks/</span><span class="toc-count" title="23 test files">23</span></a></li>
+<li class="toc-suite"><a href="../../../../../webidl/"><span class="secno">59</span><span class="toc-name">webidl/</span><span class="toc-count" title="45 test files">45</span></a></li>
+<li class="toc-suite"><a href="../../../../../webmessaging/"><span class="secno">60</span><span class="toc-name">webmessaging/</span><span class="toc-count" title="132 test files">132</span></a></li>
+<li class="toc-suite"><a href="../../../../../websockets/"><span class="secno">61</span><span class="toc-name">websockets/</span><span class="toc-count" title="202 test files">202</span></a></li>
+<li class="toc-suite"><a href="../../../../../webstorage/"><span class="secno">62</span><span class="toc-name">webstorage/</span><span class="toc-count" title="54 test files">54</span></a></li>
+<li class="toc-suite"><a href="../../../../../webvtt/"><span class="secno">63</span><span class="toc-name">webvtt/</span><span class="toc-count" title="75 test files">75</span></a></li>
+<li class="toc-suite"><a href="../../../../../workers/"><span class="secno">64</span><span class="toc-name">workers/</span><span class="toc-count" title="290 test files">290</span></a></li>
+<li class="toc-suite"><a href="../../../../../x-frame-options/"><span class="secno">65</span><span class="toc-name">x-frame-options/</span><span class="toc-count" title="6 test files">6</span></a></li>
+<li class="toc-suite"><a href="../../../../../xhr/"><span class="secno">66</span><span class="toc-name">xhr/</span><span class="toc-count" title="329 test files">329</span></a></li>
+<li class="toc-back"><a href="../../../../../#history"><span class="secno">67</span><span class="toc-name">Revision history</span></a></li>
+</ol>
+</nav>
+</div>
+</body>
+</html>
