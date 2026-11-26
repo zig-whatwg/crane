@@ -133,6 +133,9 @@ pub const VTable = struct {
     focused_area_changed: *const fn (context: *anyopaque, document: *runtime.Instance) void,
     /// A text control's value changed (the Accessibility agents' only).
     control_value_changed: *const fn (context: *anyopaque, element: *runtime.Instance) void,
+    /// A parser-created `<style>` element's 0-based start line and column in
+    /// the HTML source (behind `titlesObserved`, for CDP `CSS.styleSheetAdded`).
+    style_element_created: *const fn (context: *anyopaque, element: *runtime.Instance, start_line: u32, start_col: u32) void,
 };
 
 /// A Browser's probe sink: its scope's `.inspector_probes` table.
@@ -309,6 +312,15 @@ pub noinline fn focusedAreaChanged(document: *runtime.Instance) void {
 pub noinline fn controlValueChanged(element: *runtime.Instance) void {
     const sink = sinkOf(element) orelse return;
     sink.vtable.control_value_changed(sink.context, element);
+}
+
+/// A parser-created `<style>` element's 0-based start line and column in the
+/// HTML source (behind `titlesObserved`). Used by the CDP CSS domain to
+/// report accurate `CSSStyleSheetHeader.{startLine,startColumn}` for inline
+/// stylesheets without enlarging DOM element structs.
+pub noinline fn styleElementCreated(element: *runtime.Instance, start_line: u32, start_col: u32) void {
+    const sink = sinkOf(element) orelse return;
+    sink.vtable.style_element_created(sink.context, element, start_line, start_col);
 }
 
 test "the gate is closed while no agent is enabled, and counts agents" {

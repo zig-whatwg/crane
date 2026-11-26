@@ -32,6 +32,7 @@ pub const full_domains = [_][]const u8{
     "Accessibility",
     "Audits",
     "Browser",
+    "CSS",
     "DOM",
     "Emulation",
     "Fetch",
