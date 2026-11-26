@@ -4564,14 +4564,13 @@ pub fn build(b: *std.Build) void {
         }
     }
 
-    // Real testdriver commands need the Browser graph; keep this one Debug
-    // native lifetime test separate from the std-only harness modules above.
+    // Real testdriver commands and crashtest execution need the Browser graph;
+    // keep these Debug native tests separate from the std-only harness modules above.
     const command_lifetime_test = "tests/wpt_runner/ar3_command_lifetime_test.zig";
-    // The directory's std-only modules (harness_sources, above) and this test.
+    const crashtest_execution_test = "tests/wpt_runner/crashtest_execution_test.zig";
+    // The directory's std-only modules (harness_sources, above) and these tests.
     recordSuiteDir(b, test_selection, "tests/wpt_runner");
-    if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "wpt_runner")) and
-        (test_selection.file == null or std.mem.eql(u8, test_selection.file.?, command_lifetime_test)))
-    {
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "wpt_runner")) {
         const command_test_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "host", .module = testing_graph.host },
@@ -4587,7 +4586,13 @@ pub fn build(b: *std.Build) void {
             .{ .name = "cookiestore", .module = testing_graph.cookiestore },
             .{ .name = "permissions", .module = testing_graph.permissions },
         };
-        _ = addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch, tests_engine_link);
+        if (test_selection.file == null or std.mem.eql(u8, test_selection.file.?, command_lifetime_test)) {
+            _ = addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch, tests_engine_link);
+        }
+        if (test_selection.file == null or std.mem.eql(u8, test_selection.file.?, crashtest_execution_test)) {
+            const crashtest_exe = addTestRoot(b, test_step, crashtest_execution_test, "crashtest-execution", null, target, &command_test_imports, true, launch, tests_engine_link);
+            addTestVerify(b, launch, crashtest_exe, "crashtest-execution", "tests/wpt_runner", &.{"crashtest_execution_test.zig"});
+        }
     }
 
     // The WPT runner's two builds (build_mode.zig `RunnerBuild`, the graphs
@@ -7020,6 +7025,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     runtime_mod.addImport("engine", engine_mod);
 
     // Cross-imports for WebIDL modules
+    interfaces_mod.addImport("engine", engine_mod); // For callback interface typed invoke helpers
     interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
     interfaces_mod.addImport("impls", impls_mod);
     namespaces_mod.addImport("impls", impls_mod); // Namespaces need access to impls
@@ -7027,6 +7033,11 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     interfaces_mod.addImport("dictionaries", dictionaries_mod);
     interfaces_mod.addImport("enums", enums_mod);
     interfaces_mod.addImport("callbacks", callbacks_mod);
+    callbacks_mod.addImport("engine", engine_mod);
+    callbacks_mod.addImport("interfaces", interfaces_mod);
+    callbacks_mod.addImport("typedefs", typedefs_mod);
+    callbacks_mod.addImport("dictionaries", dictionaries_mod);
+    callbacks_mod.addImport("enums", enums_mod);
     impls_mod.addImport("interfaces", interfaces_mod);
     impls_mod.addImport("typedefs", typedefs_mod);
     impls_mod.addImport("dictionaries", dictionaries_mod);
@@ -7072,6 +7083,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     dom_mod.addImport("dictionaries", dictionaries_mod);
     dom_mod.addImport("enums", enums_mod);
     dom_mod.addImport("typedefs", typedefs_mod);
+    dom_mod.addImport("callbacks", callbacks_mod);
 
     // Quirks module (WHATWG Quirks Mode Standard)
     const quirks_mod = graphModule(b, public, "quirks", .{
@@ -7914,6 +7926,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // engine-neutral code calls `engine.op`.
     html_mod.addImport("engine", engine_mod);
     html_mod.addImport("dictionaries", dictionaries_mod);
+    html_mod.addImport("callbacks", callbacks_mod);
     // The Unicode bidi classes, for HTML's directionality (form_associated.zig).
     html_mod.addImport("url", url_mod);
     // DOM module for document_internals access in parser_script_execution.zig

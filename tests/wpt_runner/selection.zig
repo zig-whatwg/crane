@@ -97,6 +97,31 @@ pub fn select(
     dir_filters: []const []const u8,
     scope: Scope,
 ) !Selection {
+    return selectKinds(allocator, manifest, dir_filters, scope, true, false);
+}
+
+/// Select WPT crashtests (`MANIFEST.json` `items.crashtest`) for `scope`,
+/// narrowed to `dir_filters`. Each crashtest's URL is its path, so `url_count`
+/// equals `sources.len`.
+pub fn selectCrashtests(
+    allocator: Allocator,
+    manifest: *const wpt_manifest.Manifest,
+    dir_filters: []const []const u8,
+    scope: Scope,
+) !Selection {
+    return selectKinds(allocator, manifest, dir_filters, scope, false, true);
+}
+
+/// Select testharness sources, crashtests, or both for `scope`, narrowed to
+/// `dir_filters`. Sorted deterministically with no duplicate paths.
+pub fn selectKinds(
+    allocator: Allocator,
+    manifest: *const wpt_manifest.Manifest,
+    dir_filters: []const []const u8,
+    scope: Scope,
+    include_testharness: bool,
+    include_crashtests: bool,
+) !Selection {
     var seen: std.StringHashMap(void) = std.StringHashMap(void).init(allocator);
     defer {
         var it = seen.keyIterator();
@@ -106,22 +131,42 @@ pub fn select(
 
     var url_count: usize = 0;
 
-    var iter = manifest.url_to_source.iterator();
-    while (iter.next()) |entry| {
-        const url = entry.key_ptr.*;
-        if (!matchesAnyDir(url, dir_filters)) continue;
-        switch (scope) {
-            .in_scope => if (!config.isInScope(url)) continue,
-            .full_corpus => {},
+    if (include_testharness) {
+        var iter = manifest.url_to_source.iterator();
+        while (iter.next()) |entry| {
+            const url = entry.key_ptr.*;
+            if (!matchesAnyDir(url, dir_filters)) continue;
+            switch (scope) {
+                .in_scope => if (!config.isInScope(url)) continue,
+                .full_corpus => {},
+            }
+
+            url_count += 1;
+
+            const source = entry.value_ptr.*;
+            if (seen.contains(source)) continue;
+            const owned = try allocator.dupe(u8, source);
+            errdefer allocator.free(owned);
+            try seen.put(owned, {});
         }
+    }
 
-        url_count += 1;
+    if (include_crashtests) {
+        var iter = manifest.crashtests.keyIterator();
+        while (iter.next()) |key| {
+            const path = key.*;
+            if (!matchesAnyDir(path, dir_filters)) continue;
+            switch (scope) {
+                .in_scope => if (!config.isInScope(path)) continue,
+                .full_corpus => {},
+            }
 
-        const source = entry.value_ptr.*;
-        if (seen.contains(source)) continue;
-        const owned = try allocator.dupe(u8, source);
-        errdefer allocator.free(owned);
-        try seen.put(owned, {});
+            if (seen.contains(path)) continue;
+            url_count += 1;
+            const owned = try allocator.dupe(u8, path);
+            errdefer allocator.free(owned);
+            try seen.put(owned, {});
+        }
     }
 
     // Move the keys out of the set rather than duplicating them again.
@@ -678,4 +723,82 @@ test "an empty run needs no shards" {
 
 test "an unknown core count still yields a usable single shard" {
     try std.testing.expectEqual(@as(usize, 1), resolveShardCount(0, 100, 0));
+}
+
+const crashtest_manifest_json =
+    \\{
+    \\  "version": 9,
+    \\  "url_base": "/",
+    \\  "items": {
+    \\    "testharness": {
+    \\      "dom": {
+    \\        "nodes": {
+    \\          "Node-appendChild.html": ["h", [null, {}]]
+    \\        }
+    \\      }
+    \\    },
+    \\    "crashtest": {
+    \\      "dom": {
+    \\        "nodes": {
+    \\          "insert-crash.html": ["h", [null, {}]]
+    \\        }
+    \\      },
+    \\      "accessibility": {
+    \\        "crashtests": {
+    \\          "role-crash.html": ["h", [null, {}]]
+    \\        }
+    \\      },
+    \\      "html": {
+    \\        "rendering": {
+    \\          "layout-crash.html": ["h", [null, {}]]
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "selectCrashtests honours scope and directory filters without mixing testharness" {
+    const allocator = std.testing.allocator;
+
+    var manifest = try wpt_manifest.parseManifestBytes(allocator, crashtest_manifest_json);
+    defer manifest.deinit();
+
+    // Default in_scope keeps dom/ crashtests and excludes out-of-scope accessibility/ and html/rendering/.
+    var in_scope = try selectCrashtests(allocator, &manifest, &.{}, .in_scope);
+    defer in_scope.deinit();
+    try std.testing.expectEqual(@as(usize, 1), in_scope.sources.len);
+    try std.testing.expectEqual(@as(usize, 1), in_scope.url_count);
+    try std.testing.expectEqualStrings("dom/nodes/insert-crash.html", in_scope.sources[0]);
+
+    // full_corpus with a directory filter selects accessibility/crashtests/.
+    var a11y = try selectCrashtests(allocator, &manifest, &.{"accessibility/crashtests"}, .full_corpus);
+    defer a11y.deinit();
+    try std.testing.expectEqual(@as(usize, 1), a11y.sources.len);
+    try std.testing.expectEqualStrings("accessibility/crashtests/role-crash.html", a11y.sources[0]);
+
+    // selectKinds with both true merges testharness and crashtests deterministically.
+    var both = try selectKinds(allocator, &manifest, &.{"dom"}, .in_scope, true, true);
+    defer both.deinit();
+    try std.testing.expectEqual(@as(usize, 2), both.sources.len);
+    try std.testing.expectEqualStrings("dom/nodes/Node-appendChild.html", both.sources[0]);
+    try std.testing.expectEqualStrings("dom/nodes/insert-crash.html", both.sources[1]);
+}
+
+test "selectCrashtests over the real manifest finds accessibility/crashtests and in-scope crashtests" {
+    const allocator = std.testing.allocator;
+
+    std.Io.Dir.cwd().access(std.testing.io, "tests/wpt/MANIFEST.json", .{}) catch return error.SkipZigTest;
+
+    var manifest = try wpt_manifest.loadManifest(allocator, "tests/wpt");
+    defer manifest.deinit();
+
+    var a11y = try selectCrashtests(allocator, &manifest, &.{"accessibility/crashtests"}, .full_corpus);
+    defer a11y.deinit();
+    try std.testing.expect(a11y.sources.len >= 50);
+
+    var in_scope = try selectCrashtests(allocator, &manifest, &.{}, .in_scope);
+    defer in_scope.deinit();
+    try std.testing.expect(in_scope.sources.len > 100);
+    for (in_scope.sources) |s| try std.testing.expect(manifest.isCrashtest(s));
 }

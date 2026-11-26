@@ -414,6 +414,7 @@ pub const WptBrowser = struct {
 
         self.closeOldWindows();
         self.browser.cookie_jar.clear();
+        test_driver.TestDriver.resetPermissions(self.browser.scope);
         try self.browser.navigateWithOptions(test_url, .window, .{ .skip_load = true });
         defer self.test_driver.endTest();
         const ctx = self.browser.current_context orelse return error.NoContext;
@@ -440,6 +441,21 @@ pub const WptBrowser = struct {
         }
         const load_ms = lapMs(&phase);
 
+        var result = try test_harness.TestResult.init(self.allocator, test_path);
+        errdefer result.deinit(self.allocator);
+        result.nav_ms = nav_ms;
+        result.load_ms = load_ms;
+        result.crashtest = true;
+
+        // If the navigation or readyState wait already consumed the run's
+        // ceiling, return TIMEOUT directly without injecting test-wait.js.
+        if (self.script_deadline.abortedThisRun() or clock.monotonicMillis() >= deadline) {
+            result.status = .timeout;
+            result.message = try std.fmt.allocPrint(self.allocator, "Crashtest did not finish (load, then test-wait) within {}ms", .{timeout_ms});
+            self.tests_run += 1;
+            return result;
+        }
+
         // WebDriver "execute async script": test-wait.js as a function body
         // called with `this` the window and its arguments - the test URL, then
         // the callback last.
@@ -453,12 +469,7 @@ pub const WptBrowser = struct {
             "})();\n",
         });
         defer self.allocator.free(script);
-        var result = try test_harness.TestResult.init(self.allocator, test_path);
-        errdefer result.deinit(self.allocator);
-        result.nav_ms = nav_ms;
-        result.load_ms = load_ms;
-        result.crashtest = true;
-        if (!self.script_deadline.abortedThisRun()) ctx.runScript(script) catch |err| {
+        ctx.runScript(script) catch |err| {
             result.status = .@"error";
             result.message = try std.fmt.allocPrint(self.allocator, "test-wait.js did not run: {}", .{err});
             return result;

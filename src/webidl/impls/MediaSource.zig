@@ -168,8 +168,11 @@ pub fn call_removeSourceBuffer(instance: *runtime.Instance, sourceBuffer: *runti
 }
 
 /// Operation: isTypeSupported
+/// Spec: https://w3c.github.io/media-source/#dom-mediasource-istypesupported
+/// MSE §2.2: returns false when type is empty or the UA cannot decode media
+/// data for MediaSource (Crane does not yet implement MSE SourceBuffer decoding).
 pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = @"type";
-    return error.NotImplemented;
+    return false;
 }

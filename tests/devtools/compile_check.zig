@@ -40,8 +40,10 @@ test {
     _ = @import("mcp1_resize_test.zig");
     _ = @import("mcp1_extra_headers_test.zig");
     _ = @import("mcp1_emulate_test.zig");
+    _ = @import("mcp1_network_conditions_test.zig");
     _ = @import("mcp1_logpoints_test.zig");
     _ = @import("mcp1_memory_test.zig");
+    _ = @import("mcp1_heap_analysis_test.zig");
     _ = @import("mcp1_stdio_test.zig");
     _ = @import("mcp1_paths_test.zig");
 }

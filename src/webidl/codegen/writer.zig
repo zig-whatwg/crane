@@ -4089,12 +4089,14 @@ fn argumentsRestrictedFloatMask(arguments: []const types.Argument, model: ?*cons
 /// writer). Not a record.
 pub fn isRestrictedFloat(idl_type: types.IDLType, model: ?*const ir.IR) bool {
     if (idl_type.unionTypes != null or idl_type.record != null) return false;
+    // The parser's sequence-element shape: check before `.generic`, because a
+    // parsed sequence<T> has `.type == "sequence"` with `.generic == null` and
+    // `.sequence != null`.
+    if (idl_type.sequence) |element| return isRestrictedFloat(element.*, model);
     if (std.mem.eql(u8, idl_type.type, "sequence") or std.mem.eql(u8, idl_type.type, "FrozenArray")) {
         const inner = idl_type.generic orelse return false;
-        return isRestrictedFloatName(std.mem.trimEnd(u8, std.mem.trim(u8, inner, " \t"), "?"), model);
+        return isRestrictedFloatName(std.mem.trim(u8, inner, " \t?"), model);
     }
-    // The parser's other shape for a sequence: its element type.
-    if (idl_type.sequence) |element| return isRestrictedFloat(element.*, model);
     if (idl_type.generic != null) return false;
     return isRestrictedFloatName(idl_type.type, model);
 }

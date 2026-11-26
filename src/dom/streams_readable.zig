@@ -15,6 +15,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
+const typedefs = @import("typedefs");
+const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const js = @import("streams_js.zig");
 const engine = @import("engine");
@@ -379,7 +381,14 @@ pub const UnderlyingSource = struct {
         defer js.dispose(pull_fn);
         const this = self.get(realm, .this);
         defer if (this) |t| js.dispose(t);
-        return realm.promiseCall(pull_fn, this, &.{realm.instanceValue(controller)});
+        const cb = realm.callbackOf(pull_fn);
+        const controller_arg: typedefs.ReadableStreamController = if (controller.stateAs(interfaces.ReadableByteStreamController.State) != null)
+            .{ .readable_byte_stream_controller = controller }
+        else
+            .{ .readable_stream_default_controller = controller };
+        const promise = callbacks.call.UnderlyingSourcePullCallback.invoke(realm.ctx, &cb, Realm.thisOf(this), .{ .controller = controller_arg }) catch |err|
+            return js.fromEngineError(err);
+        return realm.adoptOwned(promise);
     }
 
     fn cancelErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance, reason: Value) js.Error!Value {
@@ -389,7 +398,10 @@ pub const UnderlyingSource = struct {
         defer js.dispose(cancel_fn);
         const this = self.get(realm, .this);
         defer if (this) |t| js.dispose(t);
-        return realm.promiseCall(cancel_fn, this, &.{reason});
+        const cb = realm.callbackOf(cancel_fn);
+        const promise = callbacks.call.UnderlyingSourceCancelCallback.invoke(realm.ctx, &cb, Realm.thisOf(this), .{ .reason = .passed(reason.value) }) catch |err|
+            return js.fromEngineError(err);
+        return realm.adoptOwned(promise);
     }
 
     const vtable = Source.VTable{
@@ -1045,19 +1057,6 @@ fn defaultClearAlgorithms(c: *DefaultController) void {
     c.size_algorithm.clear(c.instance);
 }
 
-/// The size callback's result converted to `unrestricted double` (ToNumber),
-/// as steps engine.completionOf runs.
-const SizeConversion = struct {
-    realm: runtime.Context,
-    value: Value,
-    number: f64 = 0,
-
-    fn steps(data: ?*anyopaque) engine.Error!void {
-        const self: *SizeConversion = @ptrCast(@alignCast(data.?));
-        self.number = try engine.convertToUnrestrictedDouble(self.realm, js.toReturn(self.value));
-    }
-};
-
 /// ReadableStreamDefaultControllerClose(controller)
 pub fn defaultControllerClose(realm: Realm, controller_instance: *runtime.Instance) void {
     const c = defaultControllerOf(controller_instance).?;
@@ -1097,27 +1096,21 @@ pub fn defaultControllerEnqueueCompletion(realm: Realm, controller_instance: *ru
         const size_fn = c.size_algorithm.function(realm, controller_instance);
         defer if (size_fn) |f| js.dispose(f);
         const chunk_size: f64 = if (size_fn) |f| blk: {
-            const completion = try realm.call(f, null, &.{chunk});
-            defer completion.deinit();
-            switch (completion) {
-                .normal => |v| {
-                    // The size callback's result converted to `unrestricted
-                    // double` (WebIDL "invoke a callback function" step
-                    // 14): ToNumber, whose abrupt completion - a throwing
-                    // valueOf - is the size algorithm's too.
-                    var conversion = SizeConversion{ .realm = realm.ctx, .value = v };
-                    const abrupt = engine.completionOf(realm.ctx, SizeConversion.steps, &conversion) catch |err| return js.fromEngineError(err);
-                    const reason = abrupt orelse break :blk conversion.number;
-                    defer reason.release();
-                    const thrown = try realm.fromRuntime(reason.value);
-                    // 4.2 An abrupt completion errors the controller and is returned.
+            const cb = realm.callbackOf(f);
+            const returned = callbacks.call.QueuingStrategySize.invoke(realm.ctx, &cb, .undefined, .{ .chunk = chunk.value }, .rethrow, realm.ctx.allocator) catch |err|
+                return js.fromEngineError(err);
+            switch (returned) {
+                .normal => |held| {
+                    defer held.release(realm.ctx.allocator);
+                    break :blk held.value;
+                },
+                // 4.2 An abrupt completion (from the call or from WebIDL 3.12
+                // step 13's ToNumber conversion inside the callback's realm)
+                // errors the controller and is returned.
+                .throw => |e| {
+                    const thrown = realm.adoptOwned(e);
                     defaultControllerError(realm, controller_instance, thrown);
                     return thrown;
-                },
-                // 4.2 An abrupt completion errors the controller and is returned.
-                .thrown => |e| {
-                    defaultControllerError(realm, controller_instance, e);
-                    return try js.clone(e);
                 },
             }
         } else 1;

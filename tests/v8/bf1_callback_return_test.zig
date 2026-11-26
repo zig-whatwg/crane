@@ -36,20 +36,17 @@ fn incumbentMarker(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     info.setReturnValue(marker);
 }
 
-fn invoke(realm: runtime.Context, callback: *const engine.CallbackFunction) !engine.Completion {
+fn invoke(realm: runtime.Context, callback: *const engine.CallbackFunction) !engine.Returned(?runtime.DOMString) {
     return invokeWithBehavior(realm, callback, .rethrow);
 }
 
-fn invokeWithBehavior(realm: runtime.Context, callback: *const engine.CallbackFunction, behavior: engine.ExceptionBehavior) !engine.Completion {
-    if (comptime @hasDecl(engine, "invokeCallbackFunctionWithReturnType")) {
-        return engine.invokeCallbackFunctionWithReturnType(realm, callback, .undefined, &.{}, behavior, .nullable_dom_string);
-    }
-    return engine.invokeCallbackFunction(realm, callback, .undefined, &.{}, behavior);
+fn invokeWithBehavior(realm: runtime.Context, callback: *const engine.CallbackFunction, behavior: engine.ExceptionBehavior) !engine.Returned(?runtime.DOMString) {
+    return engine.invokeCallbackFunctionAs(?runtime.DOMString, .{}, realm, callback, .undefined, .{}, behavior, std.testing.allocator);
 }
 
-fn release(completion: engine.Completion) void {
+fn release(completion: engine.Returned(?runtime.DOMString)) void {
     switch (completion) {
-        .normal => |value| value.release(),
+        .normal => |held| held.release(std.testing.allocator),
         .throw => |value| value.release(),
     }
 }
@@ -96,10 +93,8 @@ fn check(comptime site_only: bool) !void {
         const first = try invoke(caller_realm, &callback);
         defer release(first);
         try std.testing.expect(first == .normal);
-        try std.testing.expect(engine.typeOf(caller_realm, first.normal.value) == .string);
-        const text = try engine.convertToDOMString(caller_realm, first.normal.value, std.testing.allocator);
-        defer std.testing.allocator.free(text);
-        try std.testing.expectEqualStrings("stored", text);
+        try std.testing.expect(first.normal.value != null);
+        try std.testing.expectEqualStrings("stored", first.normal.value.?.asSlice());
 
         // V8 13.1's first Sparkplug tier-up allocates its own persistent
         // compilation queue (baseline-batch-compiler.cc:EnsureQueueCapacity).

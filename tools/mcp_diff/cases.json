@@ -1178,7 +1178,7 @@
     },
     {
       "name": "emulate: user agent, media, viewport",
-      "about": "emulate applies every setting on every call and clears what a call leaves out, and a page tool's answer lists the page's emulation (McpResponse); the color scheme a clear leaves is the host's own (headless Chrome follows the OS appearance), compared with what the page saw before; network conditions, CPU throttling and geolocation are not supported by Crane yet (expected).",
+      "about": "emulate applies every setting on every call and clears what a call leaves out, and a page tool's answer lists the page's emulation (McpResponse); the color scheme a clear leaves is the host's own (headless Chrome follows the OS appearance), compared with what the page saw before; CPU throttling and geolocation are not supported by Crane yet (expected).",
       "calls": [
         {
           "tool": "navigate_page",
@@ -1263,6 +1263,94 @@
           "args": {
             "pageId": 1,
             "viewport": "400x300,wide"
+          }
+        }
+      ]
+    },
+    {
+      "name": "emulate: network conditions",
+      "about": "emulate networkConditions: Offline flips navigator.onLine, fires trusted offline/online events, and fails fetch() with ERR_INTERNET_DISCONNECTED; Slow 3G, Fast 3G, Slow 4G, and Fast 4G set the expected default navigation timeout text and restore online; an emulate call without networkConditions clears it.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { window.__netEvents = []; window.addEventListener('offline', e => window.__netEvents.push([e.type, e.isTrusted, navigator.onLine])); window.addEventListener('online', e => window.__netEvents.push([e.type, e.isTrusted, navigator.onLine])); return navigator.onLine; }"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Offline"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "async () => { let err = false; try { await fetch('/second.html', { cache: 'no-store' }); } catch (e) { err = true; } return [navigator.onLine, err, window.__netEvents]; }"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Slow 3G"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [navigator.onLine, window.__netEvents]"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Fast 3G"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Slow 4G"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Fast 4G"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "async () => (await fetch('/second.html', { cache: 'no-store' })).status"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
           }
         }
       ]
@@ -1740,6 +1828,258 @@
           }
         }
       ]
+    },
+    {
+      "name": "memory: heapsnapshot analysis",
+      "about": "The 8 core --memoryDebugging heap snapshot analysis tools on a deterministic V8 .heapsnapshot fixture: summary (stats, staticData, nativeContexts, retainedByContextSummary), details (all + detached DOM + context + nativeContext filters + pagination), class nodes, object details (detached DOM, cons string, plain object), outgoing edges (sort + excludePrimitives + byte range), retainers, dominators, close, and extension/missing-node errors.",
+      "files": true,
+      "memory_debugging": true,
+      "copy_fixtures": [
+        "sample.heapsnapshot"
+      ],
+      "calls": [
+        {
+          "tool": "get_heapsnapshot_summary",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "filterName": "objectsRetainedByDetachedDomNodes"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "filterName": "objectsRetainedByContexts"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "filterName": "attributedToSpecificNativeContext",
+            "objectId": 9
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_class_nodes",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "id": 3
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_object_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 25
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_object_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 33
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_object_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 31
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_edges",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 13
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_edges",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 13,
+            "excludePrimitives": false,
+            "sortBy": "name"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_edges",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 13,
+            "retainedSize": "100B-"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_retainers",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 25
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_dominators",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 39
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_object_details",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot",
+            "nodeId": 999999
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_summary",
+          "args": {
+            "filePath": "{files}/bad.txt"
+          }
+        },
+        {
+          "tool": "close_heapsnapshot",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot"
+          }
+        },
+        {
+          "tool": "close_heapsnapshot",
+          "args": {
+            "filePath": "{files}/sample.heapsnapshot"
+          }
+        }
+      ]
+    },
+    {
+      "name": "memory: heapsnapshot analysis advanced",
+      "about": "The 5 advanced --memoryDebugging heap snapshot analysis tools on deterministic V8 fixtures (sample + sample_v2): retaining paths (full + depth limit + missing node), duplicate strings (normal + truncated), query objects (className regex, propertyName, nodeType, retainedSize/selfSize ranges, isDetached, sortBy), compare_heapsnapshots (summary + detailed classIndex + invalid classIndex), and analyze_heapsnapshot_contexts (live vs dead fields, scriptsWithoutScopes, retainedSize & scopeInfoNodeId filters).",
+      "files": true,
+      "memory_debugging": true,
+      "copy_fixtures": [
+        "sample.heapsnapshot",
+        "sample_v2.heapsnapshot"
+      ],
+      "calls": [
+        {
+          "tool": "get_heapsnapshot_retaining_paths",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "nodeId": 81
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_retaining_paths",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "nodeId": 81,
+            "maxDepth": 1
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_retaining_paths",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "nodeId": 999999
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_duplicate_strings",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot"
+          }
+        },
+        {
+          "tool": "query_heapsnapshot_objects",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "className": "leakywidget|cache"
+          }
+        },
+        {
+          "tool": "query_heapsnapshot_objects",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "propertyName": "^detached",
+            "nodeType": "object"
+          }
+        },
+        {
+          "tool": "query_heapsnapshot_objects",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "isDetached": true,
+            "selfSize": "100B-600B"
+          }
+        },
+        {
+          "tool": "query_heapsnapshot_objects",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "nodeType": "string",
+            "retainedSize": "50B-100B",
+            "sortBy": "id"
+          }
+        },
+        {
+          "tool": "compare_heapsnapshots",
+          "args": {
+            "baseFilePath": "{files}/sample.heapsnapshot",
+            "currentFilePath": "{files}/sample_v2.heapsnapshot"
+          }
+        },
+        {
+          "tool": "compare_heapsnapshots",
+          "args": {
+            "baseFilePath": "{files}/sample.heapsnapshot",
+            "currentFilePath": "{files}/sample_v2.heapsnapshot",
+            "classIndex": 0
+          }
+        },
+        {
+          "tool": "compare_heapsnapshots",
+          "args": {
+            "baseFilePath": "{files}/sample.heapsnapshot",
+            "currentFilePath": "{files}/sample_v2.heapsnapshot",
+            "classIndex": 999
+          }
+        },
+        {
+          "tool": "analyze_heapsnapshot_contexts",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot"
+          }
+        },
+        {
+          "tool": "analyze_heapsnapshot_contexts",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "scopeInfoNodeId": 105,
+            "retainedSize": "1KB-"
+          }
+        },
+        {
+          "tool": "analyze_heapsnapshot_contexts",
+          "args": {
+            "filePath": "{files}/sample_v2.heapsnapshot",
+            "retainedSize": "10MB-"
+          }
+        }
+      ]
     }
   ],
   "expected": [
@@ -1782,11 +2122,6 @@
       "case": "history: back right after the first navigation",
       "call": 2,
       "reason": "Chrome navigates its startup URL (Puppeteer starts it with about:blank: an auto_toplevel entry), so its first navigation pushes and back reaches about:blank; Firefox 159 and Safari 27.2 keep the first tab's initial about:blank, which the first navigation replaces (WebDriver probe, chat.local 2026-11-24, tmp/probes/mcp1-startup/run.sh: history.length stays 1, back() stays), as Crane and HTML do: the browser majority (main's ruling, 2026-11-24)."
-    },
-    {
-      "case": "emulate: user agent, media, viewport",
-      "call": 9,
-      "reason": "Network conditions need Crane's network emulation (lane mcp1 batch 4b item 7); until then Crane's MCP server says it does not support networkConditions yet."
     },
     {
       "case": "emulate: user agent, media, viewport",

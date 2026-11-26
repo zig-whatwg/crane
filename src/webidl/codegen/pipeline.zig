@@ -416,7 +416,7 @@ pub fn processFiles(
 
         while (callback_iter.next()) |entry| {
             const callback = entry.value_ptr.*;
-            try generator.generateCallback(allocator, callback, callbacks_path, &ir.type_registry);
+            try generator.generateCallback(allocator, callback, callbacks_path, &ir);
 
             const name_copy = try allocator.dupe(u8, callback.name);
             try callback_names.append(allocator, name_copy);

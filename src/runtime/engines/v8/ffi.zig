@@ -1561,6 +1561,7 @@ pub extern fn v8_Value_Int32Value(value: *Value, context: *Context) i32;
 /// ToInt32 (WebIDL `long`). False when ToNumber threw; the exception is left
 /// pending, so a native callback returning at once rethrows it to script.
 pub extern fn v8_Value_ToInt32(value: *Value, context: *Context, out: *i32) bool;
+pub extern fn v8_Value_ToNumber(value: *Value, context: *Context, out: *f64) bool;
 pub extern fn v8_Value_Uint32Value(value: *Value, context: *Context) u32;
 pub extern fn v8_Value_IntegerValue(value: *Value, context: *Context) i64;
 pub extern fn v8_Value_ToString(value: *Value, context: *Context) ?*String;
@@ -4138,8 +4139,15 @@ pub extern fn v8_Value_ToObject(context: *Context, value: *Value) ?*Value;
 /// value that is not an Error carries no position of its own.
 pub extern fn v8_Function_CallCatchingWithSite(context: *Context, function: *Value, recv: ?*Value, argc: c_int, argv: ?[*]const *Value, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
 
-/// ToString's result or thrown value, OWNED, with its original throw site.
-pub extern fn v8_Value_ToStringCatchingWithSite(context: *Context, value: *Value, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
+pub extern fn v8_RunCatchingWithSite(
+    isolate: *Isolate,
+    context: *Context,
+    body: *const fn (?*anyopaque) callconv(.c) void,
+    data: ?*anyopaque,
+    exception: *?*Value,
+    site: *?*V8ErrorInfo,
+    terminated: *bool,
+) bool;
 /// ECMAScript Construct(function, argv) - newTarget the function - under a
 /// TryCatch: the result with `threw.*` false, or the thrown value with
 /// `threw.*` true and `site.*` where it was thrown. Null (threw true) only

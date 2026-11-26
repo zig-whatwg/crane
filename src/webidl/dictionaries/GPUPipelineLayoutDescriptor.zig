@@ -12,7 +12,7 @@ pub const GPUPipelineLayoutDescriptor = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
-    bindGroupLayouts: []const runtime.JSValue,
+    bindGroupLayouts: []const ?*runtime.Instance,
     immediateSize: ?typedefs.GPUSize32 = null,
 
     /// Optional members' IDL default values: a member the value leaves

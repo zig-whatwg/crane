@@ -30,7 +30,13 @@ fn read(client: *anyopaque) http_fetch.UserAgentOverride {
     if (std.mem.eql(u8, global.vtable.name, "Window")) {
         const bc = @import("dom").browser_state.browsingContextOf(global) orelse return .{};
         const overrides = &bc.getTop().host_overrides;
-        return .{ .user_agent = overrides.user_agent, .accept_language = overrides.accept_language, .extra_headers = overrides.extra_headers };
+        return .{
+            .user_agent = overrides.user_agent,
+            .accept_language = overrides.accept_language,
+            .extra_headers = overrides.extra_headers,
+            .network_offline = overrides.network_offline,
+            .network_rules = overrides.network_rules,
+        };
     }
     const snapshot = worker_host.userAgentOverrideOfRealm(global.ctx) orelse return .{};
     return .{ .user_agent = snapshot.user_agent, .accept_language = snapshot.accept_language };
@@ -44,7 +50,13 @@ fn read(client: *anyopaque) http_fetch.UserAgentOverride {
 /// until the tab's overrides next change; on the navigable's thread.
 pub fn ofNavigable(navigable: *@import("dom").browser_state.BrowsingContext) http_fetch.UserAgentOverride {
     const overrides = &navigable.getTop().host_overrides;
-    return .{ .user_agent = overrides.user_agent, .accept_language = overrides.accept_language, .extra_headers = overrides.extra_headers };
+    return .{
+        .user_agent = overrides.user_agent,
+        .accept_language = overrides.accept_language,
+        .extra_headers = overrides.extra_headers,
+        .network_offline = overrides.network_offline,
+        .network_rules = overrides.network_rules,
+    };
 }
 
 /// The override a request whose client is `realm`'s global sends, for a

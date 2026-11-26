@@ -119,6 +119,12 @@ pub const NetworkRequest = struct {
     /// HTTP-network-or-cache fetch step 17's retry of a 421 (Misdirected
     /// Request), which a reused (coalesced) connection answered.
     force_new_connection: bool = false,
+    /// Emulated network conditions (CDP Network.emulateNetworkConditions*):
+    /// minimum start latency in ms and download/upload throughput caps in
+    /// bytes/second (0 = unthrottled).
+    emulated_latency_ms: u32 = 0,
+    max_recv_speed_bps: u64 = 0,
+    max_send_speed_bps: u64 = 0,
     /// Header values the request owns, which `headers` points into - those
     /// fetch adds to the request it sends, such as the `Origin`
     /// HTTP-network-or-cache fetch appends. `http_fetch.freeNetworkRequest`

@@ -2322,11 +2322,46 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, 
     // even for an ordinary Event. WebIDL invoke converts before cleanup of
     // either callback scope; a throwing toString is reported by DOM here.
     const beforeunload = std.mem.eql(u8, event_type_str.asSlice(), "beforeunload");
-    const invoked = if (beforeunload)
-        engine.invokeCallbackFunctionWithReturnType(realm, &callback, .{ .value = .{ .instance = instance } }, args, behavior, .nullable_dom_string)
-    else
-        engine.invokeCallbackFunction(realm, &callback, .{ .value = .{ .instance = instance } }, args, behavior);
-    const completion = invoked catch |err| {
+    if (beforeunload) {
+        const completion = callbacks.call.OnBeforeUnloadEventHandlerNonNull.invoke(
+            realm,
+            &callback,
+            .{ .value = .{ .instance = instance } },
+            .{ .event = event },
+            behavior,
+            event.ctx.allocator,
+        ) catch |err| {
+            log.debug("event handler not invoked: {}", .{err});
+            return;
+        };
+        const held = switch (completion) {
+            .normal => |normal| normal,
+            .throw => |thrown| {
+                if (did_throw) |flag| flag.* = true;
+                thrown.release();
+                return;
+            },
+        };
+        defer held.release(event.ctx.allocator);
+
+        // Step 5: "If event is a BeforeUnloadEvent object and event's type is
+        // beforeunload": return value is already converted to DOMString?.
+        // "If return value is not null, then: set event's canceled flag; if
+        // event's returnValue attribute's value is the empty string, then set
+        // it to return value." (An ordinary Event("beforeunload") never sees
+        // boolean false from a DOMString? callback.)
+        if (event.stateAs(interfaces.BeforeUnloadEvent.State) != null) {
+            const text = held.value orelse return;
+            dom_module.event_construction.forceCanceledFlag(event);
+            const current = interfaces.BeforeUnloadEvent.get_returnValue(event) catch return;
+            if (current.asSlice().len == 0) {
+                interfaces.BeforeUnloadEvent.set_returnValue(event, runtime.DOMString.initInterned(text.asSlice())) catch {};
+            }
+        }
+        return;
+    }
+
+    const completion = engine.invokeCallbackFunction(realm, &callback, .{ .value = .{ .instance = instance } }, args, behavior) catch |err| {
         log.debug("event handler not invoked: {}", .{err});
         return;
     };
@@ -2341,32 +2376,6 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, 
     defer return_value.release();
 
     // Step 5: process the return value.
-    //
-    // "If event is a BeforeUnloadEvent object and event's type is
-    // beforeunload": the attribute is an OnBeforeUnloadEventHandler, whose
-    // callback returned DOMString?; conversion already ran inside invoke,
-    // with window.event still set. "If return value is not null, then: set event's canceled flag;
-    // if event's returnValue attribute's value is the empty string, then set
-    // it to return value."
-    if (beforeunload and event.stateAs(interfaces.BeforeUnloadEvent.State) != null) {
-        switch (engine.typeOf(realm, return_value.value)) {
-            .undefined, .null => return,
-            else => {},
-        }
-        const allocator = event.ctx.allocator;
-        const string = engine.convertToDOMString(realm, return_value.value, allocator) catch |err| {
-            log.debug("beforeunload return value not converted: {}", .{err});
-            return;
-        };
-        defer allocator.free(string);
-        dom_module.event_construction.forceCanceledFlag(event);
-        const current = interfaces.BeforeUnloadEvent.get_returnValue(event) catch return;
-        if (current.asSlice().len == 0) {
-            interfaces.BeforeUnloadEvent.set_returnValue(event, runtime.DOMString.initInterned(string)) catch {};
-        }
-        return;
-    }
-
     // Otherwise only an exact true (special error handling) or an exact
     // false (everything else) cancels - through preventDefault's "set the
     // canceled flag", which respects cancelable and the passive listener

@@ -19,6 +19,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const engine = @import("engine");
+const dictionaries = @import("dictionaries");
 const dom = @import("dom");
 const sanitizer = @import("sanitizer.zig");
 
@@ -238,16 +239,16 @@ pub fn compliantParserOptions(
     defer argument.release();
     // 11-12. Invoke createParserOptions with « argument,
     // "TrustedHTMLParserOptions", sink » and "rethrow".
-    const policy_value = (try trusted_types.parserOptionsPolicyValue(policy, argument.value, &.{
+    const policy_value = (try trusted_types.parserOptionsPolicyValue(policy, argument.dict, &.{
         runtime.JSValue.fromStringRef("TrustedHTMLParserOptions"),
         runtime.JSValue.fromStringRef(sink),
     }, false)) orelse return options;
-    defer policy_value.release();
+    defer policy_value.release(realm.allocator);
     // The callback's return type, SetHTMLUnsafeOptions?: null and undefined
     // are null. 14. "Let runScripts be policyValue["runScripts"], with
     // default false." 15. A new TrustedHTMLParserOptions with the sanitizer
     // configuration copied from policyValue and runScripts.
-    const trusted = (try trustedFromPolicyValue(realm, policy_value.value)) orelse {
+    const trusted = (try trustedFromConvertedOptions(realm, policy_value.value)) orelse {
         // 13. A null or undefined value: the violation is reported; in
         // report-only mode input is used, else throw a TypeError.
         if (try trusted_types.sinkTypeMismatchBlocked(g.ctx.allocator, g, sink, script_sink_group, "")) return error.TypeError;
@@ -303,11 +304,23 @@ pub fn compliantInput(
 // Trusted Types 3.2 step 3 / 3.3 step 4: createParserOptions
 // ============================================================================
 
+/// A typed `SetHTMLUnsafeOptions` callback argument together with the newly
+/// created Sanitizer instance (if any), released via `releaseIfUnwrapped` if
+/// callback invocation fails before wrapping it.
+const CallbackArgument = struct {
+    dict: dictionaries.SetHTMLUnsafeOptions,
+    made_sanitizer: ?MadeSanitizer = null,
+
+    fn release(self: CallbackArgument) void {
+        if (self.made_sanitizer) |object| object.instance.releaseIfUnwrapped(object.generation);
+    }
+};
+
 /// Trusted Types "create a parser options callback argument" given `realm`
-/// and the dictionary `options`: a new object «[ "runScripts" ->
-/// runScriptsInput, "sanitizer" -> a new configured Sanitizer ]», the
-/// sanitizer member only when the dictionary has one. OWNED.
-pub fn createCallbackArgument(realm: runtime.Context, options: *const ParserOptions) Error!engine.Owned {
+/// and the dictionary `options`: a `SetHTMLUnsafeOptions` dictionary
+/// «[ "runScripts" -> runScriptsInput, "sanitizer" -> a new configured
+/// Sanitizer ]», the sanitizer member only when the dictionary has one.
+fn createCallbackArgument(realm: runtime.Context, options: *const ParserOptions) Error!CallbackArgument {
     const dictionary = switch (options.value) {
         .dictionary => |*d| d,
         // 3.6 step 1 returns a TrustedHTMLParserOptions before this runs,
@@ -315,21 +328,19 @@ pub fn createCallbackArgument(realm: runtime.Context, options: *const ParserOpti
         .trusted => unreachable,
     };
     // 1-2. «[ "runScripts" -> dictionary["runScripts"] with default false ]».
-    var members: [2]engine.DictionaryMember = undefined;
-    members[0] = .{ .name = "runScripts", .value = .{ .boolean = dictionary.run_scripts orelse false } };
-    var count: usize = 1;
+    var dict: dictionaries.SetHTMLUnsafeOptions = .{
+        .runScripts = dictionary.run_scripts orelse false,
+    };
     // 3. "Let sanitizerInput be the result of getting a sanitizer from realm
     // and dictionary."
     const made = try sanitizerFromDictionary(realm, dictionary);
-    defer if (made) |object| object.instance.releaseIfUnwrapped(object.generation);
     // 4. "If sanitizerInput is not null, set argument["sanitizer"] to
     // sanitizerInput."
     if (made) |object| {
-        members[1] = .{ .name = "sanitizer", .value = .{ .instance = object.instance } };
-        count = 2;
+        dict.sanitizer = .{ .sanitizer = object.instance };
     }
     // 5. "Return argument."
-    return engine.createDictionaryObject(realm, members[0..count]);
+    return .{ .dict = dict, .made_sanitizer = made };
 }
 
 /// A Sanitizer made for script, with the slab generation that says whether
@@ -353,33 +364,16 @@ fn sanitizerFromDictionary(realm: runtime.Context, dictionary: *const ParserOpti
     return .{ .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
 }
 
-/// A createParserOptions callback's value as TrustedHTMLParserOptions
-/// values (Trusted Types 3.2 steps 3.2-3.3 / 3.6 steps 14-15): the value
-/// converted to the callback's return type, SetHTMLUnsafeOptions? (WebIDL
-/// 3.2.18: members in lexicographic order - runScripts, then sanitizer),
-/// then its sanitizer configuration "got from realm and policyValue" (a new
-/// Sanitizer configured with the member and true, its configuration taken)
-/// and policyValue["runScripts"] with default false. Null for null or
-/// undefined; a value that is no object is a TypeError.
-///
-/// Converted BY HAND: no generated code converts a callback's return value
-/// yet (codegen's `callback_returns_converted_by_impl` lists
-/// CreateParserOptionsCallback); the generated callback invocation replaces
-/// this function and sanitizer.Converted.fromJS.
-fn trustedFromPolicyValue(realm: runtime.Context, value: runtime.JSValue) Error!?ParserOptions {
-    switch (engine.typeOf(realm, value)) {
-        .undefined, .null => return null,
-        .object => {},
-        else => return error.TypeError,
-    }
-    // runScripts (boolean, default false).
-    const run_scripts = (try engine.getPropertyBoolean(realm, value, "runScripts")) orelse false;
-    // sanitizer ((Sanitizer or SanitizerConfig or SanitizerPresets)).
-    const member = try engine.getProperty(realm, value, "sanitizer");
-    defer member.release();
+/// Build TrustedHTMLParserOptions values from the already-converted
+/// `SetHTMLUnsafeOptions?` returned by generated
+/// `CreateParserOptionsCallback.invoke` (Trusted Types 3.2 steps 3.2-3.3 /
+/// 3.6 steps 14-15). Null for null or undefined.
+fn trustedFromConvertedOptions(realm: runtime.Context, maybe_options: ?dictionaries.SetHTMLUnsafeOptions) Error!?ParserOptions {
+    const dict = maybe_options orelse return null;
+    const run_scripts = dict.runScripts orelse false;
     var configuration: ?sanitizer.Config = null;
-    if (engine.typeOf(realm, member.value) != .undefined) {
-        var converted = try sanitizer.Converted.fromJS(realm.allocator, realm, member.value);
+    if (dict.sanitizer) |member| {
+        var converted = try sanitizer.Converted.fromTyped(realm.allocator, member);
         defer converted.deinit();
         configuration = try sanitizer.Config.fromConverted(realm.allocator, realm, &converted, true);
     }
@@ -406,10 +400,10 @@ pub fn createForPolicy(
     defer argument.release();
     // 3.2 steps 1-2: get trusted type policy value with throwIfMissing true;
     // its error is rethrown.
-    const policy_value = (try trusted_types.parserOptionsPolicyValue(policy, argument.value, arguments, true)) orelse return error.TypeError;
-    defer policy_value.release();
+    const policy_value = (try trusted_types.parserOptionsPolicyValue(policy, argument.dict, arguments, true)) orelse return error.TypeError;
+    defer policy_value.release(realm.allocator);
     // 3.1. "If policyValue is null, throw a TypeError." 3.2-3.3.
-    var trusted = (try trustedFromPolicyValue(realm, policy_value.value)) orelse return error.TypeError;
+    var trusted = (try trustedFromConvertedOptions(realm, policy_value.value)) orelse return error.TypeError;
     defer trusted.deinit();
     // 3.4. A new TrustedHTMLParserOptions in policy's relevant realm.
     const t = trusted.value.trusted;

@@ -147,6 +147,9 @@ pub const Options = struct {
     /// (`--allowUnrestrictedPaths`): no path check while the MCP client has
     /// listed no roots.
     allow_unrestricted_paths: bool = false,
+    /// chrome-devtools-mcp's `--memoryDebugging` (`--memory-debugging`):
+    /// enable MCP heap snapshot analysis tools.
+    memory_debugging: bool = false,
     /// Chrome's `--remote-allow-origins=<a,b>` (or `*`): origins whose
     /// WebSocket connections are served.
     remote_allow_origins: ?[]const u8 = null,
@@ -260,6 +263,10 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
         }
         if (std.mem.eql(u8, arg, "--allow-unrestricted-paths") or std.mem.eql(u8, arg, "--allowUnrestrictedPaths")) {
             options.allow_unrestricted_paths = true;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--memoryDebugging") or std.mem.eql(u8, arg, "--memory-debugging")) {
+            options.memory_debugging = true;
             continue;
         }
         if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
@@ -480,6 +487,7 @@ fn serveMcp(allocator: std.mem.Allocator, io: std.Io, options: Options, err_out:
     devtools.mcp.server.serveStdio(allocator, server, stdio, .{
         .filesystem_roots = if (options.filesystem_root_count > 0) options.filesystem_roots[0..options.filesystem_root_count] else null,
         .allow_unrestricted_paths = options.allow_unrestricted_paths,
+        .memory_debugging = options.memory_debugging,
     }) catch |err| {
         try err_out.print("repl: --mcp: {t}\n", .{err});
         try err_out.flush();

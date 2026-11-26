@@ -570,6 +570,13 @@ INCLUDE = [
     # only waits on a video or non-WAV audio decoder is needs-decoder in tools/wpt_gate_exemptions.txt.
     ('html/semantics/embedded-content/media-elements/',
      'audio/video: resource selection, loading, the media timeline, and text tracks (TextTrack, TextTrackCue, VTTCue, <track>)'),
+    # Surveyed and approved by the integrator (2026-11-25 4:46 PM ET, lane media1): 39 testharness files
+    # across both directories (reftests and crashtests are not testharness); 20 viewport/IntersectionObserver
+    # lazy-loading files are excluded below as geometry; 1 needs-renderer and 5 needs-decoder in exemptions.
+    ('html/semantics/embedded-content/the-audio-element/',
+     'audio element: Audio() constructor and eager/deferred loading'),
+    ('html/semantics/embedded-content/the-video-element/',
+     'video element: tabindex, empty src, dimensions, eager/deferred loading'),
     ('webvtt/api/',     'WebVTT 9: VTTCue and VTTRegion'),
     ('webvtt/parsing/', 'WebVTT 6: file parsing through <track>, cue text parsing through getCueAsHTML; webvtt/rendering/ is reftests only (geometry)'),
     # Lane ifr1 b1 (the integrator, 2026-11-14): Fullscreen is a WHATWG Living
@@ -655,6 +662,10 @@ INCLUDE = [
     # --- Tier 2: security, performance timing, service workers (the user, 2026-10-01). ---
     ('referrer-policy/',           'Referrer Policy'),
     ('content-security-policy/',   'Content Security Policy'),
+    # HTML 7.7 X-Frame-Options (the integrator, 2026-11-25 7:41 PM ET, lane xfo1):
+    # all 6 files are testharness, 0 geometry, merged HTML spec, shipped by all
+    # three browsers (wpt.fyi c197984917: Chrome 160 / Firefox 163 / Safari 257).
+    ('x-frame-options/',           'X-Frame-Options framing control (HTML 7.7)'),
     ('mixed-content/',             'Mixed Content'),
     ('cors/',                      'CORS'),
     ('subresource-integrity/',     'Subresource Integrity'),
@@ -1675,6 +1686,50 @@ EXCLUDE = [
      'white-space-trim: 0/11 in all three (run 2358bd4835)'),
     # Harness infrastructure, not tests.
     ('/support/',                      'support files'),
+    # Lane media1 (the integrator, 2026-11-25 4:46 PM ET): viewport/IntersectionObserver
+    # geometry-dependent media loading="lazy" tests in the-audio-element/ and
+    # the-video-element/ (also single-shipper Chrome-only and MP3/MP4 decoding).
+    ('html/semantics/embedded-content/the-audio-element/audio-loading-autoplay-deferred.html',
+     'viewport visibility geometry for loading=lazy autoplay deferral'),
+    ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-autoplay-when-visible.html',
+     'viewport visibility geometry for loading=lazy autoplay'),
+    ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-disconnected.html',
+     'IntersectionObserver/lazy media loading deferral (Chrome-only, geometry)'),
+    ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-in-scroller.html',
+     'scroll container viewport geometry for loading=lazy audio'),
+    ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-in-viewport.html',
+     'viewport visibility geometry for loading=lazy audio'),
+    ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-not-rendered.html',
+     'layout rendering / display:none visibility for loading=lazy audio'),
+    ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-source-deferred.html',
+     'offscreen viewport geometry for loading=lazy audio <source>'),
+    ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-to-eager.html',
+     'offscreen viewport geometry for loading=lazy to eager audio'),
+    ('html/semantics/embedded-content/the-video-element/video-loading-autoplay-deferred.html',
+     'viewport visibility geometry for loading=lazy autoplay deferral'),
+    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-autoplay-when-visible.html',
+     'viewport visibility geometry for loading=lazy autoplay'),
+    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-disconnected.html',
+     'IntersectionObserver/lazy media loading deferral (Chrome-only, geometry)'),
+    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-in-scroller.html',
+     'scroll container viewport geometry for loading=lazy video'),
+    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-in-viewport.html',
+     'viewport visibility geometry for loading=lazy video'),
+    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-load-when-visible.html',
+     'viewport visibility geometry and video box width for loading=lazy video'),
+    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-not-rendered.html',
+     'layout rendering / display:none visibility for loading=lazy video'),
+    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-poster-when-visible.html',
+     'viewport visibility geometry for loading=lazy video poster'),
+    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-resume-on-loading-attribute-change.html',
+     'offscreen viewport geometry for loading=lazy video attribute change'),
+    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-source-poster-deferred.html',
+     'offscreen viewport geometry for loading=lazy video <source> poster'),
+    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-to-eager.html',
+     'offscreen viewport geometry for loading=lazy to eager video'),
+    ('html/semantics/embedded-content/the-video-element/video-loading-poster-deferred.html',
+     'offscreen viewport geometry for loading=lazy video poster deferral'),
+
     ('/resources/',                    'harness resources'),
     ('-manual.',                       'requires a human'),
     ('html/browsers/browsing-the-web/remote-context-helper', 'test infrastructure'),

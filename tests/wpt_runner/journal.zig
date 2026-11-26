@@ -228,6 +228,12 @@ pub const Record = struct {
     /// record that names none.
     build: ?Build = null,
 
+    /// True when the file ran in crashtest mode (`MANIFEST.json` `items.crashtest`,
+    /// `wpt_browser.zig` `runCrashtest`): it has no subtests, so `status == .ok`
+    /// with `passed == 0` is a full pass and does not trigger `--retry-failures`.
+    /// Omitted on the wire when false so non-crashtest journals stay unchanged.
+    crashtest: bool = false,
+
     /// The two runs disagree: the file is flaky in this run. A retried file
     /// whose second run matches its first failed the same way twice.
     pub fn isFlaky(self: Record) bool {
@@ -250,10 +256,12 @@ pub const Retry = struct {
 /// Whether a sweep retries this file: anything short of a full pass - a
 /// TIMEOUT, ERROR or CRASH, a subtest that did not pass, or an OK with
 /// nothing passing (a blocking file under the 0.1 gate's NONE-PASSED rule).
+/// A passing crashtest has no subtests by definition and is not retried.
 /// Without expectations the runner cannot tell a deterministic failure from
 /// a flaky one; the retry is what tells them apart.
 pub fn wantsRetry(rec: Record) bool {
     if (rec.status != .ok) return true;
+    if (rec.crashtest) return false;
     if (rec.failed + rec.timed_out + rec.notrun > 0) return true;
     return rec.passed == 0;
 }
@@ -395,6 +403,7 @@ pub fn writeRecord(w: *std.Io.Writer, rec: Record) !void {
         try writeJsonString(w, msg);
     }
     if (rec.build) |b| try w.print(",\"build\":\"{s}\"", .{b.toString()});
+    if (rec.crashtest) try w.writeAll(",\"crashtest\":true");
     if (rec.retry_skipped) try w.print(",\"retry_skipped\":\"{s}\"", .{retry_skipped_marker});
     if (rec.retry) |r| {
         try w.print(",\"flaky\":{s},\"retry\":{{\"status\":", .{if (rec.isFlaky()) "true" else "false"});
@@ -666,6 +675,10 @@ pub fn parseLines(allocator: Allocator, bytes: []const u8) !Log {
             .build = switch (obj.get("build") orelse .null) {
                 .string => |b| Build.fromString(b),
                 else => null,
+            },
+            .crashtest = switch (obj.get("crashtest") orelse .null) {
+                .bool => |c| c,
+                else => false,
             },
         });
     }
@@ -1400,4 +1413,35 @@ test "a build's wire name is the one build_mode.zig gives it" {
     try std.testing.expectEqualStrings("bug-finding", Build.bug_finding.toString());
     try std.testing.expectEqual(@as(?Build, .bug_finding), Build.fromString("bug-finding"));
     try std.testing.expectEqual(@as(?Build, null), Build.fromString("release"));
+}
+
+test "a crashtest record round-trips on the wire and a passing crashtest is not retried" {
+    const allocator = std.testing.allocator;
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+
+    const pass_crash: Record = .{ .index = 0, .path = "dom/nodes/insert-crash.html", .status = .ok, .crashtest = true };
+    const plain_ok: Record = .{ .index = 1, .path = "dom/nodes/normal.html", .status = .ok, .passed = 1 };
+    try writeRecord(&out.writer, pass_crash);
+    try writeRecord(&out.writer, plain_ok);
+
+    // crashtest:true is emitted only for crashtest records.
+    var lines = std.mem.splitScalar(u8, out.written(), '\n');
+    const line0 = lines.next().?;
+    const line1 = lines.next().?;
+    try std.testing.expect(std.mem.indexOf(u8, line0, "\"crashtest\":true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, line1, "\"crashtest\"") == null);
+
+    var log = try parseLines(allocator, out.written());
+    defer log.deinit();
+    try std.testing.expectEqual(@as(usize, 2), log.records.len);
+    try std.testing.expect(log.records[0].crashtest);
+    try std.testing.expect(!log.records[1].crashtest);
+
+    // Passing crashtest has 0 subtests by design -> no retry.
+    try std.testing.expect(!wantsRetry(pass_crash));
+    // Non-OK crashtests still retry.
+    try std.testing.expect(wantsRetry(.{ .index = 0, .path = "a-crash.html", .status = .timeout, .crashtest = true }));
+    try std.testing.expect(wantsRetry(.{ .index = 0, .path = "a-crash.html", .status = .@"error", .crashtest = true }));
+    try std.testing.expect(wantsRetry(.{ .index = 0, .path = "a-crash.html", .status = .crash, .crashtest = true }));
 }

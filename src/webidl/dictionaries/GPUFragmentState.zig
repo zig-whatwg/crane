@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const GPUColorTargetState = @import("GPUColorTargetState.zig").GPUColorTargetState;
 const GPUProgrammableStage = @import("GPUProgrammableStage.zig").GPUProgrammableStage;
 
 pub const GPUFragmentState = struct {
@@ -11,5 +12,5 @@ pub const GPUFragmentState = struct {
     // Inherited from GPUProgrammableStage
     base: GPUProgrammableStage,
 
-    targets: []const runtime.JSValue,
+    targets: []const ?GPUColorTargetState,
 };
