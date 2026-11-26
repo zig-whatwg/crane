@@ -119,19 +119,27 @@ fn setExactType(instance: *runtime.Instance, serialized_type: []const u8) anyerr
 // Serializable objects (HTML 2.7.1; File API: Blob is [Serializable])
 // ============================================================================
 
+const serialized_format_inline: u32 = 0;
+const serialized_format_attachment: u32 = 1;
+
+fn releaseBlobDataAttachment(ptr: *anyopaque) void {
+    const data: *file.BlobData = @ptrCast(@alignCast(ptr));
+    data.deinit();
+}
+
 /// File API, Blob's serialization steps, given `value` and `serialized`:
 ///
 /// 1. Set serialized.[[SnapshotState]] to value's snapshot state.
 /// 2. Set serialized.[[ByteSequence]] to value's underlying byte sequence.
 ///
-/// Crane's Blobs hold their bytes in memory and none is backed by a file
-/// whose snapshot state could change, so there is no snapshot state to keep.
-/// The byte sequence is COPIED into the record, never shared: this realm's
-/// BlobData has a plain ref count and lives in this agent's allocator, while
-/// a worker's message is read on the worker's thread and an IndexedDB record
-/// outlives the agent (Blink shares a thread-safe BlobDataHandle for messages
-/// and keeps a separate blob array for IndexedDB; copying is the simple form
-/// of both).
+/// When `value` is backed by a file source and `serialized` carries an
+/// attachment sidecar (`structuredClone`, `postMessage`, `BroadcastChannel`,
+/// Workers, IDB synchronous clone), we retain the thread-safe `*file.BlobData`
+/// handle directly into `SerializedAttachments` (Blink's `BlobDataHandle`
+/// sidecar) with zero disk I/O at clone time. For in-memory Blobs or
+/// persistent storage (`structuredSerializeForStorage`, where no sidecar is
+/// attached), bytes are materialized inline — returning `NotFoundError` /
+/// `NotReadableError` if a file-backed Blob's disk snapshot cannot be read.
 ///
 /// Deviation: the record also carries the Blob's type, which File API's
 /// steps leave out. Without it a clone's `type` would be "", where every
@@ -140,13 +148,22 @@ fn setExactType(instance: *runtime.Instance, serialized_type: []const u8) anyerr
 /// w3c/FileAPI#226.
 pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
     const internal = getInternal(value);
-    const mime_type = if (internal) |i| i.blob_data.getType() else "";
     if (internal) |i| {
+        if (!i.blob_data.isMemoryOnly() and serialized.supportsAttachments()) {
+            const retained = i.blob_data.retain();
+            errdefer retained.deinit();
+            const index = try serialized.addAttachment(runtime.SerializedAttachments.blob_tag, retained, &releaseBlobDataAttachment);
+            try serialized.writeUint32(serialized_format_attachment);
+            try serialized.writeUint32(index);
+            return;
+        }
         var bytes = try i.blob_data.readBytes(value.ctx.allocator);
         defer bytes.deinit();
-        try serialized.writeString(mime_type);
+        try serialized.writeUint32(serialized_format_inline);
+        try serialized.writeString(i.blob_data.getType());
         try serialized.writeBytes(bytes.slice);
     } else {
+        try serialized.writeUint32(serialized_format_inline);
         try serialized.writeString("");
         try serialized.writeBytes("");
     }
@@ -157,13 +174,28 @@ pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.Seriali
 /// 1. Set value's snapshot state to serialized.[[SnapshotState]].
 /// 2. Set value's underlying byte sequence to serialized.[[ByteSequence]].
 ///
-/// (and its type, which the serialization steps above add). The bytes are
-/// copied into a BlobData of `value`'s realm.
+/// (and its type, which the serialization steps above add). File-backed
+/// attachments retain the shared thread-safe `BlobData`; inline records copy
+/// the bytes into a fresh in-memory `BlobData` of `value`'s realm.
 pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
     _ = target_realm;
-    const mime_type = try serialized.readString();
-    const bytes = try serialized.readBytes();
-    try setBytesExactType(value, bytes, mime_type);
+    const format = try serialized.readUint32();
+    switch (format) {
+        serialized_format_inline => {
+            const mime_type = try serialized.readString();
+            const bytes = try serialized.readBytes();
+            try setBytesExactType(value, bytes, mime_type);
+        },
+        serialized_format_attachment => {
+            const index = try serialized.readUint32();
+            const raw = try serialized.readAttachment(index, runtime.SerializedAttachments.blob_tag);
+            const blob_data: *file.BlobData = @ptrCast(@alignCast(raw));
+            const retained = blob_data.retain();
+            errdefer retained.deinit();
+            try setData(value, retained);
+        },
+        else => return error.DataCloneError,
+    }
 }
 
 /// Deinitialize instance - clean up owned resources only

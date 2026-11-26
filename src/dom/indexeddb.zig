@@ -132,6 +132,10 @@ pub const Operation = struct {
     primary_key: ?storage.indexeddb.IDBKey = null,
     range: storage.indexeddb.IDBKeyRange = storage.indexeddb.IDBKeyRange.unbounded(),
     bytes: ?[]const u8 = null,
+    /// Optional sidecar attachments (file-backed BlobData handles) carried
+    /// from the synchronous clone step in `add`/`put`/`cursor.update` until
+    /// `executeStorageWrite` materializes them into inline storage bytes.
+    attachments: ?*runtime.SerializedAttachments = null,
     limit: ?u32 = null,
     direction: storage.indexeddb.IDBCursorDirection = .next,
     cursor: ?*runtime.Instance = null,
@@ -146,6 +150,7 @@ pub const Operation = struct {
         if (self.primary_key) |*key| key.deinit();
         self.range.deinit();
         if (self.bytes) |bytes| self.allocator.free(bytes);
+        if (self.attachments) |attachments| attachments.release();
         if (self.indexes) |handles| self.allocator.free(handles);
         if (self.cursor_write) |*source| source.deinit();
     }
@@ -245,7 +250,7 @@ pub fn storeKeyPath(store: *const storage.indexeddb.IDBObjectStore) ?storage.ind
 /// publishing a record or any of its indexes. The native write is the last
 /// fallible operation; index publication thereafter cannot fail.
 pub fn executeStorageWrite(realm: runtime.Context, store: *storage.indexeddb.IDBObjectStore, operation: *Operation) anyerror!*storage.indexeddb.IDBRequest {
-    const clone = try engine.structuredDeserialize(realm, operation.bytes.?);
+    const clone = try engine.structuredDeserializeWithOptions(realm, operation.bytes.?, .{ .attachments = operation.attachments });
     defer clone.release();
     const supplied_key: ?storage.indexeddb.IDBKey = if (operation.cursor_write) |write| write.key else operation.key;
     const key = supplied_key orelse blk: {
@@ -258,7 +263,12 @@ pub fn executeStorageWrite(realm: runtime.Context, store: *storage.indexeddb.IDB
         if (path != .single) return error.DataError;
         try @import("indexeddb_keys.zig").inject(realm, clone.value, key, path.single);
     };
-    const bytes = try engine.structuredSerializeForStorage(realm, clone.value, operation.allocator);
+    const bytes = engine.structuredSerializeForStorage(realm, clone.value, operation.allocator) catch |err| switch (err) {
+        // File-backed Blob read failed (missing/modified file): IndexedDB
+        // aborts the write request with UnknownError.
+        error.OperationFailed => return error.UnknownError,
+        else => return err,
+    };
     defer operation.allocator.free(bytes);
     const handles = operation.indexes orelse &.{};
     const staged = try operation.allocator.alloc(storage.indexeddb.IDBIndex.PreparedEntries, handles.len);

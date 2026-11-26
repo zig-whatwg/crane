@@ -596,7 +596,7 @@ pub const RealmEnvironment = struct {
             return;
         };
         defer received.deinit();
-        const data = engine.structuredDeserializeWithOptions(realm, port_message.serialized, .{ .array_buffers = port_message.array_buffers, .transferred = received.values, .shared_memory = port_message.shared_memory }) catch {
+        const data = engine.structuredDeserializeWithOptions(realm, port_message.serialized, .{ .array_buffers = port_message.array_buffers, .transferred = received.values, .shared_memory = port_message.shared_memory, .attachments = port_message.attachments }) catch {
             fireContainerMessage(realm, destination, "messageerror", runtime.JSValue.jsNull, origin, source, &.{});
             return;
         };

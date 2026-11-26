@@ -491,3 +491,161 @@ test "Request/Response/fetch, XHR, FormData, WebSocket, and IndexedDB + webkitRe
 
     _ = try evaluate(&h, "(() => { window._db.close(); return 'ok'; })()");
 }
+
+test "structuredClone, MessageChannel, BroadcastChannel, and Worker FileReaderSync preserve lazy file-backed ref and webkitRelativePath" {
+    var h: Harness = undefined;
+    try h.init(testing.allocator);
+    defer h.deinit();
+    const site = try site_mod.Site.start(testing.allocator);
+    defer site.stop();
+    var url_buf: [96]u8 = undefined;
+    try setUp(&h, try site.url(&url_buf, "/echo"), null);
+    _ = try evaluate(&h, "(() => { document.body.innerHTML = '<input type=file webkitdirectory id=d>'; return 'ok'; })()");
+    var files = try Files.init(&h);
+    defer files.deinit();
+    try files.overwrite("dir/sub/mod.txt", "before-mod");
+    const d = try nodeOf(&h, "d");
+    try setFiles(&h, d, &.{try files.path(&h, "dir")});
+
+    // 1. structuredClone(file) and structuredClone(FileList) do NOT read disk at clone time,
+    //    and preserve webkitRelativePath + snapshot.
+    try testing.expectEqualStrings(
+        "leaf.txt|dir/sub/leaf.txt|leaf-bytes|dir/sub/mod.txt|before-mod",
+        try evaluate(&h,
+            \\(async () => {
+            \\  const files = document.getElementById('d').files;
+            \\  const byName = {};
+            \\  for (let i = 0; i < files.length; i++) byName[files[i].name] = files[i];
+            \\  window.delClone = structuredClone(byName['leaf.txt']);
+            \\  window.modClone = structuredClone(byName['mod.txt']);
+            \\  window.listClone = structuredClone(files);
+            \\  let listMod = null;
+            \\  for (let i = 0; i < window.listClone.length; i++) {
+            \\    if (window.listClone[i].name === 'mod.txt') listMod = window.listClone[i];
+            \\  }
+            \\  return [
+            \\    window.delClone.name,
+            \\    window.delClone.webkitRelativePath,
+            \\    await window.delClone.text(),
+            \\    listMod.webkitRelativePath,
+            \\    await listMod.text(),
+            \\  ].join('|');
+            \\})()
+        ),
+    );
+
+    // 2. MessageChannel + BroadcastChannel carry file-backed File lazily across listeners
+    //    (plus an undelivered port message dropped on close to check 0 leaked tokens).
+    try testing.expectEqualStrings(
+        "dir/sub/leaf.txt|leaf-bytes|dir/sub/leaf.txt|leaf-bytes",
+        try evaluate(&h,
+            \\(async () => {
+            \\  const mc = new MessageChannel();
+            \\  const mcPromise = new Promise((resolve) => {
+            \\    mc.port2.onmessage = async (e) => {
+            \\      window.mcFile = e.data;
+            \\      resolve(e.data.webkitRelativePath + '|' + await e.data.text());
+            \\    };
+            \\  });
+            \\  mc.port1.postMessage(window.delClone);
+            \\  const mcRes = await mcPromise;
+            \\
+            \\  // Undelivered queued message dropped when ports close (leak check).
+            \\  const mcDrop = new MessageChannel();
+            \\  mcDrop.port1.postMessage(window.delClone);
+            \\  mcDrop.port1.close();
+            \\  mcDrop.port2.close();
+            \\
+            \\  const bc1 = new BroadcastChannel('blobsrc1-ch');
+            \\  const bc2 = new BroadcastChannel('blobsrc1-ch');
+            \\  const bc3 = new BroadcastChannel('blobsrc1-ch');
+            \\  const p2 = new Promise((resolve) => {
+            \\    bc2.onmessage = async (e) => resolve(e.data.webkitRelativePath + '|' + await e.data.text());
+            \\  });
+            \\  const p3 = new Promise((resolve) => {
+            \\    bc3.onmessage = (e) => { window.bcFile = e.data; resolve('ok'); };
+            \\  });
+            \\  bc1.postMessage(window.delClone);
+            \\  const bcRes = await p2;
+            \\  await p3;
+            \\  bc1.close(); bc2.close(); bc3.close();
+            \\  return mcRes + '|' + bcRes;
+            \\})()
+        ),
+    );
+
+    // 3. Dedicated Worker receives file-backed Files via postMessage and reads via FileReaderSync.
+    try testing.expectEqualStrings(
+        "ok:dir/sub/leaf.txt:leaf-bytes|ok:dir/sub/mod.txt:before-mod",
+        try evaluate(&h,
+            \\new Promise((resolve, reject) => {
+            \\  const code = `
+            \\    let delFile = null, modFile = null;
+            \\    const reader = new FileReaderSync();
+            \\    self.onmessage = (e) => {
+            \\      if (e.data.cmd === 'store') {
+            \\        delFile = e.data.delFile;
+            \\        modFile = e.data.modFile;
+            \\        self.postMessage(
+            \\          'ok:' + delFile.webkitRelativePath + ':' + reader.readAsText(delFile) + '|' +
+            \\          'ok:' + modFile.webkitRelativePath + ':' + reader.readAsText(modFile)
+            \\        );
+            \\      } else if (e.data.cmd === 'reread') {
+            \\        const tryRead = (f) => {
+            \\          try { return 'OK:' + reader.readAsText(f); }
+            \\          catch (err) { return err.name; }
+            \\        };
+            \\        self.postMessage(tryRead(delFile) + '|' + tryRead(modFile));
+            \\      }
+            \\    };
+            \\  `;
+            \\  const url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+            \\  const w = new Worker(url);
+            \\  window._worker = w;
+            \\  window._workerUrl = url;
+            \\  w.onerror = (e) => reject(new Error(e.message || 'worker error'));
+            \\  w.onmessage = (e) => resolve(e.data);
+            \\  w.postMessage({ cmd: 'store', delFile: window.delClone, modFile: window.modClone });
+            \\})
+        ),
+    );
+
+    // Now delete leaf.txt and modify mod.txt on disk!
+    try files.remove("dir/sub/leaf.txt");
+    try files.overwrite("dir/sub/mod.txt", "after-modification-longer");
+
+    // Clones on main thread (structuredClone, MessageChannel, BroadcastChannel) AND in Worker
+    // all detect the missing/modified backing files lazily!
+    try testing.expectEqualStrings(
+        "NotFoundError|NotFoundError|NotFoundError|NotReadableError",
+        try evaluate(&h,
+            \\(async () => {
+            \\  const errOf = async (b) => { try { await b.text(); return 'OK'; } catch (e) { return e.name; } };
+            \\  return [
+            \\    await errOf(window.delClone),
+            \\    await errOf(window.mcFile),
+            \\    await errOf(window.bcFile),
+            \\    await errOf(window.modClone),
+            \\  ].join('|');
+            \\})()
+        ),
+    );
+
+    try testing.expectEqualStrings(
+        "NotFoundError|NotReadableError",
+        try evaluate(&h,
+            \\new Promise((resolve) => {
+            \\  window._worker.onmessage = (e) => resolve(e.data);
+            \\  window._worker.postMessage({ cmd: 'reread' });
+            \\})
+        ),
+    );
+
+    _ = try evaluate(&h,
+        \\(() => {
+        \\  window._worker.terminate();
+        \\  URL.revokeObjectURL(window._workerUrl);
+        \\  return 'ok';
+        \\})()
+    );
+}
