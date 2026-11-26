@@ -4590,7 +4590,8 @@ pub fn build(b: *std.Build) void {
             _ = addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch, tests_engine_link);
         }
         if (test_selection.file == null or std.mem.eql(u8, test_selection.file.?, crashtest_execution_test)) {
-            _ = addTestRoot(b, test_step, crashtest_execution_test, "crashtest-execution", null, target, &command_test_imports, true, launch, tests_engine_link);
+            const crashtest_exe = addTestRoot(b, test_step, crashtest_execution_test, "crashtest-execution", null, target, &command_test_imports, true, launch, tests_engine_link);
+            addTestVerify(b, launch, crashtest_exe, "crashtest-execution", "tests/wpt_runner", &.{"crashtest_execution_test.zig"});
         }
     }
 
