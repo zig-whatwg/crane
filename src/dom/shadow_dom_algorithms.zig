@@ -605,7 +605,7 @@ pub fn assign(allocator: Allocator, slot: *runtime.Instance, nodes: []const *run
         if (!present) try nodes_set.append(allocator, ref);
     }
     try previous_slots.ensureTotalCapacity(allocator, nodes_set.items.len);
-    try state.manually_assigned_nodes.ensureTotalCapacity(state.allocator, nodes_set.items.len);
+    try state.manually_assigned_nodes.ensureTotalCapacity(state.satellite, nodes_set.items.len);
     // Step 3.2 writes each node's state, which an element keeps in its rare
     // data (dom.slot_helpers' writers' path, lane perf3 E1): made here too.
     for (nodes_set.items) |ref| {

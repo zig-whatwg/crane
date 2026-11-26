@@ -425,7 +425,7 @@ const Listeners = struct {
                 // `list` names, does not.
                 const made = !node.hasEventListenerBlock();
                 try node.reserveEventListeners();
-                try list.ensureUnusedCapacity(allocator, count);
+                try list.ensureUnusedCapacity(node.satelliteAllocator(), count);
                 node.setEventListeners(list);
                 // Its first block: the walk traces it from here.
                 if (made) if (node.registeredInstance()) |instance| dom_module.wrapper_tracing.noteNodeHoldsValues(instance, node);
@@ -440,7 +440,7 @@ const Listeners = struct {
                 if (!node.stands()) return error.OutOfMemory;
                 try node.reserveEventListeners();
                 var list = node.eventListeners();
-                try list.watch(allocator);
+                try list.watch(node.satelliteAllocator());
                 node.setEventListeners(list);
             },
         }
@@ -458,7 +458,10 @@ const Listeners = struct {
             const listener = list.removeAt(list.len() - 1);
             releaseListener(allocator, registry, listener, engine_alive);
         }
-        list.deinit(allocator);
+        list.deinit(switch (self.place) {
+            .own => allocator,
+            .node => |node| node.satelliteAllocator(),
+        });
         switch (self.place) {
             .own => |own| own.* = list,
             .node => |node| node.setEventListeners(list),

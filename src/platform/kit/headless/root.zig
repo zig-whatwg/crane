@@ -990,6 +990,11 @@ pub const capabilities: platform.Capabilities = blk: {
     break :blk all;
 };
 
+/// Headless has no reserved address space (`address_space == .unsupported`),
+/// so general memory defaults to the platform allocator (allocator-hardening
+/// design 4.2).
+pub const general_memory: platform.GeneralMemoryPolicy = .platform_allocator;
+
 // Compression's unsupported-format path. These remain exactly typed even when gated off.
 pub fn createDeflateDecoder(_: std.mem.Allocator) platform.CodecError!*platform.DeflateDecoder {
     return error.NotSupported;

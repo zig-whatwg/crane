@@ -34,8 +34,8 @@ pub const InternalState = struct {
 
     slot: dom.slot_helpers.SlotState,
 
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{ .slot = dom.slot_helpers.SlotState.init(allocator) };
+    pub fn init(allocator: std.mem.Allocator, satellite: std.mem.Allocator) InternalState {
+        return .{ .slot = dom.slot_helpers.SlotState.initWithSatellite(allocator, satellite) };
     }
 
     pub fn deinit(self: *InternalState) void {
@@ -104,7 +104,7 @@ pub fn init(
     // The block is the arena's, and `Registry.remove` returns it to the
     // arena.
     const internal = try Registry.create(instance);
-    internal.* = InternalState.init(allocator);
+    internal.* = InternalState.init(allocator, runtime.satelliteAllocatorOf(instance));
     return instance;
 }
 

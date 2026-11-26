@@ -162,6 +162,9 @@ pub const protocol = struct {
 
     pub const identity: platform.Identity = posix.identity;
 
+    /// Crane's built-in objects and bytes pools (allocator-hardening design 4.2).
+    pub const general_memory: platform.GeneralMemoryPolicy = .crane_pools;
+
     /// Today's behaviour, declared. Everything a page asks of a host is
     /// unsupported (kit/headless) until its recipes step builds it, but the
     /// fonts, image decoding and the in-memory clipboard.

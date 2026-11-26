@@ -179,6 +179,13 @@ test "the platform's declarations: name, identity, browser options" {
     _ = options;
 }
 
+test "general_memory policy: platform declares GeneralMemoryPolicy and general_memory" {
+    try testing.expectEqual(platform.GeneralMemoryPolicy.crane_pools, platform.general_memory);
+    try testing.expectEqual(platform.general_memory, platform.adapter.general_memory);
+    // Both build-time policy variants exist (allocator-hardening design 4.2).
+    try testing.expect(platform.GeneralMemoryPolicy.crane_pools != platform.GeneralMemoryPolicy.platform_allocator);
+}
+
 // ---------------------------------------------------------------------------
 // The OS services every platform provides (today's behaviour, through the
 // protocol)
