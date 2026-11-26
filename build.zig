@@ -2079,9 +2079,15 @@ pub fn build(b: *std.Build) void {
     dom_options.addOption(bool, "refcount_audit", refcount_audit);
 
     // Debug options module (separate from build_options for cleaner imports)
+    const heap_alloc_log = b.option(
+        bool,
+        "heap-alloc-log",
+        "Compile in Browser heap allocation/free observer callouts (for profiling/tooling builds; always compiled in Debug)",
+    ) orelse false;
     const debug_options = b.addOptions();
     debug_options.addOption(bool, "debug_enabled", debug_enabled);
     debug_options.addOption([]const u8, "debug_scope", debug_scope);
+    debug_options.addOption(bool, "heap_alloc_log", heap_alloc_log);
 
     // Engine configuration options (for conditional compilation)
     // Phase 8 (DCE): an optional allow-list of WebIDL interfaces to expose.
