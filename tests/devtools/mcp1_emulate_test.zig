@@ -80,10 +80,11 @@ test "emulate: the settings Crane cannot apply yet say so; an invalid viewport i
     try h.start();
     defer h.stop();
     var r = try h.tool("emulate", "{\"pageId\":1,\"cpuThrottlingRate\":4}");
-    try testing.expect(r.is_error);
-    try testing.expectEqualStrings("Error: cpuThrottlingRate is not supported by Crane's MCP server yet.", r.text);
+    try testing.expect(!r.is_error);
+    try testing.expectEqualStrings("Emulation configured successfully\nEmulating CPU throttling: 4x slowdown", r.text);
     r = try h.tool("emulate", "{\"pageId\":1,\"geolocation\":\"52.5,13.4\"}");
-    try testing.expectEqualStrings("Error: geolocation is not supported by Crane's MCP server yet.", r.text);
+    try testing.expect(r.is_error);
+    try testing.expectEqualStrings("Emulating CPU throttling: 4x slowdown\nError: geolocation is not supported by Crane's MCP server yet.", r.text);
     r = try h.tool("emulate", "{\"pageId\":1,\"networkConditions\":\"Slow 3G\"}");
     try testing.expect(!r.is_error);
     try testing.expectEqualStrings("Emulation configured successfully\nEmulating network conditions: Slow 3G\nDefault navigation timeout set to 100000 ms", r.text);
