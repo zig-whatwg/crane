@@ -170,12 +170,21 @@ const tail = [_]u8{ 0x00, 0x00, 0xff, 0xff };
 
 pub const Error = error{ OutOfMemory, InvalidData, NotSupported };
 
-/// zlib's allocator callbacks over the caller's allocator, with a 16-byte
-/// prefix for each block's length (kit/inflate/zlib.zig's Memory, which
-/// says why rawAlloc).
+/// zlib's allocator callbacks over the caller's allocator, routed to `.bytes`
+/// via `.@"1"` alignment with a 16-byte-aligned interior `{ raw_len, offset }`
+/// prefix (kit/inflate/zlib.zig's Memory; allocator-hardening batch C item 3).
 const Memory = struct {
     allocator: std.mem.Allocator,
     failed: bool = false,
+
+    const Header = struct {
+        raw_len: usize,
+        offset: usize,
+    };
+
+    comptime {
+        std.debug.assert(@sizeOf(Header) == 16);
+    }
 
     fn alloc(raw: ?*anyopaque, items: c_uint, size: c_uint) callconv(.c) ?*anyopaque {
         const self: *Memory = @ptrCast(@alignCast(raw.?));
@@ -183,25 +192,29 @@ const Memory = struct {
             self.failed = true;
             return null;
         };
-        const total = std.math.add(usize, wanted, 16) catch {
+        const total = std.math.add(usize, wanted, 32) catch {
             self.failed = true;
             return null;
         };
-        const bytes = self.allocator.rawAlloc(total, .@"16", @returnAddress()) orelse {
+        const bytes = self.allocator.rawAlloc(total, .@"1", @returnAddress()) orelse {
             self.failed = true;
             return null;
         };
-        const header: *usize = @ptrCast(@alignCast(bytes));
-        header.* = total;
-        return bytes + 16;
+        const raw_addr = @intFromPtr(bytes);
+        const aligned_addr = std.mem.alignForward(usize, raw_addr + 16, 16);
+        const header: *Header = @ptrFromInt(aligned_addr - 16);
+        header.* = .{ .raw_len = total, .offset = aligned_addr - raw_addr };
+        return @ptrFromInt(aligned_addr);
     }
 
     fn free(raw: ?*anyopaque, address: ?*anyopaque) callconv(.c) void {
         const ptr = address orelse return;
         const self: *Memory = @ptrCast(@alignCast(raw.?));
-        const bytes: [*]align(16) u8 = @alignCast(@as([*]u8, @ptrCast(ptr)) - 16);
-        const header: *const usize = @ptrCast(bytes);
-        self.allocator.rawFree(bytes[0..header.*], .@"16", @returnAddress());
+        const aligned_addr = @intFromPtr(ptr);
+        const header: *const Header = @ptrFromInt(aligned_addr - 16);
+        const raw_len = header.raw_len;
+        const bytes: [*]u8 = @ptrFromInt(aligned_addr - header.offset);
+        self.allocator.rawFree(bytes[0..raw_len], .@"1", @returnAddress());
     }
 };
 
