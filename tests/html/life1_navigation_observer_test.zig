@@ -351,13 +351,17 @@ const RefererServer = struct {
         var reader = stream.reader(testing.io, &input);
         while (std.mem.indexOf(u8, reader.interface.buffered(), "\r\n\r\n") == null) try reader.interface.fillMore();
         const head = reader.interface.buffered();
-        if (indexOfIgnoreCase(head, "\r\nreferer: ")) |at| {
-            const start_at = at + "\r\nreferer: ".len;
-            const end_at = std.mem.indexOfPos(u8, head, start_at, "\r\n") orelse head.len;
-            const value = head[start_at..end_at];
-            const n = @min(value.len, self.referer.len);
-            @memcpy(self.referer[0..n], value[0..n]);
-            self.referer_len = n;
+        const line_end = std.mem.indexOf(u8, head, "\r\n") orelse head.len;
+        const is_favicon = std.mem.indexOf(u8, head[0..line_end], "/favicon.ico") != null;
+        if (!is_favicon) {
+            if (indexOfIgnoreCase(head, "\r\nreferer: ")) |at| {
+                const start_at = at + "\r\nreferer: ".len;
+                const end_at = std.mem.indexOfPos(u8, head, start_at, "\r\n") orelse head.len;
+                const value = head[start_at..end_at];
+                const n = @min(value.len, self.referer.len);
+                @memcpy(self.referer[0..n], value[0..n]);
+                self.referer_len = n;
+            }
         }
         var output: [0]u8 = .{};
         var writer = stream.writer(testing.io, &output);

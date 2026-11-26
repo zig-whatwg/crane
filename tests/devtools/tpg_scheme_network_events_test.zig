@@ -402,7 +402,7 @@ test "loadingFailed's errorText is Chrome's net error: refused, unsafe port, emp
     defer site.stop();
     var buffer: [128]u8 = undefined;
     try page.navigate(try site.url(&buffer, "/page.html"));
-    _ = try page.eventsUntilEnded(arena, 1);
+    _ = try page.eventsUntilEnded(arena, 2);
 
     const refused = try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/", .{try refusingPort()});
     const Case = struct { url: []const u8, expected: []const u8 };
@@ -442,7 +442,7 @@ test "fetch() of a data: URL is type Other, an XHR of one XHR; Response.protocol
     var buffer: [128]u8 = undefined;
     const page_url = try arena.dupe(u8, try site.url(&buffer, "/page.html"));
     try page.navigate(page_url);
-    const loaded = try page.eventsUntilEnded(arena, 1);
+    const loaded = try page.eventsUntilEnded(arena, 2);
     try testing.expectEqualStrings("http/1.1", (eventFor(loaded, page_url, "Network.responseReceived") orelse return error.NoPageResponse).protocol);
 
     try page.evaluate("fetch('data:text/plain,hi').then(r => r.text())");

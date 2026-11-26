@@ -105,7 +105,7 @@ const Page = struct {
         errdefer self.browser.deinit();
         try self.browser.navigate("about:blank", .window);
         const page = self.browser.current_context orelse return error.TestUnexpectedResult;
-        try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://ka2.test/start" });
+        try page.loadHTML("<!doctype html><link rel=\"icon\" href=\"data:,\"><body></body>", .{ .base_url = "http://ka2.test/start" });
     }
 
     /// The Browser ends first: a fetch it kept must go with it, before the

@@ -66,7 +66,7 @@ fn svgAbort() !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
-    try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://127.0.0.1:65533/" });
+    try page.loadHTML("<!doctype html><link rel=\"icon\" href=\"data:,\"><body></body>", .{ .base_url = "http://127.0.0.1:65533/" });
     const result = try browser.evaluateScript(
         \\globalThis.cr1Svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
         \\for (const kind of ['image','use']) {
@@ -326,7 +326,7 @@ fn nativeSvgAbort() !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
-    try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://127.0.0.1:65533/" });
+    try page.loadHTML("<!doctype html><link rel=\"icon\" href=\"data:,\"><body></body>", .{ .base_url = "http://127.0.0.1:65533/" });
     const realm = browser.getRealm() orelse return error.NoRealm;
     const result = try browser.evaluateScript("document");
     defer result.release();

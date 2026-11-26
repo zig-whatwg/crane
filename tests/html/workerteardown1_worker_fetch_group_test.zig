@@ -110,7 +110,7 @@ fn round() !void {
     defer browser.deinit();
     try browser.navigateWithOptions(base, .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;
-    try page.loadHTML("<!doctype html><body>", .{ .base_url = base });
+    try page.loadHTML("<!doctype html><link rel=\"icon\" href=\"data:,\"><body>", .{ .base_url = base });
     // The worker starts six fetches and keeps each one receiving: three
     // bodies read through their streams, a Response whose body is never
     // read, an XMLHttpRequest and an EventSource. It says so once each has
