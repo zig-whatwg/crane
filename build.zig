@@ -4564,14 +4564,13 @@ pub fn build(b: *std.Build) void {
         }
     }
 
-    // Real testdriver commands need the Browser graph; keep this one Debug
-    // native lifetime test separate from the std-only harness modules above.
+    // Real testdriver commands and crashtest execution need the Browser graph;
+    // keep these Debug native tests separate from the std-only harness modules above.
     const command_lifetime_test = "tests/wpt_runner/ar3_command_lifetime_test.zig";
-    // The directory's std-only modules (harness_sources, above) and this test.
+    const crashtest_execution_test = "tests/wpt_runner/crashtest_execution_test.zig";
+    // The directory's std-only modules (harness_sources, above) and these tests.
     recordSuiteDir(b, test_selection, "tests/wpt_runner");
-    if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "wpt_runner")) and
-        (test_selection.file == null or std.mem.eql(u8, test_selection.file.?, command_lifetime_test)))
-    {
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "wpt_runner")) {
         const command_test_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "host", .module = testing_graph.host },
@@ -4587,7 +4586,13 @@ pub fn build(b: *std.Build) void {
             .{ .name = "cookiestore", .module = testing_graph.cookiestore },
             .{ .name = "permissions", .module = testing_graph.permissions },
         };
-        _ = addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch, tests_engine_link);
+        if (test_selection.file == null or std.mem.eql(u8, test_selection.file.?, command_lifetime_test)) {
+            _ = addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch, tests_engine_link);
+        }
+        if (test_selection.file == null or std.mem.eql(u8, test_selection.file.?, crashtest_execution_test)) {
+            const crashtest_exe = addTestRoot(b, test_step, crashtest_execution_test, "crashtest-execution", null, target, &command_test_imports, true, launch, tests_engine_link);
+            addTestVerify(b, launch, crashtest_exe, "crashtest-execution", "tests/wpt_runner", &.{"crashtest_execution_test.zig"});
+        }
     }
 
     // The WPT runner's two builds (build_mode.zig `RunnerBuild`, the graphs
