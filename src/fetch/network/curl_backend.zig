@@ -343,6 +343,19 @@ pub const LibcurlBackend = struct {
         // Reset abort flag
         self.aborted.store(false, .seq_cst);
 
+        // Emulated network latency for blocking fetches (async fetches use
+        // NetworkScheduler's non-blocking retry_at_ns delay).
+        if (request.emulated_latency_ms > 0) {
+            const deadline_ns = platform.monotonicNow().ns +| @as(u64, request.emulated_latency_ms) * std.time.ns_per_ms;
+            while (!self.aborted.load(.seq_cst)) {
+                const now_ns = platform.monotonicNow().ns;
+                if (now_ns >= deadline_ns) break;
+                const slice_ns = @min(deadline_ns - now_ns, 10 * std.time.ns_per_ms);
+                platform.sleepThread(slice_ns);
+            }
+            if (self.aborted.load(.seq_cst)) return NetworkError.Aborted;
+        }
+
         const transfer = try Transfer.create(allocator, request, .{
             .aborted = &self.aborted,
         });
@@ -466,6 +479,11 @@ pub const LibcurlBackend = struct {
         }
         if (request.timeout_ms > 0) {
             _ = curl.easy_setopt(handle, curl.CURLOPT_TIMEOUT_MS, @as(c_long, @intCast(request.timeout_ms)));
+        }
+
+        // Emulated download/upload throughput caps (CDP Network.emulateNetworkConditions*).
+        if (request.max_recv_speed_bps > 0 or request.max_send_speed_bps > 0) {
+            kit_curl.options.setSpeedLimits(handle, request.max_recv_speed_bps, request.max_send_speed_bps);
         }
 
         // Redirects - WHATWG Fetch handles redirects manually, so disable

@@ -1133,6 +1133,10 @@ pub const FetchJob = struct {
         // `corsPreflightAnswered`.
         const needed = http_fetch.corsPreflightNeeded(allocator, self.request) catch return FetchError.OutOfMemory;
         if (!needed) return self.httpNetworkOrCacheFetch();
+        if (http_fetch.networkConditionsOf(self.request).offline) {
+            const failed = internal_response.networkErrorWith(allocator, .internet_disconnected) catch return FetchError.OutOfMemory;
+            return self.mainFetchFetched(failed);
+        }
         const preflight = http_fetch.corsPreflightFetchStart(allocator, self.request) catch |err| {
             return self.httpFetchFailed(err);
         };

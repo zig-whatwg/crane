@@ -11,10 +11,10 @@
 //! viewport (a reload when mobile or touch changes, as Puppeteer's
 //! setViewport reloads).
 //!
-//! Not yet (lane mcp1 batch 4b): networkConditions (item 7),
-//! cpuThrottlingRate above 1 (item 6) and geolocation (the Geolocation API,
-//! queued by main) answer that Crane's MCP server does not support them yet;
-//! their "off" values - what every call sends - are Crane's CDP answers.
+//! Not yet (lane mcp1 batch 4b): cpuThrottlingRate above 1 (item 6) and
+//! geolocation (the Geolocation API, queued by main) answer that Crane's MCP
+//! server does not support them yet; their "off" values - what every call
+//! sends - are Crane's CDP answers.
 
 const std = @import("std");
 const registry = @import("../tools.zig");
@@ -96,22 +96,60 @@ fn decimal(text: []const u8) ?f64 {
     return std.fmt.parseFloat(f64, text) catch null;
 }
 
+const NetworkPreset = struct {
+    offline: bool,
+    latency: f64,
+    download: f64,
+    upload: f64,
+};
+
+/// Puppeteer's PredefinedNetworkConditions (puppeteer-core 25.17.0
+/// src/cdp/PredefinedNetworkConditions.ts, Copyright 2021 Google Inc.,
+/// Apache-2.0; THIRD_PARTY_NOTICES.md) plus McpPage's Offline preset.
+fn predefinedNetworkCondition(name: []const u8) ?NetworkPreset {
+    if (std.mem.eql(u8, name, "Offline")) return .{ .offline = true, .latency = 0, .download = 0, .upload = 0 };
+    if (std.mem.eql(u8, name, "Slow 3G")) return .{ .offline = false, .latency = 400 * 5, .download = 500 * 1e3 / 8 * 0.8, .upload = 500 * 1e3 / 8 * 0.8 };
+    if (std.mem.eql(u8, name, "Fast 3G")) return .{ .offline = false, .latency = 150 * 3.75, .download = 1.6 * 1e6 / 8 * 0.9, .upload = 750 * 1e3 / 8 * 0.9 };
+    if (std.mem.eql(u8, name, "Slow 4G")) return .{ .offline = false, .latency = 150 * 3.75, .download = 1.6 * 1e6 / 8 * 0.9, .upload = 750 * 1e3 / 8 * 0.9 };
+    if (std.mem.eql(u8, name, "Fast 4G")) return .{ .offline = false, .latency = 60 * 2.75, .download = 9 * 1e6 / 8 * 0.9, .upload = 1.5 * 1e6 / 8 * 0.9 };
+    return null;
+}
+
 fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Response) anyerror!void {
     const target = page.?;
     // The transforms (zod's), before anything runs.
     const viewport = if (registry.stringArg(args, "viewport")) |v| try parseViewport(ctx, v) else null;
     var headers_json: ?[]const u8 = null;
     if (registry.stringArg(args, "extraHttpHeaders")) |text| headers_json = try extraHeaders(ctx, text);
+    const network_conditions = registry.stringArg(args, "networkConditions");
+    const network_preset: ?NetworkPreset = if (network_conditions) |nc|
+        (if (nc.len == 0) null else predefinedNetworkCondition(nc) orelse return validationError(ctx, "networkConditions", "Invalid network condition"))
+    else
+        null;
 
     // Not yet: the settings whose CDP Crane cannot apply.
-    if (registry.stringArg(args, "networkConditions") != null) return ctx.fail("networkConditions is not supported by Crane's MCP server yet.", .{});
     if (registry.numberArg(args, "cpuThrottlingRate")) |rate| if (rate != 1) return ctx.fail("cpuThrottlingRate is not supported by Crane's MCP server yet.", .{});
     if (registry.stringArg(args, "geolocation")) |g| if (g.len != 0) return ctx.fail("geolocation is not supported by Crane's MCP server yet.", .{});
 
-    // emulateNetworkConditions(null): Puppeteer's state, unthrottled and
-    // online, sent to the page's session.
-    try send(ctx, target, "Network.overrideNetworkState", "{\"offline\":false,\"latency\":0,\"uploadThroughput\":-1,\"downloadThroughput\":-1}");
-    try send(ctx, target, "Network.emulateNetworkConditionsByRule", "{\"matchedNetworkConditions\":[{\"urlPattern\":\"\",\"offline\":false,\"latency\":0,\"downloadThroughput\":-1,\"uploadThroughput\":-1}]}");
+    // emulateNetworkConditions: Puppeteer's NetworkManager sends
+    // overrideNetworkState + emulateNetworkConditionsByRule.
+    if (network_preset) |p| {
+        const state_params = try std.fmt.allocPrint(
+            ctx.arena,
+            "{{\"offline\":{},\"latency\":{d},\"uploadThroughput\":{d},\"downloadThroughput\":{d}}}",
+            .{ p.offline, p.latency, p.upload, p.download },
+        );
+        const rule_params = try std.fmt.allocPrint(
+            ctx.arena,
+            "{{\"matchedNetworkConditions\":[{{\"urlPattern\":\"\",\"offline\":{},\"latency\":{d},\"downloadThroughput\":{d},\"uploadThroughput\":{d}}}]}}",
+            .{ p.offline, p.latency, p.download, p.upload },
+        );
+        try send(ctx, target, "Network.overrideNetworkState", state_params);
+        try send(ctx, target, "Network.emulateNetworkConditionsByRule", rule_params);
+    } else {
+        try send(ctx, target, "Network.overrideNetworkState", "{\"offline\":false,\"latency\":0,\"uploadThroughput\":-1,\"downloadThroughput\":-1}");
+        try send(ctx, target, "Network.emulateNetworkConditionsByRule", "{\"matchedNetworkConditions\":[{\"urlPattern\":\"\",\"offline\":false,\"latency\":0,\"downloadThroughput\":-1,\"uploadThroughput\":-1}]}");
+    }
     // emulateCPUThrottling(1).
     try send(ctx, target, "Emulation.setCPUThrottlingRate", "{\"rate\":1}");
     // setGeolocation(null).
@@ -147,7 +185,8 @@ fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Res
 
     // McpPage's emulationSettings, set before setViewport; a viewport that
     // fails keeps the one before it.
-    try recordSettings(ctx, target, args, user_agent);
+    const recorded_nc: ?[]const u8 = if (network_preset != null) network_conditions else null;
+    try recordSettings(ctx, target, args, user_agent, recorded_nc);
     // setViewport: the override (or its clear), then a reload when mobile
     // or touch changed.
     try applyViewport(ctx, target, viewport);
@@ -157,10 +196,11 @@ fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Res
 
 /// McpPage.emulate's newSettings for what Crane applies: each setting the
 /// call names, none for one it leaves out or sets to "auto".
-fn recordSettings(ctx: *Context, page: *Page, args: std.json.ObjectMap, user_agent: []const u8) !void {
+fn recordSettings(ctx: *Context, page: *Page, args: std.json.ObjectMap, user_agent: []const u8, network_conditions: ?[]const u8) !void {
     const allocator = ctx.session.allocator;
     var next: session_mod.Emulation = .{ .viewport = page.emulation.viewport };
     errdefer next.deinit(allocator);
+    if (network_conditions) |nc| next.network_conditions = try allocator.dupe(u8, nc);
     if (user_agent.len != 0) next.user_agent = try allocator.dupe(u8, user_agent);
     const features = .{ .{ "color_scheme", "colorScheme" }, .{ "forced_colors", "forcedColors" }, .{ "prefers_contrast", "prefersContrast" }, .{ "prefers_reduced_motion", "prefersReducedMotion" } };
     inline for (features) |f| {

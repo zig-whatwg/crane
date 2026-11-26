@@ -618,7 +618,13 @@ pub fn navigationRequest(
     // The tab's user agent override, copied now (user agent data: Chrome's
     // NavigationRequest takes DevTools' headers and User-Agent at its start).
     const tab_override = options.user_agent_override;
-    internal_request.setOverrideSnapshot(tab_override.user_agent, tab_override.accept_language, tab_override.extra_headers) catch return NavigationFetchError.OutOfMemory;
+    internal_request.setOverrideSnapshotWithNetwork(
+        tab_override.user_agent,
+        tab_override.accept_language,
+        tab_override.extra_headers,
+        tab_override.network_offline,
+        tab_override.network_rules,
+    ) catch return NavigationFetchError.OutOfMemory;
     return internal_request;
 }
 

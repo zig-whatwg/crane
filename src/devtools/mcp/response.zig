@@ -79,8 +79,8 @@ pub const Response = struct {
                 for (opened.items) |p| try out.append(self.arena, try pageLabel(self.arena, p));
             }
         }
-        // The page's emulation, in McpResponse's order (network conditions,
-        // geolocation and CPU throttling are never set: Crane refuses them).
+        // The page's emulation, in McpResponse's order (geolocation and CPU
+        // throttling are not supported yet).
         if (self.page) |page| try emulationLines(self.arena, &page.emulation, &out);
         if (self.page) |page| if (!page.closed) if (page.dialog) |dialog| {
             const default_value = if (std.mem.eql(u8, dialog.type, "prompt"))
@@ -133,6 +133,10 @@ pub const Response = struct {
 /// the text left out is an undefined key, which JSON drops), its user
 /// agent, then the media features.
 fn emulationLines(arena: Allocator, emulation: *const session_mod.Emulation, out: *std.ArrayList([]const u8)) !void {
+    if (emulation.network_conditions) |nc| {
+        try out.append(arena, try std.fmt.allocPrint(arena, "Emulating network conditions: {s}", .{nc}));
+        try out.append(arena, try std.fmt.allocPrint(arena, "Default navigation timeout set to {d} ms", .{session_mod.Emulation.defaultNavigationTimeoutMs(nc)}));
+    }
     if (emulation.viewport) |v| {
         const scale = if (v.scale) |s| try std.fmt.allocPrint(arena, "\"deviceScaleFactor\":{d},", .{s}) else "";
         try out.append(arena, try std.fmt.allocPrint(arena, "Emulating viewport: {{{s}\"isMobile\":{},\"hasTouch\":{},\"isLandscape\":{},\"width\":{d},\"height\":{d}}}", .{ scale, v.mobile, v.touch, v.landscape, v.width, v.height }));

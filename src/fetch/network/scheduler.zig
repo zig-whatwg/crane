@@ -211,6 +211,13 @@ pub const NetworkScheduler = struct {
         self.jobs.append(self.allocator, job) catch return NetworkError.OutOfMemory;
         errdefer _ = self.jobs.pop();
 
+        // Emulated network latency (CDP Network.emulateNetworkConditions*):
+        // hold the transfer in the scheduler without blocking the event loop,
+        // starting it from `pump` once `retry_at_ns` elapses.
+        if (request.emulated_latency_ms > 0) {
+            job.retry_at_ns = monotonicNs() + @as(i128, request.emulated_latency_ms) * std.time.ns_per_ms;
+        }
+
         // Every slot of its destination is taken (network_context.
         // ConnectionSlots: a freed slot is handed to the oldest waiter at
         // once, so a transfer started later never finds it free): it waits,
@@ -222,6 +229,7 @@ pub const NetworkScheduler = struct {
             job.slot_wait_since_ns = monotonicNs();
             return job;
         }
+        if (job.retry_at_ns > 0) return job;
         if (!self.addToMulti(job)) {
             job.releaseSlot();
             return NetworkError.OutOfMemory;
@@ -278,8 +286,17 @@ pub const NetworkScheduler = struct {
     pub fn waitForSockets(self: *NetworkScheduler, ms: u32) void {
         const multi = self.multi orelse return;
         if (self.jobs.items.len == 0) return;
+        var wait_ms: u32 = ms;
+        const now = monotonicNs();
+        for (self.jobs.items) |job| {
+            if (job.running or job.slot_wait or job.ended != null or job.retry_at_ns == 0) continue;
+            const remaining_ns = job.retry_at_ns - now;
+            if (remaining_ns <= 0) return;
+            const remaining_ms: u32 = @intCast(@min(@as(i128, wait_ms), @divTrunc(remaining_ns + std.time.ns_per_ms - 1, std.time.ns_per_ms)));
+            wait_ms = @min(wait_ms, remaining_ms);
+        }
         var ready: c_int = 0;
-        _ = curl.multi_poll(multi, @intCast(ms), &ready);
+        _ = curl.multi_poll(multi, @intCast(wait_ms), &ready);
     }
 
     /// End `job` now. Its callback never runs, and what it received is
@@ -346,9 +363,9 @@ pub const NetworkScheduler = struct {
             if (!job.slot_wait or !job.takeSlot()) continue;
             job.slot_wait = false;
             job.transfer.queue_wait_ms = @as(f64, @floatFromInt(now - job.slot_wait_since_ns)) / std.time.ns_per_ms;
-            // Not added (out of memory): the loop below tries again, as it
-            // does a retry's.
-            _ = self.addToMulti(job);
+            // Not added (out of memory) or still waiting on emulated latency:
+            // the loop below starts it once `retry_at_ns <= now`.
+            if (job.retry_at_ns <= now) _ = self.addToMulti(job);
         }
 
         // A retry whose backoff has run out goes back in the multi handle.

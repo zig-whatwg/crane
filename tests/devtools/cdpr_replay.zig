@@ -313,6 +313,8 @@ pub const Site = struct {
     /// How long `/streamed.html`'s last chunk waits after its first.
     pub const streamed_gap_ms = 300;
 
+    const bulk_body: [65536]u8 = @splat('x');
+
     fn answer(self: *Site, stream: std.Io.net.Stream) !void {
         var input: [16384]u8 = undefined;
         var reader = stream.reader(std.testing.io, &input);
@@ -342,6 +344,8 @@ pub const Site = struct {
                 .{ .body = "<!doctype html><title>reject</title><script>function rejectInPage() { Promise.reject('from page'); }\nrejectInPage();\nPromise.resolve().then(() => { throw 'from reaction'; });</script>" }
             else if (std.mem.eql(u8, path, "/data.json"))
                 .{ .content_type = "application/json", .body = "{\"from\":\"network\"}" }
+            else if (std.mem.eql(u8, path, "/bulk.bin"))
+                .{ .content_type = "application/octet-stream", .body = &bulk_body }
             else
                 .{ .status = 404, .content_type = "text/plain", .body = "not found" };
         var output: [4096]u8 = undefined;
