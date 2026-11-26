@@ -127,6 +127,7 @@ platform beyond what a capability declares (storage and crypto especially: secti
 | `name` | `[]const u8` | for messages ("darwin", "testing") |
 | `capabilities` | `platform.Capabilities` | section 5 |
 | `identity` | `platform.Identity` | comptime identity constants (6.1) |
+| `general_memory` | `platform.GeneralMemoryPolicy` | who supplies a Browser's general memory at build time (`.crane_pools` or `.platform_allocator`; not a `Support` tri-state) |
 | `PlatformBrowserOptions` | `extern struct`, every field defaulted (so `.{}` is valid) | the platform's own per-Browser options (3.2): the testing platform's fake devices, prompt policy and console sink |
 
 The facade also re-exports the bound implementation as `platform.adapter`, for surfaces only one

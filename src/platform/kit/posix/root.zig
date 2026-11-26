@@ -687,18 +687,26 @@ fn unmap(base: usize, length: usize) void {
 
 /// Linux's part of a label, applied once to the whole of a range: its VMA
 /// name (Linux 5.17 and later with CONFIG_ANON_VMA_NAME; silently absent
-/// otherwise, as in PartitionAlloc's NameRegion) and, for the node cage,
-/// MADV_NOHUGEPAGE - a sparse pool of 16 KiB spans in 2 MiB super pages costs
-/// a whole huge page per touched super page under THP `always`, and
-/// khugepaged undoes span decommit (oss review R4, appendix P3: 512 kB live
-/// cost 64 MiB). The advice holds through later mprotects (P3's nohuge case).
+/// otherwise, as in PartitionAlloc's NameRegion) and `MADV_NOHUGEPAGE` across
+/// every Browser heap range (`.node_cage`, `.objects`, `.bytes`,
+/// `.heap_metadata`):
+/// - Normal 2 MiB super pages begin with a 16 KiB `PROT_NONE` guard span (R19),
+///   leaving a 2,032 KiB RW VMA that 2 MiB THP cannot map anyway (0 kB
+///   `AnonHugePages` even under `MADV_HUGEPAGE`);
+/// - Under THP `always`, huge blocks (>= 4 MiB) and contiguous `.heap_metadata`
+///   (span table, bitmaps, meta_pools) inflate 128x (`64 kB -> 8 MiB`,
+///   `512 kB -> 64 MiB`), and `khugepaged` undoes span/bitmap decommit
+///   (oss review R4, appendix P3, batch B2 item 7 probe on server1 Linux 7.0).
+/// The advice holds through later mprotects (P3's nohuge case).
 fn linuxLabel(base: usize, length: usize, label: platform.AddressLabel) void {
     if (comptime !is_linux) return;
     _ = std.c.prctl(PR_SET_VMA, PR_SET_VMA_ANON_NAME, @as(c_ulong, base), @as(c_ulong, length), linuxName(label));
-    if (label == .node_cage) {
-        if (std.c.madvise(@ptrFromInt(base), length, std.os.linux.MADV.NOHUGEPAGE) != 0) {
-            log.debug("MADV_NOHUGEPAGE on {x}+{x}: {t}", .{ base, length, lastError() });
-        }
+    switch (label) {
+        .node_cage, .objects, .bytes, .heap_metadata => {
+            if (std.c.madvise(@ptrFromInt(base), length, std.os.linux.MADV.NOHUGEPAGE) != 0) {
+                log.debug("MADV_NOHUGEPAGE on {x}+{x}: {t}", .{ base, length, lastError() });
+            }
+        },
     }
 }
 

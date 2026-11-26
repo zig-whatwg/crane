@@ -455,11 +455,11 @@ fn retain(record: *const ElementName) void {
     counted.references += 1;
 }
 
-/// One record and its strings in ONE block of `allocator`: the local name,
-/// the prefix, the namespace unless it is one of the six named ones (Infra's
-/// string), the qualified name when there is a prefix (else the local name
-/// is it), and its uppercase when the record is in the HTML namespace and it
-/// differs. Its one reference is the caller's.
+/// One record header (in `.objects`, via `allocator.create`) plus its page-
+/// chosen strings in a separate pointer-free block (in `.bytes`, via
+/// `allocator.alloc(u8, ...)`): allocator-hardening design 3.1 / batch B2
+/// item 4 (no page-chosen bytes share a block with pointers). Its one
+/// reference is the caller's.
 fn create(allocator: std.mem.Allocator, namespace_uri: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) error{OutOfMemory}!*const ElementName {
     const static_namespace: ?[]const u8 = if (namespace_uri) |ns| internNamespace(ns) else null;
     const namespace_bytes: usize = if (namespace_uri) |ns| (if (static_namespace == null) ns.len else 0) else 0;
@@ -470,11 +470,13 @@ fn create(allocator: std.mem.Allocator, namespace_uri: ?[]const u8, prefix: ?[]c
     // (`ElementName.tagName`): no other record keeps a copy.
     const needs_upper = namespaceOf(namespace_uri) == .html and (hasLowerAscii(prefix orelse "") or hasLowerAscii(local_name));
     const upper_bytes: usize = if (needs_upper) qualified_len else 0;
-    const total = @sizeOf(ElementName) + local_name.len + prefix_bytes + namespace_bytes + qualified_bytes + upper_bytes;
+    const string_bytes = local_name.len + prefix_bytes + namespace_bytes + qualified_bytes + upper_bytes;
 
-    const memory = try allocator.alignedAlloc(u8, .of(ElementName), total);
-    var tail: []u8 = memory[@sizeOf(ElementName)..total];
-    const local = copyInto(&tail, local_name);
+    const record = try allocator.create(ElementName);
+    errdefer allocator.destroy(record);
+    const bytes_buf: []u8 = if (string_bytes > 0) try allocator.alloc(u8, string_bytes) else &.{};
+    var tail: []u8 = bytes_buf;
+    const local: []const u8 = if (string_bytes > 0) copyInto(&tail, local_name) else "";
     const own_prefix: ?[]const u8 = if (prefix) |p| copyInto(&tail, p) else null;
     const own_namespace: ?[]const u8 = if (namespace_uri) |ns| (static_namespace orelse copyInto(&tail, ns)) else null;
     const qualified: []const u8 = if (own_prefix) |p| joined: {
@@ -491,9 +493,8 @@ fn create(allocator: std.mem.Allocator, namespace_uri: ?[]const u8, prefix: ?[]c
         tail = tail[qualified_len..];
         break :upper out;
     } else qualified;
-    if (debug_checks and tail.len != 0) @panic("an element name record's strings did not fill its block");
+    if (debug_checks and tail.len != 0) @panic("an element name record's strings did not fill its bytes block");
 
-    const record: *ElementName = @ptrCast(memory.ptr);
     record.* = .{
         .namespace_uri = own_namespace,
         .prefix = own_prefix,
@@ -504,14 +505,15 @@ fn create(allocator: std.mem.Allocator, namespace_uri: ?[]const u8, prefix: ?[]c
         .namespace = namespaceOf(own_namespace),
         .is_static = false,
     };
-    if (debug_checks and blockSize(record) != total) @panic("an element name record's block size does not follow from its names");
+    if (debug_checks and stringBytes(record) != string_bytes) @panic("an element name record's string bytes do not follow from its names");
     return record;
 }
 
-/// The size of `record`'s block (`create`), from its names: what it copied
-/// is exactly what is not a static string or another of its slices.
-fn blockSize(record: *const ElementName) usize {
-    var total = @sizeOf(ElementName) + record.local_name.len;
+/// The size of `record`'s separate `.bytes` buffer (`create`), from its names:
+/// what it copied is exactly what is not a static string or another of its
+/// slices.
+fn stringBytes(record: *const ElementName) usize {
+    var total = record.local_name.len;
     if (record.prefix) |p| total += p.len + record.qualified_name.len;
     if (record.namespace_uri) |ns| if (internNamespace(ns) == null) {
         total += ns.len;
@@ -520,10 +522,11 @@ fn blockSize(record: *const ElementName) usize {
     return total;
 }
 
-/// Free an interned record's block.
+/// Free an interned record's bytes buffer and header.
 fn destroy(allocator: std.mem.Allocator, record: *const ElementName) void {
-    const block: [*]align(@alignOf(ElementName)) u8 = @ptrCast(@constCast(record));
-    allocator.free(block[0..blockSize(record)]);
+    const n = stringBytes(record);
+    if (n > 0) allocator.free(record.local_name.ptr[0..n]);
+    allocator.destroy(@constCast(record));
 }
 
 fn hasLowerAscii(bytes: []const u8) bool {
@@ -693,16 +696,16 @@ test "names that come and go keep the map's unused slots free of tombstones" {
     try std.testing.expectEqual(@as(usize, 0), table.count());
 }
 
-test "a record not in the HTML namespace keeps no uppercase copy, and its block is exactly its strings" {
+test "a record not in the HTML namespace keeps no uppercase copy, and its bytes block is exactly its strings" {
     var scope = runtime.BrowserScope.init(std.testing.allocator);
     defer scope.deinit();
     const feed = try intern(&scope, null, null, "feed");
     try std.testing.expect(feed.qualified_name_upper.ptr == feed.qualified_name.ptr);
     const entry = try intern(&scope, "urn:atom", "a", "entry");
     try std.testing.expect(entry.qualified_name_upper.ptr == entry.qualified_name.ptr);
-    try std.testing.expectEqual(@sizeOf(ElementName) + "entry".len + "a".len + "a:entry".len + "urn:atom".len, blockSize(entry));
+    try std.testing.expectEqual("entry".len + "a".len + "a:entry".len + "urn:atom".len, stringBytes(entry));
     const html = try intern(&scope, infra.namespaces.HTML_NAMESPACE, "h", "x-item");
     try std.testing.expectEqualStrings("H:X-ITEM", html.qualified_name_upper);
-    try std.testing.expectEqual(@sizeOf(ElementName) + "x-item".len + "h".len + 2 * "h:x-item".len, blockSize(html));
+    try std.testing.expectEqual("x-item".len + "h".len + 2 * "h:x-item".len, stringBytes(html));
     for ([_]*const ElementName{ feed, entry, html }) |record| release(&scope, record);
 }

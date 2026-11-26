@@ -215,6 +215,11 @@ pub const ElementStyle = struct {
     /// CSSOM "declaration block's updating flag": the block is being
     /// written into the attribute, whose change steps must not parse it.
     updating: bool = false,
+    /// True when this ElementStyle block itself was allocated in its
+    /// Browser's cage `.satellite` partition (`createForElement`); fits in
+    /// existing alignment padding next to `updating` (`@sizeOf(ElementStyle)`
+    /// stays pinned at 272 bytes).
+    in_satellite: bool = false,
     sibling_counts: ?*SiblingCounts = null,
     cached: ?Cached = null,
     /// Typed OM §5.3 method identity. Wrapper edges keep this map live; this
@@ -247,6 +252,20 @@ pub const ElementStyle = struct {
         return self;
     }
 
+    /// Allocate an ElementStyle for a live Element in its Browser's cage
+    /// `.satellite` partition (allocator-hardening batch B2, item 3). Sub-
+    /// allocations (`pseudo` names, hints, animations) keep `element.ctx.allocator`.
+    pub fn createForElement(element: *runtime.Instance) Allocator.Error!*ElementStyle {
+        const scope = runtime.BrowserScope.ofInstance(element);
+        if (scope.existingHeapEngine()) |eng| {
+            const mem = try eng.allocSatellite(@sizeOf(ElementStyle), @alignOf(ElementStyle), @returnAddress());
+            const self: *ElementStyle = @ptrCast(@alignCast(mem));
+            self.* = .{ .allocator = element.ctx.allocator, .in_satellite = true };
+            return self;
+        }
+        return create(element.ctx.allocator);
+    }
+
     pub fn destroy(self: *ElementStyle) void {
         if (self.inline_block) |*block| block.deinit();
         if (self.sibling_counts) |counts| self.allocator.destroy(counts);
@@ -255,7 +274,11 @@ pub const ElementStyle = struct {
         self.dropCache();
         self.pseudo.deinit(self.allocator);
         if (self.animations) |animations| animations.destroy(self.allocator);
-        self.allocator.destroy(self);
+        if (self.in_satellite) {
+            runtime.heap.Engine.freeSatelliteOf(self, @sizeOf(ElementStyle), @alignOf(ElementStyle));
+        } else {
+            self.allocator.destroy(self);
+        }
     }
 
     /// The element's transitions and CSS animations, made on first use.
@@ -393,10 +416,15 @@ pub const ElementStyle = struct {
 pub fn of(element: *runtime.Instance) ?*ElementStyle {
     const slot = hooks.elementStyleSlot(element) orelse return null;
     if (slot.*) |found| return found;
-    const made = ElementStyle.create(element.ctx.allocator) catch return null;
+    const made = ElementStyle.createForElement(element) catch return null;
     slot.* = made;
     hooks.controlStyleStateCreated(element);
     return made;
+}
+
+comptime {
+    if (@sizeOf(usize) == 8 and @sizeOf(ElementStyle) != 272)
+        @compileError(std.fmt.comptimePrint("ElementStyle size changed from 272 bytes: {d}", .{@sizeOf(ElementStyle)}));
 }
 
 /// `element`'s style state if it has one already.

@@ -1874,6 +1874,36 @@ pub const InspectorUnwrapped = struct {
     realm: Context,
 };
 
+/// What a remote object id names (`inspectorUnwrapWithGroup`): the value,
+/// OWNED, the realm it is of, and the session object group it belonged to
+/// (OWNED by the caller's allocator when non-null).
+pub const InspectorUnwrappedWithGroup = struct {
+    value: Owned,
+    realm: Context,
+    object_group: ?[]u8,
+
+    pub fn deinit(self: InspectorUnwrappedWithGroup, allocator: std.mem.Allocator) void {
+        self.value.release();
+        if (self.object_group) |grp| allocator.free(grp);
+    }
+};
+
+/// Effective callable and source location of an event listener callback
+/// (`inspectorFunctionLocation`): matches Blink
+/// `JSBasedEventListener::GetEffectiveFunction` (unwrapping bound functions
+/// and `{ handleEvent }` listener objects) and `v8::Function::GetScriptLocation`
+/// (0-based line and column).
+pub const InspectorFunctionLocation = struct {
+    effective_function: Owned,
+    script_id: i32,
+    line_number: i32,
+    column_number: i32,
+
+    pub fn deinit(self: InspectorFunctionLocation) void {
+        self.effective_function.release();
+    }
+};
+
 /// Install (or, with null, remove) `agent`'s inspector client. `client`
 /// BORROWED until removed or the agent ends.
 pub inline fn installInspectorClient(agent: *Agent, client: ?*const InspectorClient) void {
@@ -1956,6 +1986,22 @@ pub inline fn inspectorWrap(session: *InspectorSession, realm: Context, value: J
 pub inline fn inspectorUnwrap(session: *InspectorSession, object_id: []const u8) Error!?InspectorUnwrapped {
     comptime gate(.inspector_protocol, "inspectorUnwrap");
     return impl.inspectorUnwrap(session, object_id);
+}
+
+/// Like `inspectorUnwrap`, also returning the object group `object_id`
+/// belonged to (empty/null when the remote object had no group).
+pub inline fn inspectorUnwrapWithGroup(session: *InspectorSession, object_id: []const u8, allocator: std.mem.Allocator) Error!?InspectorUnwrappedWithGroup {
+    comptime gate(.inspector_protocol, "inspectorUnwrapWithGroup");
+    return impl.inspectorUnwrapWithGroup(session, object_id, allocator);
+}
+
+/// Resolve an event listener callback (`callback`, BORROWED) in `realm` to its
+/// effective callable (unwrapping bound functions and reading `.handleEvent` on
+/// listener objects without running microtasks or propagating exceptions) and
+/// its script location (0-based line/column). Null when not callable.
+pub inline fn inspectorFunctionLocation(realm: Context, callback: JSValue) Error!?InspectorFunctionLocation {
+    comptime gate(.inspector_protocol, "inspectorFunctionLocation");
+    return impl.inspectorFunctionLocation(realm, callback);
 }
 
 /// The Console Standard's Logger step reached the inspector: console

@@ -582,6 +582,52 @@ pub fn inspectorUnwrap(opaque_session: *engine.InspectorSession, object_id: []co
     return .{ .value = support.owned(value), .realm = realm };
 }
 
+/// engine.inspectorUnwrapWithGroup.
+pub fn inspectorUnwrapWithGroup(opaque_session: *engine.InspectorSession, object_id: []const u8, allocator: std.mem.Allocator) Error!?engine.InspectorUnwrappedWithGroup {
+    const session = sessionOf(opaque_session);
+    if (object_id.len == 0) return null;
+    var key: ?*anyopaque = null;
+    const native = session.native orelse return null;
+    var captured: Captured = .{ .allocator = allocator };
+    const value = ffi.v8_InspectorSession_UnwrapWithGroup(native, object_id.ptr, object_id.len, &key, Captured.sink, &captured) orelse {
+        if (captured.bytes) |b| allocator.free(b);
+        return null;
+    };
+    if (captured.failed) {
+        ffi.v8_Global_Dispose(value);
+        if (captured.bytes) |b| allocator.free(b);
+        return error.OutOfMemory;
+    }
+    const realm = context_manager.getByKey(@intFromPtr(key orelse {
+        ffi.v8_Global_Dispose(value);
+        if (captured.bytes) |b| allocator.free(b);
+        return null;
+    })) orelse {
+        ffi.v8_Global_Dispose(value);
+        if (captured.bytes) |b| allocator.free(b);
+        return null;
+    };
+    return .{ .value = support.owned(value), .realm = realm, .object_group = captured.bytes };
+}
+
+/// engine.inspectorFunctionLocation.
+pub fn inspectorFunctionLocation(realm: Context, callback: JSValue) Error!?engine.InspectorFunctionLocation {
+    const entered = try support.enter(realm);
+    defer entered.leave();
+    const held = try support.ownGlobal(entered, callback);
+    defer ffi.v8_Global_Dispose(held);
+    var script_id: i32 = 0;
+    var line: i32 = 0;
+    var column: i32 = 0;
+    const effective = ffi.v8_Function_InspectorLocation(entered.context(), held, &script_id, &line, &column) orelse return null;
+    return .{
+        .effective_function = support.owned(effective),
+        .script_id = script_id,
+        .line_number = line,
+        .column_number = column,
+    };
+}
+
 /// engine.inspectorConsoleMessage: V8's own console[method](...args) in
 /// `realm` (the realm kept it at its making, -Dcdp), so V8's console delegate
 /// - the inspector's - reports and stores the message as Chrome's does.
