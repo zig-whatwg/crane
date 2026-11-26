@@ -179,6 +179,12 @@ test "the platform's declarations: name, identity, browser options" {
     _ = options;
 }
 
+test "general_memory policy: platform declares GeneralMemoryPolicy and general_memory" {
+    try testing.expect(@hasDecl(platform, "GeneralMemoryPolicy"));
+    try testing.expect(@hasDecl(platform, "general_memory"));
+    try testing.expect(@hasDecl(platform.adapter, "general_memory"));
+}
+
 // ---------------------------------------------------------------------------
 // The OS services every platform provides (today's behaviour, through the
 // protocol)
