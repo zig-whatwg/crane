@@ -185,27 +185,73 @@ fn runIframeScenario(routes: []const Route, start_url: []const u8, check_script:
     try ctx.runScript(check_script);
 }
 
+// Mirrors WPT x-frame-options/support/helper.sub.js:
+// - expectAllowed waits directly for both the 'Loaded' postMessage and onload
+//   (zero timers, no ordering race between postMessage and onload).
+// - expectBlocked fails if any message arrives and asserts contentDocument === null on onload.
+// - runNestedCase waits directly for the intermediate frame's postMessage.
 const single_iframe_host_html =
     \\<!doctype html><body><script>
     \\globalThis.xfoDone = false;
-    \\globalThis.xfoMessages = [];
-    \\window.addEventListener('message', e => { globalThis.xfoMessages.push(e.data); });
-    \\globalThis.runCase = function(url, sandboxAttr) {
-    \\  return new Promise(resolve => {
+    \\globalThis.expectAllowed = function(url, { sandbox, expectDoc = true } = {}) {
+    \\  return new Promise((resolve, reject) => {
     \\    const i = document.createElement('iframe');
-    \\    if (sandboxAttr !== undefined) i.setAttribute('sandbox', sandboxAttr);
-    \\    let msg = null;
-    \\    const onMsg = e => { if (e.source === i.contentWindow) msg = e.data; };
+    \\    if (sandbox !== undefined) i.setAttribute('sandbox', sandbox);
+    \\    let gotMsg = false;
+    \\    let gotLoad = false;
+    \\    const finish = () => {
+    \\      if (!gotMsg || !gotLoad) return;
+    \\      window.removeEventListener('message', onMsg);
+    \\      const hasDoc = i.contentDocument !== null;
+    \\      i.remove();
+    \\      if (expectDoc && !hasDoc) return reject(new Error(`expected contentDocument for ${url}`));
+    \\      resolve();
+    \\    };
+    \\    const onMsg = e => {
+    \\      if (e.source !== i.contentWindow) return;
+    \\      if (e.data !== 'Loaded') return reject(new Error(`unexpected msg ${e.data} for ${url}`));
+    \\      gotMsg = true;
+    \\      finish();
+    \\    };
+    \\    window.addEventListener('message', onMsg);
+    \\    i.onload = () => { gotLoad = true; finish(); };
+    \\    i.src = url;
+    \\    document.body.appendChild(i);
+    \\  });
+    \\};
+    \\globalThis.expectBlocked = function(url) {
+    \\  return new Promise((resolve, reject) => {
+    \\    const i = document.createElement('iframe');
+    \\    const onMsg = e => {
+    \\      if (e.source === i.contentWindow) {
+    \\        window.removeEventListener('message', onMsg);
+    \\        i.remove();
+    \\        reject(new Error(`blocked frame ${url} unexpectedly sent ${e.data}`));
+    \\      }
+    \\    };
     \\    window.addEventListener('message', onMsg);
     \\    i.onload = () => {
-    \\      // Allow any message already queued by the child to deliver before reading.
-    \\      setTimeout(() => {
-    \\        window.removeEventListener('message', onMsg);
-    \\        const hasDoc = i.contentDocument !== null;
-    \\        i.remove();
-    \\        resolve({ msg, hasDoc });
-    \\      }, 20);
+    \\      window.removeEventListener('message', onMsg);
+    \\      const hasDoc = i.contentDocument !== null;
+    \\      i.remove();
+    \\      if (hasDoc) return reject(new Error(`blocked frame ${url} still exposed contentDocument`));
+    \\      resolve();
     \\    };
+    \\    i.src = url;
+    \\    document.body.appendChild(i);
+    \\  });
+    \\};
+    \\globalThis.runNestedCase = function(url) {
+    \\  return new Promise(resolve => {
+    \\    const i = document.createElement('iframe');
+    \\    const onMsg = e => {
+    \\      if (e.source === i.contentWindow) {
+    \\        window.removeEventListener('message', onMsg);
+    \\        i.remove();
+    \\        resolve(e.data);
+    \\      }
+    \\    };
+    \\    window.addEventListener('message', onMsg);
     \\    i.src = url;
     \\    document.body.appendChild(i);
     \\  });
@@ -263,10 +309,7 @@ test "X-Frame-Options: DENY blocks same-origin and cross-origin framing, allows 
                 \\      'http://origin-a.test/deny-case',
                 \\      'http://origin-b.test/deny-case',
                 \\    ]) {
-                \\      const r = await runCase(url);
-                \\      if (r.msg !== null || r.hasDoc) {
-                \\        throw new Error(`expected DENY block for ${url}, got msg=${r.msg} hasDoc=${r.hasDoc}`);
-                \\      }
+                \\      await expectBlocked(url);
                 \\    }
                 \\  } catch (e) { globalThis.xfoError = e; }
                 \\  globalThis.xfoDone = true;
@@ -280,14 +323,31 @@ test "X-Frame-Options: DENY blocks same-origin and cross-origin framing, allows 
 test "X-Frame-Options: SAMEORIGIN checks every ancestor (A->A allowed, A->B and A->B->A blocked, sandbox)" {
     const Body = struct {
         fn run() !void {
-            const nested_to_a =
+            // Mirrors WPT x-frame-options/support/nested.py:
+            // - For A->A->A (should load), wait directly for 'Loaded' message.
+            // - For A->B->A (should block), forward 'Loaded' immediately if it
+            //   ever arrives, otherwise report 'InnerBlocked' after onload + 100ms.
+            const nested_expect_load =
                 \\<!doctype html><body><script>
-                \\let got = null;
-                \\window.addEventListener('message', e => { got = e.data; });
+                \\window.addEventListener('message', e => {
+                \\  window.parent.postMessage(e.data === 'Loaded' ? 'InnerLoaded' : 'Unexpected', '*');
+                \\});
+                \\const i = document.createElement('iframe');
+                \\i.src = 'http://origin-a.test/sameorigin';
+                \\document.body.appendChild(i);
+                \\</script></body>
+            ;
+            const nested_expect_block =
+                \\<!doctype html><body><script>
+                \\let gotMessage = false;
+                \\window.addEventListener('message', e => {
+                \\  gotMessage = true;
+                \\  window.parent.postMessage('InnerLoaded', '*');
+                \\});
                 \\const i = document.createElement('iframe');
                 \\i.src = 'http://origin-a.test/sameorigin';
                 \\i.onload = () => {
-                \\  setTimeout(() => { window.parent.postMessage(got === 'Loaded' ? 'InnerLoaded' : 'InnerBlocked', '*'); }, 20);
+                \\  setTimeout(() => { if (!gotMessage) window.parent.postMessage('InnerBlocked', '*'); }, 100);
                 \\};
                 \\document.body.appendChild(i);
                 \\</script></body>
@@ -300,11 +360,11 @@ test "X-Frame-Options: SAMEORIGIN checks every ancestor (A->A allowed, A->B and 
                 \\const i = document.createElement('iframe');
                 \\i.setAttribute('sandbox', 'allow-scripts');
                 \\i.srcdoc = `<!doctype html><body><script>
-                \\  let got = null;
-                \\  window.addEventListener('message', e => { got = e.data; });
+                \\  let gotMessage = false;
+                \\  window.addEventListener('message', e => { gotMessage = true; parent.postMessage('InnerLoaded', '*'); });
                 \\  const inner = document.createElement('iframe');
                 \\  inner.src = 'http://origin-a.test/sameorigin';
-                \\  inner.onload = () => setTimeout(() => parent.postMessage(got === 'Loaded' ? 'InnerLoaded' : 'InnerBlocked', '*'), 20);
+                \\  inner.onload = () => setTimeout(() => { if (!gotMessage) parent.postMessage('InnerBlocked', '*'); }, 100);
                 \\  document.body.appendChild(inner);
                 \\</scr` + `ipt></body>`;
                 \\document.body.appendChild(i);
@@ -313,32 +373,30 @@ test "X-Frame-Options: SAMEORIGIN checks every ancestor (A->A allowed, A->B and 
             const routes = [_]Route{
                 .{ .path = "/host.html", .body = single_iframe_host_html },
                 .{ .path = "/sameorigin", .headers = &.{.{ .name = "X-Frame-Options", .value = "SAMEORIGIN" }}, .body = child_loaded_html },
-                .{ .path = "/nested-to-a", .body = nested_to_a },
+                .{ .path = "/nested-load", .body = nested_expect_load },
+                .{ .path = "/nested-block", .body = nested_expect_block },
                 .{ .path = "/sandbox-parent.html", .body = sandboxed_parent_srcdoc_host },
             };
             try runCasesScript(&routes,
                 \\(async () => {
                 \\  try {
                 \\    // A -> A: allowed.
-                \\    const aa = await runCase('http://origin-a.test/sameorigin');
-                \\    if (aa.msg !== 'Loaded' || !aa.hasDoc) throw new Error('A->A SAMEORIGIN should load');
+                \\    await expectAllowed('http://origin-a.test/sameorigin');
                 \\
                 \\    // A -> B: blocked.
-                \\    const ab = await runCase('http://origin-b.test/sameorigin');
-                \\    if (ab.msg !== null || ab.hasDoc) throw new Error('A->B SAMEORIGIN should block');
+                \\    await expectBlocked('http://origin-b.test/sameorigin');
                 \\
                 \\    // A -> A -> A: allowed.
-                \\    const aaa = await runCase('http://origin-a.test/nested-to-a');
-                \\    if (aaa.msg !== 'InnerLoaded') throw new Error(`A->A->A SAMEORIGIN should load, got ${aaa.msg}`);
+                \\    const aaa = await runNestedCase('http://origin-a.test/nested-load');
+                \\    if (aaa !== 'InnerLoaded') throw new Error(`A->A->A SAMEORIGIN should load, got ${aaa}`);
                 \\
                 \\    // A -> B -> A: blocked because intermediate ancestor B is cross-origin!
-                \\    const aba = await runCase('http://origin-b.test/nested-to-a');
-                \\    if (aba.msg !== 'InnerBlocked') throw new Error(`A->B->A SAMEORIGIN should block, got ${aba.msg}`);
+                \\    const aba = await runNestedCase('http://origin-b.test/nested-block');
+                \\    if (aba !== 'InnerBlocked') throw new Error(`A->B->A SAMEORIGIN should block, got ${aba}`);
                 \\
                 \\    // Sandboxed target iframe (without allow-same-origin) on same-origin URL:
                 \\    // allowed per Chromium, WebKit, and Gecko (compare ancestors against response URL origin).
-                \\    const sbChild = await runCase('http://origin-a.test/sameorigin', 'allow-scripts');
-                \\    if (sbChild.msg !== 'Loaded') throw new Error(`sandboxed same-origin target should load, got ${sbChild.msg}`);
+                \\    await expectAllowed('http://origin-a.test/sameorigin', { sandbox: 'allow-scripts', expectDoc: false });
                 \\  } catch (e) { globalThis.xfoError = e; }
                 \\  globalThis.xfoDone = true;
                 \\})();
@@ -410,19 +468,17 @@ test "X-Frame-Options: multiple, conflicting, invalid, and get-decode-split head
                 \\(async () => {
                 \\  try {
                 \\    // Duplicate SAMEORIGIN: allowed same-origin, blocked cross-origin.
-                \\    if ((await runCase('http://origin-a.test/dup-sameorigin')).msg !== 'Loaded') throw new Error('dup SAMEORIGIN same-origin should load');
-                \\    if ((await runCase('http://origin-b.test/dup-sameorigin')).msg !== null) throw new Error('dup SAMEORIGIN cross-origin should block');
+                \\    await expectAllowed('http://origin-a.test/dup-sameorigin');
+                \\    await expectBlocked('http://origin-b.test/dup-sameorigin');
                 \\
                 \\    // Conflicting values containing deny/sameorigin/allowall: blocked even same-origin.
                 \\    for (const path of ['/conflict-so-deny', '/conflict-so-invalid', '/conflict-so-empty', '/conflict-allowall-invalid']) {
-                \\      const r = await runCase('http://origin-a.test' + path);
-                \\      if (r.msg !== null || r.hasDoc) throw new Error(`expected conflict block for ${path}`);
+                \\      await expectBlocked('http://origin-a.test' + path);
                 \\    }
                 \\
                 \\    // Invalid / legacy / quoted / non-HTTP-whitespace values: allowed even cross-origin.
                 \\    for (const path of ['/invalid-only', '/allowall', '/allow-from', '/quoted-deny', '/vt-deny', '/ff-deny']) {
-                \\      const r = await runCase('http://origin-b.test' + path);
-                \\      if (r.msg !== 'Loaded') throw new Error(`expected allow for ${path}, got msg=${r.msg}`);
+                \\      await expectAllowed('http://origin-b.test' + path, { expectDoc: false });
                 \\    }
                 \\  } catch (e) { globalThis.xfoError = e; }
                 \\  globalThis.xfoDone = true;
@@ -466,17 +522,10 @@ test "X-Frame-Options: enforcing CSP frame-ancestors overrides XFO, report-only 
             try runCasesScript(&routes,
                 \\(async () => {
                 \\  try {
-                \\    const allowed = await runCase('http://origin-a.test/csp-fa-overrides-deny');
-                \\    if (allowed.msg !== 'Loaded' || !allowed.hasDoc) throw new Error('enforcing frame-ancestors must override XFO DENY');
-                \\
-                \\    const crossBlocked = await runCase('http://origin-b.test/csp-fa-overrides-deny');
-                \\    if (crossBlocked.msg !== null || crossBlocked.hasDoc) throw new Error('enforcing frame-ancestors self must block cross-origin');
-                \\
-                \\    const defaultCsp = await runCase('http://origin-a.test/csp-default-no-override');
-                \\    if (defaultCsp.msg !== null || defaultCsp.hasDoc) throw new Error('CSP without frame-ancestors must NOT override XFO DENY');
-                \\
-                \\    const roCsp = await runCase('http://origin-a.test/csp-ro-no-override');
-                \\    if (roCsp.msg !== null || roCsp.hasDoc) throw new Error('report-only frame-ancestors must NOT override XFO DENY');
+                \\    await expectAllowed('http://origin-a.test/csp-fa-overrides-deny');
+                \\    await expectBlocked('http://origin-b.test/csp-fa-overrides-deny');
+                \\    await expectBlocked('http://origin-a.test/csp-default-no-override');
+                \\    await expectBlocked('http://origin-a.test/csp-ro-no-override');
                 \\  } catch (e) { globalThis.xfoError = e; }
                 \\  globalThis.xfoDone = true;
                 \\})();
@@ -527,14 +576,9 @@ test "X-Frame-Options: redirect responses ignored, final response checked agains
             try runCasesScript(&routes,
                 \\(async () => {
                 \\  try {
-                \\    const r1 = await runCase('http://origin-a.test/redir-deny-to-allow');
-                \\    if (r1.msg !== 'Loaded') throw new Error('XFO DENY on 302 redirect must be ignored');
-                \\
-                \\    const r2 = await runCase('http://origin-a.test/redir-to-cross-sameorigin');
-                \\    if (r2.msg !== null || r2.hasDoc) throw new Error('redirect to cross-origin SAMEORIGIN must block');
-                \\
-                \\    const r3 = await runCase('http://origin-b.test/redir-to-same-sameorigin');
-                \\    if (r3.msg !== 'Loaded' || !r3.hasDoc) throw new Error('redirect from cross-origin to same-origin SAMEORIGIN must load');
+                \\    await expectAllowed('http://origin-a.test/redir-deny-to-allow');
+                \\    await expectBlocked('http://origin-a.test/redir-to-cross-sameorigin');
+                \\    await expectAllowed('http://origin-b.test/redir-to-same-sameorigin');
                 \\  } catch (e) { globalThis.xfoError = e; }
                 \\  globalThis.xfoDone = true;
                 \\})();
@@ -555,7 +599,7 @@ test "X-Frame-Options: DENY blocks object and frame child navigables" {
                 \\const obj = document.createElement('object');
                 \\obj.type = 'text/html';
                 \\obj.data = 'http://origin-a.test/deny';
-                \\obj.onload = () => setTimeout(() => { globalThis.objHasDoc = obj.contentDocument !== null; globalThis.xfoDone = true; }, 20);
+                \\obj.onload = () => { globalThis.objHasDoc = obj.contentDocument !== null; globalThis.xfoDone = true; };
                 \\document.body.appendChild(obj);
                 \\</script></body>
             ;
@@ -564,11 +608,11 @@ test "X-Frame-Options: DENY blocks object and frame child navigables" {
                 \\globalThis.xfoDone = false;
                 \\globalThis.frameMsg = null;
                 \\window.addEventListener('message', e => { globalThis.frameMsg = e.data; });
-                \\window.onload = () => setTimeout(() => {
+                \\window.onload = () => {
                 \\  const f = document.getElementById('f');
                 \\  globalThis.frameHasDoc = f.contentDocument !== null;
                 \\  globalThis.xfoDone = true;
-                \\}, 20);
+                \\};
                 \\</script></head><frameset><frame id="f" src="http://origin-a.test/deny"></frameset></html>
             ;
             const routes = [_]Route{
