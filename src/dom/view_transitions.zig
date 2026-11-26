@@ -33,6 +33,7 @@ const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
+const callbacks = @import("callbacks");
 const css = @import("css");
 const NodeBase = @import("node_base.zig").NodeBase;
 const instance_bridge = @import("instance_bridge.zig");
@@ -834,28 +835,13 @@ fn callUpdateCallback(transition: *Transition) !void {
     if (callback_value) |function| {
         defer function.release();
         const callback: engine.CallbackFunction = .{ .function = .{ .value = function.borrow() }, .context = realm };
-        const completion = engine.invokeCallbackFunction(realm, &callback, .undefined, &.{}, .rethrow) catch |err| switch (err) {
+        // Golden rule 2 (live probes of Chrome 157 & Firefox 159/161): both pass
+        // a same-realm %Promise% through with 0 extra microtask ticks.
+        callback_promise = callbacks.call.ViewTransitionUpdateCallback.invokePromiseResolve(realm, &callback, .undefined, .{}) catch |err| switch (err) {
             // A Window whose document is not fully active runs no callback.
             error.OutOfMemory => return err,
             else => return,
         };
-        switch (completion) {
-            .normal => |result| {
-                defer result.release();
-                const resolved = try engine.promiseResolve(realm, result.borrow());
-                switch (resolved) {
-                    .normal => |promise| callback_promise = promise,
-                    .throw => |exception| {
-                        defer exception.release();
-                        callback_promise = try engine.createRejectedPromise(realm, exception.borrow());
-                    },
-                }
-            },
-            .throw => |exception| {
-                defer exception.release();
-                callback_promise = try engine.createRejectedPromise(realm, exception.borrow());
-            },
-        }
     } else callback_promise = try engine.createResolvedPromise(realm, .undefined);
     defer callback_promise.release();
     // 6-8. "React to callbackPromise with fulfillSteps and rejectSteps."

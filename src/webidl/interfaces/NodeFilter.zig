@@ -283,4 +283,18 @@ pub const NodeFilter = struct {
     pub const interface_arguments = .{
         .{ "call_acceptNode", 0, "Node" },
     };
+
+    const engine = @import("engine");
+
+    /// WebIDL 3.11 "call a user object's operation" for `acceptNode`.
+    pub fn invoke_acceptNode(
+        realm: engine.Context,
+        callback: *const engine.CallbackInterface,
+        this_arg: engine.CallbackThis,
+        node: *runtime.Instance,
+        behavior: engine.ExceptionBehavior,
+        allocator: std.mem.Allocator,
+    ) engine.Error!engine.Returned(u16) {
+        return engine.callUserObjectOperationAs(u16, .{}, realm, callback, "acceptNode", this_arg, .{node}, behavior, allocator);
+    }
 };

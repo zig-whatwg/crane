@@ -10,6 +10,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const callbacks = @import("callbacks");
 const js = @import("streams_js.zig");
 const sw = @import("streams_writable.zig");
 const srd = @import("streams_readable.zig");
@@ -238,7 +239,10 @@ pub const JsTransformer = struct {
         defer js.dispose(f);
         const this = self.get(realm, .this);
         defer if (this) |t| js.dispose(t);
-        return realm.promiseCall(f, this, &.{ chunk, realm.instanceValue(controller) });
+        const cb = realm.callbackOf(f);
+        const promise = callbacks.call.TransformerTransformCallback.invoke(realm.ctx, &cb, Realm.thisOf(this), .{ .chunk = chunk.value, .controller = controller }) catch |err|
+            return js.fromEngineError(err);
+        return realm.adoptOwned(promise);
     }
 
     fn flushErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance) js.Error!Value {
@@ -248,7 +252,10 @@ pub const JsTransformer = struct {
         defer js.dispose(f);
         const this = self.get(realm, .this);
         defer if (this) |t| js.dispose(t);
-        return realm.promiseCall(f, this, &.{realm.instanceValue(controller)});
+        const cb = realm.callbackOf(f);
+        const promise = callbacks.call.TransformerFlushCallback.invoke(realm.ctx, &cb, Realm.thisOf(this), .{ .controller = controller }) catch |err|
+            return js.fromEngineError(err);
+        return realm.adoptOwned(promise);
     }
 
     fn cancelErased(ctx: ?*anyopaque, realm: Realm, _: *runtime.Instance, reason: Value) js.Error!Value {
@@ -258,7 +265,10 @@ pub const JsTransformer = struct {
         defer js.dispose(f);
         const this = self.get(realm, .this);
         defer if (this) |t| js.dispose(t);
-        return realm.promiseCall(f, this, &.{reason});
+        const cb = realm.callbackOf(f);
+        const promise = callbacks.call.TransformerCancelCallback.invoke(realm.ctx, &cb, Realm.thisOf(this), .{ .reason = reason.value }) catch |err|
+            return js.fromEngineError(err);
+        return realm.adoptOwned(promise);
     }
 
     pub const vtable = Transformer.VTable{

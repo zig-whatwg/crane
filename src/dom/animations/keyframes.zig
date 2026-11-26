@@ -14,6 +14,9 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
+const dictionaries = @import("dictionaries");
+const enums = @import("enums");
+const typedefs = @import("typedefs");
 const css = @import("css");
 const easing_mod = @import("easing.zig");
 
@@ -304,17 +307,16 @@ const Builder = struct {
     fn keyframeLike(self: *Builder, input: JSValue) engine.Error!void {
         var frame: Keyframe = .{};
         errdefer frame.deinit(self.allocator);
-        // 1. BaseKeyframe, members in order: composite, easing, offset.
-        const composite = try self.member(input, "composite");
-        defer if (composite) |value| value.release();
-        if (composite) |value| frame.composite = compositeOf(self.realm, value.borrow()) catch |err| return mapError(err);
-        const easing = try self.member(input, "easing");
-        defer if (easing) |value| value.release();
-        const easing_text = if (easing) |value| try engine.convertToDOMString(self.realm, value.borrow(), self.allocator) else try self.allocator.dupe(u8, "linear");
+        // 1. Convert input to BaseKeyframe via the binding's dictionary converter
+        // (WebIDL 3.2.18: members in lexicographic order composite, easing, offset;
+        // restricted double? offset rejects NaN/Infinity; non-nullable composite/easing
+        // convert null by their types).
+        const held = try self.convert(dictionaries.BaseKeyframe, input);
+        defer held.release(self.allocator);
+        if (held.value.composite) |c| frame.composite = compositeFromEnum(c);
+        const easing_text = if (held.value.easing) |e| try self.allocator.dupe(u8, e.asSlice()) else try self.allocator.dupe(u8, "linear");
         errdefer self.allocator.free(easing_text);
-        const offset = try self.member(input, "offset");
-        defer if (offset) |value| value.release();
-        if (offset) |value| frame.offset = nullableDouble(self.realm, value.borrow()) catch |err| return mapError(err);
+        frame.offset = held.value.offset;
         // 2-8.
         if (!isNullish(self.realm, input)) try self.readProperties(input, &frame, false);
         try self.easing_texts.ensureUnusedCapacity(self.allocator, 1);
@@ -327,7 +329,8 @@ const Builder = struct {
         // A non-object is no dictionary (WebIDL dictionary conversion).
         const kind = engine.typeOf(self.realm, input);
         if (kind != .object) return error.TypeError;
-        // 1. BasePropertyIndexedKeyframe.
+        // 1. Convert input to BasePropertyIndexedKeyframe via the binding's
+        // dictionary converter (composite, easing, offset in lexicographic order).
         var composites: std.ArrayListUnmanaged(CompositeOrAuto) = .empty;
         defer composites.deinit(self.allocator);
         var easings: std.ArrayListUnmanaged([]u8) = .empty;
@@ -337,18 +340,25 @@ const Builder = struct {
         }
         var offsets: std.ArrayListUnmanaged(?f64) = .empty;
         defer offsets.deinit(self.allocator);
-        if (try self.member(input, "composite")) |value| {
-            defer value.release();
-            try self.listOrOne(CompositeOrAuto, value.borrow(), &composites, compositeOf);
-        }
-        if (try self.member(input, "easing")) |value| {
-            defer value.release();
-            try self.listOrOne([]u8, value.borrow(), &easings, domString);
-        }
-        if (try self.member(input, "offset")) |value| {
-            defer value.release();
-            // (double? or sequence<double?>): null is the nullable double.
-            if (isNullish(self.realm, value.borrow())) try offsets.append(self.allocator, null) else try self.listOrOne(?f64, value.borrow(), &offsets, nullableDouble);
+        {
+            const held = try self.convert(dictionaries.BasePropertyIndexedKeyframe, input);
+            defer held.release(self.allocator);
+            if (held.value.composite) |c| switch (c) {
+                .composite_operation_or_auto => |one| try composites.append(self.allocator, compositeFromEnum(one)),
+                .composite_operation_or_auto_sequence => |seq| for (seq) |one| try composites.append(self.allocator, compositeFromEnum(one)),
+            };
+            if (held.value.easing) |e| switch (e) {
+                .domstring => |one| try easings.append(self.allocator, try self.allocator.dupe(u8, one.asSlice())),
+                .domstring_sequence => |seq| for (seq) |one| try easings.append(self.allocator, try self.allocator.dupe(u8, one.asSlice())),
+            };
+            if (held.value.offset.was_passed) {
+                // Present `null` is a single null offset; absent `offset` (or
+                // undefined) takes the member default `[]`.
+                if (held.value.offset.value) |o| switch (o) {
+                    .double => |d| try offsets.append(self.allocator, d),
+                    .double_sequence => |seq| try offsets.appendSlice(self.allocator, seq),
+                } else try offsets.append(self.allocator, null);
+            }
         }
         // The property values, each a list.
         var indexed: Keyframe = .{};
@@ -427,16 +437,18 @@ const Builder = struct {
         merged = .empty;
     }
 
-    /// A dictionary member: Get(input, name), null when undefined (not
-    /// present). OWNED.
-    fn member(self: *Builder, input: JSValue, name: []const u8) engine.Error!?engine.Owned {
-        if (isNullish(self.realm, input)) return null;
-        const value = try engine.getProperty(self.realm, input, name);
-        if (engine.typeOf(self.realm, value.borrow()) == .undefined) {
-            value.release();
-            return null;
-        }
-        return value;
+    /// Convert `input` to WebIDL type `T` via `engine.convertFromJS`, rethrowing
+    /// any caught JS exception as `error.ExceptionPending`.
+    fn convert(self: *Builder, comptime T: type, input: JSValue) engine.Error!engine.Held(T) {
+        const result = try engine.convertFromJS(T, .{}, self.realm, input, self.allocator);
+        return switch (result) {
+            .normal => |held| held,
+            .throw => |exception| {
+                defer exception.release();
+                try engine.throwValue(self.realm, exception.value);
+                return error.ExceptionPending;
+            },
+        };
     }
 
     /// 6.6.3 "process a keyframe-like object" steps 3-8, allow lists false:
@@ -471,7 +483,12 @@ const Builder = struct {
                 for (values.items) |text| self.allocator.free(text);
                 values.deinit(self.allocator);
             }
-            try self.listOrOne([]u8, raw.borrow(), &values, domString);
+            const held = try self.convert(typedefs.DOMStringOrSequenceOfDOMString, raw.borrow());
+            defer held.release(self.allocator);
+            switch (held.value) {
+                .domstring => |one| try values.append(self.allocator, try self.allocator.dupe(u8, one.asSlice())),
+                .domstring_sequence => |seq| for (seq) |one| try values.append(self.allocator, try self.allocator.dupe(u8, one.asSlice())),
+            }
             const name = try self.allocator.dupe(u8, entry.property);
             errdefer self.allocator.free(name);
             const empty = try self.allocator.alloc(u8, 0);
@@ -518,71 +535,20 @@ const Builder = struct {
         }
         self.allocator.free(names);
     }
-
-    /// A WebIDL (T or sequence<T>) member: an iterable object is the
-    /// sequence; anything else the one T.
-    fn listOrOne(self: *Builder, comptime T: type, value: JSValue, out: *std.ArrayListUnmanaged(T), comptime convert: fn (runtime.Context, JSValue) anyerror!T) engine.Error!void {
-        const Collect = struct {
-            builder: *Builder,
-            out: *std.ArrayListUnmanaged(T),
-            fn each(data: ?*anyopaque, item: JSValue) engine.Error!void {
-                const collect: *@This() = @ptrCast(@alignCast(data.?));
-                const converted = convertAs(T, convert, collect.builder, item) catch |err| return mapError(err);
-                collect.out.append(collect.builder.allocator, converted) catch return error.OutOfMemory;
-            }
-        };
-        if (engine.typeOf(self.realm, value) == .object) {
-            var collect: Collect = .{ .builder = self, .out = out };
-            if (try engine.iterate(self.realm, value, Collect.each, &collect)) return;
-        }
-        const one = convertAs(T, convert, self, value) catch |err| return mapError(err);
-        try out.append(self.allocator, one);
-    }
-
-    fn convertAs(comptime T: type, comptime convert: fn (runtime.Context, JSValue) anyerror!T, self: *Builder, value: JSValue) anyerror!T {
-        if (T == []u8) return engine.convertToDOMString(self.realm, value, self.allocator);
-        return convert(self.realm, value);
-    }
 };
+
+fn compositeFromEnum(value: enums.CompositeOperationOrAuto) CompositeOrAuto {
+    return switch (value) {
+        ._replace_ => .replace,
+        ._add_ => .add,
+        ._accumulate_ => .accumulate,
+        ._auto_ => .auto,
+    };
+}
 
 fn isNullish(realm: runtime.Context, value: JSValue) bool {
     const kind = engine.typeOf(realm, value);
     return kind == .null or kind == .undefined;
-}
-
-fn mapError(err: anyerror) engine.Error {
-    return switch (err) {
-        error.OutOfMemory => error.OutOfMemory,
-        error.TypeError => error.TypeError,
-        error.ExceptionPending => error.ExceptionPending,
-        else => error.OperationFailed,
-    };
-}
-
-fn domString(_: runtime.Context, _: JSValue) anyerror![]u8 {
-    unreachable; // convertAs converts DOMStrings with the builder's allocator.
-}
-
-/// CompositeOperationOrAuto: ToString, then one of the enumeration's values.
-fn compositeOf(realm: runtime.Context, value: JSValue) anyerror!CompositeOrAuto {
-    var buffer: [16]u8 = undefined;
-    var fixed = std.heap.FixedBufferAllocator.init(&buffer);
-    const text = engine.convertToDOMString(realm, value, fixed.allocator()) catch |err| switch (err) {
-        error.OutOfMemory => return error.TypeError,
-        else => return err,
-    };
-    inline for (.{ "replace", "add", "accumulate", "auto" }, 0..) |name, i| {
-        if (std.mem.eql(u8, text, name)) return @fromBackingInt(@intCast(i));
-    }
-    return error.TypeError;
-}
-
-/// double?: null is null; any other value converts, and must be finite.
-fn nullableDouble(realm: runtime.Context, value: JSValue) anyerror!?f64 {
-    if (isNullish(realm, value)) return null;
-    const number = try engine.convertToUnrestrictedDouble(realm, value);
-    if (!std.math.isFinite(number)) return error.TypeError;
-    return number;
 }
 
 /// `value` parsed with `property`'s grammar (6.6.3 step 8.1) and serialized;

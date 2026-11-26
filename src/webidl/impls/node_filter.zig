@@ -10,7 +10,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
-const webidl = @import("webidl");
+const interfaces = @import("interfaces");
 
 /// A traverser's filter: the callback interface value the calls are made
 /// through, taken at the conversion, so that its callback context is the
@@ -43,25 +43,24 @@ pub fn call(stored: *anyopaque, node: *runtime.Instance) Error!u16 {
 
     // Step 6: "call a user object's operation" acceptNode with « node » and no
     // this value - the operation makes the filter object `this` when it gets
-    // acceptNode from it. Step 8's "If an exception was thrown, re-throw the
-    // exception" is the operation's "rethrow": what the filter threw comes
-    // back as a throw completion, and is thrown on.
-    const completion = engine.callUserObjectOperation(realm, &filter.callback, "acceptNode", .undefined, &.{.{ .instance = node }}, .rethrow) catch |err|
+    // acceptNode from it, and converts the return value to `unsigned short`
+    // inside the callback's prepared scopes (WebIDL 3.11 step 14). Step 8's
+    // "If an exception was thrown, re-throw the exception" is `.rethrow`:
+    // what the filter or its return conversion threw comes back as a throw
+    // completion, and is thrown on.
+    const completion = interfaces.NodeFilter.invoke_acceptNode(realm, &filter.callback, .undefined, node, .rethrow, realm.allocator) catch |err|
         return traverserError(err);
-    const result = switch (completion) {
-        .normal => |value| value,
+    return switch (completion) {
+        .normal => |held| blk: {
+            defer held.release(realm.allocator);
+            break :blk held.value;
+        },
         .throw => |exception| {
             defer exception.release();
             engine.throwValue(realm, exception.value) catch |err| return traverserError(err);
             return error.ExceptionPending;
         },
     };
-    defer result.release();
-
-    // The callback's return type is `unsigned short`: ToNumber - which throws
-    // for a Symbol or a BigInt - then ConvertToInt.
-    const number = engine.convertToUnrestrictedDouble(realm, result.value) catch |err| return traverserError(err);
-    return webidl.primitives.unsignedShortFromNumber(number);
 }
 
 /// What `call` fails with: the traversers' own errors.

@@ -1845,7 +1845,13 @@ fn runPrecommitHandlers(instance: *runtime.Instance, internal: *InternalState, r
     var i: usize = 0;
     while (i < record.precommit_handlers.items.len) : (i += 1) {
         const handler = record.precommit_handlers.items[i];
-        const promise = invokeToPromise(realm, &handler, &.{.{ .instance = controller }}) orelse continue;
+        // Golden rule 2 (wpt.fyi cc74d2669f: Chrome 154+ & Firefox 157+ pass all 8
+        // navigation-api/ordering-and-transition/*-intercept-reject.html variants,
+        // Safari 27 fails): PromiseResolve keeps a same-realm %Promise% unchanged.
+        const promise = callbacks.call.NavigationPrecommitHandler.invokePromiseResolve(realm, &handler, .undefined, .{ .controller = controller }) catch |err| {
+            log.debug("[navigation] precommit handler not invoked: {s}", .{@errorName(err)});
+            continue;
+        };
         promises.append(internal.allocator, promise) catch {
             promise.release();
             continue;
@@ -1856,52 +1862,6 @@ fn runPrecommitHandlers(instance: *runtime.Instance, internal: *InternalState, r
     defer values.deinit(internal.allocator);
     for (promises.items) |p| values.append(internal.allocator, p.value) catch {};
     waitForAll(instance, record, .precommit, values.items);
-}
-
-/// WebIDL "invoke" `handler` - whose return type is a promise type - with
-/// `args`: the promise it returned, or one resolved with what it returned,
-/// or rejected with what it threw. OWNED; null when it could not run.
-///
-/// Deviation from the spec text, stated (golden rule 2): WebIDL converts the
-/// returned value to Promise<undefined> with a NEW promise resolved with it,
-/// which adds two microtask ticks before "wait for all" sees a returned
-/// promise settle. Blink keeps the returned promise as it is - the binding's
-/// NativeValueTraits<IDLPromise<T>> is ScriptPromise<T>::FromV8Value, which
-/// returns a v8::Promise unchanged (bindings/core/v8/script_promise.h), and
-/// NavigateEvent::FinalizeNavigationActionPromisesList and the precommit
-/// handler loop collect those promises for PromiseAll::WaitForAll
-/// (core/navigation_api/navigate_event.cc). Crane takes ECMAScript
-/// PromiseResolve(%Promise%, x) (engine.promiseResolve): the returned
-/// promise itself when its constructor is the realm's %Promise%. wpt.fyi
-/// (run cc74d2669f): navigation-api/ordering-and-transition/
-/// {navigate-same-document,reload,anchor-download,location-href}-intercept-reject.html,
-/// both variants each, pass in Chrome 154 and Firefox 157 and fail in
-/// Safari 27 (a 2-of-3 majority).
-fn invokeToPromise(realm: runtime.Context, handler: *const engine.CallbackFunction, args: []const runtime.JSValue) ?engine.Owned {
-    const completion = engine.invokeCallbackFunction(realm, handler, .undefined, args, .rethrow) catch |err| {
-        log.debug("[navigation] handler not invoked: {s}", .{@errorName(err)});
-        return null;
-    };
-    return switch (completion) {
-        .normal => |value| blk: {
-            defer value.release();
-            const resolved = engine.promiseResolve(realm, value.value) catch break :blk null;
-            break :blk switch (resolved) {
-                .normal => |promise| promise,
-                // Get(x, "constructor") threw: the conversion's abrupt
-                // completion is a promise rejected with it, as a throw from
-                // the handler is.
-                .throw => |reason| rejected: {
-                    defer reason.release();
-                    break :rejected engine.createRejectedPromise(realm, reason.value) catch null;
-                },
-            };
-        },
-        .throw => |reason| blk: {
-            defer reason.release();
-            break :blk engine.createRejectedPromise(realm, reason.value) catch null;
-        },
-    };
 }
 
 /// HTML "commit a navigate event" given the event's record, for an event
@@ -1992,7 +1952,13 @@ fn interceptCommitHandlerSteps(instance: *runtime.Instance, internal: *InternalS
     var i: usize = 0;
     while (i < record.handlers.items.len) : (i += 1) {
         const handler = record.handlers.items[i];
-        const promise = invokeToPromise(realm, &handler, &.{}) orelse continue;
+        // Golden rule 2 (wpt.fyi cc74d2669f: Chrome 154+ & Firefox 157+ pass all 8
+        // navigation-api/ordering-and-transition/*-intercept-reject.html variants,
+        // Safari 27 fails): PromiseResolve keeps a same-realm %Promise% unchanged.
+        const promise = callbacks.call.NavigationInterceptHandler.invokePromiseResolve(realm, &handler, .undefined, .{}) catch |err| {
+            log.debug("[navigation] handler not invoked: {s}", .{@errorName(err)});
+            continue;
+        };
         promises.append(internal.allocator, promise) catch promise.release();
     }
     record.invoking = false;

@@ -358,10 +358,6 @@ pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: 
     return error.NotSupported;
 }
 
-/// Typed callback return conversion runs before callback scope cleanup.
-pub fn invokeCallbackFunctionWithReturnType(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior, _: engine.CallbackReturnType) Error!engine.Completion {
-    return error.NotSupported;
-}
 /// WebIDL "construct a callback function". Linked: JS_IsConstructor (false
 /// is a TypeError of the realm, the throw completion), then
 /// JS_CallConstructor(ctx, F, argc, argv) in the function's realm - an
@@ -371,6 +367,24 @@ pub fn constructCallbackFunction(_: Context, _: *const engine.CallbackFunction, 
 }
 pub fn callUserObjectOperation(_: Context, _: *const engine.CallbackInterface, _: []const u8, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
     return error.NotSupported;
+}
+pub fn invokeCallbackFunctionAs(comptime R: type, comptime _: engine.ReturnOptions, _: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: anytype, _: engine.ExceptionBehavior, _: std.mem.Allocator) Error!engine.Returned(R) {
+    return error.NotSupported;
+}
+pub fn invokeCallbackFunctionToPromise(comptime _: engine.PromiseResolution, _: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: anytype) Error!Owned {
+    return error.NotSupported;
+}
+pub fn constructCallbackFunctionAs(comptime R: type, comptime _: engine.ReturnOptions, _: Context, _: *const engine.CallbackFunction, _: anytype, _: std.mem.Allocator) Error!engine.Returned(R) {
+    return error.NotSupported;
+}
+pub fn callUserObjectOperationAs(comptime R: type, comptime _: engine.ReturnOptions, _: Context, _: *const engine.CallbackInterface, _: []const u8, _: engine.CallbackThis, _: anytype, _: engine.ExceptionBehavior, _: std.mem.Allocator) Error!engine.Returned(R) {
+    return error.NotSupported;
+}
+pub fn convertFromJS(comptime T: type, comptime _: engine.ReturnOptions, _: Context, _: JSValue, _: std.mem.Allocator) Error!engine.Returned(T) {
+    return error.NotSupported;
+}
+pub fn releaseReturned(comptime R: type, _: std.mem.Allocator, held: engine.Held(R)) void {
+    held.js.release();
 }
 pub fn isCallable(_: Context, _: JSValue) bool {
     return false;

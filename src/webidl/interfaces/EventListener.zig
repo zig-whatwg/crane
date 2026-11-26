@@ -157,4 +157,18 @@ pub const EventListener = struct {
     pub const interface_arguments = .{
         .{ "call_handleEvent", 0, "Event" },
     };
+
+    const engine = @import("engine");
+
+    /// WebIDL 3.11 "call a user object's operation" for `handleEvent`.
+    pub fn invoke_handleEvent(
+        realm: engine.Context,
+        callback: *const engine.CallbackInterface,
+        this_arg: engine.CallbackThis,
+        event: *runtime.Instance,
+        behavior: engine.ExceptionBehavior,
+        allocator: std.mem.Allocator,
+    ) engine.Error!engine.Returned(void) {
+        return engine.callUserObjectOperationAs(void, .{}, realm, callback, "handleEvent", this_arg, .{event}, behavior, allocator);
+    }
 };

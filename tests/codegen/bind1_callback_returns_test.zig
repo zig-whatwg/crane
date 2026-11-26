@@ -17,7 +17,8 @@ const std = @import("std");
 const codegen = @import("codegen");
 const testing = std.testing;
 
-const list = codegen.callback_returns.callback_returns_converted_by_impl;
+const Entry = struct { []const u8, []const u8, codegen.callback_returns.Conversion };
+const list: []const Entry = &codegen.callback_returns.callback_returns_converted_by_impl;
 
 fn read(path: []const u8) ![]u8 {
     return std.Io.Dir.cwd().readFileAlloc(testing.io, path, testing.allocator, .limited(1024 * 1024));
@@ -41,8 +42,8 @@ fn returnTypeOf(source: []const u8, name: []const u8) ?[]const u8 {
     return null;
 }
 
-fn listed(name: []const u8) ?usize {
-    for (list, 0..) |entry, i| if (std.mem.eql(u8, entry[0], name)) return i;
+fn listed(name: []const u8) ?Entry {
+    for (list) |entry| if (std.mem.eql(u8, entry[0], name)) return entry;
     return null;
 }
 
@@ -67,17 +68,16 @@ test "the list is exactly the generated callbacks whose return type is neither u
             return error.TestUnexpectedResult;
         };
         callbacks += 1;
+        // Every generated callback now emits a typed `pub fn invoke(`.
+        try testing.expect(std.mem.indexOf(u8, source, "pub fn invoke(") != null);
         const converts = !std.mem.eql(u8, return_type, "undefined") and !std.mem.eql(u8, return_type, "any");
-        if (listed(name)) |index| {
+        if (listed(name)) |entry| {
             seen += 1;
             if (!converts) {
                 std.debug.print("{s} returns {s}: nothing to convert, it does not belong in the list\n", .{ name, return_type });
                 return error.TestUnexpectedResult;
             }
-            try testing.expectEqualStrings(return_type, list[index][1]);
-        } else if (converts) {
-            std.debug.print("callback {s} returns {s} and is not in callback_returns_converted_by_impl\n", .{ name, return_type });
-            return error.TestUnexpectedResult;
+            try testing.expectEqualStrings(return_type, entry[1]);
         }
     }
     // Every entry names a generated callback, once.
@@ -89,15 +89,77 @@ test "the list is exactly the generated callbacks whose return type is neither u
 }
 
 test "the callback returns an impl still converts only shrink" {
-    // 28 at the start (2026-11-24): 10 with a value type, 4 promise types
-    // whose resolution value has a type, Promise<undefined> x11 and
-    // Promise<any> x3. Batch B6 is done at zero.
-    try testing.expectEqual(@as(usize, 28), list.len);
-    var by_kind: [4]usize = @splat(0);
-    for (list) |entry| by_kind[@backingInt(entry[2])] += 1;
-    const Conversion = codegen.callback_returns.Conversion;
-    try testing.expectEqual(@as(usize, 6), by_kind[@backingInt(Conversion.hand)]);
-    try testing.expectEqual(@as(usize, 1), by_kind[@backingInt(Conversion.protocol_typed)]);
-    try testing.expectEqual(@as(usize, 12), by_kind[@backingInt(Conversion.promise_wrap)]);
-    try testing.expectEqual(@as(usize, 9), by_kind[@backingInt(Conversion.not_invoked)]);
+    // 28 -> 19 (codegen) -> 15 (Trusted Types) -> 6 (Streams) -> 5 (Custom Elements) -> 4 (beforeunload) -> 0 (Navigation/ViewTransition/Locks).
+    try testing.expectEqual(@as(usize, 0), list.len);
+}
+
+const IfaceEntry = struct { []const u8, []const u8, []const u8, codegen.callback_returns.Conversion };
+const ProseEntry = struct { []const u8, []const u8 };
+const iface_list: []const IfaceEntry = &codegen.callback_returns.callback_interface_returns_converted_by_impl;
+const prose_list: []const ProseEntry = &codegen.callback_returns.prose_dictionary_conversions_by_impl;
+
+fn listedIfaceOp(iface: []const u8, op: []const u8) ?IfaceEntry {
+    for (iface_list) |entry| {
+        if (std.mem.eql(u8, entry[0], iface) and std.mem.eql(u8, entry[1], op)) return entry;
+    }
+    return null;
+}
+
+test "the callback-interface list is exactly every callback interface operation with a typed return" {
+    const root = try read("src/webidl/interfaces/root.zig");
+    defer testing.allocator.free(root);
+    var seen: usize = 0;
+    var callback_interfaces: usize = 0;
+    var lines = std.mem.splitScalar(u8, root, '\n');
+    while (lines.next()) |line| {
+        if (!std.mem.startsWith(u8, line, "pub const ")) continue;
+        const rest = line["pub const ".len..];
+        const end = std.mem.indexOf(u8, rest, " = @import(\"") orelse continue;
+        const name = rest[0..end];
+        const path = try std.fmt.allocPrint(testing.allocator, "src/webidl/interfaces/{s}.zig", .{name});
+        defer testing.allocator.free(path);
+        const source = try read(path);
+        defer testing.allocator.free(source);
+        if (std.mem.indexOf(u8, source, "pub const is_callback_interface = true;") == null) continue;
+        callback_interfaces += 1;
+
+        var src_lines = std.mem.splitScalar(u8, source, '\n');
+        while (src_lines.next()) |src_line| {
+            const trimmed = std.mem.trimStart(u8, src_line, " ");
+            if (!std.mem.startsWith(u8, trimmed, "pub fn call_")) continue;
+            const after_call = trimmed["pub fn call_".len..];
+            const paren = std.mem.indexOfScalar(u8, after_call, '(') orelse continue;
+            const op_name = after_call[0..paren];
+            const err_marker = std.mem.indexOf(u8, after_call, "anyerror!") orelse continue;
+            const ret_start = after_call[err_marker + "anyerror!".len ..];
+            const brace = std.mem.indexOf(u8, ret_start, " {") orelse continue;
+            const ret_type = ret_start[0..brace];
+            const converts = !std.mem.eql(u8, ret_type, "void") and !std.mem.eql(u8, ret_type, "runtime.JSValue");
+            // Every callback interface operation now emits a typed `pub fn invoke_<op>(`.
+            const invoke_decl = try std.fmt.allocPrint(testing.allocator, "pub fn invoke_{s}(", .{op_name});
+            defer testing.allocator.free(invoke_decl);
+            try testing.expect(std.mem.indexOf(u8, source, invoke_decl) != null);
+            if (listedIfaceOp(name, op_name)) |entry| {
+                seen += 1;
+                try testing.expect(converts);
+                try testing.expectEqualStrings(ret_type, entry[2]);
+            }
+        }
+    }
+    try testing.expectEqual(@as(usize, 3), callback_interfaces);
+    try testing.expectEqual(iface_list.len, seen);
+    // 2 -> 0 (NodeFilter.acceptNode, XPathNSResolver.lookupNamespaceURI).
+    try testing.expectEqual(@as(usize, 0), iface_list.len);
+}
+
+test "prose dictionary conversions list names generated dictionaries and only shrinks" {
+    // 2 -> 0 (BasePropertyIndexedKeyframe, BaseKeyframe via engine.convertFromJS).
+    try testing.expectEqual(@as(usize, 0), prose_list.len);
+    for (prose_list) |entry| {
+        const path = try std.fmt.allocPrint(testing.allocator, "src/webidl/dictionaries/{s}.zig", .{entry[0]});
+        defer testing.allocator.free(path);
+        const source = try read(path);
+        defer testing.allocator.free(source);
+        try testing.expect(std.mem.indexOf(u8, source, "pub const webidl_dictionary = true;") != null);
+    }
 }

@@ -616,17 +616,6 @@ pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFu
     return protocol_callbacks.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
 }
 
-pub fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior, return_type: engine.CallbackReturnType) Error!engine.Completion {
-    forbidScriptInHold(realm);
-    // A native algorithm calls script: a DOM algorithm on the agent's stack
-    // until the callback returns to it (dom_algorithm.zig, risk 4).
-    const algorithm = dom_algorithm.enterCallback(realm);
-    defer dom_algorithm.leaveCallback(algorithm);
-    return switch (return_type) {
-        inline else => |kind| protocol_callbacks.invokeCallbackFunctionWithReturnType(realm, callback, this_arg, args, behavior, kind),
-    };
-}
-
 pub fn constructCallbackFunction(realm: Context, callback: *const engine.CallbackFunction, args: []const JSValue) Error!engine.Completion {
     forbidScriptInHold(realm);
     // A native algorithm calls script: a DOM algorithm on the agent's stack
@@ -643,6 +632,45 @@ pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackI
     const algorithm = dom_algorithm.enterCallback(realm);
     defer dom_algorithm.leaveCallback(algorithm);
     return protocol_callbacks.callUserObjectOperation(realm, callback, operation, this_arg, args, behavior);
+}
+
+pub fn invokeCallbackFunctionAs(comptime R: type, comptime return_options: engine.ReturnOptions, realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: anytype, behavior: engine.ExceptionBehavior, allocator: std.mem.Allocator) Error!engine.Returned(R) {
+    forbidScriptInHold(realm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
+    return protocol_callbacks.invokeCallbackFunctionAs(R, return_options, realm, callback, this_arg, args, behavior, allocator);
+}
+
+pub fn invokeCallbackFunctionToPromise(comptime resolution: engine.PromiseResolution, realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: anytype) Error!Owned {
+    forbidScriptInHold(realm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
+    return protocol_callbacks.invokeCallbackFunctionToPromise(resolution, realm, callback, this_arg, args);
+}
+
+pub fn constructCallbackFunctionAs(comptime R: type, comptime return_options: engine.ReturnOptions, realm: Context, callback: *const engine.CallbackFunction, args: anytype, allocator: std.mem.Allocator) Error!engine.Returned(R) {
+    forbidScriptInHold(realm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
+    return protocol_callbacks.constructCallbackFunctionAs(R, return_options, realm, callback, args, allocator);
+}
+
+pub fn callUserObjectOperationAs(comptime R: type, comptime return_options: engine.ReturnOptions, realm: Context, callback: *const engine.CallbackInterface, operation: []const u8, this_arg: engine.CallbackThis, args: anytype, behavior: engine.ExceptionBehavior, allocator: std.mem.Allocator) Error!engine.Returned(R) {
+    forbidScriptInHold(realm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
+    return protocol_callbacks.callUserObjectOperationAs(R, return_options, realm, callback, operation, this_arg, args, behavior, allocator);
+}
+
+pub fn convertFromJS(comptime T: type, comptime options: engine.ReturnOptions, realm: Context, value: JSValue, allocator: std.mem.Allocator) Error!engine.Returned(T) {
+    forbidScriptInHold(realm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
+    return protocol_callbacks.convertFromJS(T, options, realm, value, allocator);
+}
+
+pub fn releaseReturned(comptime R: type, allocator: std.mem.Allocator, held: engine.Held(R)) void {
+    protocol_callbacks.releaseReturned(R, allocator, held);
 }
 
 /// In `realm`'s agent: a realm that cannot be entered reads nothing.

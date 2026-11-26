@@ -3,6 +3,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
+const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const dom = @import("dom");
 const core = @import("html_core");
@@ -95,10 +96,11 @@ pub fn create(requested: Creation) !*runtime.Instance {
             // save/set/restore of its active custom element constructor map.
             const state = try driver.pushConstructor(realm, found);
             defer state.popConstructor();
-            const completion = try engine.constructCallbackFunction(realm, &found.constructor, &.{});
+            const completion = try callbacks.call.CustomElementConstructor.construct(realm, &found.constructor, .{}, realm.allocator);
             if (state.active_constructors.get(state.active_constructors.len - 1).?.registry == null) {
                 switch (completion) {
-                    inline else => |value| value.release(),
+                    .normal => |constructed| constructed.release(realm.allocator),
+                    .throw => |exception| exception.release(),
                 }
                 return error.InvalidStateError;
             }
@@ -107,22 +109,25 @@ pub fn create(requested: Creation) !*runtime.Instance {
                     defer exception.release();
                     reportConstructionError(realm, found, exception.value);
                 },
-                .normal => |result| {
+                .normal => |constructed| {
                     var transferred = false;
-                    defer if (!transferred) result.release();
-                    if (try validateConstructed(options, result.value)) |exception| {
+                    defer if (!transferred) constructed.release(realm.allocator);
+                    const element = constructed.value;
+                    if (try validateConstructed(options, element)) |exception| {
                         defer exception.release();
                         reportConstructionError(realm, found, exception.value);
                     } else {
-                        const element = engine.convertToPlatformObject(realm, result.value).?;
                         const data = ce.get(element) orelse return error.InvalidStateError;
                         // Steps 5.1.4.9–5.1.4.11.
                         try ce.initialize(element, options.prefix, null, data.state);
                         try ce.setElementRegistry(element, registry);
                         // Owned keeps the custom wrapper alive across the
-                        // generated CEReactions.end and return conversion.
+                        // generated CEReactions.end and return conversion;
+                        // constructed.value (*runtime.Instance) holds no
+                        // allocation of its own so transferring constructed.js
+                        // moves all owned resources out of `constructed`.
                         transferred = true;
-                        try driver.takeReturnedValue(realm, result);
+                        try driver.takeReturnedValue(realm, constructed.js);
                         return element;
                     }
                 },
@@ -184,13 +189,10 @@ pub fn createInternal(options: Creation, state: ce.State, interface: Interface) 
     return element;
 }
 
-fn validateConstructed(options: Creation, value: runtime.JSValue) !?engine.Owned {
+fn validateConstructed(options: Creation, element: *runtime.Instance) !?engine.Owned {
     const realm = options.document.ctx;
-    const element = engine.convertToPlatformObject(realm, value) orelse
-        return try engine.createSimpleException(realm, .TypeError, "Custom element constructor did not return an HTMLElement");
-    if (element.stateAs(interfaces.HTMLElement.State) == null)
-        return try engine.createSimpleException(realm, .TypeError, "Custom element constructor did not return an HTMLElement");
     // Steps 5.1.4.4–5.1.4.8: validate only after constructing C.
+    // (The HTMLElement interface check ran during CustomElementConstructor.construct.)
     if (dom.element_attributes.count(element) != 0 or
         (try interfaces.Node.get_firstChild(element)) != null or
         (try interfaces.Node.get_parentNode(element)) != null or

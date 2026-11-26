@@ -33,70 +33,22 @@ pub const Conversion = enum {
 };
 
 /// (callback, its IDL return type, how the value is converted today).
-pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u8, Conversion }{
-    // --- A value type ---
-    // Trusted Types' policy callbacks: impls/TrustedTypePolicy.zig policyValue
-    // (engine.convertToDOMString / convertToUSVString; null and undefined are
-    // null).
-    .{ "CreateHTMLCallback", "DOMString?", .hand },
-    .{ "CreateScriptCallback", "DOMString?", .hand },
-    .{ "CreateScriptURLCallback", "USVString?", .hand },
-    // Invoked in impls/TrustedTypePolicy.zig parserOptionsValue; converted in
-    // html/parser_options.zig trustedFromPolicyValue (the dictionary's
-    // members read by hand, its sanitizer member by
-    // html/sanitizer.zig Converted.fromJS and the hand readers behind it).
-    .{ "CreateParserOptionsCallback", "SetHTMLUnsafeOptions?", .hand },
-    // dom/streams_readable.zig defaultControllerEnqueueCompletion and
-    // dom/streams_writable.zig getChunkSize (engine.convertToUnrestrictedDouble).
-    .{ "QueuingStrategySize", "unrestricted double", .hand },
-    // html/custom_elements/creation.zig create + validateConstructed
-    // (engine.convertToPlatformObject, then HTMLElement's checks);
-    // html/upgrade.zig constructForUpgrade compares identity only.
-    .{ "CustomElementConstructor", "HTMLElement", .hand },
-    // impls/EventTarget.zig invokeIdlEventHandler (.nullable_dom_string).
-    .{ "OnBeforeUnloadEventHandlerNonNull", "DOMString?", .protocol_typed },
-    // Observable's every / some / find / filter are stubs.
-    .{ "Predicate", "boolean", .not_invoked },
-    // No AudioWorkletProcessor runs process().
-    .{ "AudioWorkletProcessCallback", "boolean", .not_invoked },
-    // registerProcessor() constructs nothing yet.
-    .{ "AudioWorkletProcessorConstructor", "AudioWorkletProcessor", .not_invoked },
+/// Batch B6 drove this list to zero: every generated callback invokes and
+/// converts its return type through `callbacks.call.<Name>.invoke`.
+pub const callback_returns_converted_by_impl = [_]struct { []const u8, []const u8, Conversion }{};
 
-    // --- A promise type whose resolution value has a type to convert ---
-    .{ "LanguageModelToolFunction", "Promise<DOMString>", .not_invoked },
-    .{ "LoadDocumentCallback", "Promise<RemoteDocument>", .not_invoked },
-    .{ "ValidateAssertionCallback", "Promise<RTCIdentityValidationResult>", .not_invoked },
-    .{ "GenerateAssertionCallback", "Promise<RTCIdentityAssertionResult>", .not_invoked },
+/// Callback interface operations whose return value is not `undefined`/`any`
+/// and is still converted by hand in an impl (WebIDL 3.11 step 14).
+/// (interface, operation, Zig return type, how converted today).
+/// Batch B6 drove this list to zero: NodeFilter.acceptNode and
+/// XPathNSResolver.lookupNamespaceURI invoke through their generated
+/// `invoke_<op>` helpers.
+pub const callback_interface_returns_converted_by_impl = [_]struct { []const u8, []const u8, []const u8, Conversion }{};
 
-    // --- Promise<undefined> ---
-    // Streams, all through dom/streams_js.zig Realm.promiseCall (a throw is
-    // a promise rejected with it, a return value a new promise resolved with
-    // it): dom/streams_readable.zig pullErased, cancelErased;
-    // dom/streams_writable.zig writeErased, closeErased, abortErased;
-    // dom/streams_transform.zig transformErased, flushErased, cancelErased.
-    .{ "UnderlyingSourcePullCallback", "Promise<undefined>", .promise_wrap },
-    .{ "UnderlyingSourceCancelCallback", "Promise<undefined>", .promise_wrap },
-    .{ "UnderlyingSinkWriteCallback", "Promise<undefined>", .promise_wrap },
-    .{ "UnderlyingSinkCloseCallback", "Promise<undefined>", .promise_wrap },
-    .{ "UnderlyingSinkAbortCallback", "Promise<undefined>", .promise_wrap },
-    .{ "TransformerTransformCallback", "Promise<undefined>", .promise_wrap },
-    .{ "TransformerFlushCallback", "Promise<undefined>", .promise_wrap },
-    .{ "TransformerCancelCallback", "Promise<undefined>", .promise_wrap },
-    // impls/Navigation.zig invokeToPromise (engine.promiseResolve: a promise
-    // of the realm passes through), from interceptCommitHandlerSteps and
-    // runPrecommitHandlers.
-    .{ "NavigationInterceptHandler", "Promise<undefined>", .promise_wrap },
-    .{ "NavigationPrecommitHandler", "Promise<undefined>", .promise_wrap },
-    // AutofillEvent.refill is null and nothing stores one.
-    .{ "RefillCallback", "Promise<undefined>", .not_invoked },
-
-    // --- Promise<any> ---
-    // impls/LockManager.zig invokeCallback (an object passes through as it
-    // is - the file's stated deviation; anything else is a new promise
-    // resolved with it).
-    .{ "LockGrantedCallback", "Promise<any>", .promise_wrap },
-    // dom/view_transitions.zig callUpdateCallback (engine.promiseResolve).
-    .{ "ViewTransitionUpdateCallback", "Promise<any>", .promise_wrap },
-    // ModelContext.registerTool / executeTool are not implemented.
-    .{ "ToolExecuteCallback", "Promise<any>", .not_invoked },
-};
+/// WebIDL dictionary conversions called from spec prose (not a binding
+/// argument or callback return) that are still read by hand instead of
+/// `engine.convertFromJS`.
+/// (dictionary, location). Batch B6 moved BaseKeyframe and
+/// BasePropertyIndexedKeyframe onto `engine.convertFromJS` and drove this
+/// list to zero.
+pub const prose_dictionary_conversions_by_impl = [_]struct { []const u8, []const u8 }{};

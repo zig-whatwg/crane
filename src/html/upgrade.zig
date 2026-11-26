@@ -3,6 +3,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
+const callbacks = @import("callbacks");
 const dom = @import("dom");
 const ce = dom.custom_elements;
 const driver = @import("custom_elements/driver.zig");
@@ -117,22 +118,25 @@ fn constructForUpgrade(element: *runtime.Instance, definition: *ce.Definition, a
     // Step 10.2–10.4: Construct, not Call; the binding's HTMLConstructor uses
     // this definition's construction stack and installs the custom prototype.
     ce.setState(element, .precustomized);
-    const result = engine.constructCallbackFunction(element.ctx, &definition.constructor, &.{}) catch |err| {
+    const result = callbacks.call.CustomElementConstructor.construct(element.ctx, &definition.constructor, .{}, element.ctx.allocator) catch |err| {
         if (state.active_constructors.get(state.active_constructors.len - 1).?.registry == null) alive.* = false;
         return err;
     };
     if (state.active_constructors.get(state.active_constructors.len - 1).?.registry == null) {
         alive.* = false;
         switch (result) {
-            inline else => |value| value.release(),
+            .normal => |held| held.release(element.ctx.allocator),
+            .throw => |exception| exception.release(),
         }
         return error.InvalidStateError;
     }
     switch (result) {
-        .throw => return result,
-        .normal => |value| {
-            if (engine.sameValue(element.ctx, value.value, .{ .instance = element })) return result;
-            value.release();
+        .throw => |exception| return .{ .throw = exception },
+        .normal => |held| {
+            // `held.value` is already converted to HTMLElement by WebIDL
+            // construct step 13; step 10.4 requires it be the exact `element`.
+            if (held.value == element) return .{ .normal = held.js };
+            held.release(element.ctx.allocator);
             return .{ .throw = try engine.createSimpleException(element.ctx, .TypeError, "Custom element constructor returned a different object") };
         },
     }

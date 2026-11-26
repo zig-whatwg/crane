@@ -7025,6 +7025,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     runtime_mod.addImport("engine", engine_mod);
 
     // Cross-imports for WebIDL modules
+    interfaces_mod.addImport("engine", engine_mod); // For callback interface typed invoke helpers
     interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
     interfaces_mod.addImport("impls", impls_mod);
     namespaces_mod.addImport("impls", impls_mod); // Namespaces need access to impls
@@ -7032,6 +7033,11 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     interfaces_mod.addImport("dictionaries", dictionaries_mod);
     interfaces_mod.addImport("enums", enums_mod);
     interfaces_mod.addImport("callbacks", callbacks_mod);
+    callbacks_mod.addImport("engine", engine_mod);
+    callbacks_mod.addImport("interfaces", interfaces_mod);
+    callbacks_mod.addImport("typedefs", typedefs_mod);
+    callbacks_mod.addImport("dictionaries", dictionaries_mod);
+    callbacks_mod.addImport("enums", enums_mod);
     impls_mod.addImport("interfaces", interfaces_mod);
     impls_mod.addImport("typedefs", typedefs_mod);
     impls_mod.addImport("dictionaries", dictionaries_mod);
@@ -7077,6 +7083,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     dom_mod.addImport("dictionaries", dictionaries_mod);
     dom_mod.addImport("enums", enums_mod);
     dom_mod.addImport("typedefs", typedefs_mod);
+    dom_mod.addImport("callbacks", callbacks_mod);
 
     // Quirks module (WHATWG Quirks Mode Standard)
     const quirks_mod = graphModule(b, public, "quirks", .{
@@ -7919,6 +7926,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // engine-neutral code calls `engine.op`.
     html_mod.addImport("engine", engine_mod);
     html_mod.addImport("dictionaries", dictionaries_mod);
+    html_mod.addImport("callbacks", callbacks_mod);
     // The Unicode bidi classes, for HTML's directionality (form_associated.zig).
     html_mod.addImport("url", url_mod);
     // DOM module for document_internals access in parser_script_execution.zig
