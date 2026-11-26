@@ -20,6 +20,7 @@ const host_events = @import("host_events.zig");
 const Process = @import("process.zig").Process;
 
 /// Every allocation the ABI hands out or keeps: malloc's, thread-safe.
+// direct-allocator: C ABI host allocator for external embedder handles and strings returned across include/crane.h
 const allocator = std.heap.c_allocator;
 
 pub const Status = enum(c_int) {
