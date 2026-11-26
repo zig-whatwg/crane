@@ -195,6 +195,15 @@ pub const EventLoop = struct {
     /// engine's ms clock), or null: ask on every idle turn.
     heap_decommit_due_ms: ?u32 = null,
 
+    /// CDP Emulation.setCPUThrottlingRate slowdown factor (1.0 = unthrottled).
+    /// Checked once per task with `@branchHint(.unlikely)`: zero clock reads,
+    /// allocations or sleeps while 1.0.
+    cpu_throttling_rate: f64 = 1.0,
+
+    /// Accumulated CPU-throttle sleep debt (ns) carried across sub-millisecond
+    /// tasks so OS sleep granularity does not inflate bursts of tiny tasks.
+    cpu_throttle_debt_ns: i64 = 0,
+
     const Self = @This();
 
     /// Default maximum wait time when no explicit timeout is provided.
@@ -394,6 +403,55 @@ pub const EventLoop = struct {
     /// Whether the event loop is currently frozen.
     pub fn isFrozen(self: *Self) bool {
         return self.frozen;
+    }
+
+    // ========================================================================
+    // CPU Throttling (CDP Emulation.setCPUThrottlingRate)
+    // ========================================================================
+
+    /// Minimum accumulated CPU-throttle debt before sleeping (1 ms): avoids
+    /// multiplying OS sleep granularity across bursts of microsecond tasks.
+    const min_throttle_sleep_ns: i64 = 1 * std.time.ns_per_ms;
+    /// Cap on accumulated throttle debt (10 s) so extreme raw CDP rates cannot
+    /// overflow integer conversion or stall teardown indefinitely.
+    const max_throttle_debt_ns: i64 = 10 * std.time.ns_per_s;
+    /// Cap on negative credit carried across sleeps from OS sleep overshoot.
+    const max_throttle_credit_ns: i64 = 4 * std.time.ns_per_ms;
+
+    /// Set the CPU throttling slowdown factor (Blink's
+    /// InspectorEmulationAgent::setCPUThrottlingRate / ThreadCPUThrottler).
+    /// Values <= 1.0 (or NaN) disable throttling and clear residual debt.
+    pub fn setCpuThrottlingRate(self: *Self, rate: f64) void {
+        if (rate > 1.0) {
+            self.cpu_throttling_rate = rate;
+        } else {
+            self.cpu_throttling_rate = 1.0;
+            self.cpu_throttle_debt_ns = 0;
+        }
+    }
+
+    /// Current CPU throttling slowdown factor (1.0 when unthrottled).
+    pub fn cpuThrottlingRate(self: *const Self) f64 {
+        return self.cpu_throttling_rate;
+    }
+
+    /// Apply `(rate - 1) * work_ns` throttling delay using a debt accumulator
+    /// (conceptually matching Blink's ThreadCPUThrottler / CPUTimeBudgetPool
+    /// without process-global POSIX signals, keeping Browsers isolated).
+    noinline fn throttleAfterWork(self: *Self, work_ns: i64) void {
+        if (work_ns <= 0 or !(self.cpu_throttling_rate > 1.0)) return;
+        const add_f = (self.cpu_throttling_rate - 1.0) * @as(f64, @floatFromInt(work_ns));
+        const add_ns: i64 = if (add_f >= @as(f64, @floatFromInt(max_throttle_debt_ns)))
+            max_throttle_debt_ns
+        else
+            @intFromFloat(add_f);
+        self.cpu_throttle_debt_ns = @min(self.cpu_throttle_debt_ns +| add_ns, max_throttle_debt_ns);
+        if (self.cpu_throttle_debt_ns < min_throttle_sleep_ns) return;
+        const sleep_ns: u64 = @intCast(self.cpu_throttle_debt_ns);
+        const sleep_start = realMonotonicNs();
+        platform.sleepThread(sleep_ns);
+        const actual_sleep = realMonotonicNs() - sleep_start;
+        self.cpu_throttle_debt_ns = @max(self.cpu_throttle_debt_ns - actual_sleep, -max_throttle_credit_ns);
     }
 
     // ========================================================================
@@ -707,7 +765,34 @@ pub const EventLoop = struct {
             // callback, ran ahead of the permissions query's task that
             // callback queued, and the status it made never heard the
             // change; tests/html/rep2_window_wake_test.zig).
-            if (mgr.pollEach(after_each)) {
+            if (self.cpu_throttling_rate > 1.0) {
+                @branchHint(.unlikely);
+                const poll_start = realMonotonicNs();
+                if (mgr.pollEach(after_each)) {
+                    did_work = true;
+                    self.throttleAfterWork(realMonotonicNs() - poll_start);
+                } else {
+                    var wait_ns: u64 = 0;
+                    if (wait_time > 0) {
+                        const next = mgr.getNextTimerDeadline() orelse wait_time;
+                        const wait_ms: u64 = @min(@min(next, wait_time), TimerManager.max_block_ms);
+                        wait_ns = wait_ms * std.time.ns_per_ms;
+                        if (wait_ms == 0) timer_within_ms = true;
+                    }
+                    if (wait_ns == 0 and timer_within_ms and self.browser_clock.isReal() and
+                        !(self.runnableQueued() or self.deferredPending())) wait_ns = untilNextTimerNs(mgr);
+                    if (wait_ns > 0) {
+                        self.cpu_throttle_debt_ns = 0;
+                        self.sink.waitForWork(wait_ns);
+                        start = self.nowNs();
+                        const wake_start = realMonotonicNs();
+                        if (mgr.pollEach(after_each)) {
+                            did_work = true;
+                            self.throttleAfterWork(realMonotonicNs() - wake_start);
+                        }
+                    }
+                }
+            } else if (mgr.pollEach(after_each)) {
                 did_work = true;
             } else {
                 var wait_ns: u64 = 0;
@@ -857,8 +942,16 @@ pub const EventLoop = struct {
         defer posted.deinit(self.allocator);
         self.sink.takeAll(&posted, self.allocator) catch return false;
         for (posted.items) |task| {
-            task.run(task.data);
-            self.endOfTask();
+            if (self.cpu_throttling_rate > 1.0) {
+                @branchHint(.unlikely);
+                const task_start = realMonotonicNs();
+                task.run(task.data);
+                self.endOfTask();
+                self.throttleAfterWork(realMonotonicNs() - task_start);
+            } else {
+                task.run(task.data);
+                self.endOfTask();
+            }
         }
         return posted.items.len > 0;
     }
@@ -1022,8 +1115,16 @@ pub const EventLoop = struct {
                     progressed = true;
                 },
                 .fully_active => {
-                    task.callback(task.context);
-                    after(self);
+                    if (self.cpu_throttling_rate > 1.0) {
+                        @branchHint(.unlikely);
+                        const task_start = realMonotonicNs();
+                        task.callback(task.context);
+                        after(self);
+                        self.throttleAfterWork(realMonotonicNs() - task_start);
+                    } else {
+                        task.callback(task.context);
+                        after(self);
+                    }
                     progressed = true;
                 },
             }
@@ -2209,4 +2310,30 @@ test "the deferred teardown runs between tasks: slices while nothing waits, one 
     }
     try testing.expectEqual(big.nodes, big.freed);
     try testing.expect(!loop.hasPendingWork());
+}
+
+test "CPU throttling clamps <= 1.0 and NaN, accumulates sub-ms debt without sleeping, and clears debt on disable" {
+    var loop = try testLoop();
+    defer loop.deinit();
+
+    try testing.expectEqual(@as(f64, 1.0), loop.cpuThrottlingRate());
+    try testing.expectEqual(@as(i64, 0), loop.cpu_throttle_debt_ns);
+
+    // Rate <= 1 or NaN stays 1.0 and does not accumulate debt.
+    loop.setCpuThrottlingRate(0.5);
+    try testing.expectEqual(@as(f64, 1.0), loop.cpuThrottlingRate());
+    loop.setCpuThrottlingRate(std.math.nan(f64));
+    try testing.expectEqual(@as(f64, 1.0), loop.cpuThrottlingRate());
+    loop.throttleAfterWork(5 * std.time.ns_per_ms);
+    try testing.expectEqual(@as(i64, 0), loop.cpu_throttle_debt_ns);
+
+    // Sub-threshold work accumulates debt without sleeping yet.
+    loop.setCpuThrottlingRate(4.0);
+    loop.throttleAfterWork(100 * std.time.ns_per_us); // +300 us debt
+    try testing.expectEqual(@as(i64, 300 * std.time.ns_per_us), loop.cpu_throttle_debt_ns);
+
+    // Disabling resets rate to 1.0 and clears residual debt.
+    loop.setCpuThrottlingRate(1.0);
+    try testing.expectEqual(@as(f64, 1.0), loop.cpuThrottlingRate());
+    try testing.expectEqual(@as(i64, 0), loop.cpu_throttle_debt_ns);
 }
