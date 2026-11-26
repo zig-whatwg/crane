@@ -22,6 +22,7 @@ pub const names = [_][]const u8{
     "AbstractWorker",
     "ActivationBlockersMixin",
     "Animatable",
+    "AnimationFrameProvider",
     "BluetoothDeviceEventHandlers",
     "Body",
     "CanvasCompositing",
@@ -106,7 +107,9 @@ pub const names = [_][]const u8{
     "WebGLRenderingContextBase",
     "WebGLRenderingContextOverloads",
     "WindowEventHandlers",
+    "WindowLocalStorage",
     "WindowOrWorkerGlobalScope",
+    "WindowSessionStorage",
     "XPathEvaluatorBase",
     "XRViewGeometry",
 };

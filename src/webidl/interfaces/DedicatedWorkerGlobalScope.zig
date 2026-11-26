@@ -269,17 +269,13 @@ pub const DedicatedWorkerGlobalScope = struct {
     pub const get_onmessageerror = mixins.MessageEventTarget.get_onmessageerror;
     pub const set_onmessageerror = mixins.MessageEventTarget.set_onmessageerror;
 
-    pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-        return try DedicatedWorkerGlobalScopeImpl.call_cancelAnimationFrame(instance, handle);
-    }
+    pub const call_cancelAnimationFrame = mixins.AnimationFrameProvider.call_cancelAnimationFrame;
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
         return try DedicatedWorkerGlobalScopeImpl.call_postMessage(instance, message, transfer);
     }
 
-    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
-        return try DedicatedWorkerGlobalScopeImpl.call_requestAnimationFrame(instance, callback);
-    }
+    pub const call_requestAnimationFrame = mixins.AnimationFrameProvider.call_requestAnimationFrame;
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try DedicatedWorkerGlobalScopeImpl.call_close(instance);

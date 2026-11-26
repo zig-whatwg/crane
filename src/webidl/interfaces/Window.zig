@@ -2303,13 +2303,9 @@ pub const Window = struct {
         return value;
     }
 
-    pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WindowImpl.get_sessionStorage(instance);
-    }
+    pub const get_sessionStorage = mixins.WindowSessionStorage.get_sessionStorage;
 
-    pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WindowImpl.get_localStorage(instance);
-    }
+    pub const get_localStorage = mixins.WindowLocalStorage.get_localStorage;
 
     /// Extended attributes: [SecureContext]
     pub const get_pushManager = mixins.PushManagerAttribute.get_pushManager;
@@ -2392,9 +2388,7 @@ pub const Window = struct {
 
     pub const call_queueMicrotask = mixins.WindowOrWorkerGlobalScope.call_queueMicrotask;
 
-    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
-        return try WindowImpl.call_requestAnimationFrame(instance, callback);
-    }
+    pub const call_requestAnimationFrame = mixins.AnimationFrameProvider.call_requestAnimationFrame;
 
     pub fn call_blur(instance: *runtime.Instance) anyerror!void {
         return try WindowImpl.call_blur(instance);
@@ -2514,9 +2508,7 @@ pub const Window = struct {
         return try WindowImpl.call_stop(instance);
     }
 
-    pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-        return try WindowImpl.call_cancelAnimationFrame(instance, handle);
-    }
+    pub const call_cancelAnimationFrame = mixins.AnimationFrameProvider.call_cancelAnimationFrame;
 
     /// Extended attributes: [SecureContext]
     pub fn call_minimize(instance: *runtime.Instance) anyerror!runtime.JSValue {

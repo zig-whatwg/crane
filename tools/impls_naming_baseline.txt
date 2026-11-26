@@ -107,8 +107,6 @@ src/webidl/impls/ARIAMixin.zig set_ariaValueMin 1
 src/webidl/impls/ARIAMixin.zig set_ariaValueNow 1
 src/webidl/impls/ARIAMixin.zig set_ariaValueText 1
 src/webidl/impls/ARIAMixin.zig set_role 1
-src/webidl/impls/AnimationFrameProvider.zig call_cancelAnimationFrame 1
-src/webidl/impls/AnimationFrameProvider.zig call_requestAnimationFrame 1
 src/webidl/impls/GeometryUtils.zig call_convertPointFromNode 1
 src/webidl/impls/GeometryUtils.zig call_convertQuadFromNode 1
 src/webidl/impls/GeometryUtils.zig call_convertRectFromNode 1
@@ -117,5 +115,3 @@ src/webidl/impls/GetSVGDocument.zig call_getSVGDocument 1
 src/webidl/impls/Region.zig call_getRegionFlowRanges 1
 src/webidl/impls/Region.zig get_regionOverset 1
 src/webidl/impls/Slottable.zig get_assignedSlot 1
-src/webidl/impls/WindowLocalStorage.zig get_localStorage 1
-src/webidl/impls/WindowSessionStorage.zig get_sessionStorage 1
