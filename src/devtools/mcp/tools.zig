@@ -36,6 +36,9 @@ pub const Tool = struct {
     /// verifyFilesSchema: the parameters that name the server's files,
     /// checked against the path policy before the page is resolved.
     files: []const FileParam = &.{},
+    /// conditions: ['memoryDebugging'] — offered only when `--memoryDebugging`
+    /// is enabled.
+    memory_debugging: bool = false,
     run: Run,
 };
 
@@ -90,8 +93,14 @@ const logpoints = @import("logpoints.zig");
 /// definitions do).
 pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list ++ network_tools.list ++ input_tools.list ++ snapshot_tools.list ++ emulation_tools.list ++ logpoint_tools.list ++ memory_tools.list);
 
-/// The tools/list JSON array for `all`, from the copied definitions.
+/// The tools/list JSON array for `all` with default flags (memoryDebugging off).
 pub fn listJson(allocator: Allocator) ![]u8 {
+    return listJsonWith(allocator, false);
+}
+
+/// The tools/list JSON array for `all`, including `--memoryDebugging` tools
+/// when `memory_debugging` is true.
+pub fn listJsonWith(allocator: Allocator, memory_debugging: bool) ![]u8 {
     const copied = @embedFile("schemas/tools.json");
     const parsed = try std.json.parseFromSlice(std.json.Value, allocator, copied, .{});
     defer parsed.deinit();
@@ -102,7 +111,8 @@ pub fn listJson(allocator: Allocator) ![]u8 {
     var first = true;
     for (parsed.value.object.get("tools").?.array.items) |definition| {
         const name = definition.object.get("name").?.string;
-        if (find(name) == null) continue;
+        const tool = find(name) orelse continue;
+        if (tool.memory_debugging and !memory_debugging) continue;
         if (!first) try w.writeAll(",");
         first = false;
         try std.json.Stringify.value(definition, .{}, w);
@@ -165,6 +175,8 @@ pub fn disabled(name: []const u8) bool {
 // collects a file's test blocks only when something analyzes its import.
 test {
     _ = script;
+    _ = @import("heap_snapshot.zig");
+    _ = @import("heap_formatter.zig");
 }
 
 test "disabled: a copied tool off by default, not one offered by default or unknown" {
@@ -183,6 +195,7 @@ pub fn find(name: []const u8) ?Tool {
 pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: std.json.Value) anyerror!?protocol.ToolResult {
     const session: *Session = @ptrCast(@alignCast(context));
     const tool = find(name) orelse return null;
+    if (tool.memory_debugging and !session.memory_debugging) return null;
     session.dropClosed();
     // Whatever came since the last call is recorded first.
     _ = try session.client.pump(0);

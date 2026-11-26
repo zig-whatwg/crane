@@ -18,6 +18,7 @@ const keyboard_mod = @import("keyboard.zig");
 const snapshot_mod = @import("snapshot.zig");
 const paths_mod = @import("paths.zig");
 const logpoints_mod = @import("logpoints.zig");
+const heap_snapshot_mod = @import("heap_snapshot.zig");
 
 const log = std.log.scoped(.mcp);
 
@@ -315,6 +316,10 @@ pub const Session = struct {
     /// Where tools may read and write files (paths.zig: the configured
     /// roots, the client's, the OS temp directory).
     paths: paths_mod.Policy,
+    /// Whether `--memoryDebugging` / `--memory-debugging` is enabled.
+    memory_debugging: bool = false,
+    /// Loaded and cached heap snapshots (HeapSnapshotManager).
+    heap_snapshots: heap_snapshot_mod.Cache = .{},
 
     /// Attach to the browser behind `link` as Puppeteer's connect does.
     pub fn create(allocator: Allocator, link: *LocalLink) !*Session {
@@ -345,6 +350,7 @@ pub const Session = struct {
         }
         self.isolated_contexts.deinit(self.allocator);
         if (self.schemas) |*parsed| parsed.deinit();
+        self.heap_snapshots.deinit(self.allocator);
         self.paths.deinit();
         self.allocator.destroy(self);
     }

@@ -35,6 +35,9 @@ pub const Options = struct {
     allow_unrestricted_paths: bool = false,
     /// How long the first tool call waits for the client's roots.
     roots_timeout_ms: i64 = protocol.roots_timeout_ms,
+    /// Enable heap snapshot analysis tools (chrome-devtools-mcp's
+    /// `--memoryDebugging` / `--memory-debugging`).
+    memory_debugging: bool = false,
 };
 
 pub const McpServer = struct {
@@ -56,12 +59,13 @@ pub const McpServer = struct {
         errdefer link.close();
         const session = try Session.create(allocator, link);
         errdefer session.destroy();
-        const tools_json = try tools.listJson(allocator);
+        const tools_json = try tools.listJsonWith(allocator, options.memory_debugging);
         errdefer allocator.free(tools_json);
         // The input schemas each call is checked against.
         session.schemas = try std.json.parseFromSlice(std.json.Value, allocator, tools_json, .{});
         session.paths.configured = options.filesystem_roots;
         session.paths.allow_unrestricted = options.allow_unrestricted_paths;
+        session.memory_debugging = options.memory_debugging;
         self.* = .{
             .allocator = allocator,
             .link = link,

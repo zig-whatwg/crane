@@ -7,20 +7,18 @@
 
 const std = @import("std");
 const testing = std.testing;
-const Harness = @import("mcp1_harness.zig").Harness;
 const devtools = @import("devtools");
+const McpServer = devtools.mcp.server.McpServer;
 const browser_mod = @import("browser");
 const replay = @import("cdpr_replay.zig");
 
-const sample_snapshot = @embedFile("../../tools/mcp_diff/fixtures/sample.heapsnapshot");
-
-fn callRpc(server: *devtools.mcp.McpServer, arena: std.mem.Allocator, method: []const u8, params: []const u8) !std.json.Parsed(std.json.Value) {
+fn callRpc(server: *McpServer, arena: std.mem.Allocator, method: []const u8, params: []const u8) !std.json.Parsed(std.json.Value) {
     const req = try std.fmt.allocPrint(arena, "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":{f},\"params\":{s}}}", .{ std.json.fmt(method, .{}), params });
     const raw = (try server.handle(arena, req)) orelse return error.NoResponse;
     return std.json.parseFromSlice(std.json.Value, arena, raw, .{});
 }
 
-fn callTool(server: *devtools.mcp.McpServer, arena: std.mem.Allocator, name: []const u8, args: []const u8) !struct { text: []const u8, is_error: bool } {
+fn callTool(server: *McpServer, arena: std.mem.Allocator, name: []const u8, args: []const u8) !struct { text: []const u8, is_error: bool } {
     const params = try std.fmt.allocPrint(arena, "{{\"name\":{f},\"arguments\":{s}}}", .{ std.json.fmt(name, .{}), args });
     const parsed = try callRpc(server, arena, "tools/call", params);
     const res = parsed.value.object.get("result") orelse return error.RpcError;
@@ -44,14 +42,14 @@ test "heap analysis tools are disabled without memory_debugging and enabled with
     const arena = arena_state.allocator();
 
     // Default server: get_heapsnapshot_summary is disabled.
-    const default_srv = try devtools.mcp.McpServer.createWith(allocator, dt, .{});
+    const default_srv = try McpServer.createWith(allocator, dt, .{});
     defer default_srv.destroy();
     const disabled_resp = try callRpc(default_srv, arena, "tools/call", "{\"name\":\"get_heapsnapshot_summary\",\"arguments\":{\"filePath\":\"/tmp/a.heapsnapshot\"}}");
     const err_msg = disabled_resp.value.object.get("error").?.object.get("message").?.string;
     try testing.expect(std.mem.indexOf(u8, err_msg, "Tool get_heapsnapshot_summary disabled") != null);
 
     // memory_debugging = true: all 8 Item 10a tools appear in tools/list.
-    const mem_srv = try devtools.mcp.McpServer.createWith(allocator, dt, .{ .memory_debugging = true });
+    const mem_srv = try McpServer.createWith(allocator, dt, .{ .memory_debugging = true });
     defer mem_srv.destroy();
     const list_resp = try callRpc(mem_srv, arena, "tools/list", "{}");
     const tools_arr = list_resp.value.object.get("result").?.object.get("tools").?.array.items;
@@ -79,6 +77,9 @@ test "heap snapshot analysis tools: summary, details, class nodes, object detail
     defer testing.expectEqual(.ok, gpa.deinit()) catch {};
     const allocator = gpa.allocator();
 
+    const sample_snapshot = try std.Io.Dir.cwd().readFileAlloc(testing.io, "tools/mcp_diff/fixtures/sample.heapsnapshot", allocator, .limited(1 << 20));
+    defer allocator.free(sample_snapshot);
+
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.writeFile(testing.io, .{ .sub_path = "sample.heapsnapshot", .data = sample_snapshot });
@@ -93,7 +94,7 @@ test "heap snapshot analysis tools: summary, details, class nodes, object detail
     defer dt.stop();
 
     const roots = [_][]const u8{dir_path};
-    const srv = try devtools.mcp.McpServer.createWith(allocator, dt, .{
+    const srv = try McpServer.createWith(allocator, dt, .{
         .filesystem_roots = &roots,
         .memory_debugging = true,
     });
