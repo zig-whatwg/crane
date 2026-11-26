@@ -46,6 +46,19 @@ pub const Entry = struct {
     /// Fullscreen 2: the keyboard lock flag (requestFullscreen step 14), on
     /// the element's fullscreen entry: "unfullscreen an element" unsets it.
     keyboard_lock: bool = false,
+    /// CSS Position 4 §3.3 "pending top layer removals": `dialog.close()` and
+    /// `hidePopover()` (when firing events) request removal instead of
+    /// removing immediately; update-the-rendering step 23
+    /// (`processTopLayerRemovals`) finishes removal once the element is not
+    /// rendered or its computed `overlay` is `none`.
+    pending_removal: bool = false,
+
+    /// Whether this entry represents an element contained in the document's
+    /// top layer (active membership OR pending top layer removal). A scoped
+    /// pin alone is not membership.
+    pub fn isTopLayerMember(self: *const Entry) bool {
+        return self.showing or self.modal or self.fullscreen or self.pending_removal;
+    }
 
     pub fn node(self: *const Entry) ?*runtime.Instance {
         return self.element.get();
@@ -164,11 +177,21 @@ pub const State = struct {
         return null;
     }
 
-    /// Position 4 §3.3 "in the top layer": `node` is in the document's top
-    /// layer - a showing popover or picker, a modal dialog or a fullscreen
-    /// element. (Crane removes an element at once: no pending removals.) A
+    /// Position 4 §3.3: whether `node` is contained in the document's top
+    /// layer — a showing popover or picker, a modal dialog, a fullscreen
+    /// element, OR an element in `pending top layer removals` (which remains
+    /// rendered in the top layer while its computed `overlay` is `auto`). A
     /// scoped pin alone is not membership.
     pub fn inTopLayer(self: *const State, node: *runtime.Instance) bool {
+        for (self.entries.items) |entry| {
+            if (entry.isTopLayerMember() and entry.node() == node) return true;
+        }
+        return false;
+    }
+
+    /// Position 4 §3.3 "in the top layer": contained in the document's top
+    /// layer AND NOT in `pending top layer removals`.
+    pub fn inTopLayerNotPending(self: *const State, node: *runtime.Instance) bool {
         for (self.entries.items) |entry| {
             if ((entry.showing or entry.modal or entry.fullscreen) and entry.node() == node) return true;
         }
@@ -188,12 +211,83 @@ pub const State = struct {
 
     pub fn addModal(self: *State, node: *runtime.Instance) !*Entry {
         if (self.findModal(node)) |entry| return entry;
+        // Position 4 §3.3 "add an element to the top layer" step 2: if el is
+        // already in doc's top layer (pending removal), remove it from both
+        // top layer and pending removals before appending at the end.
+        self.removePendingRemovalsFor(node, false);
         const entry = try self.pin(node);
         entry.modal = true;
         self.last_modal = entry;
         self.revision +%= 1;
         self.membersChanged();
         return entry;
+    }
+
+    /// Position 4 §3.3 "request an element to be removed from the top layer":
+    /// ends modal/popover active state immediately (so :modal / :popover-open
+    /// and the UA !important `overlay: auto` rule stop matching right away),
+    /// keeps the element in the document's top layer marked `pending_removal`,
+    /// and requests a rendering opportunity so step 23
+    /// (`processTopLayerRemovals`) finishes removal once the element is not
+    /// rendered or its computed `overlay` is `none`.
+    ///
+    /// Matches Blink's `Document::ScheduleForTopLayerRemoval` /
+    /// `RemoveFinishedTopLayerElements`: `probe::TopLayerElementsChanged` is
+    /// NOT fired here — it fires in step 23 when removal completes.
+    pub fn requestRemoval(self: *State, entry: *Entry) void {
+        if (entry.pending_removal) return;
+        if (!(entry.showing or entry.modal or entry.fullscreen)) return;
+        if (entry.modal) {
+            entry.modal = false;
+            if (self.last_modal == entry) self.recomputeLastModal();
+        }
+        if (entry.showing) {
+            if (entry.picker) if (entry.node()) |n| controls.setPickerOpen(n, false) catch {};
+            entry.picker = false;
+            entry.showing = false;
+        }
+        entry.previous_focus.release(self.owner, entry.focusSlot());
+        entry.source.release(self.owner, entry.sourceSlot());
+        entry.pending_removal = true;
+        self.revision +%= 1;
+        @import("update_the_rendering.zig").requestFrame(self.owner);
+    }
+
+    /// Remove any `pending_removal` entries for `node`. `notify` is true for
+    /// "remove an element from the top layer immediately" (e.g. DOM removing
+    /// steps) and false for "add an element to the top layer" step 2 (whose
+    /// caller immediately appends the new entry and notifies).
+    pub fn removePendingRemovalsFor(self: *State, node: *runtime.Instance, notify: bool) void {
+        var i: usize = 0;
+        while (i < self.entries.items.len) {
+            const entry = self.entries.items[i];
+            if (entry.pending_removal and entry.node() == node) {
+                if (notify) {
+                    self.remove(entry.id);
+                } else {
+                    _ = self.entries.orderedRemove(i);
+                    self.revision +%= 1;
+                    entry.previous_focus.release(self.owner, entry.focusSlot());
+                    entry.source.release(self.owner, entry.sourceSlot());
+                    entry.element.release(self.owner, entry.nodeSlot());
+                    self.allocator.destroy(entry);
+                }
+                continue;
+            }
+            i += 1;
+        }
+    }
+
+    fn recomputeLastModal(self: *State) void {
+        self.last_modal = null;
+        var remaining = self.entries.items.len;
+        while (remaining != 0) {
+            remaining -= 1;
+            if (self.entries.items[remaining].modal) {
+                self.last_modal = self.entries.items[remaining];
+                break;
+            }
+        }
     }
 
     /// The top layer gained or lost a member - a showing popover or picker,
@@ -233,19 +327,9 @@ pub const State = struct {
             if (entry.id != id) continue;
             _ = self.entries.orderedRemove(index);
             self.revision +%= 1;
-            const was_member = entry.showing or entry.modal or entry.fullscreen;
+            const was_member = entry.isTopLayerMember();
             defer if (was_member) self.membersChanged();
-            if (self.last_modal == entry) {
-                self.last_modal = null;
-                var remaining = self.entries.items.len;
-                while (remaining != 0) {
-                    remaining -= 1;
-                    if (self.entries.items[remaining].modal) {
-                        self.last_modal = self.entries.items[remaining];
-                        break;
-                    }
-                }
-            }
+            if (self.last_modal == entry) self.recomputeLastModal();
             if (entry.picker) if (entry.node()) |node| controls.setPickerOpen(node, false) catch {};
             entry.previous_focus.release(self.owner, entry.focusSlot());
             entry.source.release(self.owner, entry.sourceSlot());
@@ -325,6 +409,7 @@ pub const State = struct {
     /// layer" given it - its fullscreen entry, moved to the end.
     pub fn addFullscreen(self: *State, node: *runtime.Instance) !*Entry {
         if (self.fullscreenEntry(node)) |entry| self.remove(entry.id);
+        self.removePendingRemovalsFor(node, false);
         const entry = try self.pin(node);
         entry.fullscreen = true;
         self.membersChanged();
@@ -541,4 +626,62 @@ pub fn ofElement(element: *runtime.Instance, create: bool) !?*State {
 pub fn showing(element: *runtime.Instance) bool {
     const state = (ofElement(element, false) catch null) orelse return false;
     return state.find(element) != null;
+}
+
+/// Read-only: whether `document` currently has any entries in `pending top
+/// layer removals`. Never allocates top-layer state.
+pub fn hasPendingRemovals(document: *runtime.Instance) bool {
+    const state = (ofDocument(document, false) catch null) orelse return false;
+    for (state.entries.items) |entry| {
+        if (entry.pending_removal) return true;
+    }
+    return false;
+}
+
+/// HTML 8.1.7.3 step 23: CSS Position 4 §3.3 "process top layer removals"
+/// given `document` (Blink: `Document::RemoveFinishedTopLayerElements`).
+/// Read-only when `document` has no top-layer state or no pending removals
+/// (0 allocations on idle frames).
+pub fn processTopLayerRemovals(document: *runtime.Instance, frame: @import("update_the_rendering.zig").Frame) void {
+    _ = frame;
+    const state = (ofDocument(document, false) catch null) orelse return;
+    // Fast read-only check: avoid any work when nothing is pending removal.
+    var stack_ids: [32]usize = undefined;
+    var stack_len: usize = 0;
+    var overflow: std.ArrayListUnmanaged(usize) = .empty;
+    defer overflow.deinit(state.allocator);
+
+    for (state.entries.items) |entry| {
+        if (!entry.pending_removal) continue;
+        if (stack_len < stack_ids.len) {
+            stack_ids[stack_len] = entry.id;
+            stack_len += 1;
+        } else {
+            overflow.append(state.allocator, entry.id) catch continue;
+        }
+    }
+    if (stack_len == 0) return;
+
+    const style_engine = @import("style/engine.zig");
+    // Position 4 §3.3 step 1: "For each element el in doc's pending top layer
+    // removals: if el's computed value of overlay is none, or el is not
+    // rendered, remove from the top layer immediately el."
+    for (stack_ids[0..stack_len]) |id| finishIfReady(state, style_engine, id);
+    for (overflow.items) |id| finishIfReady(state, style_engine, id);
+}
+
+fn finishIfReady(state: *State, comptime style_engine: type, id: usize) void {
+    const entry = state.byId(id) orelse return;
+    if (!entry.pending_removal) return;
+    const element = entry.node() orelse {
+        state.remove(id);
+        return;
+    };
+    const rendered = style_engine.isBeingRendered(element) catch false;
+    const overlay_is_none = if (rendered) blk: {
+        const held = (style_engine.computedStyle(element, null) catch null) orelse break :blk true;
+        defer held.release();
+        break :blk held.style.keyword(.overlay) == .none;
+    } else true;
+    if (!rendered or overlay_is_none) state.remove(id);
 }
