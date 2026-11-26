@@ -14,6 +14,7 @@ const bridge = @import("instance_bridge.zig");
 const tree_map = @import("tree_ordered_map.zig");
 const NodeBase = @import("node_base.zig").NodeBase;
 const Weak = @import("custom_elements.zig").KeptInstance;
+const Hook = @import("hook.zig").Hook;
 
 pub const array_attributes = .{
     "aria-controls", "aria-describedby", "aria-details", "aria-errormessage",
@@ -215,4 +216,55 @@ pub fn setArray(owner: *runtime.Instance, state: *State, allocator: std.mem.Allo
     const entry = &state.arrays[comptime arrayIndex(attribute)];
     if (entry.explicit) |old| allocator.free(old);
     entry.explicit = replacement;
+}
+
+// ============================================================================
+// ElementInternals ARIA hook for ARIAMixin
+// ============================================================================
+// lint-impls: hook for ElementInternals
+
+pub const InternalsAria = struct {
+    get_string: *const fn (instance: *runtime.Instance, member: []const u8) anyerror!?runtime.DOMString,
+    set_string: *const fn (instance: *runtime.Instance, member: []const u8, value: ?runtime.DOMString) anyerror!void,
+    get_active_descendant: *const fn (instance: *runtime.Instance) anyerror!?*runtime.Instance,
+    set_active_descendant: *const fn (instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void,
+    get_elements: *const fn (instance: *runtime.Instance, index: usize) anyerror!?runtime.JSValue,
+    set_elements: *const fn (instance: *runtime.Instance, index: usize, value: ?runtime.JSValue) anyerror!void,
+};
+
+var internals_aria: Hook(?InternalsAria) = .init(null);
+
+/// Installed by ElementInternals.installHooks() at process start.
+pub fn installInternalsAria(steps: InternalsAria) void {
+    internals_aria.install(steps);
+}
+
+pub fn internalsGetString(instance: *runtime.Instance, member: []const u8) anyerror!?runtime.DOMString {
+    const steps = internals_aria.get() orelse return error.InvalidStateError;
+    return steps.get_string(instance, member);
+}
+
+pub fn internalsSetString(instance: *runtime.Instance, member: []const u8, value: ?runtime.DOMString) anyerror!void {
+    const steps = internals_aria.get() orelse return error.InvalidStateError;
+    return steps.set_string(instance, member, value);
+}
+
+pub fn internalsGetActiveDescendant(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    const steps = internals_aria.get() orelse return error.InvalidStateError;
+    return steps.get_active_descendant(instance);
+}
+
+pub fn internalsSetActiveDescendant(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
+    const steps = internals_aria.get() orelse return error.InvalidStateError;
+    return steps.set_active_descendant(instance, value);
+}
+
+pub fn internalsGetElements(instance: *runtime.Instance, index: usize) anyerror!?runtime.JSValue {
+    const steps = internals_aria.get() orelse return error.InvalidStateError;
+    return steps.get_elements(instance, index);
+}
+
+pub fn internalsSetElements(instance: *runtime.Instance, index: usize, value: ?runtime.JSValue) anyerror!void {
+    const steps = internals_aria.get() orelse return error.InvalidStateError;
+    return steps.set_elements(instance, index, value);
 }

@@ -41,18 +41,3 @@ pub fn call_constructor(instance: *runtime.Instance, options: dictionaries.SFram
     _ = options;
     // TODO: Implement constructor logic with parameters
 }
-
-/// Operation: addDecryptionKey
-pub fn call_addDecryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyId: typedefs.CryptoKeyID) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = key;
-    _ = keyId;
-    return error.NotImplemented;
-}
-
-/// Operation: removeDecryptionKey
-pub fn call_removeDecryptionKey(instance: *runtime.Instance, keyId: typedefs.CryptoKeyID) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = keyId;
-    return error.NotImplemented;
-}

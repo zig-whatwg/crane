@@ -138,7 +138,7 @@ test "a mixin's [CEReactions] member brackets in the mixin module its includers 
     try expectInstanceBracket(try body(out, "set_pace"));
 }
 
-test "a non-inherited mixin's [CEReactions] member brackets in its includer's delegate" {
+test "a mixin's [CEReactions] member is inherited by alias and listed in ce_reactions" {
     const attrs = [_]types.Attribute{
         .{ .name = "ariaLabel", .idlType = .{ .type = "DOMString", .nullable = true }, .mixin = "ARIAMixin", .extAttrs = @constCast(&ce_reactions) },
     };
@@ -146,7 +146,10 @@ test "a non-inherited mixin's [CEReactions] member brackets in its includer's de
     defer buffer.deinit();
     try writer.writeDelegateFunctions(&buffer.writer, "DogImpl", null, &attrs, &.{}, &.{}, .{});
 
-    try expectInstanceBracket(try body(buffer.written(), "set_ariaLabel"));
+    try testing.expect(contains(buffer.written(), "pub const set_ariaLabel = mixins.ARIAMixin.set_ariaLabel;"));
+    var names = try tableNames(testing.allocator, buffer.written());
+    defer names.deinit(testing.allocator);
+    try expectSameNames("inherited mixin ce_reactions", &.{"set_ariaLabel"}, names.items);
 }
 
 // ---------------------------------------------------------------------------
@@ -292,11 +295,9 @@ test "an inherited mixin member's alias is in its includer's table, and the mixi
         .{ .name = "walk", .idlType = .{ .type = "undefined" }, .mixin = "Walkable", .extAttrs = @constCast(&ce_reactions) },
         .{ .name = "sit", .idlType = .{ .type = "undefined" }, .mixin = "Walkable" },
     };
-    const inherited = [_][]const u8{"Walkable"};
-
     var includer: std.Io.Writer.Allocating = .init(testing.allocator);
     defer includer.deinit();
-    try writer.writeDelegateFunctions(&includer.writer, "DogImpl", null, &attrs, &ops, &ops, .{ .inherited_mixins = &inherited });
+    try writer.writeDelegateFunctions(&includer.writer, "DogImpl", null, &attrs, &ops, &ops, .{});
     var includer_table = try tableNames(testing.allocator, includer.written());
     defer includer_table.deinit(testing.allocator);
     try testing.expect(contains(includer.written(), "pub const set_pace = mixins.Walkable.set_pace;"));

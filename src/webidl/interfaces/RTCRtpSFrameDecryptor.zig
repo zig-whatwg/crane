@@ -206,25 +206,12 @@ pub const RTCRtpSFrameDecryptor = struct {
         }
     }
 
-    const event_handlers = @import("dom").event_handlers;
+    pub const get_onerror = mixins.SFrameDecryptorManager.get_onerror;
+    pub const set_onerror = mixins.SFrameDecryptorManager.set_onerror;
 
-    pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(RTCRtpSFrameDecryptorImpl, "get_onerror")) return try RTCRtpSFrameDecryptorImpl.get_onerror(instance);
-        return event_handlers.value(EventHandler, instance, "onerror");
-    }
+    pub const call_addDecryptionKey = mixins.SFrameDecryptorManager.call_addDecryptionKey;
 
-    pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(RTCRtpSFrameDecryptorImpl, "set_onerror")) return try RTCRtpSFrameDecryptorImpl.set_onerror(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onerror", value);
-    }
-
-    pub fn call_addDecryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyId: CryptoKeyID) anyerror!runtime.JSValue {
-        return try RTCRtpSFrameDecryptorImpl.call_addDecryptionKey(instance, key, keyId);
-    }
-
-    pub fn call_removeDecryptionKey(instance: *runtime.Instance, keyId: CryptoKeyID) anyerror!runtime.JSValue {
-        return try RTCRtpSFrameDecryptorImpl.call_removeDecryptionKey(instance, keyId);
-    }
+    pub const call_removeDecryptionKey = mixins.SFrameDecryptorManager.call_removeDecryptionKey;
 
     /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
     pub const legacy_treat_non_object_as_null = .{"set_onerror"};

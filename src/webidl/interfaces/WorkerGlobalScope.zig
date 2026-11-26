@@ -390,9 +390,7 @@ pub const WorkerGlobalScope = struct {
         try event_handlers.setValue(EventHandler, instance, "onunhandledrejection", value);
     }
 
-    pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WorkerGlobalScopeImpl.get_fonts(instance);
-    }
+    pub const get_fonts = mixins.FontFaceSource.get_fonts;
 
     /// Extended attributes: [Replaceable]
     pub const get_origin = mixins.WindowOrWorkerGlobalScope.get_origin;

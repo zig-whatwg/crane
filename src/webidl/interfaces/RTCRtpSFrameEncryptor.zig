@@ -178,9 +178,7 @@ pub const RTCRtpSFrameEncryptor = struct {
         }
     }
 
-    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyId: CryptoKeyID) anyerror!runtime.JSValue {
-        return try RTCRtpSFrameEncryptorImpl.call_setEncryptionKey(instance, key, keyId);
-    }
+    pub const call_setEncryptionKey = mixins.SFrameEncryptorManager.call_setEncryptionKey;
 
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements

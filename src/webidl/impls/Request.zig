@@ -109,8 +109,44 @@ pub const InternalState = struct {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
-    // fetch() reads a Request object's request through this hook.
-    @import("dom").fetch_objects.installRequest(.{ .request_of = &requestOf, .body_stream = &bodyStreamToSend, .adopt = &adoptRequest });
+    // fetch() and Body mixin read/consume a Request's state through this hook.
+    @import("dom").fetch_objects.installRequest(.{
+        .request_of = &requestOf,
+        .body_stream = &bodyStreamToSend,
+        .adopt = &adoptRequest,
+        .body_stream_get = &bodyStreamGet,
+        .body_used = &bodyUsedOf,
+        .body_consume = &bodyConsume,
+        .body_text_stream = &bodyTextStream,
+    });
+}
+
+fn bodyTextStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const owner = bodyOwner(instance) orelse return error.InvalidState;
+    if (fetch_body.isUnusable(owner)) return error.TypeError;
+    return fetch_body.textStream(owner);
+}
+
+fn bodyStreamGet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    const o = bodyOwner(instance) orelse return null;
+    return fetch_body.bodyStream(o);
+}
+
+fn bodyUsedOf(instance: *runtime.Instance) anyerror!bool {
+    const o = bodyOwner(instance) orelse return false;
+    return fetch_body.bodyUsed(o);
+}
+
+fn bodyConsume(instance: *runtime.Instance, method: @import("dom").fetch_objects.BodyMethod) anyerror!runtime.JSValue {
+    const fb_method: fetch_body.Method = switch (method) {
+        .array_buffer => .array_buffer,
+        .blob => .blob,
+        .bytes => .bytes,
+        .form_data => .form_data,
+        .json => .json,
+        .text => .text,
+    };
+    return consumeBody(instance, fb_method);
 }
 
 /// Initialize instance
@@ -925,24 +961,6 @@ pub fn get_targetAddressSpace(instance: *runtime.Instance) anyerror!enums.IPAddr
 
 // === Body Mixin Properties ===
 
-/// Get body
-/// Per Fetch spec: returns the body as a ReadableStream, or null if no body
-///
-/// Note: Currently returns cached stream if available, otherwise attempts to
-/// create a ReadableStream from internal body data. Falls back to null if
-/// stream creation is not possible (e.g., no event loop).
-pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const o = bodyOwner(instance) orelse return null;
-    return fetch_body.bodyStream(o);
-}
-
-/// Get bodyUsed
-/// Per Fetch spec: true if body has been read/disturbed
-pub fn get_bodyUsed(instance: *runtime.Instance) anyerror!bool {
-    const o = bodyOwner(instance) orelse return false;
-    return fetch_body.bodyUsed(o);
-}
-
 // ============================================================================
 // The Body mixin, through fetch_body.zig
 // ============================================================================
@@ -1067,42 +1085,6 @@ pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return cloned_instance;
 }
 
-/// arrayBuffer() - Returns promise fulfilled with body as ArrayBuffer
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-arraybuffer
-pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return consumeBody(instance, .array_buffer);
-}
-
-/// blob() - Returns promise fulfilled with body as Blob
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-blob
-pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return consumeBody(instance, .blob);
-}
-
-/// bytes() - Returns promise fulfilled with body as Uint8Array
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-bytes
-pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return consumeBody(instance, .bytes);
-}
-
-/// formData() - Returns promise fulfilled with body as FormData
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-formdata
-pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return consumeBody(instance, .form_data);
-}
-
-/// json() - Returns promise fulfilled with body parsed as JSON
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-json
-pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return consumeBody(instance, .json);
-}
-
-/// text() - Returns promise fulfilled with body as string
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-text
-pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return consumeBody(instance, .text);
-}
-
 // === Helper Functions ===
 
 /// Normalize HTTP method per Fetch spec
@@ -1169,15 +1151,4 @@ fn normalizeMethod(method: []const u8) []const u8 {
     if (std.ascii.eqlIgnoreCase(method, "PUT")) return "PUT";
     // Non-standard methods are returned as-is
     return method;
-}
-
-/// Operation: textStream
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-textstream
-/// Newer spec shipped by Chrome; Firefox/Safari lag Fetch PR 1862
-/// (wpt.fyi cc74d2669f, fetch/api/body/textstream.any.js).
-pub fn call_textStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // Step 1: If this is unusable, throw a TypeError.
-    const owner = bodyOwner(instance).?;
-    if (fetch_body.isUnusable(owner)) return error.TypeError;
-    return fetch_body.textStream(owner);
 }

@@ -79,8 +79,7 @@ pub const Response = struct {
                 for (opened.items) |p| try out.append(self.arena, try pageLabel(self.arena, p));
             }
         }
-        // The page's emulation, in McpResponse's order (geolocation is not
-        // supported yet).
+        // The page's emulation, in McpResponse's order.
         if (self.page) |page| try emulationLines(self.arena, &page.emulation, &out);
         if (self.page) |page| if (!page.closed) if (page.dialog) |dialog| {
             const default_value = if (std.mem.eql(u8, dialog.type, "prompt"))
@@ -136,6 +135,9 @@ fn emulationLines(arena: Allocator, emulation: *const session_mod.Emulation, out
     if (emulation.network_conditions) |nc| {
         try out.append(arena, try std.fmt.allocPrint(arena, "Emulating network conditions: {s}", .{nc}));
         try out.append(arena, try std.fmt.allocPrint(arena, "Default navigation timeout set to {d} ms", .{session_mod.Emulation.defaultNavigationTimeoutMs(nc, emulation.cpu_throttling_rate)}));
+    }
+    if (emulation.geolocation) |geo| {
+        try out.append(arena, try std.fmt.allocPrint(arena, "Emulating geolocation: latitude={d}, longitude={d}", .{ geo.latitude, geo.longitude }));
     }
     if (emulation.viewport) |v| {
         const scale = if (v.scale) |s| try std.fmt.allocPrint(arena, "\"deviceScaleFactor\":{d},", .{s}) else "";

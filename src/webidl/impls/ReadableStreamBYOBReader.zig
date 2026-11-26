@@ -45,23 +45,6 @@ pub fn call_constructor(ctx: runtime.Context, stream: *runtime.Instance) !*runti
     return reader;
 }
 
-/// `closed` - § 4.3.3.
-pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const reader = srd.readerOf(instance) orelse return error.TypeError;
-    return js.toReturnKept(reader.closed_promise.?.promise);
-}
-
-/// `cancel(reason)` - § 4.3.3.
-pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-    const reader = srd.readerOf(instance) orelse return error.TypeError;
-    const realm = try js.Realm.of(instance);
-    if (reader.stream == null)
-        return sw.give(try realm.promiseRejectedWithTypeError("The reader has been released"));
-    const r = try realm.fromOptional(reason);
-    defer js.dispose(r);
-    return sw.give(try srd.readerGenericCancel(realm, reader, r));
-}
-
 fn rejectWith(realm: js.Realm, err: js.Error!js.Value) !runtime.JSValue {
     const e = try err;
     defer js.dispose(e);

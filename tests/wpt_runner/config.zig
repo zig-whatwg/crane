@@ -202,6 +202,7 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "web-locks", .description = "Web Locks" },
     .{ .name = "compression", .description = "Compression Streams" },
     .{ .name = "permissions", .description = "Permissions API" },
+    .{ .name = "geolocation", .description = "W3C Geolocation API" },
     // The user, 2026-10-29: Web Animations joins the 0.1 worklist.
     .{ .name = "web-animations", .description = "Web Animations" },
     // Approved worklist expansion (the user, 2026-10-22). These categories

@@ -87,14 +87,6 @@ pub fn call_constructor(instance: *runtime.Instance) !void {
     state.own.encoding = runtime.DOMString.initInterned("utf-8");
 }
 
-/// Getter for encoding
-/// Returns the encoding name (always "utf-8" for TextEncoder)
-/// Spec: https://encoding.spec.whatwg.org/#dom-textencodercommon-encoding
-pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const state = instance.getState(State);
-    return state.own.encoding;
-}
-
 /// encode() operation
 /// WHATWG Encoding Standard § 5.2.2
 /// https://encoding.spec.whatwg.org/#dom-textencoder-encode

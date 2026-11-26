@@ -788,9 +788,7 @@ pub const HTMLLinkElement = struct {
         try reflection.set(runtime.DOMString, instance, .{ .name = "target" }, value);
     }
 
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try HTMLLinkElementImpl.get_sheet(instance);
-    }
+    pub const get_sheet = mixins.LinkStyle.get_sheet;
 
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where

@@ -56,6 +56,27 @@ pub const Screen = struct {
 /// An opaque token naming who set an override; 0 is nobody.
 pub const Owner = usize;
 
+/// WGS84 geographic coordinates for W3C Geolocation §9 / §12 (and CDP
+/// Emulation.setGeolocationOverride / WebDriver BiDi emulation.setGeolocationOverride).
+pub const GeolocationCoordinates = struct {
+    latitude: f64,
+    longitude: f64,
+    accuracy: f64,
+    altitude: ?f64 = null,
+    altitude_accuracy: ?f64 = null,
+    heading: ?f64 = null,
+    speed: ?f64 = null,
+};
+
+/// W3C Geolocation §12 "emulated position data" associated with a top-level
+/// traversable: either coordinates or a position-unavailable error (CDP
+/// Emulation.setGeolocationOverride with omitted latitude/longitude/accuracy,
+/// or BiDi `{ error: { type: "positionUnavailable" } }`).
+pub const GeolocationOverride = union(enum) {
+    coordinates: GeolocationCoordinates,
+    position_unavailable,
+};
+
 /// One extra header: fetch's (http_fetch.ExtraHeader), which the request
 /// reader hands on as it is.
 pub const ExtraHeader = @import("fetch").algorithms.http_fetch.ExtraHeader;
@@ -93,6 +114,11 @@ pub const HostOverrides = struct {
     network_offline: bool = false,
     network_rules: []NetworkRule = &.{},
     network_conditions_owner: Owner = 0,
+    /// W3C Geolocation §12 emulated position data (CDP
+    /// Emulation.setGeolocationOverride, WebDriver BiDi
+    /// emulation.setGeolocationOverride). Null: no override (use platform).
+    geolocation: ?GeolocationOverride = null,
+    geolocation_owner: Owner = 0,
 
     /// Free what is owned (the browsing context's end).
     pub fn deinit(self: *HostOverrides, allocator: Allocator) void {
@@ -151,6 +177,11 @@ pub const HostOverrides = struct {
     pub fn setScreen(self: *HostOverrides, owner: Owner, screen: ?Screen) void {
         self.screen = screen;
         self.screen_owner = if (screen != null) owner else 0;
+    }
+
+    pub fn setGeolocation(self: *HostOverrides, owner: Owner, override: ?GeolocationOverride) void {
+        self.geolocation = override;
+        self.geolocation_owner = if (override != null) owner else 0;
     }
 
     /// Replace the user agent override with copies of `user_agent`,
@@ -237,6 +268,7 @@ pub const HostOverrides = struct {
         if (self.extra_headers_owner == owner) self.freeExtraHeaders(allocator);
         if (self.network_state_owner == owner) _ = self.setNetworkStateOffline(0, false);
         if (self.network_conditions_owner == owner) self.freeNetworkConditions(allocator);
+        if (self.geolocation_owner == owner) self.setGeolocation(0, null);
     }
 
     fn freeUserAgent(self: *HostOverrides, allocator: Allocator) void {
@@ -450,4 +482,28 @@ test "network state and network conditions overrides respect ownership and clear
     // Owner 2 going clears its rules cleanly.
     overrides.clearOwnedBy(allocator, 2);
     try std.testing.expectEqual(@as(usize, 0), overrides.network_rules.len);
+}
+
+test "geolocation override respects ownership and clears cleanly" {
+    const allocator = std.testing.allocator;
+    var overrides: HostOverrides = .{};
+    defer overrides.deinit(allocator);
+
+    overrides.setGeolocation(1, .{ .coordinates = .{ .latitude = 52.5, .longitude = 13.4, .accuracy = 10 } });
+    try std.testing.expect(overrides.geolocation != null);
+    try std.testing.expectEqual(@as(Owner, 1), overrides.geolocation_owner);
+
+    // Owner 2 clearing leaves owner 1's geolocation override.
+    overrides.clearOwnedBy(allocator, 2);
+    try std.testing.expect(overrides.geolocation != null);
+
+    // Owner 2 replacing takes ownership; owner 1 clearing leaves owner 2's.
+    overrides.setGeolocation(2, .position_unavailable);
+    overrides.clearOwnedBy(allocator, 1);
+    try std.testing.expectEqual(GeolocationOverride.position_unavailable, overrides.geolocation.?);
+
+    // Owner 2 clearing removes it.
+    overrides.clearOwnedBy(allocator, 2);
+    try std.testing.expect(overrides.geolocation == null);
+    try std.testing.expectEqual(@as(Owner, 0), overrides.geolocation_owner);
 }

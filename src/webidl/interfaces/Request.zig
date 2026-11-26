@@ -364,55 +364,23 @@ pub const Request = struct {
         return try RequestImpl.get_targetAddressSpace(instance);
     }
 
-    pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try RequestImpl.get_body(instance);
-    }
+    pub const get_body = mixins.Body.get_body;
 
-    pub fn get_bodyUsed(instance: *runtime.Instance) anyerror!bool {
-        return try RequestImpl.get_bodyUsed(instance);
-    }
+    pub const get_bodyUsed = mixins.Body.get_bodyUsed;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try RequestImpl.call_arrayBuffer(instance);
-    }
+    pub const call_arrayBuffer = mixins.Body.call_arrayBuffer;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try RequestImpl.call_json(instance);
-    }
+    pub const call_json = mixins.Body.call_json;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try RequestImpl.call_text(instance);
-    }
+    pub const call_text = mixins.Body.call_text;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try RequestImpl.call_blob(instance);
-    }
+    pub const call_blob = mixins.Body.call_blob;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try RequestImpl.call_bytes(instance);
-    }
+    pub const call_bytes = mixins.Body.call_bytes;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_textStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        return try RequestImpl.call_textStream(instance);
-    }
+    pub const call_textStream = mixins.Body.call_textStream;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try RequestImpl.call_formData(instance);
-    }
+    pub const call_formData = mixins.Body.call_formData;
 
     /// Extended attributes: [NewObject]
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {

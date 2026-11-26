@@ -219,33 +219,16 @@ pub const SFrameDecryptorStream = struct {
         }
     }
 
-    pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SFrameDecryptorStreamImpl.get_readable(instance);
-    }
+    pub const get_readable = mixins.GenericTransformStream.get_readable;
 
-    pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SFrameDecryptorStreamImpl.get_writable(instance);
-    }
+    pub const get_writable = mixins.GenericTransformStream.get_writable;
 
-    const event_handlers = @import("dom").event_handlers;
+    pub const get_onerror = mixins.SFrameDecryptorManager.get_onerror;
+    pub const set_onerror = mixins.SFrameDecryptorManager.set_onerror;
 
-    pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(SFrameDecryptorStreamImpl, "get_onerror")) return try SFrameDecryptorStreamImpl.get_onerror(instance);
-        return event_handlers.value(EventHandler, instance, "onerror");
-    }
+    pub const call_addDecryptionKey = mixins.SFrameDecryptorManager.call_addDecryptionKey;
 
-    pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(SFrameDecryptorStreamImpl, "set_onerror")) return try SFrameDecryptorStreamImpl.set_onerror(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onerror", value);
-    }
-
-    pub fn call_addDecryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyId: CryptoKeyID) anyerror!runtime.JSValue {
-        return try SFrameDecryptorStreamImpl.call_addDecryptionKey(instance, key, keyId);
-    }
-
-    pub fn call_removeDecryptionKey(instance: *runtime.Instance, keyId: CryptoKeyID) anyerror!runtime.JSValue {
-        return try SFrameDecryptorStreamImpl.call_removeDecryptionKey(instance, keyId);
-    }
+    pub const call_removeDecryptionKey = mixins.SFrameDecryptorManager.call_removeDecryptionKey;
 
     /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
     pub const legacy_treat_non_object_as_null = .{"set_onerror"};

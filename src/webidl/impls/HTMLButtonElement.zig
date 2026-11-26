@@ -438,37 +438,6 @@ pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return instance.getState(State).own._internal.?.labels.get(instance);
 }
 
-/// Getter for popoverTargetElement
-pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}
-
-/// Getter for popoverTargetAction: "must reflect the popovertargetaction
-/// attribute, limited to only known values" - toggle, show and hide, whose
-/// "missing value default and invalid value default are both the Toggle
-/// state" (HTML 6.12.6).
-pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const value = attribute(instance, "popovertargetaction") orelse return runtime.DOMString.initInterned("toggle");
-    defer instance.ctx.allocator.free(value);
-    inline for (.{ "toggle", "show", "hide" }) |keyword| {
-        if (std.ascii.eqlIgnoreCase(value, keyword)) return runtime.DOMString.initInterned(keyword);
-    }
-    return runtime.DOMString.initInterned("toggle");
-}
-
-/// Setter for popoverTargetElement
-pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for popoverTargetAction: sets the reflected content attribute.
-pub fn set_popoverTargetAction(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("popovertargetaction"), .{ .domstring = value });
-}
-
 /// Operation: checkValidity
 pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
     return forms.checkValidity(instance, try get_willValidate(instance), constraintFlags(instance));

@@ -196,13 +196,9 @@ pub const ReadableStreamDefaultReader = struct {
         .{ "", 0, "ReadableStream" },
     };
 
-    pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try ReadableStreamDefaultReaderImpl.get_closed(instance);
-    }
+    pub const get_closed = mixins.ReadableStreamGenericReader.get_closed;
 
-    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-        return try ReadableStreamDefaultReaderImpl.call_cancel(instance, reason);
-    }
+    pub const call_cancel = mixins.ReadableStreamGenericReader.call_cancel;
 
     pub fn call_read(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ReadableStreamDefaultReaderImpl.call_read(instance);

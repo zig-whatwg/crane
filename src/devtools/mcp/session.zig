@@ -26,17 +26,22 @@ const log = std.log.scoped(.mcp);
 pub const command_timeout_ms: u32 = 30_000;
 
 /// A dialog open on a page (Page.javascriptDialogOpening).
-/// McpPage.emulationSettings, the settings Crane applies (geolocation is not
-/// supported yet). Strings OWNED.
+/// McpPage.emulationSettings, the settings Crane applies. Strings OWNED.
 pub const Emulation = struct {
     network_conditions: ?[]u8 = null,
     cpu_throttling_rate: f64 = 1,
+    geolocation: ?Geolocation = null,
     viewport: ?Viewport = null,
     user_agent: ?[]u8 = null,
     color_scheme: ?[]u8 = null,
     forced_colors: ?[]u8 = null,
     prefers_contrast: ?[]u8 = null,
     prefers_reduced_motion: ?[]u8 = null,
+
+    pub const Geolocation = struct {
+        latitude: f64,
+        longitude: f64,
+    };
 
     /// McpPage's NAVIGATION_TIMEOUT (10 s) scaled by network conditions and CPU throttling.
     pub const base_navigation_timeout_ms: u32 = 10_000;

@@ -207,25 +207,17 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.get_selectorText(instance);
     }
 
-    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        return try CSSPseudoElementImpl.call_convertQuadFromNode(instance, quad, from, options);
-    }
+    pub const call_convertQuadFromNode = mixins.GeometryUtils.call_convertQuadFromNode;
 
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        return try CSSPseudoElementImpl.call_convertRectFromNode(instance, rect, from, options);
-    }
+    pub const call_convertRectFromNode = mixins.GeometryUtils.call_convertRectFromNode;
 
-    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
-        return try CSSPseudoElementImpl.call_getBoxQuads(instance, options);
-    }
+    pub const call_getBoxQuads = mixins.GeometryUtils.call_getBoxQuads;
 
     pub fn call_pseudo(instance: *runtime.Instance, @"type": CSSOMString) anyerror!?*runtime.Instance {
         return try CSSPseudoElementImpl.call_pseudo(instance, @"type");
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        return try CSSPseudoElementImpl.call_convertPointFromNode(instance, point, from, options);
-    }
+    pub const call_convertPointFromNode = mixins.GeometryUtils.call_convertPointFromNode;
 
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements

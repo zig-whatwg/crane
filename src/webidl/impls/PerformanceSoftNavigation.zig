@@ -44,18 +44,6 @@ pub fn get_interactionId(instance: *runtime.Instance) anyerror!u64 {
     return error.NotImplemented;
 }
 
-/// Getter for paintTime
-pub fn get_paintTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for presentationTime
-pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?typedefs.DOMHighResTimeStamp {
-    _ = instance;
-    return null;
-}
-
 /// Operation: getLargestInteractionContentfulPaint
 pub fn call_getLargestInteractionContentfulPaint(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;

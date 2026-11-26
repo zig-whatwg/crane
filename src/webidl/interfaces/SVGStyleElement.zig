@@ -397,7 +397,5 @@ pub const SVGStyleElement = struct {
         try SVGStyleElementImpl.set_disabled(instance, value);
     }
 
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try SVGStyleElementImpl.get_sheet(instance);
-    }
+    pub const get_sheet = mixins.LinkStyle.get_sheet;
 };

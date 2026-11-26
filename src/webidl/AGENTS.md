@@ -107,17 +107,14 @@ else:
   (EventHandler, OnErrorEventHandler, OnBeforeUnloadEventHandler) are the
   exception: codegen emits them through `dom.event_handlers`, which also holds
   the receiver-keyed rule for body/frameset's window-reflecting handlers, so an
-  impl declares an `on*` accessor only to add behaviour (impls B5). The move is
-  under way: a mixin joins
-  `src/webidl/codegen/inherited_mixins.zig` in the commit that moves its
-  implementation out of its includers' impls, and until then its includers'
-  delegates still call their own impls.
+  impl declares an `on*` accessor only to add behaviour (impls B5). Every
+  mixin is inherited unconditionally (the transitional `inherited_mixins.zig`
+  list was retired in lane mix1).
 
-`zig build lint-impls` (part of `zig build test`) checks this: strictly for
-interface, namespace and helper impls and for the impls of inherited mixins
-(bound by their generated module), and as a ratchet over
-`tools/impls_naming_baseline.txt` for the other mixin impls, whose unrouted
-functions predate the rule.
+`zig build lint-impls` (part of `zig build test`) checks this strictly with
+no baseline: every interface, namespace, mixin, and helper impl must bind all
+public API-named functions, and `tools/impls_naming_baseline.txt` is refused
+if it comes back.
 
 ## The impls boundary
 

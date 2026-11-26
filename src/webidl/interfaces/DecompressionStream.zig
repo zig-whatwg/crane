@@ -181,11 +181,7 @@ pub const DecompressionStream = struct {
         }
     }
 
-    pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try DecompressionStreamImpl.get_readable(instance);
-    }
+    pub const get_readable = mixins.GenericTransformStream.get_readable;
 
-    pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try DecompressionStreamImpl.get_writable(instance);
-    }
+    pub const get_writable = mixins.GenericTransformStream.get_writable;
 };

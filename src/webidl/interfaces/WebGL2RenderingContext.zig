@@ -4816,1138 +4816,515 @@ pub const WebGL2RenderingContext = struct {
         }
     }
 
-    pub fn get_canvas(instance: *runtime.Instance) anyerror!HTMLCanvasElementOrOffscreenCanvas {
-        return try WebGL2RenderingContextImpl.get_canvas(instance);
-    }
-
-    pub fn get_drawingBufferWidth(instance: *runtime.Instance) anyerror!GLsizei {
-        return try WebGL2RenderingContextImpl.get_drawingBufferWidth(instance);
-    }
-
-    pub fn get_drawingBufferHeight(instance: *runtime.Instance) anyerror!GLsizei {
-        return try WebGL2RenderingContextImpl.get_drawingBufferHeight(instance);
-    }
-
-    pub fn get_drawingBufferFormat(instance: *runtime.Instance) anyerror!GLenum {
-        return try WebGL2RenderingContextImpl.get_drawingBufferFormat(instance);
-    }
-
-    pub fn get_drawingBufferColorSpace(instance: *runtime.Instance) anyerror!PredefinedColorSpace {
-        return try WebGL2RenderingContextImpl.get_drawingBufferColorSpace(instance);
-    }
-
-    pub fn set_drawingBufferColorSpace(instance: *runtime.Instance, value: PredefinedColorSpace) anyerror!void {
-        try WebGL2RenderingContextImpl.set_drawingBufferColorSpace(instance, value);
-    }
-
-    pub fn get_unpackColorSpace(instance: *runtime.Instance) anyerror!PredefinedColorSpace {
-        return try WebGL2RenderingContextImpl.get_unpackColorSpace(instance);
-    }
-
-    pub fn set_unpackColorSpace(instance: *runtime.Instance, value: PredefinedColorSpace) anyerror!void {
-        try WebGL2RenderingContextImpl.set_unpackColorSpace(instance, value);
-    }
-
-    pub fn call_viewport(instance: *runtime.Instance, x: GLint, y: GLint, width: GLsizei, height: GLsizei) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_viewport(instance, x, y, width, height);
-    }
-
-    pub fn call_uniform2uiv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Uint32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform2uiv(instance, location, data, srcOffset, srcLength);
-    }
-
-    pub fn call_transformFeedbackVaryings(instance: *runtime.Instance, program: *runtime.Instance, varyings: runtime.JSValue, bufferMode: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_transformFeedbackVaryings(instance, program, varyings, bufferMode);
-    }
-
-    pub fn call_clearBufferfi(instance: *runtime.Instance, buffer: GLenum, drawbuffer: GLint, depth: GLfloat, stencil: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_clearBufferfi(instance, buffer, drawbuffer, depth, stencil);
-    }
-
-    pub fn call_bindAttribLocation(instance: *runtime.Instance, program: *runtime.Instance, index: GLuint, name: runtime.DOMString) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_bindAttribLocation(instance, program, index, name);
-    }
-
-    pub fn call_bindSampler(instance: *runtime.Instance, unit: GLuint, sampler: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_bindSampler(instance, unit, sampler);
-    }
-
-    pub fn call_colorMask(instance: *runtime.Instance, red: GLboolean, green: GLboolean, blue: GLboolean, alpha: GLboolean) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_colorMask(instance, red, green, blue, alpha);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isTexture(instance: *runtime.Instance, texture: ?*runtime.Instance) anyerror!GLboolean {
-        return try WebGL2RenderingContextImpl.call_isTexture(instance, texture);
-    }
-
-    pub fn call_createTransformFeedback(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_createTransformFeedback(instance);
-    }
-
-    pub fn call_stencilOpSeparate(instance: *runtime.Instance, face: GLenum, fail: GLenum, zfail: GLenum, zpass: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_stencilOpSeparate(instance, face, fail, zfail, zpass);
-    }
-
-    pub fn call_compressedTexImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLenum, width: GLsizei, height: GLsizei, border: GLint, imageSize: GLsizei, offset: GLintptr) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_compressedTexImage2D(instance, target, level, internalformat, width, height, border, imageSize, offset);
-    }
-
-    pub fn call_vertexAttribDivisor(instance: *runtime.Instance, index: GLuint, divisor: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttribDivisor(instance, index, divisor);
-    }
-
-    pub fn call_deleteShader(instance: *runtime.Instance, shader: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_deleteShader(instance, shader);
-    }
-
-    pub fn call_getProgramInfoLog(instance: *runtime.Instance, program: *runtime.Instance) anyerror!?runtime.DOMString {
-        return try WebGL2RenderingContextImpl.call_getProgramInfoLog(instance, program);
-    }
-
-    pub fn call_pixelStorei(instance: *runtime.Instance, pname: GLenum, param: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_pixelStorei(instance, pname, param);
-    }
-
-    pub fn call_uniform4ui(instance: *runtime.Instance, location: ?*runtime.Instance, v0: GLuint, v1: GLuint, v2: GLuint, v3: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform4ui(instance, location, v0, v1, v2, v3);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isVertexArray(instance: *runtime.Instance, vertexArray: ?*runtime.Instance) anyerror!GLboolean {
-        return try WebGL2RenderingContextImpl.call_isVertexArray(instance, vertexArray);
-    }
-
-    pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: runtime.JSValue, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getActiveUniforms(instance, program, uniformIndices, pname);
-    }
-
-    pub fn call_blendFuncSeparate(instance: *runtime.Instance, srcRGB: GLenum, dstRGB: GLenum, srcAlpha: GLenum, dstAlpha: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_blendFuncSeparate(instance, srcRGB, dstRGB, srcAlpha, dstAlpha);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isSampler(instance: *runtime.Instance, sampler: ?*runtime.Instance) anyerror!GLboolean {
-        return try WebGL2RenderingContextImpl.call_isSampler(instance, sampler);
-    }
-
-    pub fn call_uniform3iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Int32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform3iv(instance, location, data, srcOffset, srcLength);
-    }
-
-    pub fn call_drawElementsInstanced(instance: *runtime.Instance, mode: GLenum, count: GLsizei, @"type": GLenum, offset: GLintptr, instanceCount: GLsizei) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_drawElementsInstanced(instance, mode, count, @"type", offset, instanceCount);
-    }
-
-    pub fn call_vertexAttrib1fv(instance: *runtime.Instance, index: GLuint, values: Float32List) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttrib1fv(instance, index, values);
-    }
-
-    pub fn call_getBufferParameter(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getBufferParameter(instance, target, pname);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isShader(instance: *runtime.Instance, shader: ?*runtime.Instance) anyerror!GLboolean {
-        return try WebGL2RenderingContextImpl.call_isShader(instance, shader);
-    }
-
-    pub fn call_deleteRenderbuffer(instance: *runtime.Instance, renderbuffer: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_deleteRenderbuffer(instance, renderbuffer);
-    }
-
-    pub fn call_invalidateSubFramebuffer(instance: *runtime.Instance, target: GLenum, attachments: runtime.JSValue, x: GLint, y: GLint, width: GLsizei, height: GLsizei) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_invalidateSubFramebuffer(instance, target, attachments, x, y, width, height);
-    }
-
-    pub fn call_compileShader(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_compileShader(instance, shader);
-    }
-
-    pub fn call_uniform1ui(instance: *runtime.Instance, location: ?*runtime.Instance, v0: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform1ui(instance, location, v0);
-    }
-
-    pub fn call_pauseTransformFeedback(instance: *runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_pauseTransformFeedback(instance);
-    }
-
-    pub fn call_getVertexAttrib(instance: *runtime.Instance, index: GLuint, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getVertexAttrib(instance, index, pname);
-    }
-
-    pub fn call_samplerParameteri(instance: *runtime.Instance, sampler: *runtime.Instance, pname: GLenum, param: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_samplerParameteri(instance, sampler, pname, param);
-    }
-
-    pub fn call_clearBufferfv(instance: *runtime.Instance, buffer: GLenum, drawbuffer: GLint, values: Float32List, srcOffset: webidl.Opt(u64)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_clearBufferfv(instance, buffer, drawbuffer, values, srcOffset);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isBuffer(instance: *runtime.Instance, buffer: ?*runtime.Instance) anyerror!GLboolean {
-        return try WebGL2RenderingContextImpl.call_isBuffer(instance, buffer);
-    }
-
-    pub fn call_bindVertexArray(instance: *runtime.Instance, array: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_bindVertexArray(instance, array);
-    }
-
-    pub fn call_createTexture(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_createTexture(instance);
-    }
-
-    pub fn call_blendFunc(instance: *runtime.Instance, sfactor: GLenum, dfactor: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_blendFunc(instance, sfactor, dfactor);
-    }
-
-    pub fn call_uniform1f(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLfloat) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform1f(instance, location, x);
-    }
-
-    pub fn call_uniform2ui(instance: *runtime.Instance, location: ?*runtime.Instance, v0: GLuint, v1: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform2ui(instance, location, v0, v1);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isContextLost(instance: *runtime.Instance) anyerror!bool {
-        return try WebGL2RenderingContextImpl.call_isContextLost(instance);
-    }
-
-    pub fn call_sampleCoverage(instance: *runtime.Instance, value: GLclampf, invert: GLboolean) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_sampleCoverage(instance, value, invert);
-    }
-
-    pub fn call_texParameteri(instance: *runtime.Instance, target: GLenum, pname: GLenum, param: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_texParameteri(instance, target, pname, param);
-    }
-
-    pub fn call_framebufferTexture2D(instance: *runtime.Instance, target: GLenum, attachment: GLenum, textarget: GLenum, texture: ?*runtime.Instance, level: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_framebufferTexture2D(instance, target, attachment, textarget, texture, level);
-    }
-
-    pub fn call_drawRangeElements(instance: *runtime.Instance, mode: GLenum, start: GLuint, end: GLuint, count: GLsizei, @"type": GLenum, offset: GLintptr) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_drawRangeElements(instance, mode, start, end, count, @"type", offset);
-    }
-
-    pub fn call_cullFace(instance: *runtime.Instance, mode: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_cullFace(instance, mode);
-    }
-
-    pub fn call_copyTexImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLenum, x: GLint, y: GLint, width: GLsizei, height: GLsizei, border: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_copyTexImage2D(instance, target, level, internalformat, x, y, width, height, border);
-    }
-
-    pub fn call_getProgramParameter(instance: *runtime.Instance, program: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getProgramParameter(instance, program, pname);
-    }
-
-    pub fn call_uniform2i(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLint, y: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform2i(instance, location, x, y);
-    }
-
-    pub fn call_vertexAttribI4ui(instance: *runtime.Instance, index: GLuint, x: GLuint, y: GLuint, z: GLuint, w: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttribI4ui(instance, index, x, y, z, w);
-    }
-
-    pub fn call_uniform4f(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLfloat, y: GLfloat, z: GLfloat, w: GLfloat) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform4f(instance, location, x, y, z, w);
-    }
-
-    pub fn call_uniform3uiv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Uint32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform3uiv(instance, location, data, srcOffset, srcLength);
-    }
-
-    pub fn call_depthRange(instance: *runtime.Instance, zNear: GLclampf, zFar: GLclampf) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_depthRange(instance, zNear, zFar);
-    }
-
-    pub fn call_vertexAttribIPointer(instance: *runtime.Instance, index: GLuint, size: GLint, @"type": GLenum, stride: GLsizei, offset: GLintptr) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttribIPointer(instance, index, size, @"type", stride, offset);
-    }
-
-    pub fn call_uniformMatrix4x3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniformMatrix4x3fv(instance, location, transpose, data, srcOffset, srcLength);
-    }
-
-    pub fn call_getSyncParameter(instance: *runtime.Instance, sync: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getSyncParameter(instance, sync, pname);
-    }
-
-    pub fn call_frontFace(instance: *runtime.Instance, mode: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_frontFace(instance, mode);
-    }
-
-    pub fn call_uniform3f(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLfloat, y: GLfloat, z: GLfloat) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform3f(instance, location, x, y, z);
-    }
-
-    pub fn call_vertexAttribPointer(instance: *runtime.Instance, index: GLuint, size: GLint, @"type": GLenum, normalized: GLboolean, stride: GLsizei, offset: GLintptr) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttribPointer(instance, index, size, @"type", normalized, stride, offset);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_getFragDataLocation(instance: *runtime.Instance, program: *runtime.Instance, name: runtime.DOMString) anyerror!GLint {
-        return try WebGL2RenderingContextImpl.call_getFragDataLocation(instance, program, name);
-    }
-
-    pub fn call_getQuery(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!?*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_getQuery(instance, target, pname);
-    }
-
-    pub fn call_compressedTexSubImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, imageSize: GLsizei, offset: GLintptr) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_compressedTexSubImage2D(instance, target, level, xoffset, yoffset, width, height, format, imageSize, offset);
-    }
-
-    pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniformMatrix2fv(instance, location, transpose, data, srcOffset, srcLength);
-    }
-
-    pub fn call_uniform3i(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLint, y: GLint, z: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform3i(instance, location, x, y, z);
-    }
-
-    pub fn call_blendEquationSeparate(instance: *runtime.Instance, modeRGB: GLenum, modeAlpha: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_blendEquationSeparate(instance, modeRGB, modeAlpha);
-    }
-
-    pub fn call_getUniformBlockIndex(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockName: runtime.DOMString) anyerror!GLuint {
-        return try WebGL2RenderingContextImpl.call_getUniformBlockIndex(instance, program, uniformBlockName);
-    }
-
-    pub fn call_getActiveAttrib(instance: *runtime.Instance, program: *runtime.Instance, index: GLuint) anyerror!?*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_getActiveAttrib(instance, program, index);
-    }
-
-    pub fn call_renderbufferStorageMultisample(instance: *runtime.Instance, target: GLenum, samples: GLsizei, internalformat: GLenum, width: GLsizei, height: GLsizei) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_renderbufferStorageMultisample(instance, target, samples, internalformat, width, height);
-    }
-
-    pub fn call_blendColor(instance: *runtime.Instance, red: GLclampf, green: GLclampf, blue: GLclampf, alpha: GLclampf) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_blendColor(instance, red, green, blue, alpha);
-    }
-
-    pub fn call_uniform1fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform1fv(instance, location, data, srcOffset, srcLength);
-    }
-
-    pub fn call_stencilFunc(instance: *runtime.Instance, func: GLenum, ref: GLint, mask: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_stencilFunc(instance, func, ref, mask);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_checkFramebufferStatus(instance: *runtime.Instance, target: GLenum) anyerror!GLenum {
-        return try WebGL2RenderingContextImpl.call_checkFramebufferStatus(instance, target);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isSync(instance: *runtime.Instance, sync: ?*runtime.Instance) anyerror!GLboolean {
-        return try WebGL2RenderingContextImpl.call_isSync(instance, sync);
-    }
-
-    pub fn call_compressedTexSubImage3D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, zoffset: GLint, width: GLsizei, height: GLsizei, depth: GLsizei, format: GLenum, imageSize: GLsizei, offset: GLintptr) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_compressedTexSubImage3D(instance, target, level, xoffset, yoffset, zoffset, width, height, depth, format, imageSize, offset);
-    }
-
-    pub fn call_getInternalformatParameter(instance: *runtime.Instance, target: GLenum, internalformat: GLenum, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getInternalformatParameter(instance, target, internalformat, pname);
-    }
-
-    pub fn call_texStorage3D(instance: *runtime.Instance, target: GLenum, levels: GLsizei, internalformat: GLenum, width: GLsizei, height: GLsizei, depth: GLsizei) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_texStorage3D(instance, target, levels, internalformat, width, height, depth);
-    }
-
-    pub fn call_deleteVertexArray(instance: *runtime.Instance, vertexArray: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_deleteVertexArray(instance, vertexArray);
-    }
-
-    pub fn call_getExtension(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getExtension(instance, name);
-    }
-
-    pub fn call_getShaderPrecisionFormat(instance: *runtime.Instance, shadertype: GLenum, precisiontype: GLenum) anyerror!?*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_getShaderPrecisionFormat(instance, shadertype, precisiontype);
-    }
-
-    pub fn call_getQueryParameter(instance: *runtime.Instance, query: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getQueryParameter(instance, query, pname);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isProgram(instance: *runtime.Instance, program: ?*runtime.Instance) anyerror!GLboolean {
-        return try WebGL2RenderingContextImpl.call_isProgram(instance, program);
-    }
-
-    pub fn call_clearBufferiv(instance: *runtime.Instance, buffer: GLenum, drawbuffer: GLint, values: Int32List, srcOffset: webidl.Opt(u64)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_clearBufferiv(instance, buffer, drawbuffer, values, srcOffset);
-    }
-
-    pub fn call_uniform2f(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLfloat, y: GLfloat) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform2f(instance, location, x, y);
-    }
-
-    pub fn call_vertexAttribI4iv(instance: *runtime.Instance, index: GLuint, values: Int32List) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttribI4iv(instance, index, values);
-    }
-
-    pub fn call_texImage3D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, depth: GLsizei, border: GLint, format: GLenum, @"type": GLenum, pboOffset: GLintptr) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_texImage3D(instance, target, level, internalformat, width, height, depth, border, format, @"type", pboOffset);
-    }
-
-    pub fn call_endTransformFeedback(instance: *runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_endTransformFeedback(instance);
-    }
-
-    pub fn call_uniformMatrix3x4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniformMatrix3x4fv(instance, location, transpose, data, srcOffset, srcLength);
-    }
-
-    pub fn call_texImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_texImage2D(instance, target, level, internalformat, width, height, border, format, @"type", pixels);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isRenderbuffer(instance: *runtime.Instance, renderbuffer: ?*runtime.Instance) anyerror!GLboolean {
-        return try WebGL2RenderingContextImpl.call_isRenderbuffer(instance, renderbuffer);
-    }
-
-    pub fn call_getActiveUniform(instance: *runtime.Instance, program: *runtime.Instance, index: GLuint) anyerror!?*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_getActiveUniform(instance, program, index);
-    }
-
-    pub fn call_getShaderParameter(instance: *runtime.Instance, shader: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getShaderParameter(instance, shader, pname);
-    }
-
-    pub fn call_getTransformFeedbackVarying(instance: *runtime.Instance, program: *runtime.Instance, index: GLuint) anyerror!?*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_getTransformFeedbackVarying(instance, program, index);
-    }
-
-    pub fn call_getUniformIndices(instance: *runtime.Instance, program: *runtime.Instance, uniformNames: runtime.JSValue) anyerror!?runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getUniformIndices(instance, program, uniformNames);
-    }
-
-    pub fn call_deleteSampler(instance: *runtime.Instance, sampler: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_deleteSampler(instance, sampler);
-    }
-
-    pub fn call_bindRenderbuffer(instance: *runtime.Instance, target: GLenum, renderbuffer: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_bindRenderbuffer(instance, target, renderbuffer);
-    }
-
-    pub fn call_uniform2iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Int32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform2iv(instance, location, data, srcOffset, srcLength);
-    }
-
-    pub fn call_vertexAttribI4i(instance: *runtime.Instance, index: GLuint, x: GLint, y: GLint, z: GLint, w: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttribI4i(instance, index, x, y, z, w);
-    }
-
-    pub fn call_createShader(instance: *runtime.Instance, @"type": GLenum) anyerror!?*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_createShader(instance, @"type");
-    }
-
-    pub fn call_samplerParameterf(instance: *runtime.Instance, sampler: *runtime.Instance, pname: GLenum, param: GLfloat) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_samplerParameterf(instance, sampler, pname, param);
-    }
-
-    pub fn call_uniform2fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform2fv(instance, location, data, srcOffset, srcLength);
-    }
-
-    pub fn call_uniform1i(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform1i(instance, location, x);
-    }
-
-    pub fn call_createSampler(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_createSampler(instance);
-    }
-
-    pub fn call_bindFramebuffer(instance: *runtime.Instance, target: GLenum, framebuffer: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_bindFramebuffer(instance, target, framebuffer);
-    }
-
-    pub fn call_createFramebuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_createFramebuffer(instance);
-    }
-
-    pub fn call_waitSync(instance: *runtime.Instance, sync: *runtime.Instance, flags: GLbitfield, timeout: GLint64) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_waitSync(instance, sync, flags, timeout);
-    }
-
-    pub fn call_getUniformLocation(instance: *runtime.Instance, program: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_getUniformLocation(instance, program, name);
-    }
-
-    pub fn call_stencilMaskSeparate(instance: *runtime.Instance, face: GLenum, mask: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_stencilMaskSeparate(instance, face, mask);
-    }
-
-    pub fn call_vertexAttrib2f(instance: *runtime.Instance, index: GLuint, x: GLfloat, y: GLfloat) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttrib2f(instance, index, x, y);
-    }
-
-    pub fn call_copyTexSubImage3D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, zoffset: GLint, x: GLint, y: GLint, width: GLsizei, height: GLsizei) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_copyTexSubImage3D(instance, target, level, xoffset, yoffset, zoffset, x, y, width, height);
-    }
-
-    pub fn call_getRenderbufferParameter(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getRenderbufferParameter(instance, target, pname);
-    }
-
-    pub fn call_detachShader(instance: *runtime.Instance, program: *runtime.Instance, shader: *runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_detachShader(instance, program, shader);
-    }
-
-    pub fn call_clearDepth(instance: *runtime.Instance, depth: GLclampf) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_clearDepth(instance, depth);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_getError(instance: *runtime.Instance) anyerror!GLenum {
-        return try WebGL2RenderingContextImpl.call_getError(instance);
-    }
-
-    pub fn call_generateMipmap(instance: *runtime.Instance, target: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_generateMipmap(instance, target);
-    }
-
-    pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniformMatrix4fv(instance, location, transpose, data, srcOffset, srcLength);
-    }
-
-    pub fn call_invalidateFramebuffer(instance: *runtime.Instance, target: GLenum, attachments: runtime.JSValue) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_invalidateFramebuffer(instance, target, attachments);
-    }
-
-    pub fn call_drawElements(instance: *runtime.Instance, mode: GLenum, count: GLsizei, @"type": GLenum, offset: GLintptr) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_drawElements(instance, mode, count, @"type", offset);
-    }
-
-    pub fn call_vertexAttrib4f(instance: *runtime.Instance, index: GLuint, x: GLfloat, y: GLfloat, z: GLfloat, w: GLfloat) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttrib4f(instance, index, x, y, z, w);
-    }
-
-    pub fn call_renderbufferStorage(instance: *runtime.Instance, target: GLenum, internalformat: GLenum, width: GLsizei, height: GLsizei) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_renderbufferStorage(instance, target, internalformat, width, height);
-    }
-
-    pub fn call_deleteQuery(instance: *runtime.Instance, query: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_deleteQuery(instance, query);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_getVertexAttribOffset(instance: *runtime.Instance, index: GLuint, pname: GLenum) anyerror!GLintptr {
-        return try WebGL2RenderingContextImpl.call_getVertexAttribOffset(instance, index, pname);
-    }
-
-    pub fn call_lineWidth(instance: *runtime.Instance, width: GLfloat) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_lineWidth(instance, width);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isQuery(instance: *runtime.Instance, query: ?*runtime.Instance) anyerror!GLboolean {
-        return try WebGL2RenderingContextImpl.call_isQuery(instance, query);
-    }
-
-    pub fn call_bindBufferRange(instance: *runtime.Instance, target: GLenum, index: GLuint, buffer: ?*runtime.Instance, offset: GLintptr, size: GLsizeiptr) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_bindBufferRange(instance, target, index, buffer, offset, size);
-    }
-
-    pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniformMatrix3fv(instance, location, transpose, data, srcOffset, srcLength);
-    }
-
-    pub fn call_bindTransformFeedback(instance: *runtime.Instance, target: GLenum, tf: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_bindTransformFeedback(instance, target, tf);
-    }
-
-    pub fn call_copyBufferSubData(instance: *runtime.Instance, readTarget: GLenum, writeTarget: GLenum, readOffset: GLintptr, writeOffset: GLintptr, size: GLsizeiptr) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_copyBufferSubData(instance, readTarget, writeTarget, readOffset, writeOffset, size);
-    }
-
-    pub fn call_resumeTransformFeedback(instance: *runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_resumeTransformFeedback(instance);
-    }
-
-    pub fn call_drawArraysInstanced(instance: *runtime.Instance, mode: GLenum, first: GLint, count: GLsizei, instanceCount: GLsizei) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_drawArraysInstanced(instance, mode, first, count, instanceCount);
-    }
-
-    pub fn call_createBuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_createBuffer(instance);
-    }
-
-    pub fn call_getTexParameter(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getTexParameter(instance, target, pname);
-    }
-
-    pub fn call_getAttachedShaders(instance: *runtime.Instance, program: *runtime.Instance) anyerror!?runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getAttachedShaders(instance, program);
-    }
-
-    pub fn call_getBufferSubData(instance: *runtime.Instance, target: GLenum, srcByteOffset: GLintptr, dstBuffer: ArrayBufferView, dstOffset: webidl.Opt(u64), length: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_getBufferSubData(instance, target, srcByteOffset, dstBuffer, dstOffset, length);
-    }
-
-    pub fn call_copyTexSubImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, x: GLint, y: GLint, width: GLsizei, height: GLsizei) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_copyTexSubImage2D(instance, target, level, xoffset, yoffset, x, y, width, height);
-    }
-
-    pub fn call_texParameterf(instance: *runtime.Instance, target: GLenum, pname: GLenum, param: GLfloat) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_texParameterf(instance, target, pname, param);
-    }
-
-    pub fn call_bufferData(instance: *runtime.Instance, target: GLenum, size: GLsizeiptr, usage: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_bufferData(instance, target, size, usage);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isEnabled(instance: *runtime.Instance, cap: GLenum) anyerror!GLboolean {
-        return try WebGL2RenderingContextImpl.call_isEnabled(instance, cap);
-    }
-
-    pub fn call_drawArrays(instance: *runtime.Instance, mode: GLenum, first: GLint, count: GLsizei) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_drawArrays(instance, mode, first, count);
-    }
-
-    pub fn call_createRenderbuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_createRenderbuffer(instance);
-    }
-
-    pub fn call_depthMask(instance: *runtime.Instance, flag: GLboolean) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_depthMask(instance, flag);
-    }
-
-    pub fn call_uniform4i(instance: *runtime.Instance, location: ?*runtime.Instance, x: GLint, y: GLint, z: GLint, w: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform4i(instance, location, x, y, z, w);
-    }
-
-    pub fn call_blendEquation(instance: *runtime.Instance, mode: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_blendEquation(instance, mode);
-    }
-
-    pub fn call_stencilOp(instance: *runtime.Instance, fail: GLenum, zfail: GLenum, zpass: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_stencilOp(instance, fail, zfail, zpass);
-    }
-
-    pub fn call_getUniform(instance: *runtime.Instance, program: *runtime.Instance, location: *runtime.Instance) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getUniform(instance, program, location);
-    }
-
-    pub fn call_clearStencil(instance: *runtime.Instance, s: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_clearStencil(instance, s);
-    }
-
-    pub fn call_disable(instance: *runtime.Instance, cap: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_disable(instance, cap);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_makeXRCompatible(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try WebGL2RenderingContextImpl.call_makeXRCompatible(instance);
-    }
-
-    pub fn call_vertexAttribI4uiv(instance: *runtime.Instance, index: GLuint, values: Uint32List) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttribI4uiv(instance, index, values);
-    }
-
-    pub fn call_vertexAttrib2fv(instance: *runtime.Instance, index: GLuint, values: Float32List) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttrib2fv(instance, index, values);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isTransformFeedback(instance: *runtime.Instance, tf: ?*runtime.Instance) anyerror!GLboolean {
-        return try WebGL2RenderingContextImpl.call_isTransformFeedback(instance, tf);
-    }
-
-    pub fn call_compressedTexImage3D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLenum, width: GLsizei, height: GLsizei, depth: GLsizei, border: GLint, imageSize: GLsizei, offset: GLintptr) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_compressedTexImage3D(instance, target, level, internalformat, width, height, depth, border, imageSize, offset);
-    }
-
-    pub fn call_vertexAttrib1f(instance: *runtime.Instance, index: GLuint, x: GLfloat) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttrib1f(instance, index, x);
-    }
-
-    pub fn call_texSubImage3D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, zoffset: GLint, width: GLsizei, height: GLsizei, depth: GLsizei, format: GLenum, @"type": GLenum, pboOffset: GLintptr) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_texSubImage3D(instance, target, level, xoffset, yoffset, zoffset, width, height, depth, format, @"type", pboOffset);
-    }
-
-    pub fn call_getParameter(instance: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getParameter(instance, pname);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_getContextAttributes(instance: *runtime.Instance) anyerror!?WebGLContextAttributes {
-        return try WebGL2RenderingContextImpl.call_getContextAttributes(instance);
-    }
-
-    pub fn call_stencilMask(instance: *runtime.Instance, mask: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_stencilMask(instance, mask);
-    }
-
-    pub fn call_uniformMatrix2x3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniformMatrix2x3fv(instance, location, transpose, data, srcOffset, srcLength);
-    }
-
-    pub fn call_polygonOffset(instance: *runtime.Instance, factor: GLfloat, units: GLfloat) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_polygonOffset(instance, factor, units);
-    }
-
-    pub fn call_deleteTransformFeedback(instance: *runtime.Instance, tf: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_deleteTransformFeedback(instance, tf);
-    }
-
-    pub fn call_texStorage2D(instance: *runtime.Instance, target: GLenum, levels: GLsizei, internalformat: GLenum, width: GLsizei, height: GLsizei) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_texStorage2D(instance, target, levels, internalformat, width, height);
-    }
-
-    pub fn call_getIndexedParameter(instance: *runtime.Instance, target: GLenum, index: GLuint) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getIndexedParameter(instance, target, index);
-    }
-
-    pub fn call_clearColor(instance: *runtime.Instance, red: GLclampf, green: GLclampf, blue: GLclampf, alpha: GLclampf) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_clearColor(instance, red, green, blue, alpha);
-    }
-
-    pub fn call_enableVertexAttribArray(instance: *runtime.Instance, index: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_enableVertexAttribArray(instance, index);
-    }
-
-    pub fn call_flush(instance: *runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_flush(instance);
-    }
-
-    pub fn call_getSupportedExtensions(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getSupportedExtensions(instance);
-    }
-
-    pub fn call_attachShader(instance: *runtime.Instance, program: *runtime.Instance, shader: *runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_attachShader(instance, program, shader);
-    }
-
-    pub fn call_deleteFramebuffer(instance: *runtime.Instance, framebuffer: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_deleteFramebuffer(instance, framebuffer);
-    }
-
-    pub fn call_getShaderInfoLog(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!?runtime.DOMString {
-        return try WebGL2RenderingContextImpl.call_getShaderInfoLog(instance, shader);
-    }
-
-    pub fn call_hint(instance: *runtime.Instance, target: GLenum, mode: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_hint(instance, target, mode);
-    }
-
-    pub fn call_vertexAttrib4fv(instance: *runtime.Instance, index: GLuint, values: Float32List) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttrib4fv(instance, index, values);
-    }
-
-    pub fn call_bindTexture(instance: *runtime.Instance, target: GLenum, texture: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_bindTexture(instance, target, texture);
-    }
-
-    pub fn call_stencilFuncSeparate(instance: *runtime.Instance, face: GLenum, func: GLenum, ref: GLint, mask: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_stencilFuncSeparate(instance, face, func, ref, mask);
-    }
-
-    pub fn call_clearBufferuiv(instance: *runtime.Instance, buffer: GLenum, drawbuffer: GLint, values: Uint32List, srcOffset: webidl.Opt(u64)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_clearBufferuiv(instance, buffer, drawbuffer, values, srcOffset);
-    }
-
-    pub fn call_getActiveUniformBlockName(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: GLuint) anyerror!?runtime.DOMString {
-        return try WebGL2RenderingContextImpl.call_getActiveUniformBlockName(instance, program, uniformBlockIndex);
-    }
-
-    pub fn call_activeTexture(instance: *runtime.Instance, texture: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_activeTexture(instance, texture);
-    }
-
-    pub fn call_deleteBuffer(instance: *runtime.Instance, buffer: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_deleteBuffer(instance, buffer);
-    }
-
-    pub fn call_shaderSource(instance: *runtime.Instance, shader: *runtime.Instance, source: runtime.DOMString) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_shaderSource(instance, shader, source);
-    }
-
-    pub fn call_bufferSubData(instance: *runtime.Instance, target: GLenum, dstByteOffset: GLintptr, srcData: AllowSharedBufferSource) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_bufferSubData(instance, target, dstByteOffset, srcData);
-    }
-
-    pub fn call_scissor(instance: *runtime.Instance, x: GLint, y: GLint, width: GLsizei, height: GLsizei) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_scissor(instance, x, y, width, height);
-    }
-
-    pub fn call_createQuery(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_createQuery(instance);
-    }
-
-    pub fn call_clear(instance: *runtime.Instance, mask: GLbitfield) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_clear(instance, mask);
-    }
-
-    pub fn call_deleteTexture(instance: *runtime.Instance, texture: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_deleteTexture(instance, texture);
-    }
-
-    pub fn call_linkProgram(instance: *runtime.Instance, program: *runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_linkProgram(instance, program);
-    }
-
-    pub fn call_bindBufferBase(instance: *runtime.Instance, target: GLenum, index: GLuint, buffer: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_bindBufferBase(instance, target, index, buffer);
-    }
-
-    pub fn call_framebufferRenderbuffer(instance: *runtime.Instance, target: GLenum, attachment: GLenum, renderbuffertarget: GLenum, renderbuffer: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_framebufferRenderbuffer(instance, target, attachment, renderbuffertarget, renderbuffer);
-    }
-
-    pub fn call_validateProgram(instance: *runtime.Instance, program: *runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_validateProgram(instance, program);
-    }
-
-    pub fn call_uniformBlockBinding(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: GLuint, uniformBlockBinding: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniformBlockBinding(instance, program, uniformBlockIndex, uniformBlockBinding);
-    }
-
-    pub fn call_createProgram(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_createProgram(instance);
-    }
-
-    pub fn call_beginQuery(instance: *runtime.Instance, target: GLenum, query: *runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_beginQuery(instance, target, query);
-    }
-
-    pub fn call_disableVertexAttribArray(instance: *runtime.Instance, index: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_disableVertexAttribArray(instance, index);
-    }
-
-    pub fn call_vertexAttrib3f(instance: *runtime.Instance, index: GLuint, x: GLfloat, y: GLfloat, z: GLfloat) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttrib3f(instance, index, x, y, z);
-    }
-
-    pub fn call_createVertexArray(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_createVertexArray(instance);
-    }
-
-    pub fn call_getShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!?runtime.DOMString {
-        return try WebGL2RenderingContextImpl.call_getShaderSource(instance, shader);
-    }
-
-    pub fn call_framebufferTextureLayer(instance: *runtime.Instance, target: GLenum, attachment: GLenum, texture: ?*runtime.Instance, level: GLint, layer: GLint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_framebufferTextureLayer(instance, target, attachment, texture, level, layer);
-    }
-
-    pub fn call_texSubImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_texSubImage2D(instance, target, level, xoffset, yoffset, width, height, format, @"type", pixels);
-    }
-
-    pub fn call_clientWaitSync(instance: *runtime.Instance, sync: *runtime.Instance, flags: GLbitfield, timeout: GLuint64) anyerror!GLenum {
-        return try WebGL2RenderingContextImpl.call_clientWaitSync(instance, sync, flags, timeout);
-    }
-
-    pub fn call_uniform4iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Int32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform4iv(instance, location, data, srcOffset, srcLength);
-    }
-
-    pub fn call_bindBuffer(instance: *runtime.Instance, target: GLenum, buffer: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_bindBuffer(instance, target, buffer);
-    }
-
-    pub fn call_fenceSync(instance: *runtime.Instance, condition: GLenum, flags: GLbitfield) anyerror!?*runtime.Instance {
-        return try WebGL2RenderingContextImpl.call_fenceSync(instance, condition, flags);
-    }
-
-    pub fn call_readPixels(instance: *runtime.Instance, x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, dstData: ?ArrayBufferView) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_readPixels(instance, x, y, width, height, format, @"type", dstData);
-    }
-
-    pub fn call_getActiveUniformBlockParameter(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: GLuint, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getActiveUniformBlockParameter(instance, program, uniformBlockIndex, pname);
-    }
-
-    pub fn call_uniform1uiv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Uint32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform1uiv(instance, location, data, srcOffset, srcLength);
-    }
-
-    pub fn call_uniform3fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform3fv(instance, location, data, srcOffset, srcLength);
-    }
-
-    pub fn call_deleteSync(instance: *runtime.Instance, sync: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_deleteSync(instance, sync);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isFramebuffer(instance: *runtime.Instance, framebuffer: ?*runtime.Instance) anyerror!GLboolean {
-        return try WebGL2RenderingContextImpl.call_isFramebuffer(instance, framebuffer);
-    }
-
-    pub fn call_finish(instance: *runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_finish(instance);
-    }
-
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_getAttribLocation(instance: *runtime.Instance, program: *runtime.Instance, name: runtime.DOMString) anyerror!GLint {
-        return try WebGL2RenderingContextImpl.call_getAttribLocation(instance, program, name);
-    }
-
-    pub fn call_endQuery(instance: *runtime.Instance, target: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_endQuery(instance, target);
-    }
-
-    pub fn call_vertexAttrib3fv(instance: *runtime.Instance, index: GLuint, values: Float32List) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_vertexAttrib3fv(instance, index, values);
-    }
-
-    pub fn call_blitFramebuffer(instance: *runtime.Instance, srcX0: GLint, srcY0: GLint, srcX1: GLint, srcY1: GLint, dstX0: GLint, dstY0: GLint, dstX1: GLint, dstY1: GLint, mask: GLbitfield, filter: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_blitFramebuffer(instance, srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
-    }
-
-    pub fn call_uniform4fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform4fv(instance, location, data, srcOffset, srcLength);
-    }
-
-    pub fn call_uniformMatrix2x4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniformMatrix2x4fv(instance, location, transpose, data, srcOffset, srcLength);
-    }
-
-    pub fn call_readBuffer(instance: *runtime.Instance, src: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_readBuffer(instance, src);
-    }
-
-    pub fn call_getSamplerParameter(instance: *runtime.Instance, sampler: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getSamplerParameter(instance, sampler, pname);
-    }
-
-    pub fn call_uniform1iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Int32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform1iv(instance, location, data, srcOffset, srcLength);
-    }
-
-    pub fn call_drawBuffers(instance: *runtime.Instance, buffers: runtime.JSValue) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_drawBuffers(instance, buffers);
-    }
-
-    pub fn call_deleteProgram(instance: *runtime.Instance, program: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_deleteProgram(instance, program);
-    }
-
-    pub fn call_uniformMatrix3x2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniformMatrix3x2fv(instance, location, transpose, data, srcOffset, srcLength);
-    }
-
-    pub fn call_enable(instance: *runtime.Instance, cap: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_enable(instance, cap);
-    }
-
-    pub fn call_uniform4uiv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Uint32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform4uiv(instance, location, data, srcOffset, srcLength);
-    }
-
-    pub fn call_uniformMatrix4x2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniformMatrix4x2fv(instance, location, transpose, data, srcOffset, srcLength);
-    }
-
-    pub fn call_depthFunc(instance: *runtime.Instance, func: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_depthFunc(instance, func);
-    }
-
-    pub fn call_useProgram(instance: *runtime.Instance, program: ?*runtime.Instance) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_useProgram(instance, program);
-    }
-
-    pub fn call_beginTransformFeedback(instance: *runtime.Instance, primitiveMode: GLenum) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_beginTransformFeedback(instance, primitiveMode);
-    }
-
-    pub fn call_drawingBufferStorage(instance: *runtime.Instance, sizedFormat: GLenum, width: u32, height: u32) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_drawingBufferStorage(instance, sizedFormat, width, height);
-    }
-
-    pub fn call_uniform3ui(instance: *runtime.Instance, location: ?*runtime.Instance, v0: GLuint, v1: GLuint, v2: GLuint) anyerror!void {
-        return try WebGL2RenderingContextImpl.call_uniform3ui(instance, location, v0, v1, v2);
-    }
-
-    pub fn call_getFramebufferAttachmentParameter(instance: *runtime.Instance, target: GLenum, attachment: GLenum, pname: GLenum) anyerror!runtime.JSValue {
-        return try WebGL2RenderingContextImpl.call_getFramebufferAttachmentParameter(instance, target, attachment, pname);
-    }
-
-    pub fn call_compressedTexImage2D__1(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLenum, width: GLsizei, height: GLsizei, border: GLint, srcData: ArrayBufferView, srcOffset: webidl.Opt(u64), srcLengthOverride: webidl.Opt(GLuint)) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_compressedTexImage2D__1")) {
-            return try WebGL2RenderingContextImpl.call_compressedTexImage2D__1(instance, target, level, internalformat, width, height, border, srcData, srcOffset, srcLengthOverride);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_compressedTexSubImage2D__1(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, srcData: ArrayBufferView, srcOffset: webidl.Opt(u64), srcLengthOverride: webidl.Opt(GLuint)) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_compressedTexSubImage2D__1")) {
-            return try WebGL2RenderingContextImpl.call_compressedTexSubImage2D__1(instance, target, level, xoffset, yoffset, width, height, format, srcData, srcOffset, srcLengthOverride);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_compressedTexSubImage3D__1(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, zoffset: GLint, width: GLsizei, height: GLsizei, depth: GLsizei, format: GLenum, srcData: ArrayBufferView, srcOffset: webidl.Opt(u64), srcLengthOverride: webidl.Opt(GLuint)) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_compressedTexSubImage3D__1")) {
-            return try WebGL2RenderingContextImpl.call_compressedTexSubImage3D__1(instance, target, level, xoffset, yoffset, zoffset, width, height, depth, format, srcData, srcOffset, srcLengthOverride);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texImage3D__1(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, depth: GLsizei, border: GLint, format: GLenum, @"type": GLenum, source: TexImageSource) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texImage3D__1")) {
-            return try WebGL2RenderingContextImpl.call_texImage3D__1(instance, target, level, internalformat, width, height, depth, border, format, @"type", source);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texImage3D__2(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, depth: GLsizei, border: GLint, format: GLenum, @"type": GLenum, srcData: ?ArrayBufferView) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texImage3D__2")) {
-            return try WebGL2RenderingContextImpl.call_texImage3D__2(instance, target, level, internalformat, width, height, depth, border, format, @"type", srcData);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texImage3D__3(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, depth: GLsizei, border: GLint, format: GLenum, @"type": GLenum, srcData: ArrayBufferView, srcOffset: u64) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texImage3D__3")) {
-            return try WebGL2RenderingContextImpl.call_texImage3D__3(instance, target, level, internalformat, width, height, depth, border, format, @"type", srcData, srcOffset);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texImage2D__1(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, format: GLenum, @"type": GLenum, source: TexImageSource) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texImage2D__1")) {
-            return try WebGL2RenderingContextImpl.call_texImage2D__1(instance, target, level, internalformat, format, @"type", source);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texImage2D__2(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, @"type": GLenum, pboOffset: GLintptr) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texImage2D__2")) {
-            return try WebGL2RenderingContextImpl.call_texImage2D__2(instance, target, level, internalformat, width, height, border, format, @"type", pboOffset);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texImage2D__3(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, @"type": GLenum, source: TexImageSource) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texImage2D__3")) {
-            return try WebGL2RenderingContextImpl.call_texImage2D__3(instance, target, level, internalformat, width, height, border, format, @"type", source);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texImage2D__4(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, @"type": GLenum, srcData: ArrayBufferView, srcOffset: u64) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texImage2D__4")) {
-            return try WebGL2RenderingContextImpl.call_texImage2D__4(instance, target, level, internalformat, width, height, border, format, @"type", srcData, srcOffset);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_bufferData__1(instance: *runtime.Instance, target: GLenum, srcData: ?AllowSharedBufferSource, usage: GLenum) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_bufferData__1")) {
-            return try WebGL2RenderingContextImpl.call_bufferData__1(instance, target, srcData, usage);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_bufferData__2(instance: *runtime.Instance, target: GLenum, srcData: ArrayBufferView, usage: GLenum, srcOffset: u64, length: webidl.Opt(GLuint)) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_bufferData__2")) {
-            return try WebGL2RenderingContextImpl.call_bufferData__2(instance, target, srcData, usage, srcOffset, length);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_compressedTexImage3D__1(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLenum, width: GLsizei, height: GLsizei, depth: GLsizei, border: GLint, srcData: ArrayBufferView, srcOffset: webidl.Opt(u64), srcLengthOverride: webidl.Opt(GLuint)) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_compressedTexImage3D__1")) {
-            return try WebGL2RenderingContextImpl.call_compressedTexImage3D__1(instance, target, level, internalformat, width, height, depth, border, srcData, srcOffset, srcLengthOverride);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texSubImage3D__1(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, zoffset: GLint, width: GLsizei, height: GLsizei, depth: GLsizei, format: GLenum, @"type": GLenum, source: TexImageSource) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texSubImage3D__1")) {
-            return try WebGL2RenderingContextImpl.call_texSubImage3D__1(instance, target, level, xoffset, yoffset, zoffset, width, height, depth, format, @"type", source);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texSubImage3D__2(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, zoffset: GLint, width: GLsizei, height: GLsizei, depth: GLsizei, format: GLenum, @"type": GLenum, srcData: ?ArrayBufferView, srcOffset: webidl.Opt(u64)) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texSubImage3D__2")) {
-            return try WebGL2RenderingContextImpl.call_texSubImage3D__2(instance, target, level, xoffset, yoffset, zoffset, width, height, depth, format, @"type", srcData, srcOffset);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_bufferSubData__1(instance: *runtime.Instance, target: GLenum, dstByteOffset: GLintptr, srcData: ArrayBufferView, srcOffset: u64, length: webidl.Opt(GLuint)) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_bufferSubData__1")) {
-            return try WebGL2RenderingContextImpl.call_bufferSubData__1(instance, target, dstByteOffset, srcData, srcOffset, length);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texSubImage2D__1(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, format: GLenum, @"type": GLenum, source: TexImageSource) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texSubImage2D__1")) {
-            return try WebGL2RenderingContextImpl.call_texSubImage2D__1(instance, target, level, xoffset, yoffset, format, @"type", source);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texSubImage2D__2(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, pboOffset: GLintptr) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texSubImage2D__2")) {
-            return try WebGL2RenderingContextImpl.call_texSubImage2D__2(instance, target, level, xoffset, yoffset, width, height, format, @"type", pboOffset);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texSubImage2D__3(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, source: TexImageSource) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texSubImage2D__3")) {
-            return try WebGL2RenderingContextImpl.call_texSubImage2D__3(instance, target, level, xoffset, yoffset, width, height, format, @"type", source);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_texSubImage2D__4(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, srcData: ArrayBufferView, srcOffset: u64) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_texSubImage2D__4")) {
-            return try WebGL2RenderingContextImpl.call_texSubImage2D__4(instance, target, level, xoffset, yoffset, width, height, format, @"type", srcData, srcOffset);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_readPixels__1(instance: *runtime.Instance, x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, offset: GLintptr) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_readPixels__1")) {
-            return try WebGL2RenderingContextImpl.call_readPixels__1(instance, x, y, width, height, format, @"type", offset);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub fn call_readPixels__2(instance: *runtime.Instance, x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, dstData: ArrayBufferView, dstOffset: u64) anyerror!void {
-        if (comptime @hasDecl(WebGL2RenderingContextImpl, "call_readPixels__2")) {
-            return try WebGL2RenderingContextImpl.call_readPixels__2(instance, x, y, width, height, format, @"type", dstData, dstOffset);
-        } else {
-            return error.NotImplemented;
-        }
-    }
+    pub const get_canvas = mixins.WebGLRenderingContextBase.get_canvas;
+
+    pub const get_drawingBufferWidth = mixins.WebGLRenderingContextBase.get_drawingBufferWidth;
+
+    pub const get_drawingBufferHeight = mixins.WebGLRenderingContextBase.get_drawingBufferHeight;
+
+    pub const get_drawingBufferFormat = mixins.WebGLRenderingContextBase.get_drawingBufferFormat;
+
+    pub const get_drawingBufferColorSpace = mixins.WebGLRenderingContextBase.get_drawingBufferColorSpace;
+    pub const set_drawingBufferColorSpace = mixins.WebGLRenderingContextBase.set_drawingBufferColorSpace;
+
+    pub const get_unpackColorSpace = mixins.WebGLRenderingContextBase.get_unpackColorSpace;
+    pub const set_unpackColorSpace = mixins.WebGLRenderingContextBase.set_unpackColorSpace;
+
+    pub const call_viewport = mixins.WebGLRenderingContextBase.call_viewport;
+
+    pub const call_uniform2uiv = mixins.WebGL2RenderingContextBase.call_uniform2uiv;
+
+    pub const call_transformFeedbackVaryings = mixins.WebGL2RenderingContextBase.call_transformFeedbackVaryings;
+
+    pub const call_clearBufferfi = mixins.WebGL2RenderingContextBase.call_clearBufferfi;
+
+    pub const call_bindAttribLocation = mixins.WebGLRenderingContextBase.call_bindAttribLocation;
+
+    pub const call_bindSampler = mixins.WebGL2RenderingContextBase.call_bindSampler;
+
+    pub const call_colorMask = mixins.WebGLRenderingContextBase.call_colorMask;
+
+    pub const call_isTexture = mixins.WebGLRenderingContextBase.call_isTexture;
+
+    pub const call_createTransformFeedback = mixins.WebGL2RenderingContextBase.call_createTransformFeedback;
+
+    pub const call_stencilOpSeparate = mixins.WebGLRenderingContextBase.call_stencilOpSeparate;
+
+    pub const call_compressedTexImage2D = mixins.WebGL2RenderingContextOverloads.call_compressedTexImage2D;
+
+    pub const call_vertexAttribDivisor = mixins.WebGL2RenderingContextBase.call_vertexAttribDivisor;
+
+    pub const call_deleteShader = mixins.WebGLRenderingContextBase.call_deleteShader;
+
+    pub const call_getProgramInfoLog = mixins.WebGLRenderingContextBase.call_getProgramInfoLog;
+
+    pub const call_pixelStorei = mixins.WebGLRenderingContextBase.call_pixelStorei;
+
+    pub const call_uniform4ui = mixins.WebGL2RenderingContextBase.call_uniform4ui;
+
+    pub const call_isVertexArray = mixins.WebGL2RenderingContextBase.call_isVertexArray;
+
+    pub const call_getActiveUniforms = mixins.WebGL2RenderingContextBase.call_getActiveUniforms;
+
+    pub const call_blendFuncSeparate = mixins.WebGLRenderingContextBase.call_blendFuncSeparate;
+
+    pub const call_isSampler = mixins.WebGL2RenderingContextBase.call_isSampler;
+
+    pub const call_uniform3iv = mixins.WebGL2RenderingContextOverloads.call_uniform3iv;
+
+    pub const call_drawElementsInstanced = mixins.WebGL2RenderingContextBase.call_drawElementsInstanced;
+
+    pub const call_vertexAttrib1fv = mixins.WebGLRenderingContextBase.call_vertexAttrib1fv;
+
+    pub const call_getBufferParameter = mixins.WebGLRenderingContextBase.call_getBufferParameter;
+
+    pub const call_isShader = mixins.WebGLRenderingContextBase.call_isShader;
+
+    pub const call_deleteRenderbuffer = mixins.WebGLRenderingContextBase.call_deleteRenderbuffer;
+
+    pub const call_invalidateSubFramebuffer = mixins.WebGL2RenderingContextBase.call_invalidateSubFramebuffer;
+
+    pub const call_compileShader = mixins.WebGLRenderingContextBase.call_compileShader;
+
+    pub const call_uniform1ui = mixins.WebGL2RenderingContextBase.call_uniform1ui;
+
+    pub const call_pauseTransformFeedback = mixins.WebGL2RenderingContextBase.call_pauseTransformFeedback;
+
+    pub const call_getVertexAttrib = mixins.WebGLRenderingContextBase.call_getVertexAttrib;
+
+    pub const call_samplerParameteri = mixins.WebGL2RenderingContextBase.call_samplerParameteri;
+
+    pub const call_clearBufferfv = mixins.WebGL2RenderingContextBase.call_clearBufferfv;
+
+    pub const call_isBuffer = mixins.WebGLRenderingContextBase.call_isBuffer;
+
+    pub const call_bindVertexArray = mixins.WebGL2RenderingContextBase.call_bindVertexArray;
+
+    pub const call_createTexture = mixins.WebGLRenderingContextBase.call_createTexture;
+
+    pub const call_blendFunc = mixins.WebGLRenderingContextBase.call_blendFunc;
+
+    pub const call_uniform1f = mixins.WebGLRenderingContextBase.call_uniform1f;
+
+    pub const call_uniform2ui = mixins.WebGL2RenderingContextBase.call_uniform2ui;
+
+    pub const call_isContextLost = mixins.WebGLRenderingContextBase.call_isContextLost;
+
+    pub const call_sampleCoverage = mixins.WebGLRenderingContextBase.call_sampleCoverage;
+
+    pub const call_texParameteri = mixins.WebGLRenderingContextBase.call_texParameteri;
+
+    pub const call_framebufferTexture2D = mixins.WebGLRenderingContextBase.call_framebufferTexture2D;
+
+    pub const call_drawRangeElements = mixins.WebGL2RenderingContextBase.call_drawRangeElements;
+
+    pub const call_cullFace = mixins.WebGLRenderingContextBase.call_cullFace;
+
+    pub const call_copyTexImage2D = mixins.WebGLRenderingContextBase.call_copyTexImage2D;
+
+    pub const call_getProgramParameter = mixins.WebGLRenderingContextBase.call_getProgramParameter;
+
+    pub const call_uniform2i = mixins.WebGLRenderingContextBase.call_uniform2i;
+
+    pub const call_vertexAttribI4ui = mixins.WebGL2RenderingContextBase.call_vertexAttribI4ui;
+
+    pub const call_uniform4f = mixins.WebGLRenderingContextBase.call_uniform4f;
+
+    pub const call_uniform3uiv = mixins.WebGL2RenderingContextBase.call_uniform3uiv;
+
+    pub const call_depthRange = mixins.WebGLRenderingContextBase.call_depthRange;
+
+    pub const call_vertexAttribIPointer = mixins.WebGL2RenderingContextBase.call_vertexAttribIPointer;
+
+    pub const call_uniformMatrix4x3fv = mixins.WebGL2RenderingContextBase.call_uniformMatrix4x3fv;
+
+    pub const call_getSyncParameter = mixins.WebGL2RenderingContextBase.call_getSyncParameter;
+
+    pub const call_frontFace = mixins.WebGLRenderingContextBase.call_frontFace;
+
+    pub const call_uniform3f = mixins.WebGLRenderingContextBase.call_uniform3f;
+
+    pub const call_vertexAttribPointer = mixins.WebGLRenderingContextBase.call_vertexAttribPointer;
+
+    pub const call_getFragDataLocation = mixins.WebGL2RenderingContextBase.call_getFragDataLocation;
+
+    pub const call_getQuery = mixins.WebGL2RenderingContextBase.call_getQuery;
+
+    pub const call_compressedTexSubImage2D = mixins.WebGL2RenderingContextOverloads.call_compressedTexSubImage2D;
+
+    pub const call_uniformMatrix2fv = mixins.WebGL2RenderingContextOverloads.call_uniformMatrix2fv;
+
+    pub const call_uniform3i = mixins.WebGLRenderingContextBase.call_uniform3i;
+
+    pub const call_blendEquationSeparate = mixins.WebGLRenderingContextBase.call_blendEquationSeparate;
+
+    pub const call_getUniformBlockIndex = mixins.WebGL2RenderingContextBase.call_getUniformBlockIndex;
+
+    pub const call_getActiveAttrib = mixins.WebGLRenderingContextBase.call_getActiveAttrib;
+
+    pub const call_renderbufferStorageMultisample = mixins.WebGL2RenderingContextBase.call_renderbufferStorageMultisample;
+
+    pub const call_blendColor = mixins.WebGLRenderingContextBase.call_blendColor;
+
+    pub const call_uniform1fv = mixins.WebGL2RenderingContextOverloads.call_uniform1fv;
+
+    pub const call_stencilFunc = mixins.WebGLRenderingContextBase.call_stencilFunc;
+
+    pub const call_checkFramebufferStatus = mixins.WebGLRenderingContextBase.call_checkFramebufferStatus;
+
+    pub const call_isSync = mixins.WebGL2RenderingContextBase.call_isSync;
+
+    pub const call_compressedTexSubImage3D = mixins.WebGL2RenderingContextBase.call_compressedTexSubImage3D;
+
+    pub const call_getInternalformatParameter = mixins.WebGL2RenderingContextBase.call_getInternalformatParameter;
+
+    pub const call_texStorage3D = mixins.WebGL2RenderingContextBase.call_texStorage3D;
+
+    pub const call_deleteVertexArray = mixins.WebGL2RenderingContextBase.call_deleteVertexArray;
+
+    pub const call_getExtension = mixins.WebGLRenderingContextBase.call_getExtension;
+
+    pub const call_getShaderPrecisionFormat = mixins.WebGLRenderingContextBase.call_getShaderPrecisionFormat;
+
+    pub const call_getQueryParameter = mixins.WebGL2RenderingContextBase.call_getQueryParameter;
+
+    pub const call_isProgram = mixins.WebGLRenderingContextBase.call_isProgram;
+
+    pub const call_clearBufferiv = mixins.WebGL2RenderingContextBase.call_clearBufferiv;
+
+    pub const call_uniform2f = mixins.WebGLRenderingContextBase.call_uniform2f;
+
+    pub const call_vertexAttribI4iv = mixins.WebGL2RenderingContextBase.call_vertexAttribI4iv;
+
+    pub const call_texImage3D = mixins.WebGL2RenderingContextBase.call_texImage3D;
+
+    pub const call_endTransformFeedback = mixins.WebGL2RenderingContextBase.call_endTransformFeedback;
+
+    pub const call_uniformMatrix3x4fv = mixins.WebGL2RenderingContextBase.call_uniformMatrix3x4fv;
+
+    pub const call_texImage2D = mixins.WebGL2RenderingContextOverloads.call_texImage2D;
+
+    pub const call_isRenderbuffer = mixins.WebGLRenderingContextBase.call_isRenderbuffer;
+
+    pub const call_getActiveUniform = mixins.WebGLRenderingContextBase.call_getActiveUniform;
+
+    pub const call_getShaderParameter = mixins.WebGLRenderingContextBase.call_getShaderParameter;
+
+    pub const call_getTransformFeedbackVarying = mixins.WebGL2RenderingContextBase.call_getTransformFeedbackVarying;
+
+    pub const call_getUniformIndices = mixins.WebGL2RenderingContextBase.call_getUniformIndices;
+
+    pub const call_deleteSampler = mixins.WebGL2RenderingContextBase.call_deleteSampler;
+
+    pub const call_bindRenderbuffer = mixins.WebGLRenderingContextBase.call_bindRenderbuffer;
+
+    pub const call_uniform2iv = mixins.WebGL2RenderingContextOverloads.call_uniform2iv;
+
+    pub const call_vertexAttribI4i = mixins.WebGL2RenderingContextBase.call_vertexAttribI4i;
+
+    pub const call_createShader = mixins.WebGLRenderingContextBase.call_createShader;
+
+    pub const call_samplerParameterf = mixins.WebGL2RenderingContextBase.call_samplerParameterf;
+
+    pub const call_uniform2fv = mixins.WebGL2RenderingContextOverloads.call_uniform2fv;
+
+    pub const call_uniform1i = mixins.WebGLRenderingContextBase.call_uniform1i;
+
+    pub const call_createSampler = mixins.WebGL2RenderingContextBase.call_createSampler;
+
+    pub const call_bindFramebuffer = mixins.WebGLRenderingContextBase.call_bindFramebuffer;
+
+    pub const call_createFramebuffer = mixins.WebGLRenderingContextBase.call_createFramebuffer;
+
+    pub const call_waitSync = mixins.WebGL2RenderingContextBase.call_waitSync;
+
+    pub const call_getUniformLocation = mixins.WebGLRenderingContextBase.call_getUniformLocation;
+
+    pub const call_stencilMaskSeparate = mixins.WebGLRenderingContextBase.call_stencilMaskSeparate;
+
+    pub const call_vertexAttrib2f = mixins.WebGLRenderingContextBase.call_vertexAttrib2f;
+
+    pub const call_copyTexSubImage3D = mixins.WebGL2RenderingContextBase.call_copyTexSubImage3D;
+
+    pub const call_getRenderbufferParameter = mixins.WebGLRenderingContextBase.call_getRenderbufferParameter;
+
+    pub const call_detachShader = mixins.WebGLRenderingContextBase.call_detachShader;
+
+    pub const call_clearDepth = mixins.WebGLRenderingContextBase.call_clearDepth;
+
+    pub const call_getError = mixins.WebGLRenderingContextBase.call_getError;
+
+    pub const call_generateMipmap = mixins.WebGLRenderingContextBase.call_generateMipmap;
+
+    pub const call_uniformMatrix4fv = mixins.WebGL2RenderingContextOverloads.call_uniformMatrix4fv;
+
+    pub const call_invalidateFramebuffer = mixins.WebGL2RenderingContextBase.call_invalidateFramebuffer;
+
+    pub const call_drawElements = mixins.WebGLRenderingContextBase.call_drawElements;
+
+    pub const call_vertexAttrib4f = mixins.WebGLRenderingContextBase.call_vertexAttrib4f;
+
+    pub const call_renderbufferStorage = mixins.WebGLRenderingContextBase.call_renderbufferStorage;
+
+    pub const call_deleteQuery = mixins.WebGL2RenderingContextBase.call_deleteQuery;
+
+    pub const call_getVertexAttribOffset = mixins.WebGLRenderingContextBase.call_getVertexAttribOffset;
+
+    pub const call_lineWidth = mixins.WebGLRenderingContextBase.call_lineWidth;
+
+    pub const call_isQuery = mixins.WebGL2RenderingContextBase.call_isQuery;
+
+    pub const call_bindBufferRange = mixins.WebGL2RenderingContextBase.call_bindBufferRange;
+
+    pub const call_uniformMatrix3fv = mixins.WebGL2RenderingContextOverloads.call_uniformMatrix3fv;
+
+    pub const call_bindTransformFeedback = mixins.WebGL2RenderingContextBase.call_bindTransformFeedback;
+
+    pub const call_copyBufferSubData = mixins.WebGL2RenderingContextBase.call_copyBufferSubData;
+
+    pub const call_resumeTransformFeedback = mixins.WebGL2RenderingContextBase.call_resumeTransformFeedback;
+
+    pub const call_drawArraysInstanced = mixins.WebGL2RenderingContextBase.call_drawArraysInstanced;
+
+    pub const call_createBuffer = mixins.WebGLRenderingContextBase.call_createBuffer;
+
+    pub const call_getTexParameter = mixins.WebGLRenderingContextBase.call_getTexParameter;
+
+    pub const call_getAttachedShaders = mixins.WebGLRenderingContextBase.call_getAttachedShaders;
+
+    pub const call_getBufferSubData = mixins.WebGL2RenderingContextBase.call_getBufferSubData;
+
+    pub const call_copyTexSubImage2D = mixins.WebGLRenderingContextBase.call_copyTexSubImage2D;
+
+    pub const call_texParameterf = mixins.WebGLRenderingContextBase.call_texParameterf;
+
+    pub const call_bufferData = mixins.WebGL2RenderingContextOverloads.call_bufferData;
+
+    pub const call_isEnabled = mixins.WebGLRenderingContextBase.call_isEnabled;
+
+    pub const call_drawArrays = mixins.WebGLRenderingContextBase.call_drawArrays;
+
+    pub const call_createRenderbuffer = mixins.WebGLRenderingContextBase.call_createRenderbuffer;
+
+    pub const call_depthMask = mixins.WebGLRenderingContextBase.call_depthMask;
+
+    pub const call_uniform4i = mixins.WebGLRenderingContextBase.call_uniform4i;
+
+    pub const call_blendEquation = mixins.WebGLRenderingContextBase.call_blendEquation;
+
+    pub const call_stencilOp = mixins.WebGLRenderingContextBase.call_stencilOp;
+
+    pub const call_getUniform = mixins.WebGLRenderingContextBase.call_getUniform;
+
+    pub const call_clearStencil = mixins.WebGLRenderingContextBase.call_clearStencil;
+
+    pub const call_disable = mixins.WebGLRenderingContextBase.call_disable;
+
+    pub const call_makeXRCompatible = mixins.WebGLRenderingContextBase.call_makeXRCompatible;
+
+    pub const call_vertexAttribI4uiv = mixins.WebGL2RenderingContextBase.call_vertexAttribI4uiv;
+
+    pub const call_vertexAttrib2fv = mixins.WebGLRenderingContextBase.call_vertexAttrib2fv;
+
+    pub const call_isTransformFeedback = mixins.WebGL2RenderingContextBase.call_isTransformFeedback;
+
+    pub const call_compressedTexImage3D = mixins.WebGL2RenderingContextBase.call_compressedTexImage3D;
+
+    pub const call_vertexAttrib1f = mixins.WebGLRenderingContextBase.call_vertexAttrib1f;
+
+    pub const call_texSubImage3D = mixins.WebGL2RenderingContextBase.call_texSubImage3D;
+
+    pub const call_getParameter = mixins.WebGLRenderingContextBase.call_getParameter;
+
+    pub const call_getContextAttributes = mixins.WebGLRenderingContextBase.call_getContextAttributes;
+
+    pub const call_stencilMask = mixins.WebGLRenderingContextBase.call_stencilMask;
+
+    pub const call_uniformMatrix2x3fv = mixins.WebGL2RenderingContextBase.call_uniformMatrix2x3fv;
+
+    pub const call_polygonOffset = mixins.WebGLRenderingContextBase.call_polygonOffset;
+
+    pub const call_deleteTransformFeedback = mixins.WebGL2RenderingContextBase.call_deleteTransformFeedback;
+
+    pub const call_texStorage2D = mixins.WebGL2RenderingContextBase.call_texStorage2D;
+
+    pub const call_getIndexedParameter = mixins.WebGL2RenderingContextBase.call_getIndexedParameter;
+
+    pub const call_clearColor = mixins.WebGLRenderingContextBase.call_clearColor;
+
+    pub const call_enableVertexAttribArray = mixins.WebGLRenderingContextBase.call_enableVertexAttribArray;
+
+    pub const call_flush = mixins.WebGLRenderingContextBase.call_flush;
+
+    pub const call_getSupportedExtensions = mixins.WebGLRenderingContextBase.call_getSupportedExtensions;
+
+    pub const call_attachShader = mixins.WebGLRenderingContextBase.call_attachShader;
+
+    pub const call_deleteFramebuffer = mixins.WebGLRenderingContextBase.call_deleteFramebuffer;
+
+    pub const call_getShaderInfoLog = mixins.WebGLRenderingContextBase.call_getShaderInfoLog;
+
+    pub const call_hint = mixins.WebGLRenderingContextBase.call_hint;
+
+    pub const call_vertexAttrib4fv = mixins.WebGLRenderingContextBase.call_vertexAttrib4fv;
+
+    pub const call_bindTexture = mixins.WebGLRenderingContextBase.call_bindTexture;
+
+    pub const call_stencilFuncSeparate = mixins.WebGLRenderingContextBase.call_stencilFuncSeparate;
+
+    pub const call_clearBufferuiv = mixins.WebGL2RenderingContextBase.call_clearBufferuiv;
+
+    pub const call_getActiveUniformBlockName = mixins.WebGL2RenderingContextBase.call_getActiveUniformBlockName;
+
+    pub const call_activeTexture = mixins.WebGLRenderingContextBase.call_activeTexture;
+
+    pub const call_deleteBuffer = mixins.WebGLRenderingContextBase.call_deleteBuffer;
+
+    pub const call_shaderSource = mixins.WebGLRenderingContextBase.call_shaderSource;
+
+    pub const call_bufferSubData = mixins.WebGL2RenderingContextOverloads.call_bufferSubData;
+
+    pub const call_scissor = mixins.WebGLRenderingContextBase.call_scissor;
+
+    pub const call_createQuery = mixins.WebGL2RenderingContextBase.call_createQuery;
+
+    pub const call_clear = mixins.WebGLRenderingContextBase.call_clear;
+
+    pub const call_deleteTexture = mixins.WebGLRenderingContextBase.call_deleteTexture;
+
+    pub const call_linkProgram = mixins.WebGLRenderingContextBase.call_linkProgram;
+
+    pub const call_bindBufferBase = mixins.WebGL2RenderingContextBase.call_bindBufferBase;
+
+    pub const call_framebufferRenderbuffer = mixins.WebGLRenderingContextBase.call_framebufferRenderbuffer;
+
+    pub const call_validateProgram = mixins.WebGLRenderingContextBase.call_validateProgram;
+
+    pub const call_uniformBlockBinding = mixins.WebGL2RenderingContextBase.call_uniformBlockBinding;
+
+    pub const call_createProgram = mixins.WebGLRenderingContextBase.call_createProgram;
+
+    pub const call_beginQuery = mixins.WebGL2RenderingContextBase.call_beginQuery;
+
+    pub const call_disableVertexAttribArray = mixins.WebGLRenderingContextBase.call_disableVertexAttribArray;
+
+    pub const call_vertexAttrib3f = mixins.WebGLRenderingContextBase.call_vertexAttrib3f;
+
+    pub const call_createVertexArray = mixins.WebGL2RenderingContextBase.call_createVertexArray;
+
+    pub const call_getShaderSource = mixins.WebGLRenderingContextBase.call_getShaderSource;
+
+    pub const call_framebufferTextureLayer = mixins.WebGL2RenderingContextBase.call_framebufferTextureLayer;
+
+    pub const call_texSubImage2D = mixins.WebGL2RenderingContextOverloads.call_texSubImage2D;
+
+    pub const call_clientWaitSync = mixins.WebGL2RenderingContextBase.call_clientWaitSync;
+
+    pub const call_uniform4iv = mixins.WebGL2RenderingContextOverloads.call_uniform4iv;
+
+    pub const call_bindBuffer = mixins.WebGLRenderingContextBase.call_bindBuffer;
+
+    pub const call_fenceSync = mixins.WebGL2RenderingContextBase.call_fenceSync;
+
+    pub const call_readPixels = mixins.WebGL2RenderingContextOverloads.call_readPixels;
+
+    pub const call_getActiveUniformBlockParameter = mixins.WebGL2RenderingContextBase.call_getActiveUniformBlockParameter;
+
+    pub const call_uniform1uiv = mixins.WebGL2RenderingContextBase.call_uniform1uiv;
+
+    pub const call_uniform3fv = mixins.WebGL2RenderingContextOverloads.call_uniform3fv;
+
+    pub const call_deleteSync = mixins.WebGL2RenderingContextBase.call_deleteSync;
+
+    pub const call_isFramebuffer = mixins.WebGLRenderingContextBase.call_isFramebuffer;
+
+    pub const call_finish = mixins.WebGLRenderingContextBase.call_finish;
+
+    pub const call_getAttribLocation = mixins.WebGLRenderingContextBase.call_getAttribLocation;
+
+    pub const call_endQuery = mixins.WebGL2RenderingContextBase.call_endQuery;
+
+    pub const call_vertexAttrib3fv = mixins.WebGLRenderingContextBase.call_vertexAttrib3fv;
+
+    pub const call_blitFramebuffer = mixins.WebGL2RenderingContextBase.call_blitFramebuffer;
+
+    pub const call_uniform4fv = mixins.WebGL2RenderingContextOverloads.call_uniform4fv;
+
+    pub const call_uniformMatrix2x4fv = mixins.WebGL2RenderingContextBase.call_uniformMatrix2x4fv;
+
+    pub const call_readBuffer = mixins.WebGL2RenderingContextBase.call_readBuffer;
+
+    pub const call_getSamplerParameter = mixins.WebGL2RenderingContextBase.call_getSamplerParameter;
+
+    pub const call_uniform1iv = mixins.WebGL2RenderingContextOverloads.call_uniform1iv;
+
+    pub const call_drawBuffers = mixins.WebGL2RenderingContextBase.call_drawBuffers;
+
+    pub const call_deleteProgram = mixins.WebGLRenderingContextBase.call_deleteProgram;
+
+    pub const call_uniformMatrix3x2fv = mixins.WebGL2RenderingContextBase.call_uniformMatrix3x2fv;
+
+    pub const call_enable = mixins.WebGLRenderingContextBase.call_enable;
+
+    pub const call_uniform4uiv = mixins.WebGL2RenderingContextBase.call_uniform4uiv;
+
+    pub const call_uniformMatrix4x2fv = mixins.WebGL2RenderingContextBase.call_uniformMatrix4x2fv;
+
+    pub const call_depthFunc = mixins.WebGLRenderingContextBase.call_depthFunc;
+
+    pub const call_useProgram = mixins.WebGLRenderingContextBase.call_useProgram;
+
+    pub const call_beginTransformFeedback = mixins.WebGL2RenderingContextBase.call_beginTransformFeedback;
+
+    pub const call_drawingBufferStorage = mixins.WebGLRenderingContextBase.call_drawingBufferStorage;
+
+    pub const call_uniform3ui = mixins.WebGL2RenderingContextBase.call_uniform3ui;
+
+    pub const call_getFramebufferAttachmentParameter = mixins.WebGLRenderingContextBase.call_getFramebufferAttachmentParameter;
+
+    pub const call_compressedTexImage2D__1 = mixins.WebGL2RenderingContextOverloads.call_compressedTexImage2D__1;
+
+    pub const call_compressedTexSubImage2D__1 = mixins.WebGL2RenderingContextOverloads.call_compressedTexSubImage2D__1;
+
+    pub const call_compressedTexSubImage3D__1 = mixins.WebGL2RenderingContextBase.call_compressedTexSubImage3D__1;
+
+    pub const call_texImage3D__1 = mixins.WebGL2RenderingContextBase.call_texImage3D__1;
+
+    pub const call_texImage3D__2 = mixins.WebGL2RenderingContextBase.call_texImage3D__2;
+
+    pub const call_texImage3D__3 = mixins.WebGL2RenderingContextBase.call_texImage3D__3;
+
+    pub const call_texImage2D__1 = mixins.WebGL2RenderingContextOverloads.call_texImage2D__1;
+
+    pub const call_texImage2D__2 = mixins.WebGL2RenderingContextOverloads.call_texImage2D__2;
+
+    pub const call_texImage2D__3 = mixins.WebGL2RenderingContextOverloads.call_texImage2D__3;
+
+    pub const call_texImage2D__4 = mixins.WebGL2RenderingContextOverloads.call_texImage2D__4;
+
+    pub const call_bufferData__1 = mixins.WebGL2RenderingContextOverloads.call_bufferData__1;
+
+    pub const call_bufferData__2 = mixins.WebGL2RenderingContextOverloads.call_bufferData__2;
+
+    pub const call_compressedTexImage3D__1 = mixins.WebGL2RenderingContextBase.call_compressedTexImage3D__1;
+
+    pub const call_texSubImage3D__1 = mixins.WebGL2RenderingContextBase.call_texSubImage3D__1;
+
+    pub const call_texSubImage3D__2 = mixins.WebGL2RenderingContextBase.call_texSubImage3D__2;
+
+    pub const call_bufferSubData__1 = mixins.WebGL2RenderingContextOverloads.call_bufferSubData__1;
+
+    pub const call_texSubImage2D__1 = mixins.WebGL2RenderingContextOverloads.call_texSubImage2D__1;
+
+    pub const call_texSubImage2D__2 = mixins.WebGL2RenderingContextOverloads.call_texSubImage2D__2;
+
+    pub const call_texSubImage2D__3 = mixins.WebGL2RenderingContextOverloads.call_texSubImage2D__3;
+
+    pub const call_texSubImage2D__4 = mixins.WebGL2RenderingContextOverloads.call_texSubImage2D__4;
+
+    pub const call_readPixels__1 = mixins.WebGL2RenderingContextOverloads.call_readPixels__1;
+
+    pub const call_readPixels__2 = mixins.WebGL2RenderingContextOverloads.call_readPixels__2;
 
     /// WebIDL overload sets: every overload of each overloaded operation,
     /// in IDL order, for the overload resolution algorithm
@@ -5956,58 +5333,58 @@ pub const WebGL2RenderingContext = struct {
     pub const overloads = .{
         .{ "compressedTexImage2D", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_compressedTexImage2D", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_compressedTexImage2D__1", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_compressedTexImage2D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric}, .optionality = .optional }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
+            .{ .function = "call_compressedTexImage2D__1", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_compressedTexImage2D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric}, .optionality = .optional }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
         } },
         .{ "compressedTexSubImage2D", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_compressedTexSubImage2D", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_compressedTexSubImage2D__1", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_compressedTexSubImage2D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric}, .optionality = .optional }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
+            .{ .function = "call_compressedTexSubImage2D__1", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_compressedTexSubImage2D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric}, .optionality = .optional }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
         } },
         .{ "compressedTexSubImage3D", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_compressedTexSubImage3D", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_compressedTexSubImage3D__1", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_compressedTexSubImage3D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric}, .optionality = .optional }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
+            .{ .function = "call_compressedTexSubImage3D__1", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextBase, "call_compressedTexSubImage3D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric}, .optionality = .optional }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
         } },
         .{ "texImage3D", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_texImage3D", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_texImage3D__1", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texImage3D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } } } },
-            .{ .function = "call_texImage3D__2", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texImage3D__2"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true } } },
-            .{ .function = "call_texImage3D__3", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texImage3D__3"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_texImage3D__1", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextBase, "call_texImage3D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } } } },
+            .{ .function = "call_texImage3D__2", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextBase, "call_texImage3D__2"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true } } },
+            .{ .function = "call_texImage3D__3", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextBase, "call_texImage3D__3"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} } } },
         } },
         .{ "texImage2D", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_texImage2D", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true } } },
-            .{ .function = "call_texImage2D__1", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texImage2D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } } } },
-            .{ .function = "call_texImage2D__2", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texImage2D__2"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_texImage2D__3", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texImage2D__3"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } } } },
-            .{ .function = "call_texImage2D__4", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texImage2D__4"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_texImage2D__1", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_texImage2D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } } } },
+            .{ .function = "call_texImage2D__2", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_texImage2D__2"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_texImage2D__3", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_texImage2D__3"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } } } },
+            .{ .function = "call_texImage2D__4", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_texImage2D__4"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} } } },
         } },
         .{ "bufferData", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_bufferData", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_bufferData__1", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_bufferData__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .array_buffer, .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_bufferData__2", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_bufferData__2"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
+            .{ .function = "call_bufferData__1", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_bufferData__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .array_buffer, .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_bufferData__2", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_bufferData__2"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
         } },
         .{ "compressedTexImage3D", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_compressedTexImage3D", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_compressedTexImage3D__1", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_compressedTexImage3D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric}, .optionality = .optional }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
+            .{ .function = "call_compressedTexImage3D__1", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextBase, "call_compressedTexImage3D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric}, .optionality = .optional }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
         } },
         .{ "texSubImage3D", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_texSubImage3D", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_texSubImage3D__1", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texSubImage3D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } } } },
-            .{ .function = "call_texSubImage3D__2", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texSubImage3D__2"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
+            .{ .function = "call_texSubImage3D__1", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextBase, "call_texSubImage3D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } } } },
+            .{ .function = "call_texSubImage3D__2", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextBase, "call_texSubImage3D__2"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
         } },
         .{ "bufferSubData", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_bufferSubData", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .array_buffer, .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } } } },
-            .{ .function = "call_bufferSubData__1", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_bufferSubData__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
+            .{ .function = "call_bufferSubData__1", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_bufferSubData__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric}, .optionality = .optional } } },
         } },
         .{ "texSubImage2D", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_texSubImage2D", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true } } },
-            .{ .function = "call_texSubImage2D__1", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texSubImage2D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } } } },
-            .{ .function = "call_texSubImage2D__2", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texSubImage2D__2"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_texSubImage2D__3", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texSubImage2D__3"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } } } },
-            .{ .function = "call_texSubImage2D__4", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_texSubImage2D__4"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_texSubImage2D__1", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_texSubImage2D__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } } } },
+            .{ .function = "call_texSubImage2D__2", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_texSubImage2D__2"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_texSubImage2D__3", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_texSubImage2D__3"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other) } } } },
+            .{ .function = "call_texSubImage2D__4", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_texSubImage2D__4"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} } } },
         } },
         .{ "readPixels", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_readPixels", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view }, .nullable = true } } },
-            .{ .function = "call_readPixels__1", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_readPixels__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-            .{ .function = "call_readPixels__2", .implemented = @hasDecl(WebGL2RenderingContextImpl, "call_readPixels__2"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_readPixels__1", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_readPixels__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_readPixels__2", .implemented = @hasDecl(@import("impls").WebGL2RenderingContextOverloads, "call_readPixels__2"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{ .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.numeric} } } },
         } },
     };
 

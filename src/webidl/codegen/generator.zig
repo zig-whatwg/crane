@@ -667,10 +667,9 @@ pub fn generateMixinsRoot(
     try w.flush();
 }
 
-/// Whether a member came from a mixin its includers inherit.
+/// Whether a member came from an included mixin (all mixins are inherited).
 fn inheritsMember(mixin: ?[]const u8) bool {
-    const name = mixin orelse return false;
-    return @import("inherited_mixins.zig").isInherited(name);
+    return mixin != null;
 }
 
 /// Whether the interface or mixin `name`'s instances are elements, and so the

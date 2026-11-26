@@ -188,9 +188,7 @@ pub const TextEncoder = struct {
         }
     }
 
-    pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try TextEncoderImpl.get_encoding(instance);
-    }
+    pub const get_encoding = mixins.TextEncoderCommon.get_encoding;
 
     pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, destination: runtime.JSValue) anyerror!TextEncoderEncodeIntoResult {
         return try TextEncoderImpl.call_encodeInto(instance, source, destination);

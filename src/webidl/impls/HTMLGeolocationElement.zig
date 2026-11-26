@@ -52,27 +52,3 @@ pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
-
-/// Getter for isValid
-pub fn get_isValid(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for invalidReason
-pub fn get_invalidReason(instance: *runtime.Instance) anyerror!enums.ActivationBlockersMixinBlockerReason {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for initialPermissionStatus
-pub fn get_initialPermissionStatus(instance: *runtime.Instance) anyerror!enums.PermissionState {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for permissionStatus
-pub fn get_permissionStatus(instance: *runtime.Instance) anyerror!enums.PermissionState {
-    _ = instance;
-    return error.NotImplemented;
-}
