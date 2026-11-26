@@ -840,6 +840,17 @@ pub fn httpNetworkOrCacheFetchStart(
     if (validators.etag) |etag| try addHeader(allocator, &added, "If-None-Match", etag);
     if (validators.date) |date| try addHeader(allocator, &added, "If-Modified-Since", date);
 
+    // Emulated network conditions (CDP Network.emulateNetworkConditions*):
+    // evaluated right before the network request (below the HTTP cache, as
+    // Chrome's ThrottlingNetworkTransaction sits below HttpCache::Transaction).
+    const net_cond = networkConditionsOf(request);
+    if (net_cond.offline) {
+        const failed = try internal_response.networkErrorWith(allocator, .internet_disconnected);
+        if (transaction) |*t| t.deinit();
+        for (added.items) |header| allocator.free(header.value);
+        return .{ .response = failed };
+    }
+
     // HTTP-network fetch, step 1: Build NetworkRequest from InternalRequest
     var network_request = buildNetworkRequest(allocator, request, added.items) catch {
         return HttpFetchError.OutOfMemory;
@@ -848,6 +859,9 @@ pub fn httpNetworkOrCacheFetchStart(
     // HTTP-network fetch step 5: "obtain a connection" given
     // forceNewConnection - isNewConnectionFetch, as step 11.2 passes it.
     network_request.force_new_connection = options.is_new_connection_fetch;
+    network_request.emulated_latency_ms = net_cond.latency_ms;
+    network_request.max_recv_speed_bps = net_cond.download_bps;
+    network_request.max_send_speed_bps = net_cond.upload_bps;
     return .{ .network = .{ .request = network_request, .cache = transaction } };
 }
 
@@ -1447,10 +1461,16 @@ pub const UserAgentOverride = struct {
     /// before main fetch, so before CORS (lane mcp1). None for a worker
     /// client: Chrome's page session does not reach a worker's requests.
     extra_headers: []const ExtraHeader = &.{},
+    /// Emulated network conditions (CDP Network.emulateNetworkConditions*):
+    /// global offline flag and URL-matched rules.
+    network_offline: bool = false,
+    network_rules: []const NetworkRule = &.{},
 };
 
 /// One DevTools extra header.
 pub const ExtraHeader = internal_request.ExtraHeader;
+pub const NetworkConditions = internal_request.NetworkConditions;
+pub const NetworkRule = internal_request.NetworkRule;
 
 /// Reads the override of the tab a Window client (`traversable`: the
 /// request's traversable for user prompts, a Window standing for its
@@ -1479,6 +1499,8 @@ pub fn userAgentOverrideOf(request: *const InternalRequest) UserAgentOverride {
         .user_agent = snapshot.user_agent,
         .accept_language = snapshot.accept_language,
         .extra_headers = snapshot.extra_headers,
+        .network_offline = snapshot.network_offline,
+        .network_rules = snapshot.network_rules,
     };
     const reader = user_agent_override_reader.get() orelse return .{};
     return switch (request.traversable_for_user_prompts) {
@@ -1488,6 +1510,12 @@ pub fn userAgentOverrideOf(request: *const InternalRequest) UserAgentOverride {
         // override the reader answers (RequestClient.user_agent_client).
         else => if (request.user_agent_client) |global| reader(global) else .{},
     };
+}
+
+/// Effective emulated network conditions for `request`'s current URL.
+pub fn networkConditionsOf(request: *const InternalRequest) NetworkConditions {
+    const ov = userAgentOverrideOf(request);
+    return internal_request.resolveNetworkConditions(ov.network_offline, ov.network_rules, request.currentUrl());
 }
 
 /// The proxy `request` goes through: its Browser's for its URL (null: the
@@ -2040,6 +2068,7 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
     const header_slice = try headers.toOwnedSlice(allocator);
     errdefer allocator.free(header_slice);
     const owned_values = try owned.toOwnedSlice(allocator);
+    const net_cond = networkConditionsOf(request);
     return .{
         .url = stripped_url orelse request.currentUrl(),
         .method = "OPTIONS",
@@ -2050,6 +2079,9 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
         .proxy = proxyOf(request),
         .cert_options = if (request.network) |context| context.certOptions() else .{},
         .network = request.network,
+        .emulated_latency_ms = net_cond.latency_ms,
+        .max_recv_speed_bps = net_cond.download_bps,
+        .max_send_speed_bps = net_cond.upload_bps,
         .owned_values = owned_values,
     };
 }

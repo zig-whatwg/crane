@@ -312,6 +312,68 @@ pub const ExtraHeader = struct {
 /// on the worker's). Chrome's model: DevTools overrides are applied to a
 /// navigation once, as it starts, keyed by its frame
 /// (content/browser/devtools/devtools_instrumentation.cc
+/// Emulated network conditions for a request (CDP
+/// Network.emulateNetworkConditions / emulateNetworkConditionsByRule).
+/// Zero/false fields mean no emulation for that dimension.
+pub const NetworkConditions = struct {
+    offline: bool = false,
+    latency_ms: u32 = 0,
+    download_bps: u64 = 0,
+    upload_bps: u64 = 0,
+
+    pub fn isDefault(self: NetworkConditions) bool {
+        return !self.offline and self.latency_ms == 0 and self.download_bps == 0 and self.upload_bps == 0;
+    }
+};
+
+/// One URL-scoped network condition rule (CDP
+/// Network.emulateNetworkConditionsByRule). Empty `url_pattern` matches all
+/// URLs; otherwise `*` matches any sequence of bytes.
+pub const NetworkRule = struct {
+    url_pattern: []const u8 = "",
+    conditions: NetworkConditions = .{},
+};
+
+/// Whether `url` matches a CDP network-condition `pattern`: empty matches all;
+/// `*` matches any sequence of bytes (linear-space wildcard match).
+pub fn matchesUrlPattern(pattern: []const u8, url: []const u8) bool {
+    if (pattern.len == 0) return true;
+    var p: usize = 0;
+    var u: usize = 0;
+    var star_p: ?usize = null;
+    var star_u: usize = 0;
+    while (u < url.len) {
+        if (p < pattern.len and pattern[p] == '*') {
+            star_p = p;
+            star_u = u;
+            p += 1;
+        } else if (p < pattern.len and pattern[p] == url[u]) {
+            p += 1;
+            u += 1;
+        } else if (star_p) |sp| {
+            p = sp + 1;
+            star_u += 1;
+            u = star_u;
+        } else {
+            return false;
+        }
+    }
+    while (p < pattern.len and pattern[p] == '*') p += 1;
+    return p == pattern.len;
+}
+
+/// Resolve effective network conditions for `url`: global `offline` wins,
+/// otherwise the first matching rule in `rules` wins (CDP
+/// Network.emulateNetworkConditionsByRule: "If multiple entries match a
+/// request, the first entry wins").
+pub fn resolveNetworkConditions(offline: bool, rules: []const NetworkRule, url: []const u8) NetworkConditions {
+    if (offline) return .{ .offline = true };
+    for (rules) |rule| {
+        if (matchesUrlPattern(rule.url_pattern, url)) return rule.conditions;
+    }
+    return .{};
+}
+
 /// ApplyNetworkRequestOverrides, called from NavigationRequest), and to a
 /// dedicated worker's main script in the browser process that fetches it.
 /// Not a spec concept: user agent data, read only by http_fetch.
@@ -320,12 +382,25 @@ pub const OverrideSnapshot = struct {
     user_agent: ?[]const u8 = null,
     accept_language: ?[]const u8 = null,
     extra_headers: []const ExtraHeader = &.{},
+    network_offline: bool = false,
+    network_rules: []const NetworkRule = &.{},
 
     /// A copy of the given override, or null when it overrides nothing.
     pub fn create(allocator: Allocator, user_agent: ?[]const u8, accept_language: ?[]const u8, extra_headers: []const ExtraHeader) Allocator.Error!?*OverrideSnapshot {
-        if (user_agent == null and accept_language == null and extra_headers.len == 0) return null;
+        return createWithNetwork(allocator, user_agent, accept_language, extra_headers, false, &.{});
+    }
+
+    pub fn createWithNetwork(
+        allocator: Allocator,
+        user_agent: ?[]const u8,
+        accept_language: ?[]const u8,
+        extra_headers: []const ExtraHeader,
+        network_offline: bool,
+        network_rules: []const NetworkRule,
+    ) Allocator.Error!?*OverrideSnapshot {
+        if (user_agent == null and accept_language == null and extra_headers.len == 0 and !network_offline and network_rules.len == 0) return null;
         const self = try allocator.create(OverrideSnapshot);
-        self.* = .{};
+        self.* = .{ .network_offline = network_offline };
         errdefer self.destroy(allocator);
         if (user_agent) |ua| self.user_agent = try allocator.dupe(u8, ua);
         if (accept_language) |al| self.accept_language = try allocator.dupe(u8, al);
@@ -340,11 +415,20 @@ pub const OverrideSnapshot = struct {
                 to.value = try allocator.dupe(u8, from.value);
             }
         }
+        if (network_rules.len > 0) {
+            const rules = try allocator.alloc(NetworkRule, network_rules.len);
+            @memset(rules, .{});
+            self.network_rules = rules;
+            for (network_rules, rules) |from, *to| {
+                to.url_pattern = if (from.url_pattern.len > 0) try allocator.dupe(u8, from.url_pattern) else "";
+                to.conditions = from.conditions;
+            }
+        }
         return self;
     }
 
     pub fn clone(self: *const OverrideSnapshot, allocator: Allocator) Allocator.Error!?*OverrideSnapshot {
-        return create(allocator, self.user_agent, self.accept_language, self.extra_headers);
+        return createWithNetwork(allocator, self.user_agent, self.accept_language, self.extra_headers, self.network_offline, self.network_rules);
     }
 
     pub fn destroy(self: *OverrideSnapshot, allocator: Allocator) void {
@@ -355,6 +439,10 @@ pub const OverrideSnapshot = struct {
             allocator.free(header.value);
         }
         if (self.extra_headers.len > 0) allocator.free(self.extra_headers);
+        for (self.network_rules) |rule| {
+            if (rule.url_pattern.len > 0) allocator.free(rule.url_pattern);
+        }
+        if (self.network_rules.len > 0) allocator.free(self.network_rules);
         allocator.destroy(self);
     }
 };
@@ -808,7 +896,18 @@ pub const InternalRequest = struct {
     /// Set `override_snapshot` to a copy of the given override (null when it
     /// overrides nothing), releasing one it replaces.
     pub fn setOverrideSnapshot(self: *Self, user_agent: ?[]const u8, accept_language: ?[]const u8, extra_headers: []const ExtraHeader) Allocator.Error!void {
-        const copy = try OverrideSnapshot.create(self.allocator, user_agent, accept_language, extra_headers);
+        return self.setOverrideSnapshotWithNetwork(user_agent, accept_language, extra_headers, false, &.{});
+    }
+
+    pub fn setOverrideSnapshotWithNetwork(
+        self: *Self,
+        user_agent: ?[]const u8,
+        accept_language: ?[]const u8,
+        extra_headers: []const ExtraHeader,
+        network_offline: bool,
+        network_rules: []const NetworkRule,
+    ) Allocator.Error!void {
+        const copy = try OverrideSnapshot.createWithNetwork(self.allocator, user_agent, accept_language, extra_headers, network_offline, network_rules);
         if (self.override_snapshot) |old| old.destroy(self.allocator);
         self.override_snapshot = copy;
     }
@@ -1532,4 +1631,30 @@ fn overrideSnapshotUnderAllocationFailure(allocator: Allocator) !void {
 
 test "copying a user agent override with no memory leaks nothing" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, overrideSnapshotUnderAllocationFailure, .{});
+}
+
+test "network condition pattern matching and snapshot cloning" {
+    try std.testing.expect(matchesUrlPattern("", "http://127.0.0.1:8080/a"));
+    try std.testing.expect(matchesUrlPattern("*data.json", "http://127.0.0.1:8080/data.json"));
+    try std.testing.expect(!matchesUrlPattern("*data.json", "http://127.0.0.1:8080/app.js"));
+    try std.testing.expect(matchesUrlPattern("http://*/api/*", "http://example.com/api/v1/users"));
+    try std.testing.expect(!matchesUrlPattern("https://*/api/*", "http://example.com/api/v1/users"));
+
+    const rules = [_]NetworkRule{
+        .{ .url_pattern = "*api*", .conditions = .{ .offline = true } },
+        .{ .url_pattern = "", .conditions = .{ .latency_ms = 200, .download_bps = 50000 } },
+    };
+    try std.testing.expect(resolveNetworkConditions(false, &rules, "http://a.test/api/x").offline);
+    try std.testing.expectEqual(@as(u32, 200), resolveNetworkConditions(false, &rules, "http://a.test/other").latency_ms);
+    try std.testing.expect(resolveNetworkConditions(true, &rules, "http://a.test/other").offline);
+
+    const allocator = std.testing.allocator;
+    const req = try InternalRequest.init(allocator, "http://a.test/api/x");
+    defer req.deinit();
+    try req.setOverrideSnapshotWithNetwork(null, null, &.{}, false, &rules);
+    try std.testing.expect(req.override_snapshot != null);
+    const cloned = try req.clone();
+    defer cloned.deinit();
+    try std.testing.expectEqual(@as(usize, 2), cloned.override_snapshot.?.network_rules.len);
+    try std.testing.expectEqualStrings("*api*", cloned.override_snapshot.?.network_rules[0].url_pattern);
 }

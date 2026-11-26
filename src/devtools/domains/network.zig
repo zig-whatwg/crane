@@ -8,6 +8,9 @@
 //! NetworkResourcesData) for getResponseBody and getRequestPostData.
 
 const std = @import("std");
+const runtime = @import("runtime");
+const dom = @import("dom");
+const interfaces = @import("interfaces");
 const PageSession = @import("../page_session.zig").PageSession;
 const protocol = @import("../protocol/root.zig");
 const network_resources = @import("../network_resources.zig");
@@ -39,8 +42,24 @@ fn clear(session: *PageSession) void {
     const state = &session.states.Network;
     if (state.resources) |*r| r.deinit();
     dropHeaders(session);
+    dropNetworkEmulation(session);
     freeHeaders(session);
     state.* = .{};
+}
+
+/// Clear this session's network emulation overrides on its tab, firing a
+/// trusted `online` event if navigator.onLine transitioned back to online.
+fn dropNetworkEmulation(session: *PageSession) void {
+    const bc = frames.navigable(session, session.tab) orelse return;
+    const owner: host_overrides.Owner = @intFromPtr(session);
+    if (bc.host_overrides.network_conditions_owner == owner) {
+        bc.host_overrides.freeNetworkConditions(bc.allocator);
+    }
+    if (bc.host_overrides.network_state_owner == owner) {
+        if (bc.host_overrides.setNetworkStateOffline(0, false)) {
+            fireOnlineOfflineEvent(session, bc, "online");
+        }
+    }
 }
 
 /// The session's extra headers onto its tab, which every request of its
@@ -153,30 +172,50 @@ pub fn setUserAgentOverride(session: *PageSession, params: N.setUserAgentOverrid
     return .{};
 }
 
-/// Blink's InspectorNetworkAgent::overrideNetworkState: the network state
-/// the page sees - navigator.onLine, and navigator.connection, which Crane
-/// does not have (Chrome alone ships the Network Information API). Online is
-/// what every Crane tab is; offline needs lane mcp1 batch 4b item 7 and is
-/// refused until it lands.
+/// Chrome's NetworkHandler::CanEmulateNetworkConditions: Crane supports
+/// network condition emulation.
+pub fn canEmulateNetworkConditions(_: *PageSession, _: N.canEmulateNetworkConditions.Params) !N.canEmulateNetworkConditions.Result {
+    return .{ .result = true };
+}
+
+/// Blink's InspectorNetworkAgent::overrideNetworkState: overrides
+/// navigator.onLine (navigator.connection is not shipped by Crane) and fires
+/// trusted `offline` / `online` events on every window of the tab when the
+/// effective online state toggles (matching Blink's
+/// NetworkStateNotifier::OnNetworkStateChanged).
 pub fn overrideNetworkState(session: *PageSession, params: N.overrideNetworkState.Params) !N.overrideNetworkState.Result {
-    if (params.offline) return session.fail("Network emulation is not supported by Crane yet");
+    const bc = frames.navigable(session, session.tab) orelse return session.fail("Target is not a page");
+    const changed = bc.host_overrides.setNetworkStateOffline(@intFromPtr(session), params.offline);
+    if (changed) fireOnlineOfflineEvent(session, bc, if (params.offline) "offline" else "online");
     return .{};
 }
 
 /// Chrome's NetworkHandler::EmulateNetworkConditionsByRule
-/// (content/browser/devtools/protocol/network_handler.cc): a rule id per
-/// condition (base::UnguessableToken, 32 uppercase hex digits). Conditions
-/// that throttle nothing - online, no latency, no throughput limit (a
-/// throughput of 0 or less is none) - are what every Crane tab has;
-/// Puppeteer sends them on every emulate. Any other needs lane mcp1 batch 4b
-/// item 7 and is refused until it lands.
+/// (content/browser/devtools/protocol/network_handler.cc; BSD, reproduced):
+/// installs per-URL (or global, empty urlPattern) offline/latency/throughput
+/// rules on the tab's host_overrides without modifying navigator.onLine, and
+/// returns one 32-uppercase-hex rule id per matchedNetworkConditions entry.
 pub fn emulateNetworkConditionsByRule(session: *PageSession, params: N.emulateNetworkConditionsByRule.Params) !N.emulateNetworkConditionsByRule.Result {
-    if (params.offline orelse false) return session.fail("Network emulation is not supported by Crane yet");
-    for (params.matchedNetworkConditions) |c| {
-        const throttles = (c.offline orelse false) or c.latency > 0 or c.downloadThroughput > 0 or c.uploadThroughput > 0 or (c.packetLoss orelse 0) > 0;
-        if (throttles) return session.fail("Network emulation is not supported by Crane yet");
-    }
+    const bc = frames.navigable(session, session.tab) orelse return session.fail("Target is not a page");
     const arena = session.arena.?;
+    const rules = try arena.alloc(host_overrides.NetworkRule, params.matchedNetworkConditions.len);
+    var any_active = params.offline orelse false;
+    for (params.matchedNetworkConditions, rules) |c, *out| {
+        if (c.latency < 0) return session.failWithCode(.invalid_params, "Latency cannot be negative");
+        const cond: host_overrides.NetworkConditions = .{
+            .offline = c.offline orelse false,
+            .latency_ms = latencyMs(c.latency),
+            .download_bps = throughputBps(c.downloadThroughput),
+            .upload_bps = throughputBps(c.uploadThroughput),
+        };
+        if (!cond.isDefault()) any_active = true;
+        out.* = .{ .url_pattern = c.urlPattern, .conditions = cond };
+    }
+    if (any_active) {
+        try bc.host_overrides.setNetworkConditions(bc.allocator, @intFromPtr(session), params.offline orelse false, rules);
+    } else {
+        try bc.host_overrides.setNetworkConditions(bc.allocator, @intFromPtr(session), false, &.{});
+    }
     const ids = try arena.alloc([]const u8, params.matchedNetworkConditions.len);
     for (ids) |*id| {
         var bytes: [16]u8 = undefined;
@@ -185,6 +224,72 @@ pub fn emulateNetworkConditionsByRule(session: *PageSession, params: N.emulateNe
         id.* = try arena.dupe(u8, &hex);
     }
     return .{ .ruleIds = ids };
+}
+
+/// Chrome's deprecated Network.emulateNetworkConditions: combines
+/// overrideNetworkState (updating navigator.onLine + online/offline events)
+/// with a single global request rule.
+pub fn emulateNetworkConditions(session: *PageSession, params: N.emulateNetworkConditions.Params) !N.emulateNetworkConditions.Result {
+    const bc = frames.navigable(session, session.tab) orelse return session.fail("Target is not a page");
+    if (params.latency < 0) return session.failWithCode(.invalid_params, "Latency cannot be negative");
+    const owner: host_overrides.Owner = @intFromPtr(session);
+    const cond: host_overrides.NetworkConditions = .{
+        .offline = params.offline,
+        .latency_ms = latencyMs(params.latency),
+        .download_bps = throughputBps(params.downloadThroughput),
+        .upload_bps = throughputBps(params.uploadThroughput),
+    };
+    const changed = bc.host_overrides.setNetworkStateOffline(owner, params.offline);
+    if (cond.isDefault()) {
+        try bc.host_overrides.setNetworkConditions(bc.allocator, owner, false, &.{});
+    } else {
+        const one = [_]host_overrides.NetworkRule{.{ .url_pattern = "", .conditions = cond }};
+        try bc.host_overrides.setNetworkConditions(bc.allocator, owner, false, &one);
+    }
+    if (changed) fireOnlineOfflineEvent(session, bc, if (params.offline) "offline" else "online");
+    return .{};
+}
+
+fn latencyMs(latency: f64) u32 {
+    if (!std.math.isFinite(latency) or latency <= 0) return 0;
+    const rounded = @round(latency);
+    if (rounded >= @as(f64, @floatFromInt(std.math.maxInt(u32)))) return std.math.maxInt(u32);
+    return @intFromFloat(rounded);
+}
+
+fn throughputBps(throughput: f64) u64 {
+    if (!std.math.isFinite(throughput) or throughput <= 0) return 0;
+    const rounded = @round(throughput);
+    if (rounded >= 1e15) return 1_000_000_000_000_000;
+    return @intFromFloat(rounded);
+}
+
+/// Dispatch a trusted `offline` or `online` Event on every live Window of the
+/// tab (top-level and descendant frames). Collects navigable IDs up front and
+/// re-resolves each navigable before dispatch so a listener removing an iframe
+/// cannot cause a use-after-free.
+fn fireOnlineOfflineEvent(session: *PageSession, root_bc: *frames.BrowsingContext, event_type: []const u8) void {
+    var descendants: std.ArrayListUnmanaged(*frames.BrowsingContext) = .empty;
+    defer descendants.deinit(session.allocator);
+    root_bc.collectDescendants(session.allocator, &descendants) catch return;
+
+    var nav_ids: std.ArrayListUnmanaged(u64) = .empty;
+    defer nav_ids.deinit(session.allocator);
+    for (descendants.items) |bc| nav_ids.append(session.allocator, bc.id) catch return;
+
+    for (nav_ids.items) |nav_id| {
+        const target_bc = frames.navigable(session, nav_id) orelse continue;
+        const win_ptr = target_bc.active_window orelse continue;
+        const window: *runtime.Instance = @ptrCast(@alignCast(win_ptr));
+        const event = interfaces.Event.call_constructor(
+            window.ctx,
+            runtime.DOMString.initInterned(event_type),
+            .notPassed(),
+        ) catch continue;
+        const generation = runtime.SlabAllocator.generationOf(event);
+        defer event.releaseIfUnwrapped(generation);
+        _ = dom.fire_event.dispatchTrusted(window, event) catch {};
+    }
 }
 
 /// Chrome's NetworkHandler::SetExtraHTTPHeaders (network_handler.cc;

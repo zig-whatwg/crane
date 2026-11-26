@@ -69,7 +69,8 @@ pub fn afterAction(ctx: *Context, page: *Page, options: Options, action: anytype
                 return self.w.navigation_finished or self.w.aborted or self.w.page.closed;
             }
         };
-        _ = try session.waitUntil(options.timeout orelse navigation_timeout_ms, Finished{ .w = &watch }, Finished.done);
+        const scaled_nav_timeout: u32 = @intFromFloat(@as(f64, @floatFromInt(navigation_timeout_ms)) * session_mod.Emulation.networkMultiplier(page.emulation.network_conditions));
+        _ = try session.waitUntil(options.timeout orelse scaled_nav_timeout, Finished{ .w = &watch }, Finished.done);
     }
     if (!watch.dialog_detected and options.wait_for_stable_dom and !page.closed) try stableDom(ctx, page);
     return .{

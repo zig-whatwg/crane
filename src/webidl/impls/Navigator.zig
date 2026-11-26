@@ -473,9 +473,9 @@ pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
 /// Getter for onLine
 /// Per HTML Standard: Returns true if the user agent is online.
+/// Reflects CDP Network.overrideNetworkState / emulateNetworkConditions.
 pub fn get_onLine(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    // Default to online for WPT tests
+    if (hostOverridesOf(instance)) |overrides| return !overrides.network_state_offline;
     return true;
 }
 
