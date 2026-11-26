@@ -21,6 +21,27 @@ pub const InternalState = struct {
     ignore_bom: bool = false,
 };
 
+pub fn installHooks() void {
+    st.installGenericTransform(&transformOf);
+    @import("dom").text_stream.installDecoderStreamProps(&decoderProps);
+}
+
+fn transformOf(instance: *runtime.Instance) ?*runtime.Instance {
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    return internal.transform;
+}
+
+fn decoderProps(instance: *runtime.Instance) ?@import("dom").text_stream.DecoderProps {
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    return .{
+        .whatwg_name = internal.enc.whatwg_name,
+        .fatal = internal.fatal,
+        .ignore_bom = internal.ignore_bom,
+    };
+}
+
 pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *const runtime.VTable, ctx: runtime.Context) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
@@ -66,31 +87,6 @@ pub fn call_constructor(instance: *runtime.Instance, label: webidl.Opt(runtime.D
     // This object keeps its TransformStream (Blink: the codec stream traces
     // its transform_), which its readable and writable keep back.
     engine.traceChild(instance, transform_stream, js.slot.transform_stream);
-}
-
-pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = instance.getState(State).own._internal orelse return error.InvalidState;
-    // TextDecoderCommon's getter returns the name ASCII-lowercased; the
-    // encoding registry preserves canonical spellings such as UTF-16LE.
-    return runtime.DOMString.initOwned(try std.ascii.allocLowerString(instance.ctx.allocator, internal.enc.whatwg_name));
-}
-
-pub fn get_fatal(instance: *runtime.Instance) anyerror!bool {
-    return (instance.getState(State).own._internal orelse return error.InvalidState).fatal;
-}
-
-pub fn get_ignoreBOM(instance: *runtime.Instance) anyerror!bool {
-    return (instance.getState(State).own._internal orelse return error.InvalidState).ignore_bom;
-}
-
-pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = instance.getState(State).own._internal orelse return error.InvalidState;
-    return interfaces.TransformStream.get_readable(internal.transform orelse return error.InvalidState);
-}
-
-pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = instance.getState(State).own._internal orelse return error.InvalidState;
-    return interfaces.TransformStream.get_writable(internal.transform orelse return error.InvalidState);
 }
 
 fn transform(raw: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance, chunk: js.Value) js.Error!js.Value {

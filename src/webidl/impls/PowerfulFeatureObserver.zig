@@ -31,3 +31,15 @@ pub const InternalState = struct {};
 //
 // (run after and before the parent's), and list what it is given at
 // construction in `pub const construction_args = .{"name"};`.
+
+/// Getter for initialPermissionStatus
+pub fn get_initialPermissionStatus(instance: *runtime.Instance) anyerror!enums.PermissionState {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for permissionStatus
+pub fn get_permissionStatus(instance: *runtime.Instance) anyerror!enums.PermissionState {
+    _ = instance;
+    return error.NotImplemented;
+}

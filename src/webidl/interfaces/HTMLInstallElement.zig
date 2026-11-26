@@ -429,23 +429,12 @@ pub const HTMLInstallElement = struct {
         try event_handlers.setValue(EventHandler, instance, "oninstallresult", value);
     }
 
-    pub fn get_isValid(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLInstallElementImpl.get_isValid(instance);
-    }
+    pub const get_isValid = mixins.ActivationBlockersMixin.get_isValid;
 
-    pub fn get_invalidReason(instance: *runtime.Instance) anyerror!ActivationBlockersMixinBlockerReason {
-        return try HTMLInstallElementImpl.get_invalidReason(instance);
-    }
+    pub const get_invalidReason = mixins.ActivationBlockersMixin.get_invalidReason;
 
-    pub fn get_onvalidationstatuschange(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(HTMLInstallElementImpl, "get_onvalidationstatuschange")) return try HTMLInstallElementImpl.get_onvalidationstatuschange(instance);
-        return event_handlers.value(EventHandler, instance, "onvalidationstatuschange");
-    }
-
-    pub fn set_onvalidationstatuschange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(HTMLInstallElementImpl, "set_onvalidationstatuschange")) return try HTMLInstallElementImpl.set_onvalidationstatuschange(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onvalidationstatuschange", value);
-    }
+    pub const get_onvalidationstatuschange = mixins.ActivationBlockersMixin.get_onvalidationstatuschange;
+    pub const set_onvalidationstatuschange = mixins.ActivationBlockersMixin.set_onvalidationstatuschange;
 
     /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
     pub const legacy_treat_non_object_as_null = .{ "set_oninstallresult", "set_onvalidationstatuschange" };

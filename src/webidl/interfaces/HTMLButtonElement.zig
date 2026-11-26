@@ -637,32 +637,12 @@ pub const HTMLButtonElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="popovertarget"]
-    pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try HTMLButtonElementImpl.get_popoverTargetElement(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="popovertarget"]
-    pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try HTMLButtonElementImpl.set_popoverTargetElement(instance, value);
-    }
+    pub const get_popoverTargetElement = mixins.PopoverTargetAttributes.get_popoverTargetElement;
+    pub const set_popoverTargetElement = mixins.PopoverTargetAttributes.set_popoverTargetElement;
 
     /// Extended attributes: [CEReactions]
-    pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try HTMLButtonElementImpl.get_popoverTargetAction(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_popoverTargetAction(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try HTMLButtonElementImpl.set_popoverTargetAction(instance, value);
-    }
+    pub const get_popoverTargetAction = mixins.PopoverTargetAttributes.get_popoverTargetAction;
+    pub const set_popoverTargetAction = mixins.PopoverTargetAttributes.set_popoverTargetAction;
 
     pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
         return try HTMLButtonElementImpl.call_setCustomValidity(instance, @"error");

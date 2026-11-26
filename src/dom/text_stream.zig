@@ -1,8 +1,34 @@
-//! UTF-8 text streams shared by File API and Fetch.
+//! UTF-8 text streams shared by File API and Fetch, and the TextDecoderStream
+//! property hook for the TextDecoderCommon mixin.
 //! File API §3.3.6; Fetch §5.3 textStream(); Encoding §7.5.
+//!
+//! lint-impls: hook for TextDecoderStream
 
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const Hook = @import("hook.zig").Hook;
+
+/// Immutable TextDecoderCommon properties of a TextDecoderStream instance.
+pub const DecoderProps = struct {
+    whatwg_name: []const u8,
+    fatal: bool,
+    ignore_bom: bool,
+};
+
+pub const PropsGetter = *const fn (instance: *runtime.Instance) ?DecoderProps;
+
+var decoder_stream_props: Hook(?PropsGetter) = .init(null);
+
+/// Installed by TextDecoderStream.installHooks() at process start.
+pub fn installDecoderStreamProps(getter: PropsGetter) void {
+    decoder_stream_props.install(getter);
+}
+
+/// Read TextDecoderCommon properties from a TextDecoderStream instance.
+pub fn decoderStreamProps(instance: *runtime.Instance) ?DecoderProps {
+    const getter = decoder_stream_props.get() orelse return null;
+    return getter(instance);
+}
 
 /// Pipe an unlocked byte stream through a UTF-8 decoder in the receiver's
 /// relevant realm. The existing source supplies chunks; this helper makes

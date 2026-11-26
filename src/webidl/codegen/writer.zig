@@ -3,7 +3,6 @@
 //! This module provides functions for writing generated Zig code from WebIDL definitions.
 
 const std = @import("std");
-const inherited_mixins = @import("inherited_mixins.zig");
 const types = @import("types.zig");
 const overload = @import("overload.zig");
 const reflect = @import("reflect.zig");
@@ -5383,9 +5382,6 @@ pub const DelegateOptions = struct {
     /// for a mixin's module: a mixin has no instances and so no State - each
     /// includer caches in its own, around the inherited getter.
     same_object_cache: bool = true,
-    /// The mixins whose members an includer inherits rather than delegates
-    /// (inherited_mixins.zig).
-    inherited_mixins: []const []const u8 = &inherited_mixins.names,
     /// The file's instances are elements - the reflected target of HTML 2.6.1
     /// - so a [Reflect*] attribute the impl does not implement is reflected
     /// by `src/dom/reflection.zig` (see `reflect.zig`). False for
@@ -5412,13 +5408,10 @@ fn mixinModuleHasSetter(attr: types.Attribute) bool {
         !attr.readonly;
 }
 
-/// `mixin`, when it is one an includer inherits members from.
-fn inheritedFrom(options: DelegateOptions, mixin: ?[]const u8) ?[]const u8 {
-    const name = mixin orelse return null;
-    for (options.inherited_mixins) |inherited| {
-        if (std.mem.eql(u8, inherited, name)) return name;
-    }
-    return null;
+/// `mixin`, when the member came from an included mixin (every mixin is
+/// inherited unconditionally).
+fn inheritedFrom(_: DelegateOptions, mixin: ?[]const u8) ?[]const u8 {
+    return mixin;
 }
 
 pub fn writeDelegateFunctions(

@@ -2284,25 +2284,6 @@ pub fn get_webkitEntries(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return error.NotImplemented;
 }
 
-/// Getter for popoverTargetElement
-pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}
-
-/// Getter for popoverTargetAction: "must reflect the popovertargetaction
-/// attribute, limited to only known values" - toggle, show and hide, whose
-/// "missing value default and invalid value default are both the Toggle
-/// state" (HTML 6.12.6).
-pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const value = attribute(instance, "popovertargetaction") orelse return runtime.DOMString.initInterned("toggle");
-    defer instance.ctx.allocator.free(value);
-    inline for (.{ "toggle", "show", "hide" }) |keyword| {
-        if (std.ascii.eqlIgnoreCase(value, keyword)) return runtime.DOMString.initInterned(keyword);
-    }
-    return runtime.DOMString.initInterned("toggle");
-}
-
 /// Setter for colorSpace
 pub fn set_colorSpace(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("colorspace"), .{ .domstring = value });
@@ -2342,18 +2323,6 @@ pub fn set_webkitdirectory(instance: *runtime.Instance, value: bool) anyerror!vo
     return error.NotImplemented;
 }
 
-/// Setter for popoverTargetElement
-pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for popoverTargetAction: sets the reflected content attribute.
-pub fn set_popoverTargetAction(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("popovertargetaction"), .{ .domstring = value });
-}
-
 /// Operation: showPicker
 pub fn call_showPicker(instance: *runtime.Instance) anyerror!void {
     const input_type = typeOf(instance);
@@ -2372,7 +2341,29 @@ fn showPickerIfApplicable(instance: *runtime.Instance, input_type: InputType) vo
     // activation behavior when inactive/immutable; otherwise consume.
     if (!activation.hasTransientActivation(window) or !isMutable(instance, input_type)) return;
     activation.consume(window);
-    // Step 4: a file dialog the platform cannot show is dismissed without a
+    // Step 4: if a host intercepts file chooser dialogs (CDP
+    // Page.setInterceptFileChooserDialog), tell it and suppress the native
+    // picker; only queue cancel when the interceptor asked for it.
+    if (input_type == .file) {
+        if (dom.browser_state.browsingContextOf(window)) |bc| {
+            var intercepted = false;
+            var cancel = false;
+            const multiple = interfaces.Element.call_hasAttribute(instance, runtime.DOMString.initInterned("multiple")) catch false;
+            @import("html").navigation.file_chooser.opened(bc.navigables, &.{
+                .tab = bc.getTop().id,
+                .navigable = bc.id,
+                .input = instance,
+                .multiple = multiple,
+                .intercepted = &intercepted,
+                .cancel = &cancel,
+            });
+            if (intercepted) {
+                if (cancel) form_associated.queueCancelEvent(instance, &pendingSelectTasks);
+                return;
+            }
+        }
+    }
+    // Otherwise a file dialog the platform cannot show is dismissed without a
     // selection: unsupported, or emulated - the built-in platforms' files a
     // host names by path, with no picker UI (their showFilePicker answers
     // none chosen; html/file_selection.zig takes the host's files). Use the

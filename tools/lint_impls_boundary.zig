@@ -63,7 +63,7 @@ const stdout_stream = @import("stdout_stream.zig");
 /// Deleted by lane impls9: the boundary has no baseline, and the file may not
 /// come back (`boundaryBaselineRefused`).
 const retired_baseline_path = "tools/impls_boundary_baseline.txt";
-const naming_baseline_path = "tools/impls_naming_baseline.txt";
+const retired_naming_baseline_path = "tools/impls_naming_baseline.txt";
 const impls_dir = "src/webidl/impls/";
 
 /// Generated or unbuilt code: the layers that are MEANT to call impls.
@@ -515,18 +515,9 @@ pub fn parseBaseline(gpa: std.mem.Allocator, text: []const u8) !Counts {
     return counts;
 }
 
-const naming_header =
-    \\# API-named functions in mixin impls that nothing calls: path function 1.
-    \\# Every includer's generated interface binds the INCLUDER's impl, so these
-    \\# never run. A ratchet - `zig build lint-impls`, part of `zig build test`,
-    \\# fails on a new one. After deleting or routing some, lower it with
-    \\# `zig build lint-impls -- --update`. Never raise it by hand.
-    \\
-;
-
 /// Format counts as a ratchet's baseline file, keys sorted.
 pub fn formatBaseline(gpa: std.mem.Allocator, counts: *const Counts) ![]u8 {
-    return formatBaselineWithHeader(gpa, naming_header, counts);
+    return formatBaselineWithHeader(gpa, unchecked_header, counts);
 }
 
 /// The impls boundary has no baseline (lane impls9): every reference is a
@@ -539,6 +530,19 @@ pub fn boundaryFailures(gpa: std.mem.Allocator, current: *const Counts) !std.Arr
 /// Whether a boundary baseline file - deleted when the last reference was
 /// paid down - stops the check: it would be debt recorded again.
 pub fn boundaryBaselineRefused(exists: bool) bool {
+    return exists;
+}
+
+/// Unrouted mixin functions have no baseline (lane mix1): every unrouted
+/// API-named function in a mixin impl fails, sorted by key.
+pub fn namingFailures(gpa: std.mem.Allocator, current: *const Counts) !std.ArrayList(Violation) {
+    const none: Counts = .empty;
+    return violations(gpa, current, &none);
+}
+
+/// Whether a naming baseline file - deleted when unrouted mixin functions
+/// reached zero - stops the check: it would be debt recorded again.
+pub fn namingBaselineRefused(exists: bool) bool {
     return exists;
 }
 
@@ -644,18 +648,28 @@ fn appendName(gpa: std.mem.Allocator, out: *std.ArrayList([]const u8), name: []c
 }
 
 /// The mixins a generated interface inherits members from: every
-/// `= mixins.<Name>.<member>;` alias in it. Such a mixin's impl is bound by
-/// the mixin's own generated module, which is what those aliases name.
+/// `mixins.<Name>.<api_member>` reference in code — both direct aliases
+/// (`= mixins.<Name>.<member>;`) and `[SameObject]` wrappers
+/// (`try mixins.<Name>.<member>(instance)`). Such a mixin's impl is bound by
+/// the mixin's own generated module, which is what those references name.
+/// Type references (`mixins.ParentNode.NodeOrString`) and comments are skipped.
 pub fn inheritedMixins(gpa: std.mem.Allocator, generated: []const u8) !std.ArrayList([]const u8) {
     var out: std.ArrayList([]const u8) = .empty;
     errdefer out.deinit(gpa);
-    const key = "= mixins.";
-    var pos: usize = 0;
-    while (std.mem.indexOfPos(u8, generated, pos, key)) |at| {
-        pos = at + key.len;
-        const name = identAt(generated, pos);
-        if (name.len == 0 or pos + name.len >= generated.len or generated[pos + name.len] != '.') continue;
-        try appendName(gpa, &out, name);
+    const key = "mixins.";
+    var lines = std.mem.splitScalar(u8, generated, '\n');
+    while (lines.next()) |raw| {
+        const code = codeOf(raw);
+        var pos: usize = 0;
+        while (std.mem.indexOfPos(u8, code, pos, key)) |at| {
+            pos = at + key.len;
+            if (at > 0 and (isIdentChar(code[at - 1]) or code[at - 1] == '.' or code[at - 1] == '-')) continue;
+            const name = identAt(code, pos);
+            if (name.len == 0 or pos + name.len >= code.len or code[pos + name.len] != '.') continue;
+            const member = identAt(code, pos + name.len + 1);
+            if (!isApiName(member)) continue;
+            try appendName(gpa, &out, name);
+        }
     }
     return out;
 }
@@ -1072,19 +1086,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     const boundary_ok = try boundary(arena, io, out, &current, &sites);
-    const naming_ok = try ratchet(arena, io, out, update, .{
-        .label = "impl names",
-        .path = naming_baseline_path,
-        .header = naming_header,
-        .noun = "unrouted mixin functions",
-        .advice =
-        \\A mixin impl's function runs only if something calls it: every includer's
-        \\generated interface binds the includer's own impl (AGENTS.md "Names are
-        \\the binding map"). Implement the member in the includer, or route the
-        \\includer's function to the mixin's - do not add another unrouted one.
-        \\
-        ,
-    }, &unrouted, null);
+    const naming_ok = try naming(arena, io, out, &unrouted);
     const unchecked_ok = try ratchet(arena, io, out, update, .{
         .label = "unchecked state reads",
         .path = unchecked_baseline_path,
@@ -1153,6 +1155,50 @@ fn boundary(
         \\with no IDL surface, through a hook module in src/dom/ that its impl
         \\installs. Outside the generated layer the module graph rejects the
         \\import anyway (build.zig check-impls-boundary).
+        \\
+    , .{});
+    return false;
+}
+
+/// Unrouted mixin functions, with no baseline (lane mix1): false when any
+/// uninherited mixin impl defines an API-named function that nothing calls,
+/// or when the retired baseline file is back.
+fn naming(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    out: *std.Io.Writer,
+    current: *const Counts,
+) !bool {
+    const exists = if (std.Io.Dir.cwd().access(io, retired_naming_baseline_path, .{})) |_| true else |err| switch (err) {
+        error.FileNotFound => false,
+        else => return err,
+    };
+    if (namingBaselineRefused(exists)) {
+        try out.print(
+            \\impl names: {s} exists. Unrouted mixin functions have no baseline since lane mix1 -
+            \\every unrouted mixin function fails - so the file is refused, not read:
+            \\delete it, and route or remove the functions it would record.
+            \\
+        , .{retired_naming_baseline_path});
+        return false;
+    }
+    const found = try namingFailures(arena, current);
+    if (found.items.len == 0) {
+        try out.print("impl names: no unrouted mixin functions.\n", .{});
+        return true;
+    }
+    var total: usize = 0;
+    for (found.items) |v| total += v.found;
+    try out.print("impl names: {d} unrouted mixin function(s), {d} key(s). There is no baseline: each one fails.\n\n", .{ total, found.items.len });
+    for (found.items) |v| {
+        try out.print("  {s}: {d}\n", .{ v.key, v.found });
+    }
+    try out.print(
+        \\
+        \\Every interface mixin is inherited and implemented once in its mixin impl
+        \\(src/webidl/AGENTS.md, "Names are the binding map"). Delete dead API-named
+        \\stubs in unincluded mixins, or regenerate so every includer inherits from
+        \\the mixin's generated module.
         \\
     , .{});
     return false;
@@ -1713,6 +1759,27 @@ test "an interface inherits a mixin through `= mixins.<Name>.` aliases" {
     try testing.expect(contains(found.items, "ParentNode"));
 }
 
+test "an interface inherits a [SameObject]-only mixin through `mixins.<Name>.<member>(` calls" {
+    const generated =
+        \\//! Generated from: css-mixins.idl
+        \\const mixins = @import("mixins");
+        \\pub const Navigator = struct {
+        \\    pub fn get_gpu(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        \\        const value = try mixins.NavigatorGPU.get_gpu(instance);
+        \\        return value;
+        \\    }
+        \\    pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
+        \\        _ = instance;
+        \\        _ = nodes;
+        \\    }
+        \\};
+    ;
+    var found = try inheritedMixins(testing.allocator, generated);
+    defer found.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 1), found.items.len);
+    try testing.expect(contains(found.items, "NavigatorGPU"));
+}
+
 test "a mixin module binds its impl's functions like an interface's file" {
     const module =
         \\const GlobalEventHandlersImpl = @import("impls").GlobalEventHandlers;
@@ -1766,6 +1833,37 @@ test "the impls boundary has no baseline: a clean tree passes" {
 test "a boundary baseline file is refused, not read: the debt is gone and may not come back" {
     try testing.expect(boundaryBaselineRefused(true));
     try testing.expect(!boundaryBaselineRefused(false));
+}
+
+// ---------------------------------------------------------------------------
+// Unrouted mixin functions have no baseline (lane mix1)
+// ---------------------------------------------------------------------------
+
+test "unrouted mixin functions have no baseline: every unrouted function fails, sorted by key" {
+    var current: Counts = .empty;
+    defer current.deinit(testing.allocator);
+    try current.put(testing.allocator, "src/webidl/impls/Region.zig get_regionOverset", 1);
+    try current.put(testing.allocator, "src/webidl/impls/GetSVGDocument.zig call_getSVGDocument", 1);
+    var found = try namingFailures(testing.allocator, &current);
+    defer found.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 2), found.items.len);
+    try testing.expectEqualStrings("src/webidl/impls/GetSVGDocument.zig call_getSVGDocument", found.items[0].key);
+    try testing.expectEqual(@as(u32, 0), found.items[0].allowed);
+    try testing.expectEqual(@as(u32, 1), found.items[0].found);
+    try testing.expectEqualStrings("src/webidl/impls/Region.zig get_regionOverset", found.items[1].key);
+}
+
+test "unrouted mixin functions have no baseline: a clean tree passes" {
+    var current: Counts = .empty;
+    defer current.deinit(testing.allocator);
+    var found = try namingFailures(testing.allocator, &current);
+    defer found.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 0), found.items.len);
+}
+
+test "a naming baseline file is refused, not read: the debt is gone and may not come back" {
+    try testing.expect(namingBaselineRefused(true));
+    try testing.expect(!namingBaselineRefused(false));
 }
 
 test "an impl's import of another impl's file counts even when nothing reaches through it" {

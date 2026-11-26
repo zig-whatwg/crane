@@ -31,3 +31,15 @@ pub const InternalState = struct {};
 //
 // (run after and before the parent's), and list what it is given at
 // construction in `pub const construction_args = .{"name"};`.
+
+/// Getter for invalidReason
+pub fn get_invalidReason(instance: *runtime.Instance) anyerror!enums.ActivationBlockersMixinBlockerReason {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for isValid
+pub fn get_isValid(instance: *runtime.Instance) anyerror!bool {
+    _ = instance;
+    return error.NotImplemented;
+}

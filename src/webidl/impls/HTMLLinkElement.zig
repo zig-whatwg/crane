@@ -121,6 +121,7 @@ pub fn installHooks() void {
     dom_module.attribute_change_steps.install("link", &attributeChangeSteps);
     dom_module.style_sheet_owners.installLoadDelay(.{ .delays = &style_sheet_loading.delaysLoadEvent, .blocks_scripts = &style_sheet_loading.blocksScripts });
     dom_module.style_sheet_owners.installLinkParserSteps(&createdByParser);
+    dom_module.style_sheet_owners.installSheetRecord(&sheetOf);
     // The CSS style sheet the element owns, which the style engine applies.
     dom_module.style.hooks.install(.{ .link_sheet_of = &sheetOf, .link_sheet_arrived = &sheetArrived });
     dom_module.mutation.registerPostConnectionStepsCallback(&insertionSteps) catch |err| {
@@ -799,15 +800,6 @@ pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMStrin
 /// limited to only known values; "auto" when absent or invalid.
 pub fn get_fetchPriority(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return knownValue(attribute(instance, "fetchpriority"), &.{ "high", "low", "auto" }, "auto");
-}
-
-/// Getter for sheet (LinkStyle, CSSOM 6.3.2): "the associated CSS style
-/// sheet of the node or null if there is no associated CSS style sheet" -
-/// its CSSStyleSheet object, made on first read and kept by the element.
-pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return null;
-    const record = internal.sheet orelse return null;
-    return try dom_module.style.objects.sheetObject(record, instance.ctx);
 }
 
 /// Setter for crossOrigin: null removes the content attribute; any other

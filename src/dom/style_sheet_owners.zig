@@ -21,9 +21,11 @@
 //! Spec: https://html.spec.whatwg.org/multipage/semantics.html#the-link-element
 //! Spec: https://html.spec.whatwg.org/multipage/semantics.html#update-a-style-block
 //!
-//! lint-impls: hook for HTMLLinkElement, HTMLStyleElement, SVGStyleElement
+//! lint-impls: hook for HTMLLinkElement, HTMLStyleElement, SVGStyleElement, ProcessingInstruction
 const process_start = @import("process_start.zig");
 const Hook = @import("hook.zig").Hook;
+const List = @import("hook.zig").List;
+const SheetRecord = @import("style/sheet.zig").SheetRecord;
 
 const runtime = @import("runtime");
 
@@ -56,6 +58,23 @@ pub const ParserSteps = struct {
 
 var load_delay: Hook(?LoadDelay) = .init(null);
 var parser_steps: Hook(?ParserSteps) = .init(null);
+/// LinkStyle mixin's associated CSS style sheet record getters.
+pub const SheetRecordGetter = *const fn (instance: *runtime.Instance) ?*SheetRecord;
+var sheet_record_getters: Hook(List(SheetRecordGetter, 8)) = .init(.empty);
+
+/// Register a LinkStyle includer's associated SheetRecord getter (idempotent).
+pub fn installSheetRecord(getter: SheetRecordGetter) void {
+    const list = sheet_record_getters.installing();
+    if (!list.contains(getter)) list.append(getter);
+}
+
+/// Return the associated SheetRecord of a LinkStyle includer, or null.
+pub fn sheetRecordOf(instance: *runtime.Instance) ?*SheetRecord {
+    for (sheet_record_getters.read().slice()) |getter| {
+        if (getter(instance)) |record| return record;
+    }
+    return null;
+}
 /// What the SVG style element does when the parser creates and pops it
 /// (SVG 2 15.3: an SVG style element is processed as HTML's); carried in
 /// the same hook as HTML's style element steps.

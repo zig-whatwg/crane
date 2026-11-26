@@ -64,6 +64,27 @@ pub const Client = struct {
         return error.Timeout;
     }
 
+    /// Like `call`, but stops waiting immediately and returns `error.Aborted`
+    /// once `abort.*` becomes true (e.g., an event such as
+    /// `Page.javascriptDialogOpening` paused the Browser thread during an
+    /// interactive action). Any reply that arrives later is ignored by `take`.
+    pub fn callOrAbort(self: *Client, method: []const u8, params_json: []const u8, session_id: []const u8, timeout_ms: u32, abort: *const bool) (Error || error{Aborted})!Response {
+        const id = try self.send(method, params_json, session_id);
+        var waited_ms: u32 = 0;
+        while (waited_ms < timeout_ms) {
+            if (abort.*) return error.Aborted;
+            const text = self.link.receive(10 * std.time.ns_per_ms) orelse {
+                if (abort.*) return error.Aborted;
+                if (self.link.closed) return error.Closed;
+                waited_ms += 10;
+                continue;
+            };
+            if (try self.take(text, id)) |response| return response;
+            if (abort.*) return error.Aborted;
+        }
+        return error.Timeout;
+    }
+
     /// Send a command without waiting: its answer is dropped when it comes
     /// (Puppeteer's `void dialog.accept()`). Safe inside an event's
     /// dispatch, where a waiting `call` would take the answers of the call

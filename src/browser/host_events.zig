@@ -33,6 +33,8 @@ pub const DialogAnswer = @import("html").navigation.user_prompts.DialogAnswer;
 pub const DialogKind = @import("html").navigation.user_prompts.Kind;
 /// A page asking for a new window (html.navigation.window_open).
 pub const WindowOpen = @import("html").navigation.window_open.Opened;
+/// A page opening a file chooser (html.navigation.file_chooser).
+pub const FileChooserOpening = @import("html").navigation.file_chooser.Opening;
 /// An open dialog as a host reads it from any thread
 /// (BrowserHost.userPromptOf).
 pub const UserPromptInfo = @import("html").simple_dialogs.Info;
@@ -93,6 +95,9 @@ pub const Event = union(enum) {
     /// touchedByScript): a host announces its main world context now, as
     /// Blink makes it lazily (LocalWindowProxy::Initialize on first access).
     frame_touched: struct { navigable: u64 },
+    /// An `<input type="file">` is opening a file chooser (CDP's
+    /// Page.setInterceptFileChooserDialog / Page.fileChooserOpened).
+    file_chooser_opening: *const FileChooserOpening,
 
     pub const TabCreated = struct {
         tab: TabId,

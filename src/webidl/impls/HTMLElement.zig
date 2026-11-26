@@ -426,31 +426,6 @@ pub fn get_offsetHeight(instance: *runtime.Instance) anyerror!i32 {
 // Spec: https://html.spec.whatwg.org/multipage/interaction.html#elementcontenteditable
 // =============================================================================
 
-/// Getter for contentEditable
-/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-contenteditable
-pub fn get_contentEditable(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    var attribute = try interfaces.Element.call_getAttributeNS(instance, null, runtime.DOMString.initInterned("contenteditable"));
-    defer if (attribute) |*value| value.deinit(instance.ctx.allocator);
-    if (attribute) |value| {
-        const keyword = value.asSlice();
-        // HTML 6.8.1: empty is True, missing/invalid is Inherit. Return the
-        // canonical keyword of the enumerated state.
-        if (keyword.len == 0) return runtime.DOMString.initInterned("true");
-        inline for (.{ "true", "false", "plaintext-only" }) |state|
-            if (std.ascii.eqlIgnoreCase(keyword, state)) return runtime.DOMString.initInterned(state);
-    }
-    return runtime.DOMString.initInterned("inherit");
-}
-
-/// Getter for enterKeyHint
-/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#attr-enterkeyhint
-pub fn get_enterKeyHint(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return dom.reflection.getEnumerated(runtime.DOMString, instance, .{
-        .name = "enterkeyhint",
-        .keywords = &.{ "enter", "done", "go", "next", "previous", "search", "send" },
-    });
-}
-
 /// Getter for isContentEditable
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-iscontenteditable
 // Browser binding comparison, 2026-10-10 (Q14): Blink's
@@ -462,64 +437,6 @@ pub fn get_enterKeyHint(instance: *runtime.Instance) anyerror!runtime.DOMString 
 // https://github.com/WebKit/WebKit/blob/main/Source/WebCore/dom/Node.cpp
 // Upstream contenteditable-enumerated-ascii-case-insensitive.html is 24/24
 // in stable Chrome 154, Firefox 157 and Safari 27 (wpt.fyi, 2026-10-10).
-pub fn get_isContentEditable(instance: *runtime.Instance) anyerror!bool {
-    var current: ?*runtime.Instance = instance;
-    while (current) |element| {
-        var namespace = try interfaces.Element.get_namespaceURI(element);
-        defer if (namespace) |*value| value.deinit(element.ctx.allocator);
-        const ns = if (namespace) |value| value.asSlice() else "";
-        const is_html = std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml");
-        const parent = try interfaces.Node.get_parentNode(element);
-        if (is_html) {
-            var state = try interfaces.HTMLElement.get_contentEditable(element);
-            defer state.deinit(element.ctx.allocator);
-            const value = state.asSlice();
-            // HTML 6.8.4: either explicit state establishes an editing host.
-            if (std.mem.eql(u8, value, "true") or std.mem.eql(u8, value, "plaintext-only")) return true;
-            // An HTML child of a design-mode document is an editing host,
-            // even if it is not itself editable (the false state).
-            if (parent) |node| {
-                if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_NODE()) {
-                    var mode = try interfaces.Document.get_designMode(node);
-                    defer mode.deinit(node.ctx.allocator);
-                    return std.mem.eql(u8, mode.asSlice(), "on");
-                }
-            }
-            if (std.mem.eql(u8, value, "false")) return false;
-        } else {
-            // execCommand's "editable" definition (specs/w3c/execCommand.md):
-            // only HTML elements and the SVG svg/MathML math roots inherit
-            // editability. Arbitrary foreign descendants end the chain.
-            var name = try interfaces.Element.get_localName(element);
-            defer name.deinit(element.ctx.allocator);
-            if (!((std.mem.eql(u8, ns, "http://www.w3.org/2000/svg") and std.mem.eql(u8, name.asSlice(), "svg")) or
-                (std.mem.eql(u8, ns, "http://www.w3.org/1998/Math/MathML") and std.mem.eql(u8, name.asSlice(), "math")))) return false;
-        }
-        // Inherit through the light-tree parent. Documents/fragments are not
-        // editable, so detached and shadow roots stop here.
-        current = if (parent) |node|
-            if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_ELEMENT_NODE()) node else null
-        else
-            null;
-    }
-    return false;
-}
-
-/// Getter for inputMode
-/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#attr-inputmode
-pub fn get_inputMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return dom.reflection.getEnumerated(runtime.DOMString, instance, .{
-        .name = "inputmode",
-        .keywords = &.{ "none", "text", "tel", "url", "email", "numeric", "decimal", "search" },
-    });
-}
-
-/// Getter for virtualKeyboardPolicy
-/// Spec: https://w3c.github.io/virtual-keyboard/#dom-elementcontenteditable-virtualkeyboardpolicy
-pub fn get_virtualKeyboardPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    return getContentAttribute(instance, "virtualkeyboardpolicy") orelse runtime.DOMString.initEmpty();
-}
-
 // =============================================================================
 // Content Attribute Reflection Setters
 // =============================================================================
@@ -619,36 +536,6 @@ pub fn set_editContext(instance: *runtime.Instance, value: ?*runtime.Instance) a
 // =============================================================================
 // ElementContentEditable Mixin Setters
 // =============================================================================
-
-/// HTML 6.8.1 contentEditable setter: canonical keywords, removal for
-/// inherit, and SyntaxError before any mutation for every other string.
-pub fn set_contentEditable(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const keyword = value.asSlice();
-    const name = runtime.DOMString.initInterned("contenteditable");
-    if (std.ascii.eqlIgnoreCase(keyword, "inherit")) {
-        try interfaces.Element.call_removeAttributeNS(instance, null, name);
-        return;
-    }
-    inline for (.{ "true", "false", "plaintext-only" }) |state| {
-        if (std.ascii.eqlIgnoreCase(keyword, state)) {
-            try interfaces.Element.call_setAttributeNS(instance, null, name, .{ .domstring = runtime.DOMString.initInterned(state) });
-            return;
-        }
-    }
-    return error.SyntaxError;
-}
-
-pub fn set_enterKeyHint(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "enterkeyhint", value);
-}
-
-pub fn set_inputMode(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "inputmode", value);
-}
-
-pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "virtualkeyboardpolicy", value);
-}
 
 // =============================================================================
 // Operations

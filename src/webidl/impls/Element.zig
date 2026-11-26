@@ -932,97 +932,6 @@ pub fn get_currentCSSZoom(instance: *runtime.Instance) anyerror!f64 {
     return 1.0;
 }
 
-/// Getter for ariaActiveDescendantElement
-/// ARIAMixin - Element reference attribute
-/// Spec: https://w3c.github.io/aria/#aria-activedescendant
-///
-/// Returns the element referenced by aria-activedescendant, or null if not set
-pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return getAriaElementRef(instance, "aria-activedescendant");
-}
-
-/// Getter for ariaControlsElements
-/// ARIAMixin - Element array reference
-/// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariacontrolselements
-///
-/// Returns a frozen array of elements referenced by space-separated IDs in aria-controls.
-pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    return getAriaElements(instance, "aria-controls");
-}
-
-/// Getter for ariaDescribedByElements
-/// ARIAMixin - Element array reference
-/// Spec: https://w3c.github.io/aria/#aria-describedby
-///
-/// Returns an array of elements referenced by space-separated IDs in aria-describedby
-pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    return getAriaElements(instance, "aria-describedby");
-}
-
-/// Getter for ariaDetailsElements
-/// ARIAMixin - Element array reference
-/// Spec: https://w3c.github.io/aria/#aria-details
-///
-/// Returns an array of elements referenced by space-separated IDs in aria-details
-pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    return getAriaElements(instance, "aria-details");
-}
-
-/// Getter for ariaErrorMessageElements
-/// ARIAMixin - Element array reference
-/// Spec: https://w3c.github.io/aria/#aria-errormessage
-///
-/// Returns an array of elements referenced by space-separated IDs in aria-errormessage
-pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    return getAriaElements(instance, "aria-errormessage");
-}
-
-/// Getter for ariaFlowToElements
-/// ARIAMixin - Element array reference
-/// Spec: https://w3c.github.io/aria/#aria-flowto
-///
-/// Returns an array of elements referenced by space-separated IDs in aria-flowto.
-pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    return getAriaElements(instance, "aria-flowto");
-}
-
-/// Getter for ariaLabelledByElements
-/// ARIAMixin - Element array reference
-/// Spec: https://w3c.github.io/aria/#aria-labelledby
-///
-/// Returns an array of elements referenced by space-separated IDs in aria-labelledby.
-pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    return getAriaElements(instance, "aria-labelledby");
-}
-
-/// Getter for ariaOwnsElements
-/// ARIAMixin - Element array reference
-/// Spec: https://w3c.github.io/aria/#aria-owns
-///
-/// Returns an array of elements referenced by space-separated IDs in aria-owns.
-pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    return getAriaElements(instance, "aria-owns");
-}
-
-/// Getter for regionOverset
-/// CSS Regions §10.2 - Returns the region's overset state
-/// Spec: https://drafts.csswg.org/css-regions-1/#dom-region-regionoverset
-///
-/// Note: CSS Regions is deprecated/removed from most browsers.
-/// Returns empty string as no region flow is active.
-pub fn get_regionOverset(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    // CSS Regions not supported - return empty string
-    return .{ .empty = {} };
-}
-
-/// Slottable's assignedSlot getter: "return the result of find a slot given
-/// this and true" - null for a slot in a closed shadow root.
-/// Spec: https://dom.spec.whatwg.org/#dom-slotable-assignedslot
-pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return dom.shadow_dom_algorithms.assignedSlotForScript(instance);
-}
-
 /// Setter for id: `id` reflects "id".
 /// Spec: https://dom.spec.whatwg.org/#dom-element-id
 pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
@@ -1679,53 +1588,6 @@ fn setAriaAttribute(instance: *runtime.Instance, aria_name: []const u8, value: ?
     }
 }
 
-/// Allocate reflection state only for elements that use it: a block of its
-/// own in the rare data, whose address stays good.
-fn ensureReferences(instance: *runtime.Instance, internal: *InternalState) !*dom.element_references.State {
-    return rare_data.ensureOwn(rare_data.contextOf(instance), internal.rareHolder(), .references);
-}
-
-fn getAriaElementRef(instance: *runtime.Instance, _: []const u8) ?*runtime.Instance {
-    const internal = getInternal(instance) orelse return null;
-    return dom.element_references.getSingle(instance, rare_data.get(internal.rareHolder().*, .references));
-}
-
-fn setAriaElementRef(instance: *runtime.Instance, aria_attr: []const u8, element: ?*runtime.Instance) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // HTML 2.6.1 setter step 1: clear the weak association and remove attr.
-    const target = element orelse {
-        if (rare_data.get(internal.rareHolder().*, .references)) |refs| refs.single = null;
-        removeAttributeByNamespaceAndLocalName(instance, null, aria_attr);
-        return;
-    };
-    if (target.stateAs(interfaces.Element.State) == null) return error.TypeError;
-    const refs = try ensureReferences(instance, internal);
-    // Steps 2-3: mutation resets the previous association, then install it.
-    try setAttributeValue(instance, aria_attr, "", null, null);
-    refs.single = dom.custom_elements.KeptInstance.of(target);
-}
-
-fn getAriaElements(instance: *runtime.Instance, comptime attribute: []const u8) !?runtime.JSValue {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return dom.element_references.getArray(instance, try ensureReferences(instance, internal), runtime.allocatorOf(instance), attribute);
-}
-
-fn setAriaElements(instance: *runtime.Instance, comptime attribute: []const u8, value: ?runtime.JSValue) !void {
-    const input = value orelse {
-        removeAttributeByNamespaceAndLocalName(instance, null, attribute);
-        return;
-    };
-    const weak = dom.custom_elements.KeptInstance.of(instance);
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    const allocator = runtime.allocatorOf(instance);
-    var converted = try dom.element_references.Converted.init(engine.currentRealm() orelse instance.ctx, allocator, input);
-    defer converted.deinit();
-    // Iteration can run script, reenter the setter or close the owner realm.
-    _ = weak.get() orelse return error.InvalidStateError;
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try dom.element_references.setArray(instance, try ensureReferences(instance, internal), allocator, attribute, converted.nodes.toSlice());
-}
-
 /// Setter for innerHTML
 /// DOM Parsing §3.2 - Sets the element's inner HTML
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#the-innerhtml-property
@@ -1859,78 +1721,6 @@ pub fn set_scrollLeft(instance: *runtime.Instance, value: f64) anyerror!void {
     // No-op - would require layout engine to scroll
 }
 
-/// Setter for ariaActiveDescendantElement
-/// ARIAMixin - Element reference setter
-/// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariaactivedescendantelement
-///
-/// HTML 2.6.1: store an explicit weak target, clearing the content value.
-pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-    return setAriaElementRef(instance, "aria-activedescendant", value);
-}
-
-/// Setter for ariaControlsElements
-/// ARIAMixin - Element array reference setter
-/// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariacontrolselements
-///
-/// Sets explicit weak references and clears the content attribute value.
-pub fn set_ariaControlsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    return setAriaElements(instance, "aria-controls", value);
-}
-
-/// Setter for ariaDescribedByElements
-/// ARIAMixin - Element array reference setter
-/// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariadescribedbyelements
-///
-/// Sets explicit weak references and clears the content attribute value.
-pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    return setAriaElements(instance, "aria-describedby", value);
-}
-
-/// Setter for ariaDetailsElements
-/// ARIAMixin - Element array reference setter
-/// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariadetailselements
-///
-/// Sets explicit weak references and clears the content attribute value.
-pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    return setAriaElements(instance, "aria-details", value);
-}
-
-/// Setter for ariaErrorMessageElements
-/// ARIAMixin - Element array reference setter
-/// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariaerrormessageelements
-///
-/// Sets explicit weak references and clears the content attribute value.
-pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    return setAriaElements(instance, "aria-errormessage", value);
-}
-
-/// Setter for ariaFlowToElements
-/// ARIAMixin - Element array reference setter
-/// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariaflowtoelements
-///
-/// Sets explicit weak references and clears the content attribute value.
-pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    return setAriaElements(instance, "aria-flowto", value);
-}
-
-/// Setter for ariaLabelledByElements
-/// ARIAMixin - Element array reference setter
-/// Spec: https://w3c.github.io/aria/#dom-ariamixin-arialabelledbyelements
-///
-/// Sets explicit weak references and clears the content attribute value.
-pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    return setAriaElements(instance, "aria-labelledby", value);
-}
-
-/// Setter for ariaOwnsElements
-/// ARIAMixin - Element array reference setter
-/// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariaownselements
-///
-/// Sets explicit weak references and clears the content attribute value.
-pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-    return setAriaElements(instance, "aria-owns", value);
-}
-
 /// Operation: getAttributeNS
 /// DOM §4.8 - Returns the value of the attribute with the given namespace and local name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributens
@@ -2044,20 +1834,6 @@ pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionari
     // No-op without layout engine - returns undefined
     // TODO: Should return a resolved Promise<undefined>
     return runtime.JSValue.jsUndefined;
-}
-
-/// Operation: convertQuadFromNode
-/// CSSOM View §6 - Converts a quad from another element's coordinate space
-/// Spec: https://drafts.csswg.org/cssom-view/#dom-element-convertquadfromnode
-///
-/// Note: Returns null - requires layout engine for coordinate transformations
-pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = quad;
-    _ = from;
-    _ = options;
-    // Requires layout engine for coordinate transformations - return null
-    return error.NotImplemented;
 }
 
 /// Operation: setAttributeNodeNS
@@ -2304,29 +2080,6 @@ pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runt
     return dom.live_collections.collectionFor(instance, .{ .namespace_local_name = .{ .namespace = if (namespace) |ns| ns.asSlice() else null, .local_name = localName.asSlice() } });
 }
 
-/// Operation: getRegionFlowRanges
-/// CSS Regions §10.3 - Returns ranges for content in this region
-/// Spec: https://drafts.csswg.org/css-regions-1/#dom-region-getregionflowranges
-///
-/// Note: CSS Regions is deprecated - returns null
-pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    _ = instance;
-    // CSS Regions is deprecated - return null
-    return null;
-}
-
-/// Operation: getBoxQuads
-/// CSSOM View §6 - Returns the element's CSS boxes as DOMQuads
-/// Spec: https://drafts.csswg.org/cssom-view/#dom-element-getboxquads
-///
-/// Note: Returns sentinel for empty array - requires layout engine
-pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    // Requires layout engine - return undefined (empty array)
-    return runtime.JSValue.jsUndefined;
-}
-
 /// Operation: focusableAreas
 /// CSS Spatial Navigation §5 - Returns focusable areas in specified direction
 /// Spec: https://drafts.csswg.org/css-nav-1/#dom-element-focusableareas
@@ -2337,20 +2090,6 @@ pub fn call_focusableAreas(instance: *runtime.Instance, option: webidl.Opt(dicti
     _ = option;
     // Spatial navigation not implemented - return undefined (empty array)
     return runtime.JSValue.jsUndefined;
-}
-
-/// Operation: convertPointFromNode
-/// CSSOM View §6 - Converts a point from another element's coordinate space
-/// Spec: https://drafts.csswg.org/cssom-view/#dom-element-convertpointfromnode
-///
-/// Note: Returns null - requires layout engine for coordinate transformations
-pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = point;
-    _ = from;
-    _ = options;
-    // Requires layout engine - return null
-    return error.NotImplemented;
 }
 
 /// Operation: getElementsByClassName
@@ -2446,20 +2185,6 @@ pub fn call_removeAttribute(instance: *runtime.Instance, qualifiedName: runtime.
     // "Remove an attribute given qualifiedName and this, and then return
     // undefined."
     try removeAttributeByName(instance, qualifiedName.asSlice());
-}
-
-/// Operation: convertRectFromNode
-/// CSSOM View §6 - Converts a rect from another element's coordinate space
-/// Spec: https://drafts.csswg.org/cssom-view/#dom-element-convertrectfromnode
-///
-/// Note: Returns null - requires layout engine for coordinate transformations
-pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = rect;
-    _ = from;
-    _ = options;
-    // Requires layout engine - return null
-    return error.NotImplemented;
 }
 
 /// Operation: removeAttributeNode
@@ -3396,14 +3121,6 @@ fn activePointersOf(document: ?*runtime.Instance) ?*dom.pointer_capture.ActivePo
     const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return null;
     const context = dom.browser_state.browsingContextOf(window) orelse return null;
     return &context.getTop().active_pointers;
-}
-
-/// Operation: ariaNotify
-pub fn call_ariaNotify(instance: *runtime.Instance, announcement: runtime.DOMString, options: webidl.Opt(dictionaries.AriaNotificationOptions)) anyerror!void {
-    _ = instance;
-    _ = announcement;
-    _ = options;
-    return error.NotImplemented;
 }
 
 // Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists

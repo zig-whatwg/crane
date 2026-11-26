@@ -187,27 +187,6 @@ pub fn call_constructor(instance: *runtime.Instance, label: webidl.Opt(runtime.D
     state.own.ignoreBOM = opts.ignoreBOM orelse false;
 }
 
-/// Getter for encoding
-/// Spec: "The encoding getter steps are to return this's encoding's name, ASCII lowercased."
-pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const state = instance.getState(State);
-    return state.own.encoding;
-}
-
-/// Getter for fatal
-/// Spec: "The fatal getter steps are to return true if this's error mode is "fatal"; otherwise false."
-pub fn get_fatal(instance: *runtime.Instance) anyerror!bool {
-    const state = instance.getState(State);
-    return state.own.fatal;
-}
-
-/// Getter for ignoreBOM
-/// Spec: "The ignoreBOM getter steps are to return this's ignore BOM."
-pub fn get_ignoreBOM(instance: *runtime.Instance) anyerror!bool {
-    const state = instance.getState(State);
-    return state.own.ignoreBOM;
-}
-
 /// decode() operation
 ///
 /// WHATWG Encoding Standard § 5.1.4

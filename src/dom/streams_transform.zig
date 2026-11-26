@@ -15,6 +15,8 @@ const js = @import("streams_js.zig");
 const sw = @import("streams_writable.zig");
 const srd = @import("streams_readable.zig");
 const engine = @import("engine");
+const Hook = @import("hook.zig").Hook;
+const List = @import("hook.zig").List;
 
 const Value = js.Value;
 const Realm = js.Realm;
@@ -866,4 +868,30 @@ pub fn setUp(realm: Realm, ctx: runtime.Context, transformer: Transformer) !*run
 /// completion's value (owned), if any.
 pub fn enqueue(realm: Realm, stream_instance: *runtime.Instance, chunk: Value) js.Error!?Value {
     return controllerEnqueueCompletion(realm, streamSlots(stream_instance).controller.?, chunk);
+}
+
+// ============================================================================
+// GenericTransformStream mixin hook
+// ============================================================================
+// lint-impls: hook for CompressionStream, DecompressionStream, TextDecoderStream, TextEncoderStream
+
+pub const GenericTransformGetter = *const fn (instance: *runtime.Instance) ?*runtime.Instance;
+
+var generic_transform_getters: Hook(List(GenericTransformGetter, 8)) = .init(.empty);
+
+/// Register a GenericTransformStream includer's backing-TransformStream getter
+/// (called from its installHooks() at process start; idempotent).
+pub fn installGenericTransform(getter: GenericTransformGetter) void {
+    const list = generic_transform_getters.installing();
+    if (!list.contains(getter)) list.append(getter);
+}
+
+/// Return the backing TransformStream of a GenericTransformStream includer,
+/// or null if `instance` is not one of the registered includers or has no
+/// backing transform.
+pub fn genericTransformOf(instance: *runtime.Instance) ?*runtime.Instance {
+    for (generic_transform_getters.read().slice()) |getter| {
+        if (getter(instance)) |transform| return transform;
+    }
+    return null;
 }

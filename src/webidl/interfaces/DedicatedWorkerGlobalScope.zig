@@ -263,37 +263,19 @@ pub const DedicatedWorkerGlobalScope = struct {
         try event_handlers.setValue(EventHandler, instance, "onrtctransform", value);
     }
 
-    pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(DedicatedWorkerGlobalScopeImpl, "get_onmessage")) return try DedicatedWorkerGlobalScopeImpl.get_onmessage(instance);
-        return event_handlers.value(EventHandler, instance, "onmessage");
-    }
+    pub const get_onmessage = mixins.MessageEventTarget.get_onmessage;
+    pub const set_onmessage = mixins.MessageEventTarget.set_onmessage;
 
-    pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(DedicatedWorkerGlobalScopeImpl, "set_onmessage")) return try DedicatedWorkerGlobalScopeImpl.set_onmessage(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
-    }
+    pub const get_onmessageerror = mixins.MessageEventTarget.get_onmessageerror;
+    pub const set_onmessageerror = mixins.MessageEventTarget.set_onmessageerror;
 
-    pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(DedicatedWorkerGlobalScopeImpl, "get_onmessageerror")) return try DedicatedWorkerGlobalScopeImpl.get_onmessageerror(instance);
-        return event_handlers.value(EventHandler, instance, "onmessageerror");
-    }
-
-    pub fn set_onmessageerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(DedicatedWorkerGlobalScopeImpl, "set_onmessageerror")) return try DedicatedWorkerGlobalScopeImpl.set_onmessageerror(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onmessageerror", value);
-    }
-
-    pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-        return try DedicatedWorkerGlobalScopeImpl.call_cancelAnimationFrame(instance, handle);
-    }
+    pub const call_cancelAnimationFrame = mixins.AnimationFrameProvider.call_cancelAnimationFrame;
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
         return try DedicatedWorkerGlobalScopeImpl.call_postMessage(instance, message, transfer);
     }
 
-    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
-        return try DedicatedWorkerGlobalScopeImpl.call_requestAnimationFrame(instance, callback);
-    }
+    pub const call_requestAnimationFrame = mixins.AnimationFrameProvider.call_requestAnimationFrame;
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try DedicatedWorkerGlobalScopeImpl.call_close(instance);

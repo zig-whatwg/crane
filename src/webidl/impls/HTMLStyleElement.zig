@@ -74,6 +74,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     dom_module.style_sheet_owners.installLoadDelay(.{ .delays = &style_sheet_loading.delaysLoadEvent, .blocks_scripts = &style_sheet_loading.blocksScripts });
     dom_module.style_sheet_owners.installParserSteps(.{ .created = &createdByParser, .popped = &poppedByParser });
+    dom_module.style_sheet_owners.installSheetRecord(&sheetOf);
     dom_module.attribute_change_steps.install("style", &attributeChangeSteps);
     // The CSS style sheet the element owns, which the style engine applies.
     dom_module.style.hooks.install(.{ .style_sheet_of = &sheetOf });
@@ -232,15 +233,6 @@ pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
     const record = internal.sheet orelse return false;
     return record.disabled;
-}
-
-/// Getter for sheet (LinkStyle, CSSOM 6.3.2): "the associated CSS style
-/// sheet of the node or null if there is no associated CSS style sheet" -
-/// its CSSStyleSheet object, made on first read and kept by the element.
-pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return null;
-    const record = internal.sheet orelse return null;
-    return try dom_module.style.objects.sheetObject(record, instance.ctx);
 }
 
 /// Setter for disabled: "If this does not have an associated CSS style

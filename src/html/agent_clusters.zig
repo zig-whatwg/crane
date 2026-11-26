@@ -8,17 +8,20 @@
 //! worker in an agent of its own, so a cluster is a property of the realm:
 //!
 //! - A Window realm: "obtain a similar-origin window agent" keys its cluster
-//!   by the site of its document's origin ("obtain a site": the origin itself
-//!   when it is opaque, else its scheme and its host's registrable domain, or
-//!   the host when it has none), and by its origin when the cluster is
-//!   origin-keyed - as window.originAgentCluster answers: the first document
-//!   of that origin in the browsing context group asked for it with
-//!   `Origin-Agent-Cluster: ?1` in a secure context (the group's historical
-//!   agent cluster key map, dom.agent_cluster_keys), or the group is
-//!   cross-origin isolated. Same-site documents that are not origin-keyed
-//!   share a cluster, so document.domain - which never moves a document to
-//!   another cluster - plays no part, and a same-site cross-origin frame can
-//!   receive a module.
+//!   in its browsing context group's agent cluster map (`BrowsingContext.
+//!   getTop().virtual_group_id`) by the site of its document's origin ("obtain
+//!   a site": the origin itself when it is opaque, else its scheme and its
+//!   host's registrable domain, or the host when it has none), and by its
+//!   origin when the cluster is origin-keyed - as window.originAgentCluster
+//!   answers: the first document of that origin in the browsing context group
+//!   asked for it with `Origin-Agent-Cluster: ?1` in a secure context (the
+//!   group's historical agent cluster key map, dom.agent_cluster_keys), or the
+//!   group is cross-origin isolated. Same-site documents in the same browsing
+//!   context group that are not origin-keyed share a cluster, so
+//!   document.domain - which never moves a document to another cluster - plays
+//!   no part, and a same-site cross-origin frame can receive a module; same-
+//!   origin documents in distinct browsing context groups (e.g. a noopener
+//!   popup or a COOP-switched tab) are in distinct clusters.
 //! - A shared worker's (and a service worker's) realm: "obtain a
 //!   worker/worklet agent" with isTopLevel true makes a new cluster - its
 //!   agent's own.
@@ -26,10 +29,8 @@
 //!   records on the worker agent's AgentHost when it obtains the agent; 0
 //!   (no cluster known: nothing is checked) until it does.
 //!
-//! Stated gaps: the browsing context group is not part of the key, so
-//! same-site documents in two groups of one Browser (two tabs) count as one
-//! cluster. An opaque origin's cluster is its global's own, so two documents
-//! sharing one opaque origin count as two.
+//! Stated gap: an opaque origin's cluster is its global's own, so two
+//! documents sharing one opaque origin count as two.
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/webappapis.html#obtain-similar-origin-window-agent
 //! Spec: https://html.spec.whatwg.org/multipage/webappapis.html#obtain-a-worker/worklet-agent
@@ -112,9 +113,10 @@ pub fn ofRealm(realm: runtime.Context) u64 {
     return agentClusterOf(@import("dom").agent_hosts.ofOwnAgent(realm), realm);
 }
 
-/// A Window's agent cluster: its document's origin's site, or the origin when
-/// the cluster is origin-keyed ("obtain a similar-origin window agent" steps
-/// 3-5 and 6.3), as window.originAgentCluster answers.
+/// A Window's agent cluster: keyed in its browsing context group's agent
+/// cluster map (`virtual_group_id`) by its document's origin's site, or by the
+/// origin when the cluster is origin-keyed ("obtain a similar-origin window
+/// agent" steps 1-6), as window.originAgentCluster answers.
 fn windowAgentCluster(global: *runtime.Instance) u64 {
     const settings = dom.global_settings.of(global) orelse return 0;
     const allocator = global.ctx.allocator;
@@ -126,10 +128,14 @@ fn windowAgentCluster(global: *runtime.Instance) u64 {
         const id: usize = @intFromPtr(global);
         return keyOf("opaque", std.mem.asBytes(&id));
     }
-    if (interfaces.Window.get_originAgentCluster(global) catch false) return keyOf("origin", origin);
-    const site = siteOf(allocator, origin) catch return keyOf("origin", origin);
+    // Step 1: Let agentClusterMap be browsingContextGroup's agent cluster map.
+    // Two same-origin windows in different browsing context groups (e.g. a
+    // noopener popup or a COOP-switched tab) belong to distinct agent clusters.
+    const group: u64 = if (dom.browser_state.browsingContextOf(global)) |bc| bc.getTop().virtual_group_id else 0;
+    if (interfaces.Window.get_originAgentCluster(global) catch false) return keyOfInGroup("origin", group, origin);
+    const site = siteOf(allocator, origin) catch return keyOfInGroup("origin", group, origin);
     defer allocator.free(site);
-    return keyOf("site", site);
+    return keyOfInGroup("site", group, site);
 }
 
 /// HTML "obtain a site" for a tuple origin, serialized as `origin`
@@ -166,8 +172,28 @@ fn keyOf(comptime kind: []const u8, name: []const u8) u64 {
     return if (key == 0) 1 else key;
 }
 
-/// The key a site's agent cluster has - what two same-site Window realms
-/// share. For tests.
+/// A key for the agent cluster named by `kind` and `name` inside browsing
+/// context group `group`: equal names of one kind in one group are one
+/// cluster; distinct groups never collide. Never 0.
+fn keyOfInGroup(comptime kind: []const u8, group: u64, name: []const u8) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hasher.update(kind);
+    hasher.update(&.{0});
+    hasher.update(std.mem.asBytes(&group));
+    hasher.update(&.{0});
+    hasher.update(name);
+    const key = hasher.final();
+    return if (key == 0) 1 else key;
+}
+
+/// The key a site's agent cluster has in group 0 - what two same-site Window
+/// realms in one group share. For tests.
 pub fn siteKey(site: []const u8) u64 {
-    return keyOf("site", site);
+    return keyOfInGroup("site", 0, site);
+}
+
+/// The key a site's agent cluster has in browsing context group `group`.
+/// For tests.
+pub fn groupSiteKey(group: u64, site: []const u8) u64 {
+    return keyOfInGroup("site", group, site);
 }

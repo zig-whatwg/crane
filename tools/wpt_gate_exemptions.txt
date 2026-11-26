@@ -2833,3 +2833,13 @@ why       = waits for a video resource to load and seek via timeout_on_seek.py; 
 media     = /media/movie_5.mp4 (video/mp4)
 assertion = TIMEOUT: Test timed out
 
+[html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/blob-data.https.html]
+kind            = follows-majority
+why             = WPT PR #25748 (ce281cc3f3) changed data worker self.crossOriginIsolated to false (HTML run a worker step 9) without removing blobWorkerIncrementerTest("data worker"), whose blob sub-worker inherits false (step 8) and must throw DataCloneError on postMessage(SAB) (StructuredSerializeInternal step 14.1.1 -> ERROR), and data frame (opaque origin, no allow="cross-origin-isolated") also has crossOriginIsolated false; Crane gets ERROR 15/18 while every browser blocks differently (Chrome ERROR 14/18 ReferenceError + data frame COI/isSecureContext FAIL, Firefox TIMEOUT 17/18 violating step 9, Safari TIMEOUT 15/18 + data frame isSecureContext FAIL)
+chrome.result   = wpt.fyi run 4786307730243584: 14/18 (ERROR, Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 17/18 (TIMEOUT, Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 15/18 (TIMEOUT, Safari 27.2, 2358bd4835)
+matches         = none
+ruling          = golden rule 2, the spec where all three differ (main, 2026-11-26 4:14 AM ET, lane sab1): each browser blocks differently and the test contradicts HTML run a worker steps 8-9 + StructuredSerializeInternal step 14.1.1; upstream test-bug draft is tmp/plans/sab1-upstream-drafts/blob-data.md (filing needs the user's OK)
+revisit         = when the test is fixed upstream, or Chrome, Firefox or Safari changes its result, or Crane's result moves
+

@@ -274,7 +274,19 @@ pub const construction_args = .{"url"};
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
+fn workerFontsOf(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return error.InvalidStateError;
+    if (internal.fonts) |set| return set.value;
+    const set = try interfaces.FontFaceSet.init(internal.allocator, instance.ctx);
+    internal.fonts = .{ .owner = instance, .value = set };
+    internal.fonts.?.edge.hold(instance, set);
+    return set;
+}
+
 pub fn installHooks() void {
+    // FontFaceSource mixin reaches a worker's FontFaceSet through this hook.
+    @import("dom").document_internals.installWorkerFonts(&workerFontsOf);
     // The WindowOrWorkerGlobalScope mixin reads a worker's settings here.
     @import("dom").global_settings.install(.{
         .owns = &isWorkerGlobalScope,
@@ -644,19 +656,6 @@ pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
 // Event handler IDL attributes (HTML §8.1.8.1) - onerror, ononline, ... -
 // are the generated interface's: HTML's getter and setter, through
 // dom.event_handlers, in EventTarget's event handler map.
-
-/// Font Loading 3 §4 FontFaceSource's fonts: this worker's FontFaceSet -
-/// one per global (§4.1: "Within a worker", its set entries start empty and
-/// hold what script adds), made on first use.
-pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.stateAs(State) orelse return error.InvalidStateError;
-    const internal = state.own._internal orelse return error.InvalidStateError;
-    if (internal.fonts) |set| return set.value;
-    const set = try interfaces.FontFaceSet.init(internal.allocator, instance.ctx);
-    internal.fonts = .{ .owner = instance, .value = set };
-    internal.fonts.?.edge.hold(instance, set);
-    return set;
-}
 
 /// Operation: importScripts - "import scripts into worker global scope"
 /// given this and urls.

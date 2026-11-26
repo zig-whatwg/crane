@@ -75,6 +75,12 @@ pub const Implementation = struct {
     /// with (0, 0). Instant: Crane lays nothing out, so no scrolling area
     /// bounds the position beyond its origin (as Window's scroll()).
     perform_scroll: ?*const fn (window: *runtime.Instance, x: f64, y: f64) void = null,
+    /// WindowLocalStorage.localStorage (HTML 12.2.3).
+    local_storage: ?*const fn (window: *runtime.Instance) anyerror!*runtime.Instance = null,
+    /// WindowSessionStorage.sessionStorage (HTML 12.2.2).
+    session_storage: ?*const fn (window: *runtime.Instance) anyerror!*runtime.Instance = null,
+    /// Whether `window` has initialized Window internal state.
+    has_internal: ?*const fn (window: *runtime.Instance) bool = null,
 };
 
 /// What "Location-object navigate" asks of the navigable's engine.
@@ -218,6 +224,27 @@ pub fn setLocationUrl(location_object: *runtime.Instance, url: []const u8) anyer
 pub fn historyWindow(history: *runtime.Instance) ?*runtime.Instance {
     const history_steps = hooks.read().history orelse return null;
     return history_steps.window(history);
+}
+
+/// WindowLocalStorage.localStorage for `window`.
+pub fn localStorageOf(window: *runtime.Instance) anyerror!*runtime.Instance {
+    const impl = hooks.read().window orelse return error.InvalidStateError;
+    const step = impl.local_storage orelse return error.InvalidStateError;
+    return step(window);
+}
+
+/// WindowSessionStorage.sessionStorage for `window`.
+pub fn sessionStorageOf(window: *runtime.Instance) anyerror!*runtime.Instance {
+    const impl = hooks.read().window orelse return error.InvalidStateError;
+    const step = impl.session_storage orelse return error.InvalidStateError;
+    return step(window);
+}
+
+/// Whether `window` has initialized Window internal state.
+pub fn hasInternal(window: *runtime.Instance) bool {
+    const impl = hooks.read().window orelse return false;
+    const step = impl.has_internal orelse return false;
+    return step(window);
 }
 
 test "with nothing installed no Window, Location or History answers, and setting one does nothing" {

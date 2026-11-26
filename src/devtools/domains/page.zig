@@ -58,6 +58,10 @@ pub const State = struct {
     /// fragment navigation before navigatedWithinDocument).
     navigating: bool = false,
     deferred: std.ArrayListUnmanaged(Deferred) = .empty,
+    /// Page.setInterceptFileChooserDialog: intercept `<input type="file">`
+    /// pickers and emit Page.fileChooserOpened instead of showing native UI.
+    intercept_file_chooser: bool = false,
+    intercept_file_chooser_cancel: bool = false,
 };
 
 /// A navigatedWithinDocument held until Page.navigate has answered.
@@ -145,6 +149,7 @@ fn onHostEvent(context: *anyopaque, event: *const @import("browser").host_events
         .dialog_closed => |closed| dialogClosed(session, closed),
         .window_open => |opened| windowOpened(session, opened),
         .frame_touched => |touched| frameTouched(session, touched.navigable),
+        .file_chooser_opening => |opening| fileChooserOpening(session, opening),
         else => {},
     }
 }
@@ -209,6 +214,24 @@ fn windowOpened(session: *PageSession, opened: *const @import("browser").host_ev
     });
 }
 
+/// An `<input type="file">` opens a file chooser in the session's tab:
+/// when Page.setInterceptFileChooserDialog is enabled, intercept it and emit
+/// Page.fileChooserOpened (Blink's InspectorPageAgent::InterceptFileChooserDialog).
+fn fileChooserOpening(session: *PageSession, opening: *const @import("browser").host_events.FileChooserOpening) void {
+    const s = state(session);
+    if (!s.intercept_file_chooser or opening.tab != session.tab) return;
+    opening.intercepted.* = true;
+    if (s.intercept_file_chooser_cancel) opening.cancel.* = true;
+    const frame_id = session.frameId(opening.navigable);
+    const input: *runtime.Instance = @ptrCast(@alignCast(opening.input));
+    const backend_id = @import("dom.zig").backendNodeIdFor(session, input);
+    session.emit(P.fileChooserOpened, .{
+        .frameId = frame_id.slice(),
+        .mode = if (opening.multiple) .selectMultiple else .selectSingle,
+        .backendNodeId = backend_id,
+    });
+}
+
 /// A new document of the session's tab is ready for host scripts, before any
 /// of its own (Blink's InspectorPageAgent::DidCreateMainWorldContext): the
 /// session's new-document scripts run in it, each in its world.
@@ -252,6 +275,18 @@ pub fn disable(session: *PageSession, params: P.disable.Params) !P.disable.Resul
     const s = state(session);
     s.enabled = false;
     s.lifecycle_events = false;
+    s.intercept_file_chooser = false;
+    s.intercept_file_chooser_cancel = false;
+    return .{};
+}
+
+/// Page.setInterceptFileChooserDialog (Blink's InspectorPageAgent::
+/// setInterceptFileChooserDialog): intercept `<input type="file">` pickers
+/// on this session's tab and emit Page.fileChooserOpened instead.
+pub fn setInterceptFileChooserDialog(session: *PageSession, params: P.setInterceptFileChooserDialog.Params) !P.setInterceptFileChooserDialog.Result {
+    const s = state(session);
+    s.intercept_file_chooser = params.enabled;
+    s.intercept_file_chooser_cancel = if (params.enabled) (params.cancel orelse false) else false;
     return .{};
 }
 

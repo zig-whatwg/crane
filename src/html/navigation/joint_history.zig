@@ -128,6 +128,13 @@ pub const Entry = struct {
     /// document's markup, which a traversal loads again rather than the
     /// srcdoc attribute's current value. Owned.
     resource: ?[]u8 = null,
+    /// The document state's about base URL (HTML "document state"): the
+    /// initiator's document base URL snapshotted when the navigation to
+    /// about:srcdoc or about:blank started, restored on back/forward traversal
+    /// even if the parent's base URL changed in the meantime (whatwg/html#9506).
+    /// Shared by the entries of the document state, each holding its own copy.
+    /// Owned.
+    about_base_url: ?[]u8 = null,
     /// The document state's initiator origin and request referrer (HTML
     /// "document state"), serialized: what the navigation that populated it
     /// sent, which a traversal that populates it again sends too ("create
@@ -204,6 +211,7 @@ pub const Entry = struct {
         self.api_state.deinit(allocator);
         allocator.free(self.origin);
         if (self.resource) |r| allocator.free(r);
+        if (self.about_base_url) |u| allocator.free(u);
         self.dropInitiator(allocator);
         self.dropHistoryPolicyContainer();
         self.dropActivation(allocator);
@@ -1198,9 +1206,11 @@ pub const JointHistory = struct {
         errdefer allocator.free(owned_url);
         const origin = try allocator.dupe(u8, active.origin);
         errdefer allocator.free(origin);
-        // The document state is shared, so its resource is too.
+        // The document state is shared, so its resource and about base URL are too.
         const resource: ?[]u8 = if (active.resource) |r| try allocator.dupe(u8, r) else null;
         errdefer if (resource) |r| allocator.free(r);
+        const about_base_url: ?[]u8 = if (active.about_base_url) |u| try allocator.dupe(u8, u) else null;
+        errdefer if (about_base_url) |u| allocator.free(u);
         // And so are its initiator origin and request referrer.
         const initiator_origin: ?[]u8 = if (active.initiator_origin) |o| try allocator.dupe(u8, o) else null;
         errdefer if (initiator_origin) |o| allocator.free(o);
@@ -1229,6 +1239,7 @@ pub const JointHistory = struct {
             .api_id = self.randomUuid(),
             .origin = origin,
             .resource = resource,
+            .about_base_url = about_base_url,
             .initiator_origin = initiator_origin,
             .request_referrer = request_referrer,
             .history_policy_container = history_container,
@@ -1676,6 +1687,31 @@ pub const JointHistory = struct {
         entry.resource = copy;
     }
 
+    /// Record `url` as the document state's about base URL of `entry_id`
+    /// (HTML "navigate" step 22.3 / "document state"'s about base URL).
+    pub fn setEntryAboutBaseUrl(self: *JointHistory, entry_id: u64, url: ?[]const u8) !void {
+        const entry = self.entryById(entry_id) orelse return error.NoCurrentEntry;
+        const copy: ?[]u8 = if (url) |u| try self.allocator.dupe(u8, u) else null;
+        if (entry.about_base_url) |old| self.allocator.free(old);
+        entry.about_base_url = copy;
+    }
+
+    /// Record `url` as the document state's about base URL of `navigable`'s
+    /// current entry.
+    pub fn setCurrentAboutBaseUrl(self: *JointHistory, navigable: u64, url: ?[]const u8) !void {
+        const entry = self.currentEntry(navigable) orelse return error.NoCurrentEntry;
+        const copy: ?[]u8 = if (url) |u| try self.allocator.dupe(u8, u) else null;
+        if (entry.about_base_url) |old| self.allocator.free(old);
+        entry.about_base_url = copy;
+    }
+
+    /// The document state's about base URL of `entry_id`, borrowed until the
+    /// history next changes; null when it has none or is gone.
+    pub fn entryAboutBaseUrl(self: *JointHistory, entry_id: u64) ?[]const u8 {
+        const entry = self.entryById(entry_id) orelse return null;
+        return entry.about_base_url;
+    }
+
     fn commit(
         self: *JointHistory,
         navigable: u64,
@@ -1732,6 +1768,8 @@ pub const JointHistory = struct {
                 if (current.document_state != doc_state) {
                     if (current.resource) |r| self.allocator.free(r);
                     current.resource = null;
+                    if (current.about_base_url) |u| self.allocator.free(u);
+                    current.about_base_url = null;
                     current.dropInitiator(self.allocator);
                     current.dropHistoryPolicyContainer();
                     current.dropActivation(self.allocator);

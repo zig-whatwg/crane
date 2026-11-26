@@ -294,31 +294,15 @@ pub const Response = struct {
         return value;
     }
 
-    pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ResponseImpl.get_body(instance);
-    }
+    pub const get_body = mixins.Body.get_body;
 
-    pub fn get_bodyUsed(instance: *runtime.Instance) anyerror!bool {
-        return try ResponseImpl.get_bodyUsed(instance);
-    }
+    pub const get_bodyUsed = mixins.Body.get_bodyUsed;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try ResponseImpl.call_arrayBuffer(instance);
-    }
+    pub const call_arrayBuffer = mixins.Body.call_arrayBuffer;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try ResponseImpl.call_json(instance);
-    }
+    pub const call_json = mixins.Body.call_json;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try ResponseImpl.call_text(instance);
-    }
+    pub const call_text = mixins.Body.call_text;
 
     /// Extended attributes: [NewObject]
     pub fn call_static_json(instance: *runtime.Instance, data: runtime.JSValue, init_data: webidl.Opt(ResponseInit)) anyerror!*runtime.Instance {
@@ -327,11 +311,7 @@ pub const Response = struct {
         return try ResponseImpl.call_static_json(instance, data, init_data);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try ResponseImpl.call_blob(instance);
-    }
+    pub const call_blob = mixins.Body.call_blob;
 
     /// Extended attributes: [NewObject]
     pub fn call_static_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -346,23 +326,11 @@ pub const Response = struct {
         return try ResponseImpl.call_static_redirect(instance, url, status);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try ResponseImpl.call_bytes(instance);
-    }
+    pub const call_bytes = mixins.Body.call_bytes;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_textStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        return try ResponseImpl.call_textStream(instance);
-    }
+    pub const call_textStream = mixins.Body.call_textStream;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        // [NewObject] - Caller owns the returned object
-        return try ResponseImpl.call_formData(instance);
-    }
+    pub const call_formData = mixins.Body.call_formData;
 
     /// Extended attributes: [NewObject]
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {

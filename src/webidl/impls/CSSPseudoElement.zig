@@ -58,45 +58,11 @@ pub fn get_parent(instance: *runtime.Instance) anyerror!typedefs.ElementOrCSSPse
     return error.NotImplemented;
 }
 
-/// Operation: convertQuadFromNode
-pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = quad;
-    _ = from;
-    _ = options;
-    return error.NotImplemented;
-}
-
-/// Operation: convertPointFromNode
-pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = point;
-    _ = from;
-    _ = options;
-    return error.NotImplemented;
-}
-
 /// Operation: pseudo
 pub fn call_pseudo(instance: *runtime.Instance, @"type": typedefs.CSSOMString) anyerror!?*runtime.Instance {
     _ = instance;
     _ = @"type";
     return null;
-}
-
-/// Operation: getBoxQuads
-pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
-}
-
-/// Operation: convertRectFromNode
-pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = rect;
-    _ = from;
-    _ = options;
-    return error.NotImplemented;
 }
 
 /// Getter for selectorText

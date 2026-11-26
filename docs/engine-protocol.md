@@ -420,10 +420,10 @@ entered per call.
   the realm is made in has a cross-origin isolation mode other than "none" -
   a Window's from its browsing context group, a dedicated worker's or a
   worklet's from its owner's cluster (`html.agent_clusters.
-  crossOriginIsolationMode`), a shared worker's "none" (HTML makes its realm
-  before "run a worker" onComplete step 5 sets the mode; Chrome and Firefox
-  never isolate one), a service worker's from its script's embedder policy
-  (Chrome and Safari isolate one with COOP and COEP). With
+  crossOriginIsolationMode`), a shared worker's from its script's embedder
+  policy (HTML "run a worker" onComplete steps 5-7, shipped by Safari 27.2),
+  and a service worker's from its script's embedder policy (Chrome and Safari
+  isolate one with COOP and COEP). With
   false the engine performs HTML "create a new realm" step 5 once the global
   object exists: `! global.[[Delete]]("SharedArrayBuffer")`, which succeeds.
   The V8 adapter does it in `shared_array_buffer_exposure.zig`; the

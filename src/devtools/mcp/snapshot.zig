@@ -144,11 +144,23 @@ fn fromKept(arena: Allocator, kept: *const ax_tree.Kept) !*Node {
 // TextSnapshot: the uids
 // ----------------------------------------------------------------------
 
+/// An `<option>` child of a `combobox` node in the snapshot, kept so `fill`
+/// can resolve an option by its accessible name (chrome-devtools-mcp
+/// `fillFormElements`).
+pub const OptionChild = struct {
+    name: []const u8,
+    backend_node_id: i64,
+    loader_id: []const u8,
+    frame_id: []const u8,
+};
+
 /// A uid's DOM node, kept by the page until its next snapshot (idToNode).
 pub const Target = struct {
     backend_node_id: i64,
     loader_id: []const u8,
     frame_id: []const u8,
+    role: []const u8 = "",
+    options: []const OptionChild = &.{},
 };
 
 /// The page's uniqueBackendNodeIdToMcpId: "<loaderId>_<backendNodeId>" to
@@ -237,11 +249,34 @@ const Numbering = struct {
         if (eql(node.role, "option")) if (node.name) |name| if (name.len != 0) {
             try node.attrs.put(self.arena, "value", .{ .string = name });
         };
-        if (node.id.len != 0) try self.targets.put(self.arena, node.id, .{
-            .backend_node_id = node.backend_node_id.?,
-            .loader_id = node.loader_id,
-            .frame_id = node.frame_id,
-        });
+        if (node.id.len != 0) {
+            var options: std.ArrayList(OptionChild) = .empty;
+            if (eql(node.role, "combobox")) try collectOptions(self.arena, node, &options);
+            try self.targets.put(self.arena, node.id, .{
+                .backend_node_id = node.backend_node_id.?,
+                .loader_id = node.loader_id,
+                .frame_id = node.frame_id,
+                .role = node.role,
+                .options = options.items,
+            });
+        }
+    }
+
+    fn collectOptions(arena: Allocator, parent: *const Node, out: *std.ArrayList(OptionChild)) !void {
+        for (parent.children.items) |child| {
+            if (eql(child.role, "option")) {
+                if (child.backend_node_id) |bid| {
+                    try out.append(arena, .{
+                        .name = child.name orelse "",
+                        .backend_node_id = bid,
+                        .loader_id = child.loader_id,
+                        .frame_id = child.frame_id,
+                    });
+                }
+            } else {
+                try collectOptions(arena, child, out);
+            }
+        }
     }
 };
 

@@ -1636,64 +1636,22 @@ pub const HTMLElement = struct {
     pub const set_onbeforexrselect = mixins.GlobalEventHandlers.set_onbeforexrselect;
 
     /// Extended attributes: [CEReactions]
-    pub fn get_contentEditable(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try HTMLElementImpl.get_contentEditable(instance);
-    }
+    pub const get_contentEditable = mixins.ElementContentEditable.get_contentEditable;
+    pub const set_contentEditable = mixins.ElementContentEditable.set_contentEditable;
 
     /// Extended attributes: [CEReactions]
-    pub fn set_contentEditable(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
+    pub const get_enterKeyHint = mixins.ElementContentEditable.get_enterKeyHint;
+    pub const set_enterKeyHint = mixins.ElementContentEditable.set_enterKeyHint;
 
-        try HTMLElementImpl.set_contentEditable(instance, value);
-    }
+    pub const get_isContentEditable = mixins.ElementContentEditable.get_isContentEditable;
 
     /// Extended attributes: [CEReactions]
-    pub fn get_enterKeyHint(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try HTMLElementImpl.get_enterKeyHint(instance);
-    }
+    pub const get_inputMode = mixins.ElementContentEditable.get_inputMode;
+    pub const set_inputMode = mixins.ElementContentEditable.set_inputMode;
 
     /// Extended attributes: [CEReactions]
-    pub fn set_enterKeyHint(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try HTMLElementImpl.set_enterKeyHint(instance, value);
-    }
-
-    pub fn get_isContentEditable(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLElementImpl.get_isContentEditable(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn get_inputMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try HTMLElementImpl.get_inputMode(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_inputMode(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try HTMLElementImpl.set_inputMode(instance, value);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn get_virtualKeyboardPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try HTMLElementImpl.get_virtualKeyboardPolicy(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try HTMLElementImpl.set_virtualKeyboardPolicy(instance, value);
-    }
+    pub const get_virtualKeyboardPolicy = mixins.ElementContentEditable.get_virtualKeyboardPolicy;
+    pub const set_virtualKeyboardPolicy = mixins.ElementContentEditable.set_virtualKeyboardPolicy;
 
     /// Extended attributes: [SameObject]
     pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {

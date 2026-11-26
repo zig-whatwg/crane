@@ -18,6 +18,16 @@ pub const InternalState = struct {
     transform: ?*runtime.Instance = null,
 };
 
+pub fn installHooks() void {
+    st.installGenericTransform(&transformOf);
+}
+
+fn transformOf(instance: *runtime.Instance) ?*runtime.Instance {
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    return internal.transform;
+}
+
 pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *const runtime.VTable, ctx: runtime.Context) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
@@ -57,16 +67,6 @@ pub fn call_constructor(instance: *runtime.Instance, format: enums.CompressionFo
     // This object keeps its TransformStream (Blink: the codec stream traces
     // its transform_), which its readable and writable keep back.
     engine.traceChild(instance, transform_stream, js.slot.transform_stream);
-}
-
-pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = instance.getState(State).own._internal orelse return error.InvalidState;
-    return interfaces.TransformStream.get_readable(internal.transform orelse return error.InvalidState);
-}
-
-pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = instance.getState(State).own._internal orelse return error.InvalidState;
-    return interfaces.TransformStream.get_writable(internal.transform orelse return error.InvalidState);
 }
 
 fn transform(raw: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance, chunk: js.Value) js.Error!js.Value {
