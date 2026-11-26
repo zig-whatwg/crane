@@ -47,11 +47,30 @@ pub fn canonicalSpaceSequence(out: *std.ArrayList(u16), allocator: std.mem.Alloc
     try out.appendSlice(allocator, &pair);
 }
 
-/// The UTF-16 code unit at `offset` of a Text node's data, or null.
-fn unitAt(node: *Instance, offset: u32) !?u16 {
-    var data = try common.textData(node);
-    defer data.deinit(node.ctx.allocator);
-    return common.codeUnitAt(data.asSlice(), offset);
+/// Byte offset in UTF-8 `bytes` corresponding to UTF-16 `unit_offset` for a
+/// Text node of UTF-16 `node_len`. Pure ASCII (`bytes.len == node_len`) and
+/// endpoints resolve in O(1) without scanning from byte 0.
+fn byteOffsetInText(bytes: []const u8, unit_offset: u32, node_len: u32) usize {
+    if (unit_offset == 0) return 0;
+    if (unit_offset >= node_len) return bytes.len;
+    if (bytes.len == node_len) return @min(@as(usize, unit_offset), bytes.len);
+    return common.byteOffsetOfUnits(bytes, unit_offset);
+}
+
+/// Decode one UTF-16 code unit (or space/nbsp) at code-point boundary `pos`
+/// of UTF-8 `bytes`, returning the unit and byte length (or null at EOF).
+/// Only used for single-unit characters inside whitespace runs (spaces/nbsps);
+/// supplementary code points advance by their full 4-byte sequence.
+fn decodeUnitAtByte(bytes: []const u8, pos: usize) ?struct { unit: u16, byte_len: usize } {
+    if (pos >= bytes.len) return null;
+    const b0 = bytes[pos];
+    if (b0 < 0x80) return .{ .unit = b0, .byte_len = 1 };
+    if (b0 == 0xC2 and pos + 1 < bytes.len and bytes[pos + 1] == 0xA0) return .{ .unit = nbsp, .byte_len = 2 };
+    const len = std.unicode.utf8ByteSequenceLength(b0) catch 1;
+    if (pos + len > bytes.len) return null;
+    const cp = std.unicode.utf8Decode(bytes[pos .. pos + len]) catch 0xFFFD;
+    const unit: u16 = if (cp >= 0x10000) @intCast(0xD800 + ((cp - 0x10000) >> 10)) else @intCast(cp);
+    return .{ .unit = unit, .byte_len = len };
 }
 
 /// Whether a Text node's parent keeps spaces: its resolved white-space is
@@ -102,14 +121,24 @@ pub fn canonicalizeWhitespace(edit: *Edit, point: Point, fix_collapsed_space: bo
                 }
             }
         }
-        // Step 3.3.
+        // Step 3.3: scan backward over the entire contiguous space/nbsp run
+        // in this Text node with one textData read (avoiding O(N^2) copies).
         if (common.isText(start_node) and !(try parentPreservesSpaces(start_node)) and start_offset != 0) {
-            if (try unitAt(start_node, start_offset - 1)) |unit| {
-                if (common.isSpaceOrNbsp(unit)) {
+            const node_len = try common.nodeLength(start_node);
+            var data = try common.textData(start_node);
+            defer data.deinit(start_node.ctx.allocator);
+            const bytes = data.asSlice();
+            var pos = byteOffsetInText(bytes, start_offset, node_len);
+            while (start_offset > 0) {
+                if (pos >= 1 and bytes[pos - 1] == space) {
+                    pos -= 1;
                     start_offset -= 1;
-                    continue;
-                }
+                } else if (pos >= 2 and bytes[pos - 2] == 0xC2 and bytes[pos - 1] == 0xA0) {
+                    pos -= 2;
+                    start_offset -= 1;
+                } else break;
             }
+            if (start_offset == 0) continue;
         }
         // Step 3.4.
         break;
@@ -162,22 +191,44 @@ pub fn canonicalizeWhitespace(edit: *Edit, point: Point, fix_collapsed_space: bo
                 }
             }
         }
-        // Step 7.3.
-        if (common.isText(end_node) and !(try parentPreservesSpaces(end_node)) and end_offset != try common.nodeLength(end_node)) {
-            if (try unitAt(end_node, end_offset)) |unit| {
-                if (common.isSpaceOrNbsp(unit)) {
-                    // Step 7.3.1.
-                    if (fix_collapsed_space and collapse_spaces and unit == space) {
-                        try edit.deleteData(end_node, end_offset, 1);
+        // Step 7.3: scan forward through this Text node's space/nbsp run with
+        // one textData read and batch contiguous collapsed U+0020 deletions.
+        if (common.isText(end_node) and !(try parentPreservesSpaces(end_node))) {
+            const node_len = try common.nodeLength(end_node);
+            if (end_offset != node_len) {
+                var data = try common.textData(end_node);
+                defer data.deinit(end_node.ctx.allocator);
+                const bytes = data.asSlice();
+                var pos = byteOffsetInText(bytes, end_offset, node_len);
+                var progressed = false;
+                while (pos < bytes.len) {
+                    const next_unit: u16, const char_len: usize = if (bytes[pos] == space)
+                        .{ space, 1 }
+                    else if (pos + 1 < bytes.len and bytes[pos] == 0xC2 and bytes[pos + 1] == 0xA0)
+                        .{ nbsp, 2 }
+                    else
+                        break;
+                    progressed = true;
+                    // Step 7.3.1: every consecutive U+0020 while collapse_spaces
+                    // is true collapses; delete the whole contiguous run at once.
+                    if (fix_collapsed_space and collapse_spaces and next_unit == space) {
+                        var del_count: u32 = 1;
+                        pos += 1;
+                        while (pos < bytes.len and bytes[pos] == space) {
+                            pos += 1;
+                            del_count += 1;
+                        }
+                        try edit.deleteData(end_node, end_offset, del_count);
                         continue;
                     }
                     // Step 7.3.2.
-                    collapse_spaces = unit == space;
+                    collapse_spaces = next_unit == space;
                     // Steps 7.3.3-7.3.4.
                     end_offset += 1;
                     length += 1;
-                    continue;
+                    pos += char_len;
                 }
+                if (progressed and pos == bytes.len) continue;
             }
         }
         // Step 7.4.
@@ -204,14 +255,26 @@ pub fn canonicalizeWhitespace(edit: *Edit, point: Point, fix_collapsed_space: bo
                     }
                 }
             }
-            // Step 8.3.
-            if (common.isText(end_node) and !(try parentPreservesSpaces(end_node)) and end_offset == try common.nodeLength(end_node) and end_offset != 0) {
-                const last = (try unitAt(end_node, end_offset - 1)) orelse break;
-                if (last == space and try common.precedesLineBreak(end_node)) {
-                    end_offset -= 1;
-                    length -= 1;
-                    try edit.deleteData(end_node, end_offset, 1);
-                    continue;
+            // Step 8.3: delete all trailing collapsed U+0020 in this Text node in one call.
+            if (common.isText(end_node) and !(try parentPreservesSpaces(end_node))) {
+                const node_len = try common.nodeLength(end_node);
+                if (end_offset == node_len and end_offset != 0 and try common.precedesLineBreak(end_node)) {
+                    var data = try common.textData(end_node);
+                    defer data.deinit(end_node.ctx.allocator);
+                    const bytes = data.asSlice();
+                    const min_offset: u32 = if (start_node == end_node) start_offset else 0;
+                    var del_count: u32 = 0;
+                    var pos = bytes.len;
+                    while (end_offset > min_offset and pos >= 1 and bytes[pos - 1] == space) {
+                        pos -= 1;
+                        end_offset -= 1;
+                        del_count += 1;
+                    }
+                    if (del_count > 0) {
+                        length -= del_count;
+                        try edit.deleteData(end_node, end_offset, del_count);
+                        continue;
+                    }
                 }
             }
             // Step 8.4.
@@ -244,7 +307,7 @@ pub fn canonicalizeWhitespace(edit: *Edit, point: Point, fix_collapsed_space: bo
     const non_breaking_end = (end_offset == (try common.nodeLength(end_node)) and try common.precedesLineBreak(end_node)) or before_non_editable;
     try canonicalSpaceSequence(&replacement, edit.allocator, length, non_breaking_start, non_breaking_end);
     var next_unit: usize = 0;
-    // Step 10: write it over the run, one code unit at a time.
+    // Step 10: write it over the run, reading each Text node's data once.
     while (try common.pointIsBefore(.{ .node = start_node, .offset = start_offset }, .{ .node = end_node, .offset = end_offset })) {
         // Step 10.1.
         if (try common.childAt(start_node, start_offset)) |child| {
@@ -253,24 +316,34 @@ pub fn canonicalizeWhitespace(edit: *Edit, point: Point, fix_collapsed_space: bo
             continue;
         }
         // Step 10.2.
-        if (!common.isText(start_node) or start_offset == try common.nodeLength(start_node)) {
+        const node_len = if (common.isText(start_node)) try common.nodeLength(start_node) else 0;
+        if (!common.isText(start_node) or start_offset == node_len) {
             start_offset = 1 + try common.indexOf(start_node);
             start_node = (try common.parent(start_node)) orelse break;
             continue;
         }
-        // Step 10.3.
+        // Step 10.3: process the whole covered span of this Text node in one pass.
         if (next_unit >= replacement.items.len) break;
-        const element = replacement.items[next_unit];
-        next_unit += 1;
-        const current = (try unitAt(start_node, start_offset)) orelse break;
-        if (element != current) {
-            // Steps 10.3.2.1-2: insert then delete, keeping range boundaries.
-            const text: []const u8 = if (element == nbsp) "\u{A0}" else " ";
-            try edit.insertData(start_node, start_offset, text);
-            try edit.deleteData(start_node, start_offset + 1, 1);
+        const limit: u32 = if (start_node == end_node) end_offset else node_len;
+        var data = try common.textData(start_node);
+        defer data.deinit(start_node.ctx.allocator);
+        const bytes = data.asSlice();
+        var pos = byteOffsetInText(bytes, start_offset, node_len);
+        while (start_offset < limit and next_unit < replacement.items.len) {
+            const decoded = decodeUnitAtByte(bytes, pos) orelse break;
+            pos += decoded.byte_len;
+            const element = replacement.items[next_unit];
+            next_unit += 1;
+            if (element != decoded.unit) {
+                // Steps 10.3.2.1-2: insert then delete, keeping range boundaries.
+                const text: []const u8 = if (element == nbsp) "\u{A0}" else " ";
+                try edit.insertData(start_node, start_offset, text);
+                try edit.deleteData(start_node, start_offset + 1, 1);
+            }
+            // Step 10.3.3.
+            start_offset += 1;
         }
-        // Step 10.3.3.
-        start_offset += 1;
+        if (next_unit >= replacement.items.len) break;
     }
 }
 
