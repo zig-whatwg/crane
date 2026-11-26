@@ -105,7 +105,7 @@ fn check(shared: bool, worker_type: []const u8, nested: bool) !void {
         defer browser.deinit();
         try browser.navigate("about:blank", .window);
         const page = browser.current_context orelse return error.NoPage;
-        try page.loadHTML("<!doctype html><body>", .{
+        try page.loadHTML("<!doctype html><link rel=\"icon\" href=\"data:,\"><body>", .{
             .base_url = if (secure_owner) "https://mx2-owner.test/" else "http://mx2-owner.test/",
         });
         const ready = try page.evaluateScriptToString(launch_script, allocator);

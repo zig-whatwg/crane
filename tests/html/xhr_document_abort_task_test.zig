@@ -44,7 +44,7 @@ const Unanswered = struct {
         const allocator = std.testing.allocator;
         const base_url = try std.fmt.allocPrint(allocator, "{s}/start", .{try self.origin()});
         defer allocator.free(base_url);
-        try page.loadHTML("<!doctype html><body></body>", .{ .base_url = base_url });
+        try page.loadHTML("<!doctype html><link rel=\"icon\" href=\"data:,\"><body></body>", .{ .base_url = base_url });
         const script = try std.fmt.allocPrint(allocator, "globalThis.server = '{s}';", .{try self.origin()});
         defer allocator.free(script);
         try page.runScript(script);

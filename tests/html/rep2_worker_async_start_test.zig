@@ -148,7 +148,7 @@ const Page = struct {
         errdefer browser.deinit();
         try browser.navigateWithOptions(base, .window, .{ .skip_load = true });
         const page = browser.current_context orelse return error.NoPage;
-        try page.loadHTML("<!doctype html><body>", .{ .base_url = base });
+        try page.loadHTML("<!doctype html><link rel=\"icon\" href=\"data:,\"><body>", .{ .base_url = base });
         _ = try browser.runEventLoopBlocking(10);
         return .{ .server = server, .browser = browser, .base = base };
     }

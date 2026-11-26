@@ -346,13 +346,20 @@ pub const Site = struct {
                 .{ .content_type = "application/json", .body = "{\"from\":\"network\"}" }
             else if (std.mem.eql(u8, path, "/bulk.bin"))
                 .{ .content_type = "application/octet-stream", .body = &bulk_body }
+            else if (std.mem.eql(u8, path, "/favicon.ico"))
+                .{ .status = 204, .content_type = "image/x-icon", .body = "" }
             else
                 .{ .status = 404, .content_type = "text/plain", .body = "not found" };
         var output: [4096]u8 = undefined;
         var writer = stream.writer(std.testing.io, &output);
         const out = &writer.interface;
+        const reason = switch (page.status) {
+            200 => "OK",
+            204 => "No Content",
+            else => "Not Found",
+        };
         try out.print("HTTP/1.1 {d} {s}\r\nContent-Type: {s}\r\nContent-Length: {d}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", .{
-            page.status, if (page.status == 200) "OK" else "Not Found", page.content_type, page.body.len,
+            page.status, reason, page.content_type, page.body.len,
         });
         try out.writeAll(page.body);
         try out.flush();

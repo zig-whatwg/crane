@@ -742,6 +742,8 @@ pub const RealmObjectKind = enum {
     classic_script_fetches,
     /// html.style_sheet_loading: style sheet and font loads in flight.
     style_sheet_loads,
+    /// html.icon_loading: top-level document icon loads in flight or tracked.
+    icon_loads,
 };
 /// How many kinds of object list a realm keeps.
 const object_kind_count = @typeInfo(RealmObjectKind).@"enum".field_names.len;
