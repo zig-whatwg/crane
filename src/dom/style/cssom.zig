@@ -19,6 +19,7 @@ const css = @import("css");
 const sheet_mod = @import("sheet.zig");
 const rules_mod = @import("rules.zig");
 const objects = @import("objects.zig");
+const inspector_probes = @import("../inspector_probes.zig");
 
 const SheetRecord = sheet_mod.SheetRecord;
 const Rule = rules_mod.Rule;
@@ -261,6 +262,9 @@ pub fn replaceRules(object: *runtime.Instance, record: *SheetRecord, text: []con
     const old = try record.rulesOf(object);
     for (old.items) |r| objects.ruleRemoved(r);
     record.setRules(new_rules);
+    if (inspector_probes.titlesObserved()) {
+        record.text = record.allocator.dupe(u8, text) catch null;
+    }
 }
 
 /// replace(text), its promise settled from a task (CSSStyleSheet.zig

@@ -19,6 +19,7 @@ pub const package_version = "0.0.1717327";
 pub const Accessibility = @import("Accessibility.zig");
 pub const Audits = @import("Audits.zig");
 pub const Browser = @import("Browser.zig");
+pub const CSS = @import("CSS.zig");
 pub const DOM = @import("DOM.zig");
 pub const Emulation = @import("Emulation.zig");
 pub const Fetch = @import("Fetch.zig");

@@ -32,6 +32,7 @@ pub const js_scopes = @import("js_scopes.zig");
 pub const heap_snapshot = @import("heap_snapshot.zig");
 pub const heap_formatter = @import("heap_formatter.zig");
 pub const heap_regex = @import("heap_regex.zig");
+pub const css_styles = @import("css_styles.zig");
 
 test {
     @import("std").testing.refAllDecls(@This());
