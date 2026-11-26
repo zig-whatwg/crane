@@ -2843,3 +2843,13 @@ matches         = none
 ruling          = golden rule 2, the spec where all three differ (main, 2026-11-26 4:14 AM ET, lane sab1): each browser blocks differently and the test contradicts HTML run a worker steps 8-9 + StructuredSerializeInternal step 14.1.1; upstream test-bug draft is tmp/plans/sab1-upstream-drafts/blob-data.md (filing needs the user's OK)
 revisit         = when the test is fixed upstream, or Chrome, Firefox or Safari changes its result, or Crane's result moves
 
+[navigation-timing/nav2-test-redirect-server.html]
+kind            = follows-majority
+why             = startTime is the time origin (navigation_start) and redirectStart is the first hop's fetch start, both coarsened to Crane's 125 us tick with nothing waiting between them (48-56 us gap, p50 49 us; 25/60 pass and 60/60 per-run tick crossing agreement, tools/wpt_loss_dispositions.txt generation 237 timing-bound), so the single subtest asserts redirectStart > startTime and fails whenever the sub-tick gap does not cross a 125 us boundary; Chrome and Safari pass through multi-millisecond process hops while Firefox fails on wpt.fyi
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 1/1 (Safari 27.2, 2358bd4835)
+matches         = none
+ruling          = golden rule 2, timing-bound (the user, 2026-11-26 4:50 PM ET: option 1): the sub-tick gap between navigation_start and the first hop's fetch start is shorter than the 125 us coarsening tick (tools/wpt_loss_dispositions.txt kind = timing-bound)
+revisit         = when the test compares coarsened marks with >= upstream, or Crane's navigation-to-fetch gap changes
+

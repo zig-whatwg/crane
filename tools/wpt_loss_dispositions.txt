@@ -2428,3 +2428,17 @@ pass_rate = 9/10
 condition = an iframe location.href redirect whose first-hop fetch starts 118-458 us (p50 123) after navigation_start, reading redirectStart == 0 whenever that gap stays within one 125 us tick (clean production x10 PASS 9 / FAIL 1; also fails in both production and bug-finding under 16-runner load)
 measured_at = 7b948b945
 paths = src/webidl/impls/Location.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
+
+[html-aam/roles-contextual.html]
+generation = 238
+kind = user-ruling
+why = 36 -> 35 (-1): subtest "el-img-empty-alt-title" (<img alt="" title="x">). Lane a11y1-roles (merge 7a0024765, 2026-11-24 5:05 PM ET; +19 net across 366 accessibility files) unified WebDriver computed role with the accessibility tree's getPartialAXTree role; Crane now returns "image", matching Chrome 157 and Firefox 160 (only Safari passes), following Golden Rule 2 majority.
+date = 2026-11-26
+decision = The user, 2026-11-26 4:50 PM ET: "1" (accept generation 238 disposition for roles-contextual -1 matching Chrome 157 + Firefox 160).
+
+[service-workers/service-worker/client-url-creation-url.https.html]
+generation = 238
+kind = user-ruling
+why = 10 -> 8 (-2): TIMEOUT on "Going back over pushstate to creation URL" (and NOTRUN on the 10th subtest) on the first run of the 32-runner generation 238 sweep (sweep-100cedcd31); the sweep's retry ran OK 10/10 and the bug-finding sweep ran OK 10/10. Upstream test race wpt#65471 (iframe posts 'done' while parsing while test listens after onload; Firefox 0/10 TIMEOUT; Crane passes 10/10 alone and in hard1-c's 3/3 + 10/10 verify reruns; background in docs/lessons/debugging-a-wpt-that-waits-for-a-message-after-load-may-have-missed-it.md). Accepted for generation 238 publication while keeping the known build difference (tools/wpt_build_differences.txt) open for follow-up.
+date = 2026-11-26
+decision = The user, 2026-11-26 4:50 PM ET: "1" (accept generation 238 disposition for client-url-creation-url.https.html wpt#65471 sweep-load timeout and publish gh-pages).
