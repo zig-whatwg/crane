@@ -82,7 +82,7 @@ pub const vendor_path = "/resources/testdriver-vendor.js";
 // The driver: its natives, its commands, the session's input state
 // ============================================================================
 
-const Native = enum { click, send_keys, action_sequence, minimize_window, set_window_rect, get_window_rect, get_all_cookies, get_named_cookie, delete_all_cookies, set_permission, get_computed_role, get_computed_label, bidi_log_subscribe, bidi_log_unsubscribe };
+const Native = enum { click, send_keys, action_sequence, minimize_window, set_window_rect, get_window_rect, get_all_cookies, get_named_cookie, delete_all_cookies, set_permission, get_computed_role, get_computed_label, bidi_log_subscribe, bidi_log_unsubscribe, bidi_set_geolocation_override };
 
 fn nativeName(comptime native: Native) []const u8 {
     return "__crane_test_driver_" ++ @tagName(native);
@@ -675,7 +675,7 @@ const StartTask = struct {
     }
 };
 
-const Kind = enum { click, send_keys, actions, minimize, restore, get_rect, get_cookies, get_named_cookie, delete_cookies, set_permission, computed_role, computed_label };
+const Kind = enum { click, send_keys, actions, minimize, restore, get_rect, get_cookies, get_named_cookie, delete_cookies, set_permission, computed_role, computed_label, set_geolocation_override };
 
 const Command = struct {
     driver: *TestDriver,
@@ -704,7 +704,9 @@ const Command = struct {
     own_key_source: ?[]u8 = null,
     permission_descriptor: ?permissions.PermissionDescriptor = null,
     permission_state: permissions.PermissionState = .prompt,
+    permission_origin: ?[]u8 = null,
     permission_batch: ?*permissions.ChangeBatch = null,
+    geolocation_override: ?html.geolocation.GeolocationOverride = null,
     /// The queued task of the command's first step, until it runs.
     start_task: ?*StartTask = null,
 
@@ -764,6 +766,7 @@ const Command = struct {
         }
         for (self.ticks.items) |*tick| tick.deinit(allocator);
         self.ticks.deinit(allocator);
+        if (self.permission_origin) |origin| allocator.free(origin);
         allocator.free(self.text);
         allocator.destroy(self);
     }
@@ -852,6 +855,7 @@ const Command = struct {
             .restore => self.setSystemVisibility(.visible),
             .get_rect, .get_cookies, .get_named_cookie, .delete_cookies, .computed_role, .computed_label => null,
             .set_permission => self.startSetPermission(),
+            .set_geolocation_override => self.startSetGeolocationOverride(),
         };
     }
 
@@ -889,12 +893,23 @@ const Command = struct {
     fn startSetPermission(self: *Command) ?Failure {
         const target = (self.target_window orelse return noSuchWindow()).get() orelse return noSuchWindow();
         const descriptor = self.permission_descriptor orelse return invalid("missing permission descriptor");
+        const scope = target.ctx.browser_scope orelse return noSuchWindow();
+        const store = scope.of(permissions.BrowserStore) catch return outOfMemory();
+        if (self.permission_origin) |origin| {
+            self.permission_batch = store.set(origin, descriptor, self.permission_state) catch return outOfMemory();
+            return null;
+        }
         const key = permissionKeyForWindow(target, descriptor) catch return outOfMemory();
         defer if (key) |owned| target.ctx.allocator.free(owned);
         const permission_key = key orelse return invalid("the target has no permission key");
-        const scope = target.ctx.browser_scope orelse return noSuchWindow();
-        const store = scope.of(permissions.BrowserStore) catch return outOfMemory();
         self.permission_batch = store.set(permission_key, descriptor, self.permission_state) catch return outOfMemory();
+        return null;
+    }
+
+    fn startSetGeolocationOverride(self: *Command) ?Failure {
+        const target = (self.target_window orelse return noSuchWindow()).get() orelse return noSuchWindow();
+        const bc = browser_state.browsingContextOf(target) orelse return noSuchWindow();
+        html.geolocation.setEmulatedPositionData(bc, @intFromPtr(self.driver), self.geolocation_override);
         return null;
     }
 
@@ -1713,14 +1728,32 @@ fn startCommand(driver: *TestDriver, realm: runtime.Context, native: Native, arg
             const target = if (context_arg.isNullOrUndefined()) caller else windowArgument(realm, context_arg);
             command.target_window = if (target) |window| Weak.of(window) else null;
             if (target == null) break :blk noSuchWindow();
-            var parsed = PermissionParameters{ .realm = realm, .input = argument(args, 0) };
-            const exception = engine.completionOf(realm, PermissionParameters.convert, &parsed) catch break :blk invalid("invalid permission parameters");
+            var parsed = PermissionParameters{ .realm = realm, .allocator = allocator, .input = argument(args, 0) };
+            const exception = engine.completionOf(realm, PermissionParameters.convert, &parsed) catch {
+                if (parsed.origin) |o| allocator.free(o);
+                break :blk invalid("invalid permission parameters");
+            };
             if (exception) |held| {
                 held.release();
+                if (parsed.origin) |o| allocator.free(o);
                 break :blk invalid("invalid permission parameters");
             }
             command.permission_descriptor = parsed.descriptor;
             command.permission_state = parsed.state;
+            command.permission_origin = parsed.origin;
+            break :blk null;
+        },
+        .bidi_set_geolocation_override => blk: {
+            command.kind = .set_geolocation_override;
+            command.target_window = if (caller) |window| Weak.of(window) else null;
+            if (caller == null) break :blk noSuchWindow();
+            var parsed = GeolocationOverrideParameters{ .realm = realm, .input = argument(args, 0) };
+            const exception = engine.completionOf(realm, GeolocationOverrideParameters.convert, &parsed) catch break :blk invalid("invalid geolocation override parameters");
+            if (exception) |held| {
+                held.release();
+                break :blk invalid("invalid geolocation override parameters");
+            }
+            command.geolocation_override = parsed.override;
             break :blk null;
         },
         // Answered by `nativeSteps` itself: no command.
@@ -1743,9 +1776,11 @@ fn startCommand(driver: *TestDriver, realm: runtime.Context, native: Native, arg
 /// this conversion: the queued command stores the native descriptor/state.
 const PermissionParameters = struct {
     realm: runtime.Context,
+    allocator: std.mem.Allocator,
     input: JSValue,
     descriptor: ?permissions.PermissionDescriptor = null,
     state: permissions.PermissionState = .prompt,
+    origin: ?[]u8 = null,
 
     fn convert(data: ?*anyopaque) engine.Error!void {
         const self: *PermissionParameters = @ptrCast(@alignCast(data.?));
@@ -1758,6 +1793,14 @@ const PermissionParameters = struct {
         const state_name = try engine.convertToDOMString(self.realm, state_value.borrow(), self.realm.allocator);
         defer self.realm.allocator.free(state_name);
         self.state = permissions.PermissionState.fromString(state_name) orelse return error.TypeError;
+        // Optional origin (WebDriver BiDi permissions.setPermission).
+        if (stringProperty(self.realm, self.input, "origin", self.allocator)) |origin| {
+            if (origin.len > 0) {
+                self.origin = origin;
+            } else {
+                self.allocator.free(origin);
+            }
+        }
         // Step 4 chooses the descriptor type with Get(name), then performs
         // that dictionary's conversion (including its inherited name).
         const name = try self.nameOf(descriptor.borrow());
@@ -1785,6 +1828,55 @@ const PermissionParameters = struct {
         const value = try engine.getProperty(self.realm, object, member);
         defer value.release();
         return engine.toBoolean(self.realm, value.borrow());
+    }
+};
+
+/// WebDriver BiDi emulation.setGeolocationOverride parameters.
+const GeolocationOverrideParameters = struct {
+    realm: runtime.Context,
+    input: JSValue,
+    override: ?html.geolocation.GeolocationOverride = null,
+
+    fn convert(data: ?*anyopaque) engine.Error!void {
+        const self: *GeolocationOverrideParameters = @ptrCast(@alignCast(data.?));
+        if (engine.typeOf(self.realm, self.input) != .object) return error.TypeError;
+
+        const err_prop = try engine.getProperty(self.realm, self.input, "error");
+        defer err_prop.release();
+        if (engine.typeOf(self.realm, err_prop.borrow()) == .object) {
+            const kind = stringProperty(self.realm, err_prop.borrow(), "type", self.realm.allocator) orelse return error.TypeError;
+            defer self.realm.allocator.free(kind);
+            if (!std.mem.eql(u8, kind, "positionUnavailable")) return error.TypeError;
+            self.override = .position_unavailable;
+            return;
+        }
+
+        const coords_prop = try engine.getProperty(self.realm, self.input, "coordinates");
+        defer coords_prop.release();
+        const coords_type = engine.typeOf(self.realm, coords_prop.borrow());
+        if (coords_type == .null or coords_type == .undefined) {
+            self.override = null;
+            return;
+        }
+        if (coords_type != .object) return error.TypeError;
+
+        const lat = numberProperty(self.realm, coords_prop.borrow(), "latitude") orelse return error.TypeError;
+        const lon = numberProperty(self.realm, coords_prop.borrow(), "longitude") orelse return error.TypeError;
+        if (std.math.isNan(lat) or lat < -90.0 or lat > 90.0) return error.TypeError;
+        if (std.math.isNan(lon) or lon < -180.0 or lon > 180.0) return error.TypeError;
+        // WebDriver BiDi emulation.GeolocationCoordinates: accuracy defaults to 1.
+        const accuracy = numberProperty(self.realm, coords_prop.borrow(), "accuracy") orelse 1.0;
+        if (std.math.isNan(accuracy) or accuracy < 0.0) return error.TypeError;
+
+        self.override = .{ .coordinates = .{
+            .latitude = lat,
+            .longitude = lon,
+            .accuracy = accuracy,
+            .altitude = numberProperty(self.realm, coords_prop.borrow(), "altitude"),
+            .altitude_accuracy = numberProperty(self.realm, coords_prop.borrow(), "altitudeAccuracy"),
+            .heading = numberProperty(self.realm, coords_prop.borrow(), "heading"),
+            .speed = numberProperty(self.realm, coords_prop.borrow(), "speed"),
+        } };
     }
 };
 

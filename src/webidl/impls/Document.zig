@@ -5192,6 +5192,9 @@ fn updateVisibilityState(document: *runtime.Instance, state: enums.DocumentVisib
     // (html.screen_orientation: a document that is visible again hears the
     // orientation it missed).
     @import("html").screen_orientation.changeSteps(document);
+    // W3C Geolocation §6.5 step 5: resume position requests suspended while
+    // document's visibility state was "hidden".
+    @import("html").geolocation.visibilityChanged(document);
     // Step 7: "Fire an event named visibilitychange at document, with its
     // bubbles attribute initialized to true."
     fireEvent(document, document, "visibilitychange", true);

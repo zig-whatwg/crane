@@ -291,6 +291,9 @@ pub const user_activation = @import("user_activation.zig");
 pub const simple_dialogs = @import("simple_dialogs.zig");
 pub const screen_info = @import("screen_info.zig");
 pub const screen_orientation = @import("screen_orientation.zig");
+/// W3C Geolocation API: getCurrentPosition, watchPosition, clearWatch,
+/// permissions/policy/visibility checks, and §12 emulation.
+pub const geolocation = @import("geolocation.zig");
 pub const user_agent_override = @import("user_agent_override.zig");
 pub const close_watchers = @import("close_watchers.zig");
 
