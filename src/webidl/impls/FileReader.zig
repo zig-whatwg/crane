@@ -333,10 +333,10 @@ const ReadOperation = struct {
             return;
         }
         // Nowhere to queue it (a bare realm with no event loop - a unit
-        // test's): the steps run now, which is better than never.
+        // test's): the steps run now, which is better than never. `runStep`
+        // owns the final `maybeFree` check; do not touch `self` after it.
         self.allocator.destroy(task);
         self.runStep(step);
-        self.maybeFree();
     }
 
     /// abort() step 3-4, the reader going, or the operation's end: its
@@ -361,14 +361,15 @@ const ReadOperation = struct {
     /// - its document was destroyed (HTML "destroy a document" step 7) or its
     /// realm ended - never sees the read finish: the operation ends here, and
     /// with it the hold on the reader's wrapper (Blink: FileReader's
-    /// ContextDestroyed terminates it). The caller frees it (`maybeFree`).
+    /// ContextDestroyed terminates it). This call always runs the final
+    /// `maybeFree` on exit; callers must not touch `self` after it returns.
     fn runStep(self: *ReadOperation, step: Step) void {
-        if (self.terminated) return;
         self.busy += 1;
         defer {
             self.busy -= 1;
             self.maybeFree();
         }
+        if (self.terminated) return;
         var run: StepRun = .{ .op = self, .step = step };
         engine.runTaskInRealm(self.reader.ctx, StepRun.steps, &run) catch {
             // The reader - held until here - must not name an operation that
@@ -391,7 +392,6 @@ const ReadOperation = struct {
             const step = task.step;
             op.allocator.destroy(task);
             op.queued -= 1;
-            defer op.maybeFree();
             op.runStep(step);
         }
 
@@ -439,6 +439,7 @@ const ReadOperation = struct {
         if (self.terminated) return;
         // Step 10.4.3: non-empty blob queues progress.
         if (self.bytes.len > 0) self.queue(.progress);
+        if (self.terminated) return;
         // Step 10.5: end queues done.
         self.queue(.done);
     }
