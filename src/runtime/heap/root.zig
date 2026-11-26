@@ -50,7 +50,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const debug_options = @import("debug_options");
+const runtime_options = @import("runtime_options");
 const platform = @import("platform");
 const browser_heap = @import("../browser_heap.zig");
 pub const classes = @import("classes.zig");
@@ -62,7 +62,7 @@ pub const satellite = @import("satellite.zig");
 /// Whether allocation/free observer callouts (for tooling / Darwin
 /// `malloc_logger`, `[V2] D8`, Batch C item 5) are compiled in. False in
 /// production release builds so the hot path pays zero instructions.
-pub const alloc_log_compiled: bool = builtin.mode == .debug or debug_options.heap_alloc_log;
+pub const alloc_log_compiled: bool = builtin.mode == .debug or runtime_options.heap_alloc_log;
 
 /// Allocation/free observer hook for tooling builds (`[V2] D8`, Batch C item 5).
 pub const AllocObserver = struct {

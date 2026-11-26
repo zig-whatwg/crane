@@ -94,7 +94,7 @@ test "item 5: AllocObserver receives balanced alloc/free callouts across all 4 p
     // 3. `.objects` via per-agent cache (small), shared path (large), and huge
     const cache = try eng.attachAgent();
     defer eng.detachAgent(cache);
-    const thread = @import("platform").currentThreadToken();
+    const thread = cache.owner.load(.monotonic);
 
     const obj_small = try eng.cacheAlloc(cache, .objects, 48, .@"8", @returnAddress());
     const obj_small_addr = @intFromPtr(obj_small);

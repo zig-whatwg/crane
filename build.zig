@@ -1859,6 +1859,8 @@ const ModuleConfig = struct {
     debug_options: *std.Build.Step.Options,
     /// The dom module's own options (refcount_audit).
     dom_options: *std.Build.Step.Options,
+    /// The runtime module's own options (heap_alloc_log).
+    runtime_options: *std.Build.Step.Options,
     /// The engine adapter's own options, from its build file (the engine's `adapterOptions`).
     engine_adapter_options: *std.Build.Step.Options,
     /// The build's engine: its adapter's module (root file, name, imports) is
@@ -2078,16 +2080,21 @@ pub fn build(b: *std.Build) void {
     const dom_options = b.addOptions();
     dom_options.addOption(bool, "refcount_audit", refcount_audit);
 
-    // Debug options module (separate from build_options for cleaner imports)
+    // The runtime module's own options (heap_alloc_log), kept separate from
+    // debug_options so runtime_mod and webidl_mod never create two modules for
+    // the same generated options.zig.
     const heap_alloc_log = b.option(
         bool,
         "heap-alloc-log",
         "Compile in Browser heap allocation/free observer callouts (for profiling/tooling builds; always compiled in Debug)",
     ) orelse false;
+    const runtime_options = b.addOptions();
+    runtime_options.addOption(bool, "heap_alloc_log", heap_alloc_log);
+
+    // Debug options module (separate from build_options for cleaner imports)
     const debug_options = b.addOptions();
     debug_options.addOption(bool, "debug_enabled", debug_enabled);
     debug_options.addOption([]const u8, "debug_scope", debug_scope);
-    debug_options.addOption(bool, "heap_alloc_log", heap_alloc_log);
 
     // Engine configuration options (for conditional compilation)
     // Phase 8 (DCE): an optional allow-list of WebIDL interfaces to expose.
@@ -2226,6 +2233,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .build_options = build_options,
         .dom_options = dom_options,
+        .runtime_options = runtime_options,
         .engine_adapter_options = engine_adapter_options,
         .debug_options = debug_options,
         .engine = &engine,
@@ -6921,6 +6929,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     runtime_mod.addImport("infra", infra_mod);
     runtime_mod.addImport("storage", storage_mod);
     runtime_mod.addOptions("debug_options", debug_options);
+    runtime_mod.addOptions("runtime_options", config.runtime_options);
 
     // The engine adapter's module: the root file and the name its build file
     // gives (`facts`). What it imports is that file's list too, wired at the
