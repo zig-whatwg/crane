@@ -46,6 +46,7 @@ const HTMLLinkElement = interfaces.HTMLLinkElement;
 // it reads through the generated interfaces: no impl is named here. The
 // load of its style sheet is HTML's (src/html/style_sheet_loading.zig).
 const style_sheet_loading = @import("html").style_sheet_loading;
+const icon_loading = @import("html").icon_loading;
 
 // The hooks the element installs its steps into: the attribute change steps
 // (DOM 4.9), the insertion and removing steps (DOM 4.2.3), and the load
@@ -114,6 +115,7 @@ fn sweepLive(scope: *runtime.BrowserScope) void {
 pub fn installHooks() void {
     dom_module.teardown_sweeps.install(.element_types, &sweepLive);
     style_sheet_loading.installDocumentAbort();
+    icon_loading.installDocumentAbort();
     // CSSOM insertRule()'s @import: the loader fetches its sheet.
     style_sheet_loading.installImportInserted();
     dom_module.attribute_change_steps.install("link", &attributeChangeSteps);
@@ -232,17 +234,9 @@ fn fetchAndProcess(element: *runtime.Instance) void {
         .none => {},
         .prefetch => internal.load = style_sheet_loading.startPrefetch(element, options) orelse 0,
         .icon => {
-            // Browser scope: Chromium LocalFrame::UpdateFaviconURL and
-            // WebKit DocumentLoader::startIconLoading require the main
-            // frame; Gecko's LinkHandler actor ignores child documents.
-            // parent is the Window itself for a top-level traversable,
-            // including a popup. frameElement cannot be used here: it is
-            // null for a cross-origin child as well as a top-level window.
-            const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
-            const parent = (interfaces.Window.get_parent(window) catch null) orelse return;
-            if (parent != window) return;
-            if (!typeMatches(attribute(element, "type"), .image)) return;
-            internal.load = style_sheet_loading.startIcon(element, options) orelse 0;
+            // HTML §4.6.8.9 icon selection and default /favicon.ico fetching
+            // run post-load (and on coalesced post-load mutations) via
+            // html.icon_loading rather than eagerly on parse.
         },
         .stylesheet => {
             // 4.2.4.2: "If the UA does not support the given MIME type for
@@ -392,6 +386,7 @@ fn attributeChangeSteps(
     // A rel that drops "expect" unblocks first, before a stylesheet link it
     // now creates starts its own blocking load.
     defer expectAttributeChanged(element, local_name);
+    defer notifyIconAttributeChange(element, local_name, old_value, value);
     if (std.mem.eql(u8, local_name, "rel") and !hasToken(value orelse "", "expect")) unblockExpect(element);
     if (std.mem.eql(u8, local_name, "disabled") and old_value != null and value == null) internal.explicitly_enabled = true;
     const refetch = if (std.mem.eql(u8, local_name, "href") or
@@ -430,6 +425,31 @@ fn attributeChangeSteps(
     fetchAndProcess(element);
 }
 
+fn notifyIconAttributeChange(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8) void {
+    if (!(interfaces.Node.get_isConnected(element) catch false)) return;
+    const is_rel = std.mem.eql(u8, local_name, "rel");
+    const relevant = is_rel or
+        std.mem.eql(u8, local_name, "href") or
+        std.mem.eql(u8, local_name, "type") or
+        std.mem.eql(u8, local_name, "media") or
+        std.mem.eql(u8, local_name, "sizes") or
+        std.mem.eql(u8, local_name, "crossorigin") or
+        std.mem.eql(u8, local_name, "referrerpolicy") or
+        std.mem.eql(u8, local_name, "fetchpriority");
+    if (!relevant) return;
+    const now_icon = if (is_rel)
+        hasToken(value orelse "", "icon")
+    else
+        hasToken(attribute(element, "rel") orelse "", "icon");
+    const was_icon = is_rel and hasToken(old_value orelse "", "icon");
+    if (now_icon or was_icon) notifyIconLinkChanged(element);
+}
+
+fn notifyIconLinkChanged(element: *runtime.Instance) void {
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    icon_loading.onLinkChanged(document);
+}
+
 /// Whether a type attribute of `type_attr` lets the element's link be
 /// fetched.
 fn typeAllows(element: *runtime.Instance, type_attr: ?[]const u8) bool {
@@ -450,6 +470,7 @@ fn insertionSteps(node: *NodeBase) void {
     // 4.6.8.6: "an expect internal resource link has been created on el and
     // el becomes browsing-context connected".
     processExpect(instance);
+    if (hasToken(attribute(instance, "rel") orelse "", "icon")) notifyIconLinkChanged(instance);
 }
 
 /// The element is no longer connected: it no longer creates a link that
@@ -460,6 +481,7 @@ fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     if (node.node_type != 1) return;
     const instance = linkOf(node) orelse return;
     const internal = getInternal(instance) orelse return;
+    if (hasToken(attribute(instance, "rel") orelse "", "icon")) notifyIconLinkChanged(instance);
     // HTML 3.1.6: a render-blocking element that becomes browsing-context
     // disconnected is unblocked - as an expect link here; a stylesheet
     // link's load, cancelled below, unblocks its own.

@@ -105,9 +105,6 @@ const Kind = enum {
     /// failing on a MIME type that is not JavaScript; no delay on the
     /// document's load event either.
     modulepreload,
-    /// A top-level document's icon: image fetch only, no link event or
-    /// document load delay, no decoding and no stylesheet processing.
-    icon,
     /// An @import rule CSSOM's insertRule() inserted (`startInsertedImport`):
     /// its sheet, then that sheet's own imports, each delivered to its rule.
     /// No event fires at the sheet's owner for it - the owner's own load has
@@ -263,11 +260,7 @@ pub fn delaysLoadEvent(document: *runtime.Instance) bool {
         // it with LOAD_BACKGROUND (nsPrefetchNode::OpenChannel). WPT
         // preload/prefetch-load-event.html is 1/1 in Chrome 154, Firefox 157
         // and Safari 27 at cc74d2669f (Safari does not fetch prefetch).
-        // Icons do not delay page load in browsers, despite HTML
-        // 4.2.4.3's default delay rule: Chromium UpdateFaviconURL waits
-        // until LoadEventFinished; Gecko FaviconLoad uses LOAD_BACKGROUND;
-        // WebKit IconLoader uses the separate requestIcon loader.
-        if (load.kind == .preload or load.kind == .modulepreload or load.kind == .prefetch or load.kind == .icon) continue;
+        if (load.kind == .preload or load.kind == .modulepreload or load.kind == .prefetch) continue;
         if (!load.superseded and load.document == document and load.documentIsLive()) return true;
     }
     return false;
@@ -561,15 +554,6 @@ pub fn startPreload(element: *runtime.Instance, options: LinkOptions, destinatio
 /// owns the fetch and its eventual load/error event.
 pub fn startPrefetch(element: *runtime.Instance, options: LinkOptions) ?u64 {
     return startLinkFetch(element, .prefetch, options, .empty);
-}
-
-/// HTML 4.6.8.9 "icon", linked resource fetch setup steps 1-2: image
-/// destination. The existing link fetch carries the policy container,
-/// referrer and credentials through Fetch; the Load owns its lifetime.
-/// The caller limits icons to top-level documents, as browsers do.
-pub fn startIcon(element: *runtime.Instance, options: LinkOptions) ?u64 {
-    if (!mediaMatches(element)) return null;
-    return startLinkFetch(element, .icon, options, .image);
 }
 
 /// HTML "fetch and process the linked resource" for `element`, a link
@@ -1002,10 +986,6 @@ fn release(load: *Load, ending: Ending) void {
 
 /// Every fetch has ended: queue the task that fires the event.
 fn complete(load: *Load) void {
-    // HTML 4.2.4.3: icon has no "process the linked resource" algorithm,
-    // so it does nothing. Browsers notify their favicon UI, not the link
-    // element (WebKit IconLoader::notifyFinished, Blink LinkStyle::Process).
-    if (load.kind == .icon) return release(load, .settled);
     // An inserted @import's load fires no event (`Kind.inserted_import`).
     if (load.kind == .inserted_import) return release(load, .settled);
     // The style element's steps once its critical subresources are
@@ -1271,13 +1251,6 @@ fn drainStatic(load: *Load) void {
 /// the sheet's own imports.
 fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
     const load = sheet.load;
-    // Icon has no response-processing algorithm or decoder. Fetch already
-    // performed its CSP checks and timing; release its response unchanged.
-    if (load.kind == .icon) {
-        var icon_result = outcome catch return;
-        icon_result.deinit();
-        return;
-    }
     var result = outcome catch {
         load.failed = true;
         return;

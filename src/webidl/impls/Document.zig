@@ -5543,6 +5543,10 @@ fn completeLoading(document: *runtime.Instance) void {
     if (container) |element| completeLoadingWithChild(element);
     // Step 9.13: "Queue the navigation timing entry for the Document."
     @import("dom").performance_timeline.queueNavigationTimingEntry(document.ctx);
+    // HTML §4.6.8.9: top-level icon selection (or default /favicon.ico for
+    // HTTP(S) documents with no <link rel="icon">), after load and pageshow
+    // (Chrome 157 LocalFrame::UpdateFaviconURL, Firefox 159, Safari 27.2).
+    if (container == null) @import("html").icon_loading.onDocumentLoaded(document);
     // A declarative refresh comes due `time` seconds after the completely
     // loaded time. Its wait starts in a task queued behind the container's
     // load event, so a refresh of no time never overtakes that event.
