@@ -578,7 +578,10 @@ pub fn installHooks() void {
         .has_listeners = hasListeners,
         .release_node_listeners = releaseNodeListeners,
     });
-    dom_module.event_listener_types.install(hasListenersOfType);
+    dom_module.event_listener_types.install(.{
+        .has_listeners_of_type = hasListenersOfType,
+        .snapshot_listeners = snapshotListeners,
+    });
     dom_module.event_listener_changes.install(watchListeners);
 }
 
@@ -2565,4 +2568,79 @@ fn hasListenersOfType(instance: *runtime.Instance, event_type: []const u8) bool 
         if (listener.type.matches(key)) return true;
     }
     return false;
+}
+
+/// dom.event_listener_types: snapshot every active listener on `instance` for
+/// CDP `DOMDebugger.getEventListeners` (Blink
+/// `InspectorDOMDebuggerAgent::CollectEventListeners`). Uses `Cursor` so
+/// compiling a raw content-attribute handler on demand cannot invalidate
+/// iteration.
+fn snapshotListeners(instance: *runtime.Instance, allocator: std.mem.Allocator) error{OutOfMemory}![]dom_module.event_listener_types.InspectorListener {
+    const InspectorListener = dom_module.event_listener_types.InspectorListener;
+    const listeners = listenersOf(instance) orelse return &.{};
+    var cursor = listeners.clone() orelse return &.{};
+
+    var out: std.ArrayListUnmanaged(InspectorListener) = .empty;
+    errdefer {
+        for (out.items) |entry| {
+            allocator.free(entry.event_type);
+            entry.handler.release();
+        }
+        out.deinit(allocator);
+    }
+
+    while (listeners.next(&cursor)) |listener| {
+        const event_type = try allocator.dupe(u8, listener.type.slice());
+        errdefer allocator.free(event_type);
+
+        var val: runtime.JSValue = runtime.JSValue.jsUndefined;
+        var ctx: ?runtime.Context = listener.context;
+        switch (listener.bits.kind) {
+            .listener => {
+                val = valueOf(listener.object, listener.bits.traced);
+            },
+            .handler => switch (listener.bits.value) {
+                .none => {
+                    allocator.free(event_type);
+                    continue;
+                },
+                .compiled => {
+                    val = valueOf(listener.object, listener.bits.traced);
+                },
+                .raw => {
+                    const compiled = currentHandlerValue(instance, event_type, mainHandlerWorld(instance)) orelse {
+                        allocator.free(event_type);
+                        continue;
+                    };
+                    val = compiled.callback.function.value;
+                    ctx = compiled.callback.context;
+                },
+            },
+        }
+        if (val.isUndefined() or val.isNull()) {
+            allocator.free(event_type);
+            continue;
+        }
+        const retain_realm = ctx orelse instance.ctx;
+        if (!retain_realm.hasEngine()) {
+            allocator.free(event_type);
+            continue;
+        }
+        const owned = engine.retainValue(retain_realm, val) catch {
+            allocator.free(event_type);
+            continue;
+        };
+        errdefer owned.release();
+
+        try out.append(allocator, .{
+            .event_type = event_type,
+            .capture = listener.bits.capture,
+            .passive = listener.bits.passive,
+            .once = listener.bits.once,
+            .handler = owned,
+            .context = ctx,
+        });
+    }
+
+    return try out.toOwnedSlice(allocator);
 }
