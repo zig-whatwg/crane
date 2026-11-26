@@ -231,10 +231,6 @@ pub const exclusion_patterns: []const []const u8 = &.{
     // HTML rendering tests
     "html/rendering/",
     "html/canvas/",
-    // media-elements/ joined the worklist (the integrator, 2026-11-23, lane
-    // vtt1); the video and audio element directories are not surveyed yet.
-    "html/semantics/embedded-content/the-video-element/",
-    "html/semantics/embedded-content/the-audio-element/",
     "html/webappapis/animation-frames/",
     // Visual/interactive tests
     "/visual/",
@@ -430,15 +426,15 @@ test "isExcluded" {
     try testing.expect(!isExcluded("dom/events/Event.html"));
 }
 
-test "media elements and WebVTT are in scope; the video and audio element directories are not yet" {
+test "media elements, video, audio and WebVTT are in scope" {
     const testing = std.testing;
-    // The worklist and a directory run agree (lane vtt1, 2026-11-23).
+    // The worklist and a directory run agree (lanes vtt1 2026-11-23, media1 2026-11-25).
     try testing.expect(isInScope("html/semantics/embedded-content/media-elements/track/track-element/track-change-event.html"));
     try testing.expect(isInScope("html/semantics/embedded-content/media-elements/networkState_initial.html"));
     try testing.expect(isInScope("webvtt/api/VTTCue/constructor.html"));
     try testing.expect(isInScope("webvtt/parsing/file-parsing/tests/arrows.html"));
-    try testing.expect(isExcluded("html/semantics/embedded-content/the-video-element/video_initially_paused.html"));
-    try testing.expect(isExcluded("html/semantics/embedded-content/the-audio-element/audio_constructor.html"));
+    try testing.expect(isInScope("html/semantics/embedded-content/the-video-element/video-tabindex.html"));
+    try testing.expect(isInScope("html/semantics/embedded-content/the-audio-element/audio_constructor.html"));
 }
 
 test "isNonTestFile: the legacy scan's guesses at what is not a test" {
