@@ -11,10 +11,9 @@
 //! viewport (a reload when mobile or touch changes, as Puppeteer's
 //! setViewport reloads).
 //!
-//! Not yet (lane mcp1 batch 4b): cpuThrottlingRate above 1 (item 6) and
-//! geolocation (the Geolocation API, queued by main) answer that Crane's MCP
-//! server does not support them yet; their "off" values - what every call
-//! sends - are Crane's CDP answers.
+//! Not yet (lane mcp1 batch 4b): geolocation (the Geolocation API, queued by
+//! main) answers that Crane's MCP server does not support it yet; its "off"
+//! value - what every call sends - is Crane's CDP answer.
 
 const std = @import("std");
 const registry = @import("../tools.zig");
@@ -128,8 +127,9 @@ fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Res
         null;
 
     // Not yet: the settings whose CDP Crane cannot apply.
-    if (registry.numberArg(args, "cpuThrottlingRate")) |rate| if (rate != 1) return ctx.fail("cpuThrottlingRate is not supported by Crane's MCP server yet.", .{});
     if (registry.stringArg(args, "geolocation")) |g| if (g.len != 0) return ctx.fail("geolocation is not supported by Crane's MCP server yet.", .{});
+
+    const cpu_rate: f64 = if (registry.numberArg(args, "cpuThrottlingRate")) |rate| (if (rate > 1) rate else 1) else 1;
 
     // emulateNetworkConditions: Puppeteer's NetworkManager sends
     // overrideNetworkState + emulateNetworkConditionsByRule.
@@ -150,8 +150,15 @@ fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Res
         try send(ctx, target, "Network.overrideNetworkState", "{\"offline\":false,\"latency\":0,\"uploadThroughput\":-1,\"downloadThroughput\":-1}");
         try send(ctx, target, "Network.emulateNetworkConditionsByRule", "{\"matchedNetworkConditions\":[{\"urlPattern\":\"\",\"offline\":false,\"latency\":0,\"downloadThroughput\":-1,\"uploadThroughput\":-1}]}");
     }
-    // emulateCPUThrottling(1).
-    try send(ctx, target, "Emulation.setCPUThrottlingRate", "{\"rate\":1}");
+    // emulateCPUThrottling: McpPage sends Emulation.setCPUThrottlingRate on
+    // the page session and, if open, the DevTools universe secondary session.
+    const cpu_params = try std.fmt.allocPrint(ctx.arena, "{{\"rate\":{d}}}", .{cpu_rate});
+    try send(ctx, target, "Emulation.setCPUThrottlingRate", cpu_params);
+    if (target.debugger_session_id) |secondary| {
+        var r = try ctx.session.client.call("Emulation.setCPUThrottlingRate", cpu_params, secondary, session_mod.command_timeout_ms);
+        defer r.deinit();
+        if (r.errorMessage()) |message| return ctx.fail("Protocol error (Emulation.setCPUThrottlingRate): {s}", .{message});
+    }
     // setGeolocation(null).
     try send(ctx, target, "Emulation.clearGeolocationOverride", "{}");
 
@@ -186,7 +193,7 @@ fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Res
     // McpPage's emulationSettings, set before setViewport; a viewport that
     // fails keeps the one before it.
     const recorded_nc: ?[]const u8 = if (network_preset != null) network_conditions else null;
-    try recordSettings(ctx, target, args, user_agent, recorded_nc);
+    try recordSettings(ctx, target, args, user_agent, recorded_nc, cpu_rate);
     // setViewport: the override (or its clear), then a reload when mobile
     // or touch changed.
     try applyViewport(ctx, target, viewport);
@@ -196,9 +203,9 @@ fn emulate(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Res
 
 /// McpPage.emulate's newSettings for what Crane applies: each setting the
 /// call names, none for one it leaves out or sets to "auto".
-fn recordSettings(ctx: *Context, page: *Page, args: std.json.ObjectMap, user_agent: []const u8, network_conditions: ?[]const u8) !void {
+fn recordSettings(ctx: *Context, page: *Page, args: std.json.ObjectMap, user_agent: []const u8, network_conditions: ?[]const u8, cpu_rate: f64) !void {
     const allocator = ctx.session.allocator;
-    var next: session_mod.Emulation = .{ .viewport = page.emulation.viewport };
+    var next: session_mod.Emulation = .{ .viewport = page.emulation.viewport, .cpu_throttling_rate = cpu_rate };
     errdefer next.deinit(allocator);
     if (network_conditions) |nc| next.network_conditions = try allocator.dupe(u8, nc);
     if (user_agent.len != 0) next.user_agent = try allocator.dupe(u8, user_agent);

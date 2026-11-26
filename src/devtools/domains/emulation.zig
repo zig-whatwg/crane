@@ -36,6 +36,9 @@ pub const State = struct {
     /// This session emulates focus for its tab (setFocusEmulationEnabled):
     /// counted once on the tab, and given back when it stops or detaches.
     focus_emulated: bool = false,
+    /// This session's CPU throttling rate (Emulation.setCPUThrottlingRate):
+    /// 1.0 is unthrottled; cleared when the session detaches.
+    cpu_throttling_rate: f64 = 1.0,
 };
 
 /// The params that make a device metrics override, as EmulationHandler
@@ -85,6 +88,24 @@ pub fn sessionEnded(session: *PageSession) void {
     }
     session.states.Emulation.device_emulation_enabled = false;
     session.states.Emulation.device_emulation_params = null;
+    // Blink InspectorEmulationAgent::disable resets CPU throttling when the
+    // session ends; recompute from any remaining sessions on this Browser so
+    // an untouched sibling detaching never clobbers an active session's rate.
+    if (session.states.Emulation.cpu_throttling_rate > 1.0) {
+        session.states.Emulation.cpu_throttling_rate = 1.0;
+        if (browser.event_loop) |loop| {
+            var remaining: f64 = 1.0;
+            if (session.side) |side| {
+                for (side.sessions.items) |other| {
+                    if (other == session) continue;
+                    if (other.states.Emulation.cpu_throttling_rate > remaining) {
+                        remaining = other.states.Emulation.cpu_throttling_rate;
+                    }
+                }
+            }
+            loop.setCpuThrottlingRate(remaining);
+        }
+    }
     const bc = tabOf(session) orelse return;
     // Its focus emulation ends with it, as Chrome's EmulationHandler::Disable
     // turns SetFocusEmulationEnabled off.
@@ -296,14 +317,19 @@ pub fn setLocaleOverride(session: *PageSession, params: E.setLocaleOverride.Para
 }
 
 /// Blink's InspectorEmulationAgent::setCPUThrottlingRate
-/// (inspector_emulation_agent.cc): the renderer main thread's throttling
-/// rate - 1 (or less) is none, what every Crane tab runs at; Puppeteer sends
-/// it on every emulate. A slower rate needs Crane's throttler (lane mcp1
-/// batch 4b item 6, design first) and is refused until it lands.
+/// (third_party/blink/renderer/core/inspector/inspector_emulation_agent.cc)
+/// and ThreadCPUThrottler::SetThrottlingRate
+/// (third_party/blink/renderer/platform/scheduler/common/thread_cpu_throttler.cc):
+/// page targets only (AssertPage); rate <= 1 (or NaN) disables throttling and
+/// succeeds; rate > 1 slows the Browser's event loop by `rate`. Persists
+/// across navigations within the session and clears on detach.
 pub fn setCPUThrottlingRate(session: *PageSession, params: E.setCPUThrottlingRate.Params) !E.setCPUThrottlingRate.Result {
+    const browser = session.browser orelse return session.fail("Target is not a page");
     _ = tabOf(session) orelse return session.fail("Target is not a page");
-    if (params.rate <= 1) return .{};
-    return session.fail("CPU throttling is not supported by Crane yet");
+    const rate: f64 = if (params.rate > 1.0) params.rate else 1.0;
+    session.states.Emulation.cpu_throttling_rate = rate;
+    if (browser.event_loop) |loop| loop.setCpuThrottlingRate(rate);
+    return .{};
 }
 
 /// Chrome's EmulationHandler::ClearGeolocationOverride: the tab's

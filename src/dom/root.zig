@@ -99,6 +99,10 @@ pub const adopting_steps = @import("adopting_steps.zig");
 pub const document_rendering = @import("document_rendering.zig");
 pub const document_resources = @import("document_resources.zig");
 pub const update_the_rendering = @import("update_the_rendering.zig");
+/// CSSOM View §13.2: pending scroll events and update-the-rendering step 9.
+pub const scroll_events = @import("scroll_events.zig");
+/// HTML 8.1.7.3 steps 20–21: Long Animation Frames rendering time and Paint Timing.
+pub const frame_timing = @import("frame_timing.zig");
 /// Web Animations: the timing model, its objects' models, and update animations and send events (lane rendering2).
 pub const animations = @import("animations/root.zig");
 /// SVG animation elements' timing model (SVG Animations 2, SMIL Animation; lane dnd1).

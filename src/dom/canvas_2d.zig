@@ -23,9 +23,16 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const dictionaries = @import("dictionaries");
+const webidl = @import("webidl");
 const css = @import("css");
 const enums = @import("enums");
 const image_sources = @import("image_sources.zig");
+const same_object = @import("same_object.zig");
+const fire_event = @import("fire_event.zig");
+const node_holds = @import("node_holds.zig");
+const update_the_rendering = @import("update_the_rendering.zig");
 
 /// A CSS color as a 2D context keeps it: sRGB with 8-bit channels and 8-bit
 /// alpha, as Chrome, Firefox and Safari keep a canvas color (their
@@ -179,7 +186,9 @@ pub const Context2D = struct {
     /// The drawing state stack (4.12.5.1.3), OWNED.
     stack: std.ArrayList(DrawingState) = .empty,
     /// CanvasState's context lost flag: "initialized to false when the
-    /// object is created". Nothing loses a context here (no GPU).
+    /// object is created", updated by HTML 8.1.7.3 step 13
+    /// (`runContextLostSteps`). Automatic GPU/driver loss detection is
+    /// `needs-renderer` (Crane uses CPU bitmaps with no GPU).
     context_lost: bool = false,
 
     pub fn init(allocator: Allocator) Context2D {
@@ -539,6 +548,170 @@ pub fn strokeRect(state: *Context2D, x: f64, y: f64, w: f64, h: f64) void {
     const outer: Rect = .{ .left = rect.left - half, .top = rect.top - half, .right = rect.right + half, .bottom = rect.bottom + half };
     const inner: Rect = .{ .left = rect.left + half, .top = rect.top + half, .right = rect.right - half, .bottom = rect.bottom - half };
     paint(&state.bitmap, outer, inner, color);
+}
+
+// ---------------------------------------------------------------------------
+// Context lost steps (HTML 8.1.7.3 step 13)
+// ---------------------------------------------------------------------------
+
+const LostEntry = struct {
+    document: same_object.Link,
+    context: same_object.Link,
+};
+
+/// Per-Browser supplement holding 2D rendering contexts whose backing storage
+/// was detected as lost since the last rendering opportunity. Created lazily
+/// only when `markContextLost` is called; `runContextLostSteps` is strictly
+/// read-only when empty (0 allocations on idle frames).
+pub const PendingLost = struct {
+    allocator: Allocator,
+    entries: std.ArrayListUnmanaged(LostEntry) = .empty,
+
+    pub fn init(allocator: Allocator) PendingLost {
+        return .{ .allocator = allocator };
+    }
+
+    pub fn deinit(self: *PendingLost) void {
+        self.entries.deinit(self.allocator);
+    }
+};
+
+/// Record that `context` (a `CanvasRenderingContext2D` or
+/// `OffscreenCanvasRenderingContext2D` associated with `document`) has lost
+/// its backing storage, and request a rendering opportunity so HTML 8.1.7.3
+/// step 13 runs the context lost steps for it.
+///
+/// Note (`needs-renderer`): headless Crane keeps CPU bitmaps in
+/// `image_sources.OutputBitmap` with no GPU/driver backing storage, so no
+/// context spontaneously loses backing storage without a renderer/host
+/// reporting it through this entry point.
+pub fn markContextLost(document: *runtime.Instance, context: *runtime.Instance) void {
+    const scope = runtime.BrowserScope.ofInstance(document);
+    const pending = scope.of(PendingLost) catch return;
+    const doc_link = same_object.Link.to(document);
+    const ctx_link = same_object.Link.to(context);
+    for (pending.entries.items) |item| {
+        if (item.document.instance == doc_link.instance and
+            item.document.generation == doc_link.generation and
+            item.context.instance == ctx_link.instance and
+            item.context.generation == ctx_link.generation)
+        {
+            update_the_rendering.requestFrame(document);
+            return;
+        }
+    }
+    pending.entries.append(pending.allocator, .{ .document = doc_link, .context = ctx_link }) catch return;
+    update_the_rendering.requestFrame(document);
+}
+
+/// Read-only: whether `document` has any 2D contexts pending step 13.
+pub fn hasPendingContextLost(document: *runtime.Instance) bool {
+    const pending = runtime.BrowserScope.ofInstance(document).existing(PendingLost) orelse return false;
+    const gen = runtime.SlabAllocator.generationOf(document);
+    for (pending.entries.items) |item| {
+        if (item.document.instance == document and item.document.generation == gen) return true;
+    }
+    return false;
+}
+
+/// HTML 8.1.7.3 step 13: "For each doc of docs, if the user agent detects
+/// that the backing storage associated with a CanvasRenderingContext2D or an
+/// OffscreenCanvasRenderingContext2D, context, has been lost, then it must
+/// run the context lost steps for each such context."
+/// Read-only when no context is pending (0 allocations).
+pub fn runContextLostSteps(document: *runtime.Instance, frame: update_the_rendering.Frame) void {
+    _ = frame;
+    const pending = runtime.BrowserScope.ofInstance(document).existing(PendingLost) orelse return;
+    if (pending.entries.items.len == 0) return;
+
+    const doc_link = same_object.Link.to(document);
+    var batch: std.ArrayListUnmanaged(same_object.Link) = .empty;
+    defer batch.deinit(pending.allocator);
+
+    var i: usize = 0;
+    while (i < pending.entries.items.len) {
+        const item = pending.entries.items[i];
+        if (!item.document.isLive()) {
+            _ = pending.entries.orderedRemove(i);
+            continue;
+        }
+        if (item.document.instance == doc_link.instance and item.document.generation == doc_link.generation) {
+            _ = pending.entries.orderedRemove(i);
+            batch.append(pending.allocator, item.context) catch continue;
+            continue;
+        }
+        i += 1;
+    }
+    if (batch.items.len == 0) return;
+
+    var doc_hold: node_holds.TaskHold = .{};
+    doc_hold.take(document);
+    defer doc_hold.release();
+
+    for (batch.items) |ctx_link| {
+        if (doc_hold.get() == null) break;
+        if (!ctx_link.isLive()) continue;
+        const context = ctx_link.instance;
+        const state = stateOf(context) orelse continue;
+
+        // 13.1. Let canvas be context's canvas attribute (CanvasRenderingContext2D)
+        //       or associated OffscreenCanvas (OffscreenCanvasRenderingContext2D).
+        const canvas = canvasOf(context) orelse continue;
+        const canvas_link = same_object.Link.to(canvas);
+        const width = state.bitmap.width;
+        const height = state.bitmap.height;
+
+        // 13.2. Set context's context lost to true.
+        state.context_lost = true;
+
+        // 13.3. Reset the rendering context to its default state given context.
+        state.clearBitmap();
+        state.reset();
+
+        // 13.4. Let shouldRestore be the result of firing an event named
+        //       contextlost at canvas, with cancelable initialized to true.
+        const should_restore = dispatchCanvasEvent(canvas, "contextlost", true);
+
+        // 13.5. If shouldRestore is false, then abort these steps.
+        if (!should_restore) continue;
+
+        // Revalidate after script ran in step 13.4.
+        if (!ctx_link.isLive() or !canvas_link.isLive()) continue;
+        const live_state = stateOf(context) orelse continue;
+
+        // 13.6. Attempt to restore context by creating a backing storage
+        //       using context's attributes and associating them with context.
+        //       If this fails, then abort these steps.
+        live_state.bitmap.resize(width, height) catch continue;
+
+        // 13.7. Set context's context lost to false.
+        live_state.context_lost = false;
+
+        // 13.8. Fire an event named contextrestored at canvas.
+        _ = dispatchCanvasEvent(canvas_link.instance, "contextrestored", false);
+    }
+}
+
+fn canvasOf(context: *runtime.Instance) ?*runtime.Instance {
+    if (std.mem.eql(u8, context.vtable.name, "CanvasRenderingContext2D")) {
+        return interfaces.CanvasRenderingContext2D.get_canvas(context) catch null;
+    }
+    if (std.mem.eql(u8, context.vtable.name, "OffscreenCanvasRenderingContext2D")) {
+        return interfaces.OffscreenCanvasRenderingContext2D.get_canvas(context) catch null;
+    }
+    return null;
+}
+
+fn dispatchCanvasEvent(target: *runtime.Instance, comptime event_name: []const u8, cancelable: bool) bool {
+    if (!target.ctx.hasEngine()) return true;
+    const event = interfaces.Event.call_constructor(
+        target.ctx,
+        runtime.DOMString.initInterned(event_name),
+        webidl.Opt(dictionaries.EventInit).passed(.{ .bubbles = false, .cancelable = cancelable }),
+    ) catch return true;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
+    return fire_event.dispatchTrusted(target, event) catch true;
 }
 
 test "parseColor quantizes to 8-bit sRGB with 8-bit alpha; serializeColor is HTML-compatible" {

@@ -2146,6 +2146,90 @@
           }
         }
       ]
+    },
+    {
+      "name": "emulate: cpu throttling",
+      "about": "emulate cpuThrottlingRate: sets 4x and 2.5x slowdown lines, multiplies navigation timeout with networkConditions, persists across navigation, resets on rate 1 or omission, and validates schema bounds (1..20).",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "cpuThrottlingRate": 4
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "cpuThrottlingRate": 2.5
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Slow 3G",
+            "userAgent": "Agent/2",
+            "cpuThrottlingRate": 4,
+            "colorScheme": "dark"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "cpuThrottlingRate": 1
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "cpuThrottlingRate": 4
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "cpuThrottlingRate": 0.5
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "cpuThrottlingRate": 21
+          }
+        }
+      ]
     }
   ],
   "expected": [
@@ -2188,11 +2272,6 @@
       "case": "history: back right after the first navigation",
       "call": 2,
       "reason": "Chrome navigates its startup URL (Puppeteer starts it with about:blank: an auto_toplevel entry), so its first navigation pushes and back reaches about:blank; Firefox 159 and Safari 27.2 keep the first tab's initial about:blank, which the first navigation replaces (WebDriver probe, chat.local 2026-11-24, tmp/probes/mcp1-startup/run.sh: history.length stays 1, back() stays), as Crane and HTML do: the browser majority (main's ruling, 2026-11-24)."
-    },
-    {
-      "case": "emulate: user agent, media, viewport",
-      "call": 10,
-      "reason": "CPU throttling needs Crane's throttler (lane mcp1 batch 4b item 6, design first); until then Crane's MCP server says it does not support cpuThrottlingRate yet."
     },
     {
       "case": "emulate: user agent, media, viewport",

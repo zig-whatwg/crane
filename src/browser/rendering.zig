@@ -681,7 +681,7 @@ fn updateTheRendering(frames: *Frames) void {
     defer documents.deinit(frames.allocator);
 
     // Step 1: frameTimestamp.
-    const frame: update_the_rendering.Frame = .{ .timestamp_ns = frames.last_render_opportunity_ns };
+    var frame: update_the_rendering.Frame = .{ .timestamp_ns = frames.last_render_opportunity_ns };
     frames.frame_number += 1;
     const frame_number = frames.frame_number;
 
@@ -713,9 +713,13 @@ fn updateTheRendering(frames: *Frames) void {
         if (html_mod.focus.topLevelDocumentOf(document.document) != document.document) continue;
         html_mod.autofocus.flush(document.document);
     }
-    // 8. The resize steps. 9. The scroll steps.
+    // 8. The resize steps.
     runOwnerStep(frames, &token, documents.items, .resize, frame);
-    runOwnerStep(frames, &token, documents.items, .scroll, frame);
+    // 9. The scroll steps (CSSOM View 13.2). Listeners run script: revalidate.
+    for (documents.items) |document| {
+        if (dispatchState(frames, &token) == null) break;
+        if (document.current()) dom_mod.scroll_events.runScrollSteps(document.document, frame);
+    }
     // 10. Evaluate media queries and report changes (CSSOM View 4.2).
     for (documents.items) |document| {
         if (dispatchState(frames, &token) == null) break;
@@ -736,9 +740,14 @@ fn updateTheRendering(frames: *Frames) void {
         if (dispatchState(frames, &token) == null) break;
         if (document.current()) dom_mod.smil.document_animations.serviceAnimations(document.document);
     }
-    // 12. The fullscreen steps. 13. The context lost steps.
+    // 12. The fullscreen steps.
     runOwnerStep(frames, &token, documents.items, .fullscreen, frame);
-    runOwnerStep(frames, &token, documents.items, .context_lost, frame);
+    // 13. The canvas context lost steps (HTML 8.1.7.3 step 13). Listeners run
+    // script: revalidate.
+    for (documents.items) |document| {
+        if (dispatchState(frames, &token) == null) break;
+        if (document.current()) dom_mod.canvas_2d.runContextLostSteps(document.document, frame);
+    }
 
     // 14. Run the animation frame callbacks, passing in the relative high
     // resolution time given frameTimestamp and the document's relevant
@@ -780,6 +789,9 @@ fn updateTheRendering(frames: *Frames) void {
         if (last_realm) |realm| if (realm.hasEngine()) Context.performMicrotaskCheckpoint(realm);
     }
 
+    // 15. Let unsafeStyleAndLayoutStartTime be the unsafe shared current time.
+    frame.style_and_layout_start_ns = frames.nowNs();
+
     // 16. For each doc of docs: style and layout, the step's one owner
     // (dom.update_the_rendering.styleAndLayout runs its parts in order: the
     // used CSS resources, then the pending animations). Script can run:
@@ -802,9 +814,7 @@ fn updateTheRendering(frames: *Frames) void {
         if (!document.current()) continue;
         if (dom_mod.focused_area.get(document.document) != null) update_the_rendering.watchFocusedArea(document.document);
     }
-    // 18. View transitions. 19. Intersection observations. 20. Rendering
-    // time. 21. Paint timing. 23. Top layer removals. (22, updating the
-    // user interface, is the host's.)
+    // 18. View transitions. 19. Intersection observations.
     runOwnerStep(frames, &token, documents.items, .view_transitions, frame);
     // 19: the lazy load intersection observer's part (HTML 2.5.7,
     // dom.lazy_load_observer, an owner outside the impls); it runs no
@@ -815,9 +825,23 @@ fn updateTheRendering(frames: *Frames) void {
         dom_mod.lazy_load_observer.updateObservations(document.document);
     }
     runOwnerStep(frames, &token, documents.items, .intersection_observations, frame);
-    runOwnerStep(frames, &token, documents.items, .rendering_time, frame);
-    runOwnerStep(frames, &token, documents.items, .paint_timing, frame);
-    runOwnerStep(frames, &token, documents.items, .top_layer_removals, frame);
+    // 20. Long Animation Frames "record rendering time" given step 15's
+    // unsafeStyleAndLayoutStartTime.
+    for (documents.items) |document| {
+        if (dispatchState(frames, &token) == null) break;
+        if (document.current()) dom_mod.frame_timing.recordRenderingTime(document.document, frame);
+    }
+    // 21. Paint Timing "mark paint timing".
+    for (documents.items) |document| {
+        if (dispatchState(frames, &token) == null) break;
+        if (document.current()) dom_mod.frame_timing.markPaintTiming(document.document, frame);
+    }
+    // 22. Update the rendering or user interface (the host's: Crane draws nothing).
+    // 23. CSS Position 4 "process top layer removals".
+    for (documents.items) |document| {
+        if (dispatchState(frames, &token) == null) break;
+        if (document.current()) dom_mod.top_layer.processTopLayerRemovals(document.document, frame);
+    }
 }
 
 /// One owner-installed step, for each document still current, in order.
@@ -1090,9 +1114,13 @@ pub fn windowResumed(realm: runtime.Context) void {
     if (Context.realmWindow(realm)) |window| if (Context.realmNavigable(realm, window)) |navigable| {
         if (navigable.getActiveDocument()) |document| {
             const instance: *runtime.Instance = @ptrCast(@alignCast(document));
-            // Its animations too: a running one, a pending task or a queued
-            // event waits for its document's next frame.
-            if (ownersPending(instance) or dom_mod.animations.registry.needsFrames(instance)) requestFrame(instance);
+            // Its animations, pending top-layer removals, scroll events, and
+            // lost 2D contexts wait for its document's next frame.
+            if (ownersPending(instance) or
+                dom_mod.animations.registry.needsFrames(instance) or
+                dom_mod.top_layer.hasPendingRemovals(instance) or
+                dom_mod.scroll_events.hasPending(instance) or
+                dom_mod.canvas_2d.hasPendingContextLost(instance)) requestFrame(instance);
             // A running SVG timeline asks for its next frame again.
             dom_mod.smil.document_animations.requestFrameIfNeeded(instance);
         }

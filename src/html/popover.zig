@@ -314,6 +314,9 @@ fn show(element: *Instance, throws: bool, source: ?*Instance, picker: bool) anye
     // A show that fails from here (out of memory) leaves no watcher behind.
     errdefer if (!picker) destroyCloseWatcher(element);
     pin.keepPreviousFocus(document, focus.designatedAreaOf(document));
+    // Position 4 §3.3 "add an element to the top layer" step 2: strip any
+    // pending removal for this element before appending the new active entry.
+    state.removePendingRemovalsFor(element, false);
     const active = try state.pin(element);
     active.mode = effective;
     active.picker = picker;
@@ -404,8 +407,13 @@ fn hideImpl(element: *Instance, restore: bool, events: bool, throws: bool, sourc
     // Crane's focusedAreaOf applies focus fixup on read; browsers perform
     // that fixup during rendering, after this restoration step.
     const focus_inside = if (focus.designatedAreaOf(document)) |current| shadowDescendant(current, element) else false;
-    // No rendering transition: remove immediately after beforetoggle.
-    if (state.findKind(element, picker)) |entry| state.remove(entry.id);
+    // Hide step 12.4 (fireEvents true): CSS Position 4 "request an element to
+    // be removed from the top layer" (deferred to update-the-rendering step
+    // 23). Hide step 13 (fireEvents false, e.g. DOM removal or nested hide)
+    // and anonymous select pickers: remove from the top layer immediately.
+    if (state.findKind(element, picker)) |entry| {
+        if (fire and !picker) state.requestRemoval(entry) else state.remove(entry.id);
+    }
     if (state.hint_parent.get() == element or topmost(state, .hint) == null) state.setHintParent(null);
     // Hide step 18: if fireEvents is true (a nested hide made it false),
     // queue a popover toggle event task given element, "open", "closed" and
@@ -477,9 +485,11 @@ pub fn removingSteps(node: *dom.NodeBase, _: ?*dom.NodeBase) void {
     if (node.node_type != 1) return;
     const element: *Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return));
     const state = (layer.ofElement(element, false) catch null) orelse return;
-    // HTML removal steps: hide without events or focus restoration.
+    // HTML removal steps: hide without events or focus restoration, and remove
+    // any pending top-layer removal immediately (Position 4 §3.3).
     if (state.find(element) != null) hide(element, false, false, false, null, false) catch {};
     if (state.findKind(element, true) != null) hide(element, false, false, false, null, true) catch {};
+    state.removePendingRemovalsFor(element, true);
     if (state.pointerdown_target.get() == element) state.setPointerdownTarget(null);
 }
 

@@ -2676,7 +2676,7 @@ pub fn generatedPseudos(element: *runtime.Instance) GeneratedPseudos {
     out.before = pseudoGenerates(element, "before", true);
     out.after = pseudoGenerates(element, "after", true);
     if (display.list_item) out.marker = pseudoGenerates(element, "marker", false);
-    if (inTopLayerOf(element)) out.backdrop = pseudoGenerates(element, "backdrop", false);
+    if (inTopLayerOf(element) and style.keyword(.overlay) == .auto) out.backdrop = pseudoGenerates(element, "backdrop", false);
     return out;
 }
 
