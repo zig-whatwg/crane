@@ -79,8 +79,8 @@ pub const Response = struct {
                 for (opened.items) |p| try out.append(self.arena, try pageLabel(self.arena, p));
             }
         }
-        // The page's emulation, in McpResponse's order (geolocation and CPU
-        // throttling are not supported yet).
+        // The page's emulation, in McpResponse's order (geolocation is not
+        // supported yet).
         if (self.page) |page| try emulationLines(self.arena, &page.emulation, &out);
         if (self.page) |page| if (!page.closed) if (page.dialog) |dialog| {
             const default_value = if (std.mem.eql(u8, dialog.type, "prompt"))
@@ -135,13 +135,14 @@ pub const Response = struct {
 fn emulationLines(arena: Allocator, emulation: *const session_mod.Emulation, out: *std.ArrayList([]const u8)) !void {
     if (emulation.network_conditions) |nc| {
         try out.append(arena, try std.fmt.allocPrint(arena, "Emulating network conditions: {s}", .{nc}));
-        try out.append(arena, try std.fmt.allocPrint(arena, "Default navigation timeout set to {d} ms", .{session_mod.Emulation.defaultNavigationTimeoutMs(nc)}));
+        try out.append(arena, try std.fmt.allocPrint(arena, "Default navigation timeout set to {d} ms", .{session_mod.Emulation.defaultNavigationTimeoutMs(nc, emulation.cpu_throttling_rate)}));
     }
     if (emulation.viewport) |v| {
         const scale = if (v.scale) |s| try std.fmt.allocPrint(arena, "\"deviceScaleFactor\":{d},", .{s}) else "";
         try out.append(arena, try std.fmt.allocPrint(arena, "Emulating viewport: {{{s}\"isMobile\":{},\"hasTouch\":{},\"isLandscape\":{},\"width\":{d},\"height\":{d}}}", .{ scale, v.mobile, v.touch, v.landscape, v.width, v.height }));
     }
     if (emulation.user_agent) |ua| try out.append(arena, try std.fmt.allocPrint(arena, "Emulating user agent: {s}", .{ua}));
+    if (emulation.cpu_throttling_rate > 1) try out.append(arena, try std.fmt.allocPrint(arena, "Emulating CPU throttling: {d}x slowdown", .{emulation.cpu_throttling_rate}));
     if (emulation.color_scheme) |value| try out.append(arena, try std.fmt.allocPrint(arena, "Emulating color scheme: {s}", .{value}));
     if (emulation.forced_colors) |value| try out.append(arena, try std.fmt.allocPrint(arena, "Emulating forced-colors: {s}", .{value}));
     if (emulation.prefers_contrast) |value| try out.append(arena, try std.fmt.allocPrint(arena, "Emulating prefers-contrast: {s}", .{value}));
