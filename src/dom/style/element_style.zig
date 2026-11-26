@@ -423,8 +423,12 @@ pub fn of(element: *runtime.Instance) ?*ElementStyle {
 }
 
 comptime {
-    if (@sizeOf(usize) == 8 and @sizeOf(ElementStyle) != 272)
-        @compileError(std.fmt.comptimePrint("ElementStyle size changed from 272 bytes: {d}", .{@sizeOf(ElementStyle)}));
+    // In ReleaseFast/ReleaseSmall (`!std.debug.runtime_safety`), Zig packs the
+    // optional tags of `inline_block: ?DeclarationBlock` and `cached: ?Cached`
+    // (-16 B total: 272 -> 256 B). Pin both modes so neither silently grows.
+    const expected: usize = if (std.debug.runtime_safety) 272 else 256;
+    if (@sizeOf(usize) == 8 and @sizeOf(ElementStyle) != expected)
+        @compileError(std.fmt.comptimePrint("ElementStyle size changed from {d} bytes: {d}", .{ expected, @sizeOf(ElementStyle) }));
 }
 
 /// `element`'s style state if it has one already.
