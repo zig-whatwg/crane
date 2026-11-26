@@ -255,6 +255,20 @@ pub const Body = struct {
         pipe.release();
     }
 
+    /// Materialize a lazy body into `data` and release `lazy`. No-op if the
+    /// body is already in-memory. Used by fire-and-forget senders
+    /// (`dom.keepalive_fetch`) that hand the request directly to `AsyncFetch`.
+    pub fn materializeLazy(self: *Self) BodyLazySource.ReadError!void {
+        const lazy = self.lazy orelse return;
+        const bytes = try lazy.read(self.allocator);
+        self.data.deinit(self.allocator);
+        self.data = .fromOwnedSlice(bytes);
+        self.source = .{ .bytes = self.data.items };
+        self.length = self.data.items.len;
+        self.lazy = null;
+        lazy.release();
+    }
+
     /// Deinitialize the body, freeing all resources.
     pub fn deinit(self: *Self) void {
         if (self.pipe) |pipe| pipe.release();

@@ -274,11 +274,34 @@ pub const Dispatch = struct {
 /// Start fetching `request` for `global`, ignoring its response. Takes
 /// `request` on every path. Null means rejected: nothing was sent.
 pub fn start(global: *runtime.Instance, request: *fetch.internal.InternalRequest, options: Options) Error!?*Dispatch {
+    return switch (try startOutcome(global, request, options)) {
+        .started => |dispatch| dispatch,
+        .rejected, .body_read_failed => null,
+    };
+}
+
+const StartOutcome = union(enum) {
+    started: *Dispatch,
+    rejected,
+    body_read_failed,
+};
+
+fn startOutcome(global: *runtime.Instance, request: *fetch.internal.InternalRequest, options: Options) Error!StartOutcome {
     const allocator = global.ctx.allocator;
     var owns_request = true;
     defer if (owns_request) request.deinit();
-    const reservation = Reservation.take(global, request, options.load) catch return null;
+    const reservation = Reservation.take(global, request, options.load) catch return .rejected;
     errdefer if (reservation) |r| r.release();
+    if (request.body) |rb| switch (rb) {
+        .body => |b| b.materializeLazy() catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.NotFoundError, error.NotReadableError => {
+                if (reservation) |r| r.release();
+                return .body_read_failed;
+            },
+        },
+        .bytes => {},
+    };
     const self = try allocator.create(Dispatch);
     errdefer allocator.destroy(self);
     self.* = .{ .allocator = allocator, .ctx = global.ctx, .observer = options.observer };
@@ -287,7 +310,7 @@ pub fn start(global: *runtime.Instance, request: *fetch.internal.InternalRequest
     self.active = try AsyncFetch.start(allocator, request, .{}, @import("agent_fetches.zig").of(global.ctx), self.client());
     // Held from here: the dispatch's end releases it.
     self.reservation = reservation;
-    return self;
+    return .{ .started = self };
 }
 
 /// Start fetching `request` for `global` as a fetch its agent keeps from the
@@ -352,8 +375,14 @@ pub fn send(global: *runtime.Instance, request: *fetch.internal.InternalRequest,
             return false;
         }
     }
-    owns_request = false; // start takes the request, including on failure.
-    return (try start(global, request, options)) != null;
+    owns_request = false; // startOutcome takes the request, including on failure.
+    // Beacon §3.2 step 7: once quota/mixed-content pass, sendBeacon() returns
+    // true and runs fetch in parallel; a lazy file-backed body read error fails
+    // that background fetch as a network error without transmitting bytes.
+    return switch (try startOutcome(global, request, options)) {
+        .started, .body_read_failed => true,
+        .rejected => false,
+    };
 }
 
 test "a reservation counts only a keepalive HTTP(S) request with a body, and only as a fetch load" {
