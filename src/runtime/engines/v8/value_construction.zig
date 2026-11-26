@@ -124,30 +124,10 @@ pub fn createDictionaryObject(realm: runtime.Context, members: []const runtime.D
 // Microtasks
 // ============================================================================
 
-/// A queued microtask's steps and their data, until the microtask runs.
-const QueuedMicrotask = struct {
-    allocator: std.mem.Allocator,
-    steps: runtime.RealmSteps,
-    data: ?*anyopaque,
-};
-
-/// V8 runs a callback microtask as `void (*)(void*)`.
-fn runQueuedMicrotask(raw: ?*anyopaque) callconv(.c) void {
-    const queued: *QueuedMicrotask = @ptrCast(@alignCast(raw orelse return));
-    const alloc = queued.allocator;
-    const steps = queued.steps;
-    const data = queued.data;
-    alloc.destroy(queued);
-    steps(data);
-}
-
-/// HTML "queue a microtask" on `realm`'s agent. V8 drops a queued callback
-/// microtask when its isolate is disposed, so a record still queued then is
-/// never freed - the declaration says the steps may not run.
+/// HTML "queue a microtask" on `realm`'s agent, tracked on the agent record so
+/// a discarded microtask (aborted checkpoint / isolate disposal) is freed at
+/// `endAgent` instead of leaking.
 pub fn queueMicrotask(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*anyopaque) EngineError!void {
     const isolate = agentOf(realm) orelse return EngineError.OperationFailed;
-    const alloc = @import("protocol_agents.zig").allocatorOf(isolate);
-    const queued = alloc.create(QueuedMicrotask) catch return EngineError.OutOfMemory;
-    queued.* = .{ .allocator = alloc, .steps = steps, .data = data };
-    ffi.v8_Isolate_EnqueueMicrotask(isolate, @ptrCast(&runQueuedMicrotask), queued);
+    @import("protocol_agents.zig").enqueueMicrotask(isolate, steps, data) catch return EngineError.OutOfMemory;
 }

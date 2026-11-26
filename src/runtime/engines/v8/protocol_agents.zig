@@ -301,6 +301,11 @@ pub const AgentRecord = struct {
     /// the agent's own thread only. It was a `threadlocal`: one agent's open
     /// prepare made another agent on the thread skip its checkpoint.
     prepared_scripts: u32 = 0,
+    /// Queued callback microtasks still owned by V8's microtask queue (or
+    /// discarded when a checkpoint aborted on script termination). Unlinked
+    /// when `runQueuedMicrotask` runs; any still left after `endAgent`'s final
+    /// microtask checkpoints are freed before the isolate is disposed.
+    pending_microtasks: ?*QueuedMicrotask = null,
     /// The agent is ending (`endAgent`): its hooks are forgotten, and
     /// `recordOf` no longer finds it - nothing reaches the host from here on,
     /// and nothing is made for the agent - while its realms end, which still
@@ -967,11 +972,26 @@ pub fn endAgent(agent: *Agent) void {
         std.debug.assert(queue.isEmpty());
         queue.close();
     }
+    // Transfer any queued callback microtasks off `record` before `removeAgent`
+    // destroys it: microtasks that run during the final checkpoints below unlink
+    // themselves from `pending_microtasks`, and any still left after the final
+    // checkpoint (e.g. discarded by an aborted checkpoint / TerminateExecution)
+    // are freed so nothing leaks into the Browser heap.
+    var pending_microtasks: ?*QueuedMicrotask = if (record) |r| blk: {
+        const head = r.pending_microtasks;
+        r.pending_microtasks = null;
+        break :blk head;
+    } else null;
+    if (pending_microtasks) |first| first.prev_link = &pending_microtasks;
     removeAgent(isolate);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    while (pending_microtasks) |queued| {
+        queued.unlink();
+        queued.allocator.destroy(queued);
+    }
     // [repl_mode] Step 2 of the console session's end (above): the
     // inspector goes, with the isolate still entered and not yet disposed.
     if (repl) |session| session.destroy();
@@ -1039,16 +1059,28 @@ pub fn performMicrotaskCheckpoint(agent: *Agent) void {
     if (!in_algorithm) @import("external_memory.zig").reportIfMovedOn(entered.isolate);
 }
 
-/// A queued microtask's steps and their data, until the microtask runs.
+/// A queued microtask's steps and their data, until the microtask runs (or
+/// `endAgent` frees discarded records after the final microtask checkpoint).
 const QueuedMicrotask = struct {
     allocator: std.mem.Allocator,
     steps: engine.RealmSteps,
     data: ?*anyopaque,
+    prev_link: ?*?*QueuedMicrotask = null,
+    next: ?*QueuedMicrotask = null,
+
+    fn unlink(self: *QueuedMicrotask) void {
+        const prev = self.prev_link orelse return;
+        prev.* = self.next;
+        if (self.next) |n| n.prev_link = prev;
+        self.prev_link = null;
+        self.next = null;
+    }
 };
 
 /// V8 runs a callback microtask as `void (*)(void*)`.
 fn runQueuedMicrotask(raw: ?*anyopaque) callconv(.c) void {
     const queued: *QueuedMicrotask = @ptrCast(@alignCast(raw orelse return));
+    queued.unlink();
     const alloc = queued.allocator;
     const steps = queued.steps;
     const data = queued.data;
@@ -1056,18 +1088,29 @@ fn runQueuedMicrotask(raw: ?*anyopaque) callconv(.c) void {
     steps(data);
 }
 
-/// HTML "queue a microtask" on the agent: V8's microtask queue is the
-/// isolate's. V8 drops a queued callback microtask when its isolate is
-/// disposed, so a record still queued then is never freed - the declaration
-/// says the steps may not run.
-pub fn queueMicrotask(agent: *Agent, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
-    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
-    const alloc = allocatorOf(isolate);
+/// Shared callback microtask enqueue on an entered `isolate`: tracks the record
+/// on its `AgentRecord` so a discarded microtask (aborted checkpoint or isolate
+/// disposal) is freed at `endAgent` instead of leaking.
+pub fn enqueueMicrotask(isolate: *ffi.Isolate, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
+    const record = recordOf(isolate);
+    const alloc = if (record) |r| r.allocator else allocatorOf(isolate);
     const queued = alloc.create(QueuedMicrotask) catch return error.OutOfMemory;
     queued.* = .{ .allocator = alloc, .steps = steps, .data = data };
+    if (record) |r| {
+        queued.prev_link = &r.pending_microtasks;
+        queued.next = r.pending_microtasks;
+        if (r.pending_microtasks) |first| first.prev_link = &queued.next;
+        r.pending_microtasks = queued;
+    }
+    ffi.v8_Isolate_EnqueueMicrotask(isolate, @ptrCast(&runQueuedMicrotask), queued);
+}
+
+/// HTML "queue a microtask" on the agent: V8's microtask queue is the
+/// isolate's.
+pub fn queueMicrotask(agent: *Agent, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
-    ffi.v8_Isolate_EnqueueMicrotask(entered.isolate, @ptrCast(&runQueuedMicrotask), queued);
+    return enqueueMicrotask(entered.isolate, steps, data);
 }
 
 /// notifyMemoryPressure: Isolate::MemoryPressureNotification at both levels,
