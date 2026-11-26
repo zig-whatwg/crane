@@ -156,7 +156,7 @@ fn expectCase(global: Global, name: []const u8, want: []const u8, path: []const 
     const browser = try startBrowser(std.testing.allocator, server);
     defer browser.deinit();
     const answer = try runCase(browser, global, name);
-    defer std.testing.allocator.free(answer);
+    defer browser.allocator.free(answer);
     try std.testing.expectEqualStrings(want, answer);
     try std.testing.expectEqual(requests, server.count(path));
 }
@@ -249,7 +249,7 @@ const TwoBrowsers = struct {
             defer browser.deinit();
             for (0..3) |_| {
                 const answer = try runCase(browser, .module_worker, "graph");
-                defer allocator.free(answer);
+                defer browser.allocator.free(answer);
                 try std.testing.expectEqualStrings("acbc", answer);
             }
         }

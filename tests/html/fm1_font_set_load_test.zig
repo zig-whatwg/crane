@@ -301,7 +301,9 @@ test "font set load propagates face failure and discards pending reactions at te
 
 fn allocationFailures() !void {
     var failing = std.testing.FailingAllocator.init(a, .{ .resize_fail_index = 0 });
-    const browser = try Browser.init(failing.allocator(), .{ .snapshot_path = "" });
+    // The failures are injected through the allocator given to Browser.init:
+    // the Browser's general memory is that allocator's (.host), not its heap's.
+    const browser = try Browser.init(failing.allocator(), .{ .snapshot_path = "", .general_memory = .host });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -376,7 +378,9 @@ test "font set load success failure and discarded partial reactions survive ever
 fn callbackAllocationFailure() !void {
     var failing = std.testing.FailingAllocator.init(a, .{ .resize_fail_index = 0 });
     defer failing.fail_index = std.math.maxInt(usize);
-    const browser = try Browser.init(failing.allocator(), .{ .snapshot_path = "" });
+    // The failures are injected through the allocator given to Browser.init:
+    // the Browser's general memory is that allocator's (.host), not its heap's.
+    const browser = try Browser.init(failing.allocator(), .{ .snapshot_path = "", .general_memory = .host });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
@@ -483,7 +487,7 @@ fn unwrappedOwner() !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const set = try interfaces.FontFaceSet.init(a, realm);
+    const set = try interfaces.FontFaceSet.init(realm.allocator, realm);
     const set_generation = runtime.SlabAllocator.generationOf(set);
     defer set.releaseIfUnwrapped(set_generation);
     const item = try face(realm, "FM1UnwrappedOwner", false);

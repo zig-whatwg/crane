@@ -214,16 +214,25 @@ test "a Browser that ends with a deferred fetch pending, its timer armed and its
                 .activate_after_ms = 60_000,
                 .signal = signal,
             });
-            // The result's hold outlives the Browser, as a FetchLaterResult
-            // a host kept would: the record lets its own go.
-            defer activated.release();
+            var held = true;
+            defer if (held) activated.release();
             try std.testing.expectEqual(@as(usize, 1), (try page.group()).deferred.count());
-            // The Browser ends: its page's cleanup steps send the record
-            // (kept, then ended with the agent), its timer is cleared and its
-            // pin released; the testing allocator finds nothing left.
+            try std.testing.expect(!activated.value);
+            // The record and its result's hold are the Browser's - its fetch
+            // group's and its FetchLaterResult's - and live in its heap
+            // (allocator-hardening batch B), so this test's hold, standing
+            // in for the result's, goes before the Browser does. The Browser
+            // ends: its page's cleanup steps send the record (kept, then
+            // ended with the agent), its timer is cleared and its pin
+            // released; anything left alive in the heap at its end is a leak
+            // the heap's report fails the test on, as the testing allocator
+            // did. That the cleanup steps activate a pending record is
+            // pinned while its page stands, by "a deferred fetch is held by
+            // its fetch group until the page goes".
+            activated.release();
+            held = false;
             closed = true;
             page.close();
-            try std.testing.expect(activated.value);
         }
     }.body);
 }

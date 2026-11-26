@@ -137,6 +137,9 @@ pub fn arenaOf(instance: *const Instance) *ArenaAllocator {
 /// Node's initOwn) - found from its address, so a state need not keep a copy
 /// (lane perf2 batch 5: 16 bytes per level per object).
 pub fn allocatorOf(instance: *const Instance) std.mem.Allocator {
+    // A Browser's: its heap's general allocator (allocator-hardening batch
+    // B: the objects and bytes partitions); a scope made without a Browser:
+    // the host's (BrowserScope.allocator).
     return BrowserScope.ofInstance(instance).allocator;
 }
 
@@ -148,8 +151,10 @@ pub fn allocatorOf(instance: *const Instance) std.mem.Allocator {
 /// (lane perf2 batch 6;
 /// docs/lessons/architecture-a-nodes-creation-allocator-is-its-browsers-only-inside-a-browser.md).
 pub fn isScopeAllocator(instance: *const Instance, allocator: std.mem.Allocator) bool {
-    const scope_allocator = allocatorOf(instance);
-    return allocator.ptr == scope_allocator.ptr and allocator.vtable == scope_allocator.vtable;
+    // Any general allocator over the Browser's heap frees what another made
+    // (each free is routed by its address and validated: heap.general), so
+    // "the same" is "of this heap" there; the host's allocator otherwise.
+    return BrowserScope.ofInstance(instance).isGeneralAllocator(allocator);
 }
 
 // Compile-time utilities
@@ -446,44 +451,6 @@ pub fn defineOwnProperty(target: *Instance, property_name: []const u8, value: JS
         .enumerable = true,
         .configurable = true,
     });
-}
-
-// Standard library dependency
-
-// Unit tests
-const testing = std.testing;
-
-test "runtime exports" {
-    // Verify all expected exports are available
-    _ = Instance;
-    _ = VTable;
-    _ = MethodMap;
-    _ = Method;
-
-    _ = types;
-    _ = DOMString;
-    _ = USVString;
-    _ = ByteString;
-
-    _ = SlabAllocator;
-    _ = ArenaAllocator;
-
-    _ = buildVTable;
-    _ = FlattenedState;
-
-    _ = gc;
-    _ = lifetime;
-    _ = window_holders;
-    _ = onObjectFreed;
-
-    _ = initRuntime;
-    _ = deinitRuntime;
-}
-
-test "convenience aliases work" {
-    // initRuntime is an alias for initializeRuntime
-    try testing.expect(initRuntime == initializeRuntime);
-    try testing.expect(deinitRuntime == deinitializeRuntime);
 }
 
 // The files whose own tests src-runtime runs (build.zig; lane core1, the

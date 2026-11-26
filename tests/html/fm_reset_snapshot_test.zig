@@ -30,7 +30,7 @@ fn exercise() !void {
     try interfaces.HTMLFormElement.call_reset(form);
     try testing.expectEqual(null, try interfaces.Node.get_parentNode(input));
     var value = try interfaces.HTMLInputElement.get_value(input);
-    defer value.deinit(testing.allocator);
+    defer value.deinit(runtime.allocatorOf(input));
     try testing.expectEqualStrings("default", value.asSlice());
 }
 

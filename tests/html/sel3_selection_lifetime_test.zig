@@ -31,7 +31,7 @@ fn exercise(comptime which: Case) !void {
         try std.testing.expect(!try interfaces.HTMLOptionElement.get_selected(option));
         try interfaces.Element.call_removeAttribute(disabled, runtime.DOMString.initInterned("disabled"));
         var text = (try interfaces.Node.get_textContent(content)) orelse return error.MissingText;
-        defer text.deinit(std.testing.allocator);
+        defer text.deinit(runtime.allocatorOf(content));
         try std.testing.expectEqualStrings("one", text.asSlice());
         try expectInvariant(select);
         return;

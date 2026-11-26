@@ -128,6 +128,11 @@ pub const WptBrowser = struct {
             .poison_freed_state = poison_freed_state,
         });
         errdefer browser_instance.deinit();
+        // The production configuration only: the Browser's general memory is
+        // its heap's (BrowserConfig.general_memory = .crane, allocator-
+        // hardening batch B) wherever its rung has general pools - never the
+        // embedder option `.host`.
+        if (browser_instance.scope.heap) |heap| if (heap.general_pools and !browser_instance.scope.general) return error.GeneralMemoryNotProduction;
 
         const driver = try test_driver.TestDriver.create(allocator);
         errdefer driver.destroy();

@@ -790,6 +790,14 @@ pub inline fn detachThread(thread: Thread) void {
     return impl.detachThread(thread);
 }
 
+/// A cheap, non-zero token that uniquely identifies the calling thread among
+/// all live threads in the process, stable for the thread's lifetime. Used on
+/// hot allocator paths (`runtime.heap`) where `std.Thread.getCurrentId()` is
+/// an external dylib call on macOS (`pthread_threadid_np`). Any thread.
+pub inline fn currentThreadToken() usize {
+    return impl.currentThreadToken();
+}
+
 /// Give the calling thread an alternate signal stack: where the process's
 /// fault handler runs when the thread's own stack is what ran out, so a
 /// stack overflow is reported instead of ending the process silently (POSIX

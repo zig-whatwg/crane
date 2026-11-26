@@ -92,8 +92,9 @@ test "conformance: the bound platform matches every operation" {
     // devtoolsReadTimeout); 251 since lane cdpd1 added the files a host
     // names by path (6.10.3: userFile, userDirectory); 254 since lane mcp1
     // added the MCP server's file operations (6.5: writeFilePrivate,
-    // realPath, tempDirectory).
-    try testing.expectEqual(@as(usize, 254), count);
+    // realPath, tempDirectory); 255 since lane hard1-b added
+    // currentThreadToken (6.4: inline thread identity token for heap hot paths).
+    try testing.expectEqual(@as(usize, 255), count);
 }
 
 test "address space (6.11): this platform reserves, commits, decommits and releases" {
@@ -707,4 +708,32 @@ test "releaseFreeMemory on glibc returns the free blocks between live ones, whic
     try testing.expect(returned >= freed / 2);
     // Nothing more to return: a second call returns (next to) nothing.
     try testing.expect(platform.releaseFreeMemory(.idle) < freed / 8);
+}
+
+test "currentThreadToken (6.4): non-zero, stable on the same thread, and distinct on a spawned thread" {
+    const main_tok = platform.currentThreadToken();
+    try testing.expect(main_tok != 0);
+    // Stable across repeated calls and sleeps (potential core migrations).
+    for (0..8) |_| {
+        try testing.expectEqual(main_tok, platform.currentThreadToken());
+        platform.sleepThread(50 * std.time.ns_per_us);
+    }
+    const Child = struct {
+        token: std.atomic.Value(usize) = .init(0),
+        token2: std.atomic.Value(usize) = .init(0),
+        fn entry(context: ?*anyopaque) callconv(.c) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.token.store(platform.currentThreadToken(), .release);
+            platform.sleepThread(100 * std.time.ns_per_us);
+            self.token2.store(platform.currentThreadToken(), .release);
+        }
+    };
+    var child: Child = .{};
+    const thread = try platform.spawnThread(.{ .name = .from("tok-test") }, Child.entry, &child);
+    platform.joinThread(thread);
+    const child_tok = child.token.load(.acquire);
+    const child_tok2 = child.token2.load(.acquire);
+    try testing.expect(child_tok != 0);
+    try testing.expectEqual(child_tok, child_tok2);
+    try testing.expect(child_tok != main_tok);
 }

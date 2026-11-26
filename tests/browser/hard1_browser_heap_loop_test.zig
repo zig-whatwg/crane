@@ -83,6 +83,53 @@ test "an idle Browser gives its heap's empty spans back" {
     try testing.expect(after.committed_span_bytes <= start + 64 * 1024);
 }
 
+test "new work resets heap_decommit_due_ms so a prior State span does not block the next general idle decommit" {
+    const browser = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
+    defer browser.deinit();
+    const heap = browser.scope.heap orelse return error.NoHeap;
+    if (!heap.general_pools) return error.SkipZigTest;
+    const engine = try engineOf(browser);
+    const loop = browser.event_loop orelse return error.NoEventLoop;
+    _ = try browser.runEventLoopBlocking(20);
+
+    // Phase 1: stamp the engine's clock, empty a full State span (200 x 112 B
+    // > 16 KiB span), and idle past idle_delay_ns (200 ms) so `decommitWhenIdle`
+    // records `heap_decommit_due_ms` ~1000 ms ahead.
+    engine.setNow(@truncate(@as(u64, @intCast(@divTrunc(realNs(), std.time.ns_per_ms)))));
+    var state_blks: [200][*]u8 = undefined;
+    for (&state_blks) |*b| b.* = try browser.scope.arena.createRaw(112, 8);
+    for (state_blks) |b| browser.scope.arena.destroyRaw(b, 112, 8);
+    const phase1 = realNs();
+    while (realNs() - phase1 < 260 * std.time.ns_per_ms) _ = loop.runOnceBlocking(40);
+    try testing.expect(loop.heap_decommit_due_ms != null);
+
+    // Phase 2: run a task (`did_work = true`) that frees a 512 KiB general
+    // bytes large run (held in the MRU empty ring).
+    const Work = struct {
+        engine: @TypeOf(engine),
+        fn run(context: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            const big = self.engine.allocGeneral(.bytes, 512 * 1024, 1, @returnAddress()) catch return;
+            self.engine.freeGeneral(big, 512 * 1024, 1);
+        }
+    };
+    var work: Work = .{ .engine = engine };
+    const before_decomm = engine.stats().bytes.spans_decommitted;
+    loop.eventLoop().queueTask(.{ .callback = Work.run, .context = &work });
+    _ = loop.runOnceBlocking(50);
+    try testing.expect(engine.stats().bytes.spans_empty >= 1);
+
+    // Phase 3: idle 350 ms (> 200 ms general_decommit_age_ms, still well before
+    // Phase 1's ~1000 ms State-span due time). Without clearing
+    // `heap_decommit_due_ms` on `did_work`, `decommitWhenIdle` skips this turn
+    // and leaves the 512 KiB general large run committed.
+    const phase3 = realNs();
+    while (realNs() - phase3 < 350 * std.time.ns_per_ms) _ = loop.runOnceBlocking(40);
+    const after = engine.stats().bytes;
+    try testing.expectEqual(@as(usize, 0), after.spans_empty);
+    try testing.expect(after.spans_decommitted > before_decomm);
+}
+
 test "a Browser's heap runs the build's configuration, and the bug-finding one where the Browser asked for poisoned frees" {
     const plain = try Browser.init(testing.allocator, .{ .snapshot_path = "" });
     defer plain.deinit();

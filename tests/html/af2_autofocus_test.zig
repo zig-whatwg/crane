@@ -177,7 +177,7 @@ fn detachedCandidateSurvivesGc() !void {
     const state = dom.document_autofocus.ofDocument(documentOf(page)).?;
     const held = state.first.?.element.get() orelse return error.CandidateLost;
     var id = try interfaces.Element.get_id(held);
-    defer id.deinit(std.testing.allocator);
+    defer id.deinit(runtime.allocatorOf(held));
     try std.testing.expectEqualStrings("kept", id.asSlice());
     _ = try interfaces.Node.call_appendChild((try interfaces.Document.get_body(documentOf(page))).?, held);
     html.autofocus.flush(documentOf(page));
@@ -297,7 +297,7 @@ fn dialogCompletesAfterRemoval() !void {
 }
 
 fn makeNativeWindow(realm: runtime.Context, _: runtime.JSValue, _: ?*anyopaque) ?*runtime.Instance {
-    return interfaces.Window.init(std.testing.allocator, realm) catch null;
+    return interfaces.Window.init(realm.allocator, realm) catch null;
 }
 
 fn dialogBeforeToggleRetiresRealm() !void {
@@ -309,7 +309,9 @@ fn dialogBeforeToggleRetiresRealm() !void {
     const realm = try engine.createWindowRealm(&.{
         .agent_cluster_cross_origin_isolated = true,
         .agent = page.browser.agent.?,
-        .allocator = std.testing.allocator,
+        // The Browser's allocator: its realm's objects are its heap's
+        // (allocator-hardening batch B).
+        .allocator = page.browser.scope.allocator,
         .from_snapshot = false,
         .timer = null,
         .parent = page.browser.getRealm().?,
@@ -317,13 +319,13 @@ fn dialogBeforeToggleRetiresRealm() !void {
         .create_global_object = makeNativeWindow,
     });
     defer if (realm.hasEngine()) engine.destroyWindowRealm(realm, .global_detached);
-    const document = try interfaces.Document.init(std.testing.allocator, realm);
+    const document = try interfaces.Document.init(realm.allocator, realm);
     // The document's first wrapper takes its creator's reference over, so
     // the document goes with its wrappers (until the wrapper redesign's P7
     // the dialog's wrap made it, for node tracing's document edge; since P7
     // a wrap makes no wrapper but its node's).
     (try engine.retainValue(realm, .{ .instance = document })).release();
-    const dialog = try interfaces.HTMLDialogElement.init(std.testing.allocator, realm);
+    const dialog = try interfaces.HTMLDialogElement.init(realm.allocator, realm);
     try dom.node_document.set(dialog, document);
     // Engine-backed show() keeps the existing beforetoggle cleanup path.
     try interfaces.HTMLDialogElement.call_show(dialog);
@@ -340,7 +342,7 @@ fn dialogBeforeToggleRetiresRealm() !void {
     event.releaseIfUnwrapped(generation);
     try std.testing.expectEqual(generation, runtime.SlabAllocator.generationOf(event));
     var old_state = try interfaces.ToggleEvent.get_oldState(event);
-    defer old_state.deinit(std.testing.allocator);
+    defer old_state.deinit(runtime.allocatorOf(event));
     try std.testing.expectEqualStrings("closed", old_state.asSlice());
 
     // Like ce_scope_agent_test, end this native fixture's realm explicitly.

@@ -72,7 +72,7 @@ fn exercise(kind: Kind) !void {
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const button = try interfaces.HTMLButtonElement.init(testing.allocator, realm);
+    const button = try interfaces.HTMLButtonElement.init(realm.allocator, realm);
     const generation = runtime.SlabAllocator.generationOf(button);
     // The button has a wrapper before the event exists, so what the event
     // adds is only its own hold.
@@ -125,7 +125,7 @@ test "engine-free: a FocusEvent and a ToggleEvent report their target and free o
     var ctx_data = try runtime.ContextData.init(testing.allocator, .{});
     defer ctx_data.deinit();
     const ctx: runtime.Context = &ctx_data;
-    const div = try interfaces.HTMLDivElement.init(testing.allocator, ctx);
+    const div = try interfaces.HTMLDivElement.init(ctx.allocator, ctx);
     defer runtime.Instance.deinit(div);
     inline for (.{ Kind.focus, Kind.toggle }) |kind| {
         const event = try makeEvent(kind, ctx, div);

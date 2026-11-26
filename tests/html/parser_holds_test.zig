@@ -71,7 +71,7 @@ fn activeParser(document: *runtime.Instance) !*scripted_parser.DocumentParser {
 
 fn textOf(node: *runtime.Instance) ![]u8 {
     var text = try interfaces.Node.get_textContent(node);
-    defer if (text) |*value| value.deinit(testing.allocator);
+    defer if (text) |*value| value.deinit(runtime.allocatorOf(node));
     return testing.allocator.dupe(u8, (text orelse return error.NoText).asSlice());
 }
 

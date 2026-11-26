@@ -15,7 +15,7 @@ fn attr(node: *runtime.Instance, name: []const u8) !void {
 
 fn expectText(node: *runtime.Instance, expected: []const u8) !void {
     var text = (try interfaces.Node.get_textContent(node)) orelse return error.MissingText;
-    defer text.deinit(std.testing.allocator);
+    defer text.deinit(runtime.allocatorOf(node));
     try std.testing.expectEqualStrings(expected, text.asSlice());
 }
 
