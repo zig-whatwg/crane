@@ -318,21 +318,35 @@ pub const Holder = extern struct {
     }
 };
 
-/// The allocator the element's rare data comes from, and the DOM memory it
-/// is counted in (null: not counted - a Browser-less fixture).
+/// The allocator the element's rare data comes from, its satellite allocator
+/// (cage `.satellite` partition, defaulting to `allocator` for standalone
+/// unit tests), and the DOM memory it is counted in (null: not counted - a
+/// Browser-less fixture).
 pub const Context = struct {
     allocator: std.mem.Allocator,
+    satellite: ?std.mem.Allocator = null,
     memory: ?*runtime.gc.ExternalMemory = null,
+
+    inline fn sat(self: Context) std.mem.Allocator {
+        return self.satellite orelse self.allocator;
+    }
 };
 
-/// `element`'s Browser's allocator and DOM memory.
+/// `element`'s Browser's allocator, satellite allocator, and DOM memory.
 pub fn contextOf(element: *runtime.Instance) Context {
-    return .{ .allocator = runtime.allocatorOf(element), .memory = &runtime.BrowserScope.ofInstance(element).dom_memory };
+    return .{
+        .allocator = runtime.allocatorOf(element),
+        .satellite = runtime.satelliteAllocatorOf(element),
+        .memory = &runtime.BrowserScope.ofInstance(element).dom_memory,
+    };
 }
 
-/// An owned byte string in one allocation: its length, then its bytes.
+/// An owned byte string in one allocation: its u32 length, then its bytes.
+/// 4-byte aligned (below pointer alignment), so page-chosen bytes (`is`,
+/// `nonce`) route to the `.bytes` partition (allocator-hardening design 1.2
+/// row 8).
 pub const Bytes = extern struct {
-    len: usize,
+    len: u32,
 
     /// The explicitly empty value, shared and never freed: setting one
     /// allocates nothing, as copying an empty slice never did (HTML 2.5.6's
@@ -342,9 +356,10 @@ pub const Bytes = extern struct {
 
     pub fn create(allocator: std.mem.Allocator, value: []const u8) error{OutOfMemory}!*Bytes {
         if (value.len == 0) return @constCast(&empty);
+        const len = std.math.cast(u32, value.len) orelse return error.OutOfMemory;
         const memory = try allocator.alignedAlloc(u8, .of(Bytes), @sizeOf(Bytes) + value.len);
         const self: *Bytes = @ptrCast(memory.ptr);
-        self.len = value.len;
+        self.len = len;
         @memcpy(memory[@sizeOf(Bytes)..], value);
         return self;
     }
@@ -438,7 +453,7 @@ fn write(ctx: Context, holder: *Holder, comptime fields: []const Field, values: 
     };
     // A new block: every old slot to its new index, then the new values.
     const bytes = blockBytesFor(@popCount(present));
-    const memory = try ctx.allocator.alignedAlloc(u8, .of(Block), bytes);
+    const memory = try ctx.sat().alignedAlloc(u8, .of(Block), bytes);
     const b: *Block = @ptrCast(memory.ptr);
     b.* = .{ .present = present, .flags = if (old) |o| o.flags else .{} };
     const slots = b.slots();
@@ -461,7 +476,7 @@ fn write(ctx: Context, holder: *Holder, comptime fields: []const Field, values: 
 fn freeBlock(ctx: Context, b: *Block) void {
     const bytes = blockBytesFor(b.count());
     const memory: [*]align(@alignOf(Block)) u8 = @ptrCast(b);
-    ctx.allocator.free(memory[0..bytes]);
+    ctx.sat().free(memory[0..bytes]);
     if (ctx.memory) |m| m.sub(bytes);
 }
 
@@ -539,8 +554,8 @@ pub fn ensureOwn(ctx: Context, holder: *Holder, comptime field: Field) error{Out
     comptime std.debug.assert(isOwnBlock(field));
     if (get(holder.*, field)) |existing| return existing;
     const T = @typeInfo(Value(field)).pointer.child;
-    const own = try ctx.allocator.create(T);
-    errdefer ctx.allocator.destroy(own);
+    const own = try ctx.sat().create(T);
+    errdefer ctx.sat().destroy(own);
     own.* = .{};
     try write(ctx, holder, &.{field}, .{@intFromPtr(own)});
     if (ctx.memory) |m| m.add(@sizeOf(T));
@@ -549,7 +564,7 @@ pub fn ensureOwn(ctx: Context, holder: *Holder, comptime field: Field) error{Out
 
 fn destroyOwn(ctx: Context, comptime field: Field, own: Value(field)) void {
     const T = @typeInfo(Value(field)).pointer.child;
-    ctx.allocator.destroy(own);
+    ctx.sat().destroy(own);
     if (ctx.memory) |m| m.sub(@sizeOf(T));
 }
 
@@ -787,7 +802,7 @@ fn releaseField(ctx: Context, holder: *Holder, comptime field: Field) void {
             // tests (Debug), and elsewhere the block at least goes back.
             if (builtin.mode == .debug) @panic("a node's rare block is freed with its event listener list still in it (dom.event_handlers.releaseNodeListeners must run first)");
             var list: event_listener_list.List = .{ .header = value };
-            list.deinit(ctx.allocator);
+            list.deinit(ctx.sat());
         },
         else => {},
     }

@@ -109,22 +109,30 @@ pub const SlottableState = struct {
 /// DOM 4.2.2.1 and HTML 4.12.4: a slot's name, its assigned nodes and its
 /// manually assigned nodes (an ordered set, set by `assign()`).
 pub const SlotState = struct {
-    /// What the name and both lists are allocated from.
+    /// What the name (page bytes -> `.bytes`) is allocated from.
     allocator: std.mem.Allocator,
+    /// What the assigned/manually-assigned node lists are allocated from
+    /// (cage `.satellite` partition in a Browser; `allocator` in standalone
+    /// unit tests).
+    satellite: std.mem.Allocator,
     /// Owned when non-empty.
     name: []const u8 = "",
     assigned_nodes: std.ArrayListUnmanaged(NodeRef) = .empty,
     manually_assigned_nodes: std.ArrayListUnmanaged(NodeRef) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) SlotState {
-        return .{ .allocator = allocator };
+        return .{ .allocator = allocator, .satellite = allocator };
+    }
+
+    pub fn initWithSatellite(allocator: std.mem.Allocator, satellite: std.mem.Allocator) SlotState {
+        return .{ .allocator = allocator, .satellite = satellite };
     }
 
     pub fn deinit(self: *SlotState) void {
         if (self.name.len > 0) self.allocator.free(self.name);
         self.name = "";
-        self.assigned_nodes.deinit(self.allocator);
-        self.manually_assigned_nodes.deinit(self.allocator);
+        self.assigned_nodes.deinit(self.satellite);
+        self.manually_assigned_nodes.deinit(self.satellite);
     }
 
     /// Set the slot's name to a copy of `value`. On failure the name is
@@ -137,7 +145,7 @@ pub const SlotState = struct {
 
     /// Replace the assigned nodes with `nodes`, reusing the list's memory.
     pub fn setAssignedNodes(self: *SlotState, nodes: []const NodeRef) !void {
-        try self.assigned_nodes.ensureTotalCapacity(self.allocator, nodes.len);
+        try self.assigned_nodes.ensureTotalCapacity(self.satellite, nodes.len);
         self.assigned_nodes.clearRetainingCapacity();
         self.assigned_nodes.appendSliceAssumeCapacity(nodes);
     }
