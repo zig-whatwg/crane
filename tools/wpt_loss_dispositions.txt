@@ -2373,3 +2373,58 @@ kind = user-ruling
 why = 5996 -> 5978 (-18), all in the ?exclude=(Document|Window|HTML.+) variant: the 18 "SVGSVGElement interface: attribute on*" subtests (onafterprint, onbeforeprint, onbeforeunload, onhashchange, onlanguagechange, onmessage, onmessageerror, onoffline, ononline, onpagehide, onpagereveal, onpageshow, onpageswap, onpopstate, onrejectionhandled, onstorage, onunhandledrejection, onunload), each now failing "The prototype object must have a property". Lane fw2's 3ab57686a (codegen include_removals.zig, merged in 3900cb178) drops SVG 2's "SVGSVGElement includes WindowEventHandlers": Chrome 157, Firefox 159 and Safari 27 expose none of these attributes on <svg> (fw2 probe k-svg), w3c/svgwg#741 is unresolved with no implementer bugs - golden rule 2's last case. Row-exact in generation 237's sweep (main f8e6c08c23) vs generation 236 (main a3a465d256): no other subtest of the file moved; it matches fw2's targeted A/B (318 files, -18, only these rows).
 date = 2026-11-22
 decision = The user, 2026-11-22 ~2:19 PM ET, answered "Accept (Recommended)" (AskUserQuestion via main, recorded in held-files.md 2:19 PM ET): fw2's SVGSVGElement WindowEventHandlers removal merges although html/dom/idlharness.https.html loses these 18 subtests; record them as user-ruling at the first generation with the merge.
+
+[navigation-timing/test-timing-attributes-dependent-on-document-load.html]
+generation = 237
+kind = timing-bound
+why = Same 125 us sub-tick gap as navigation-timing/nav2-test-redirect-server.html: the test navigates an iframe via location.href to /common/redirect.py?location=/navigation-timing/resources/blank-page-green.html and asserts redirectStart > 0. startTime (0) is navigation_start taken at navigate() entry and redirectStart is the first hop's fetch start relative to navigation_start, both coarsened to the 125 us tick with nothing waiting between them, so redirectStart is 0 unless the navigate() -> fetch_start gap crosses a tick boundary. Lane crane-red1, a diagnostic production runner of 9e13a4650 (FLK3GAP in createNavigationTimingEntry, never committed) on server1 in a closed, quiet window (load 1.44, 2026-11-26 8:41 AM ET), the file alone, 60 runs, a fresh process per run: redirected iframe reload gap min 113 / p50 116 / max 255 us, 58/60 pass (2 failures: run 24 gap 113.6 us, run 44 gap 120.7 us, both "Expected navigation timing entries: redirectStart greater than 0 expected a number greater than 0 but got 0"), where the tick model (min(gap, 125)/125 summed) predicts 56.2 passes - and in 60/60 runs the result is exactly whether fetch_start crossed a 125 us tick after navigation_start.
+tick_us = 125
+gap_us = min 113 / p50 116 / max 255
+pass_rate = 58/60
+condition = the file alone in a fresh runner process: an iframe location.href redirect whose first-hop fetch starts 113-255 us (p50 116) after navigation_start, reading redirectStart == 0 whenever that gap stays within one 125 us tick
+measured_at = 9e13a4650
+paths = src/webidl/impls/Location.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
+
+[navigation-timing/nav2-test-redirect-server.html]
+generation = 237
+kind = timing-bound
+why = Re-measured after the generation 236 entry went STALE (since 64e969a54, including sab1 0b6a7132a in HTMLIFrameElement.zig): unchanged cause - startTime is the time origin (navigation_start) and redirectStart is the first hop's fetch start, both coarsened to the 125 us tick with nothing waiting between them, so redirectStart > startTime iff the gap crosses a tick. Lane crane-red1, a diagnostic production runner of 7b948b945 (FLK3GAP in createNavigationTimingEntry, never committed) on server1 in a closed, quiet window (load 1.58, 2026-11-26 10:05 AM ET), the file alone, 60 runs, a fresh process per run: iframe navigation gap min 48 / p50 49 / max 56 us, 25/60 pass (tick model predicts 23.8), and per-run tick crossing agrees with the result in 60/60 runs.
+tick_us = 125
+gap_us = min 48 / p50 49 / max 56
+pass_rate = 25/60
+condition = the file alone in a fresh runner process: an iframe's same-origin server redirect whose first fetch starts 48-56 us (p50 49) after navigation_start, within its 125 us tick unless that gap crosses a tick boundary
+measured_at = 7b948b945
+paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
+
+[navigation-timing/secure-connection-start-non-zero.https.html]
+generation = 237
+kind = timing-bound
+why = Re-measured after the generation 236 entry went STALE (since 64e969a54, including sab1 0b6a7132a in HTMLIFrameElement.zig): unchanged cause - on a connection reused from an earlier https file in the runner process every connection time is fetchStart, so secureConnectionStart > 0 only when the navigation's fetch starts in a later 125 us tick than navigation_start. Lane crane-red1, a diagnostic production runner of 7b948b945 (FLK3GAP in createNavigationTimingEntry, never committed) on server1 in a closed, quiet window (load 1.58, 2026-11-26 10:05 AM ET): content-encoding.https.html then this file in one fresh process, 30 runs - 11/30 pass, 19/30 fail, gap min 24 / p50 33 / max 91 us, and every single failure (19/19) is a reusing run whose fetch stayed within its navigation's 125 us tick.
+tick_us = 125
+gap_us = min 24 / p50 33 / max 91
+pass_rate = 11/30
+condition = navigation-timing/content-encoding.https.html first in the same runner process, so the navigation may reuse its connection to web-platform.test:8443 (only reusing runs that stay within one 125 us tick fail)
+measured_at = 7b948b945
+paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/dom/performance_timeline.zig
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 237
+kind = timing-bound
+why = Re-measured after the generation 236 entry went STALE (since 64e969a54): unchanged cause - "fetchStart should be marked before the Fetch event handler is called" compares the fetch event dispatch time (Service Workers step 17.4.12) with the handler's first performance.now() (step 17.4.13) on the 125 us grid. Lane crane-red1, a diagnostic production runner of 9e13a4650 (flaky7's F7NOW/F7FES/F7STATE marks, never committed; analysis tmp/flaky7/tools/nt_gaps.py) on server1 in a closed, quiet window (load 1.44, 2026-11-26 8:41 AM ET), the file alone in a fresh runner process per run: unloaded, fetchStart -> handler min 9 / p50 115 / max 432 us, 44/60 pass (per-run tick prediction agrees 57/60); under --load=28 (a 32-runner sweep's load) min 47 / p50 56 / max 77 us, 26/40 pass (agrees 40/40). No browser passes the file; its gate exemption is the follows-majority entry in tools/wpt_gate_exemptions.txt.
+tick_us = 125
+gap_us = min 47 / p50 56 / max 77
+pass_rate = 26/40
+condition = a sweep's load: the file alone in a fresh runner process with 28 busy threads beside it on server1's 32 (wpt_runner --repeat=40 --load=28); unloaded it passes 44/60 (gap min 9 / p50 115 / max 432 us)
+measured_at = 9e13a4650
+paths = src/service_worker/fetch_event.zig, src/service_worker/registry.zig, src/hr_time/time_origin.zig, src/hr_time/coarsen.zig, src/dom/performance_timeline.zig
+
+[navigation-timing/nav2-test-timing-persistent.html]
+generation = 237
+kind = timing-bound
+why = Same 125 us sub-tick gap as navigation-timing/test-timing-attributes-dependent-on-document-load.html and nav2-test-redirect-server.html: Part 1 navigates an iframe via location.href to /common/redirect.py?location=.../blank_page_yellow.html and asserts redirectStart > 0. startTime (0) is navigation_start taken at navigate() entry and redirectStart is the first hop's fetch start relative to navigation_start, both coarsened to the 125 us tick with nothing waiting between them, so redirectStart reads 0 whenever the navigate() -> fetch_start gap stays within one 125 us tick. Lane crane-red1, a diagnostic production runner of 7b948b945 (FLK3GAP in createNavigationTimingEntry, never committed) on server1 in a closed, quiet window (load 0.02, 2026-11-26 10:39 AM ET), 60 fresh processes: redirected iframe navigation gap min 118 / p50 123 / max 458 us (tick model predicts 58.8/60, 60/60 per-run tick agreement); clean production x10 on server1 PASS 9 / FAIL 1 (same "timing values should be positive numbers: redirectStart expected a number greater than 0 but got 0"; also FAIL on ab-base production and bug-tip in crane-red1's 382-file wpt_ab). Approved by the integrator 2026-11-26 10:41 AM ET.
+tick_us = 125
+gap_us = min 118 / p50 123 / max 458
+pass_rate = 9/10
+condition = an iframe location.href redirect whose first-hop fetch starts 118-458 us (p50 123) after navigation_start, reading redirectStart == 0 whenever that gap stays within one 125 us tick (clean production x10 PASS 9 / FAIL 1; also fails in both production and bug-finding under 16-runner load)
+measured_at = 7b948b945
+paths = src/webidl/impls/Location.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
