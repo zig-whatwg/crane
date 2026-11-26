@@ -96,5 +96,5 @@ pub fn mapClear(instance: *runtime.Instance) !void {
 pub fn mapEntry(instance: *runtime.Instance, index: usize) !?struct { key: []const u8, value: []const u32 } {
     const map = mapOf(try stateOf(instance));
     if (index >= map.entries.count()) return null;
-    return .{ .key = map.entries.keys()[index], .value = map.entries.values()[index] };
+    return .{ .key = map.entries.keys()[index], .value = map.entries.values()[index].indexes };
 }

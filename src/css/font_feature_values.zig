@@ -41,7 +41,19 @@ pub const Block = enum {
 };
 
 pub const Map = struct {
-    entries: std.StringArrayHashMapUnmanaged([]u32) = .empty,
+    pub const Stored = struct {
+        sequence: u64,
+        indexes: []u32,
+    };
+
+    pub const Entry = struct {
+        sequence: u64,
+        key: []const u8,
+        value: []const u32,
+    };
+
+    entries: std.StringArrayHashMapUnmanaged(Stored) = .empty,
+    next_sequence: u64 = 1,
 
     pub fn deinit(self: *Map, allocator: Allocator) void {
         self.clear(allocator);
@@ -49,48 +61,69 @@ pub const Map = struct {
     }
 
     pub fn clear(self: *Map, allocator: Allocator) void {
-        for (self.entries.keys(), self.entries.values()) |key, indexes| {
+        for (self.entries.keys(), self.entries.values()) |key, stored| {
             allocator.free(key);
-            allocator.free(indexes);
+            allocator.free(stored.indexes);
         }
         self.entries.clearRetainingCapacity();
     }
 
     pub fn get(self: *const Map, name_text: []const u8) ?[]const u32 {
-        return self.entries.get(name_text);
+        const stored = self.entries.get(name_text) orelse return null;
+        return stored.indexes;
     }
 
-    /// Maplike set preserves position when replacing a name. Allocate the
-    /// replacement before changing anything, so an OOM leaves it unchanged.
+    /// Maplike set preserves position and sequence when replacing a name.
+    /// Allocate the replacement before changing anything, so an OOM leaves it unchanged.
     /// Q33: the sole map shipper, Chrome, accepts every sequence length;
     /// parsed source declarations still use the block's grammar below.
     pub fn set(self: *Map, allocator: Allocator, name_text: []const u8, indexes: []const u32) Allocator.Error!void {
         const copy = try allocator.dupe(u32, indexes);
         errdefer allocator.free(copy);
         if (self.entries.getPtr(name_text)) |previous| {
-            allocator.free(previous.*);
-            previous.* = copy;
+            allocator.free(previous.indexes);
+            previous.indexes = copy;
             return;
         }
         const key = try allocator.dupe(u8, name_text);
         errdefer allocator.free(key);
-        try self.entries.put(allocator, key, copy);
+        try self.entries.put(allocator, key, .{ .sequence = self.next_sequence, .indexes = copy });
+        self.next_sequence += 1;
     }
 
     pub fn remove(self: *Map, allocator: Allocator, name_text: []const u8) bool {
         const previous = self.entries.fetchOrderedRemove(name_text) orelse return false;
         allocator.free(previous.key);
-        allocator.free(previous.value);
+        allocator.free(previous.value.indexes);
         return true;
     }
 
+    /// Live-iteration step (WebIDL 3.7.11.2): the first entry inserted after
+    /// `sequence` (0: before the first), or null. Entries are in sequence order.
+    pub fn after(self: *const Map, sequence: u64) ?Entry {
+        const keys = self.entries.keys();
+        const vals = self.entries.values();
+        var low: usize = 0;
+        var high: usize = vals.len;
+        while (low < high) {
+            const middle = low + (high - low) / 2;
+            if (vals[middle].sequence <= sequence) low = middle + 1 else high = middle;
+        }
+        if (low >= vals.len) return null;
+        return .{
+            .sequence = vals[low].sequence,
+            .key = keys[low],
+            .value = vals[low].indexes,
+        };
+    }
+
     fn appendCss(self: *const Map, allocator: Allocator, out: *std.ArrayList(u8)) Allocator.Error!void {
-        for (self.entries.keys(), self.entries.values()) |name_text, indexes| {
+        for (self.entries.keys(), self.entries.values()) |name_text, stored| {
             const identifier = try serialize.serializeIdentifier(allocator, name_text);
             defer allocator.free(identifier);
             try out.appendSlice(allocator, identifier);
             try out.append(allocator, ':');
-            for (indexes) |index| {
+            for (stored.indexes) |index| {
                 try out.append(allocator, ' ');
                 try values.appendNumber(@floatFromInt(index), out, allocator);
             }
