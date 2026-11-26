@@ -69,8 +69,44 @@ pub const InternalState = struct {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
-    // fetch() hands a Response object its response through this hook.
-    @import("dom").fetch_objects.installResponse(.{ .adopt = &adoptResponse, .follow = &followSignal, .response_of = &responseOf });
+    // fetch() and Body mixin reach a Response's state through this hook.
+    @import("dom").fetch_objects.installResponse(.{
+        .adopt = &adoptResponse,
+        .follow = &followSignal,
+        .response_of = &responseOf,
+        .body_stream_get = &bodyStreamGet,
+        .body_used = &bodyUsedOf,
+        .body_consume = &bodyConsume,
+        .body_text_stream = &bodyTextStream,
+    });
+}
+
+fn bodyTextStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const owner = bodyOwner(instance) orelse return error.InvalidState;
+    if (fetch_body.isUnusable(owner)) return error.TypeError;
+    return fetch_body.textStream(owner);
+}
+
+fn bodyStreamGet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    const o = bodyOwner(instance) orelse return null;
+    return fetch_body.bodyStream(o);
+}
+
+fn bodyUsedOf(instance: *runtime.Instance) anyerror!bool {
+    const o = bodyOwner(instance) orelse return false;
+    return fetch_body.bodyUsed(o);
+}
+
+fn bodyConsume(instance: *runtime.Instance, method: @import("dom").fetch_objects.BodyMethod) anyerror!runtime.JSValue {
+    const fb_method: fetch_body.Method = switch (method) {
+        .array_buffer => .array_buffer,
+        .blob => .blob,
+        .bytes => .bytes,
+        .form_data => .form_data,
+        .json => .json,
+        .text => .text,
+    };
+    return consumeThroughStream(instance, fb_method);
 }
 
 /// Initialize instance
@@ -534,29 +570,6 @@ pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
     });
 }
 
-/// Get body
-///
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-body - the body's stream,
-/// or null for a null body.
-///
-/// A response fetch() made is handed on at its headers, and its body is
-/// still arriving: the stream reads it from the body's pipe as it comes. A
-/// body that is bytes becomes a stream of those bytes. Either way the stream
-/// takes the bytes over, and from then on the body methods read the stream.
-pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const o = bodyOwner(instance) orelse return null;
-    return fetch_body.bodyStream(o);
-}
-
-/// Get bodyUsed
-///
-/// Spec: "return true if this's body is non-null and this's body's stream
-/// is disturbed; otherwise false."
-pub fn get_bodyUsed(instance: *runtime.Instance) anyerror!bool {
-    const o = bodyOwner(instance) orelse return false;
-    return fetch_body.bodyUsed(o);
-}
-
 // === Methods - STUBS (Option A) ===
 
 /// clone() - Clones the Response
@@ -591,43 +604,6 @@ pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
     try fetch_body.cloneStream(bodyOwner(instance).?, bodyOwner(cloned_instance).?);
 
     return cloned_instance;
-}
-
-/// arrayBuffer() - Returns promise fulfilled with body as ArrayBuffer
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-arraybuffer
-pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return consumeThroughStream(instance, .array_buffer);
-}
-
-/// blob() - Returns promise fulfilled with body as Blob
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-blob
-pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return consumeThroughStream(instance, .blob);
-}
-
-/// bytes() - Returns promise fulfilled with body as Uint8Array
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-bytes
-pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return consumeThroughStream(instance, .bytes);
-}
-
-/// formData() - Returns promise fulfilled with body as FormData
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-formdata
-pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return consumeThroughStream(instance, .form_data);
-}
-
-/// json() - Returns promise fulfilled with body parsed as JSON
-/// This is the instance method from the Body mixin
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-json
-pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return consumeThroughStream(instance, .json);
-}
-
-/// text() - Returns promise fulfilled with body as string
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-text
-pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return consumeThroughStream(instance, .text);
 }
 
 // ============================================================================
@@ -748,14 +724,4 @@ pub fn getResponseData(instance: *runtime.Instance) ResponseData {
         .status_text = internal.response.status_message,
         .body = if (internal.response.body) |body| body.getBytes() else null,
     };
-}
-
-/// Operation: textStream
-/// Spec: https://fetch.spec.whatwg.org/#dom-body-textstream
-/// Newer spec shipped by Chrome; Firefox/Safari lag Fetch PR 1862
-/// (wpt.fyi cc74d2669f, fetch/api/body/textstream.any.js).
-pub fn call_textStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // Step 1: If this is unusable, throw a TypeError.
-    if (isUnusable(instance)) return error.TypeError;
-    return fetch_body.textStream(bodyOwner(instance).?);
 }

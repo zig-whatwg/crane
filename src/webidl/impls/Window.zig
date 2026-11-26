@@ -381,6 +381,10 @@ fn effectiveOrigin(instance: *runtime.Instance, internal: *InternalState) []cons
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
+fn windowHasInternal(instance: *runtime.Instance) bool {
+    return getInternal(instance) != null;
+}
+
 pub fn installHooks() void {
     // HTML update the rendering step 8: CSSOM View's resize steps, the
     // window's (it keeps the size they last saw).
@@ -405,6 +409,9 @@ pub fn installHooks() void {
         .swap_current_event = &swapCurrentEvent,
         .location = &locationOf,
         .perform_scroll = &performViewportScroll,
+        .local_storage = &localStorageOf,
+        .session_storage = &sessionStorageOf,
+        .has_internal = &windowHasInternal,
     });
     // A hyperlink's or form's target that names no frame: the popups this
     // window keeps, or a new one (the rules for choosing a navigable).
@@ -2098,7 +2105,7 @@ pub fn get_portalHost(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// Getter for sessionStorage
 /// HTML Standard § 12.2.2
 /// Returns the Storage object for this browsing context's session storage area.
-pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
+fn sessionStorageOf(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return cached instance if available
@@ -2164,7 +2171,7 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
 /// Getter for localStorage
 /// HTML Standard § 12.2.3
 /// Returns the Storage object for this origin's local storage area.
-pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
+fn localStorageOf(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return cached instance if available
@@ -4573,15 +4580,6 @@ fn pseudoElementName(allocator: std.mem.Allocator, text: []const u8, buffer: []u
     return buffer[0..total];
 }
 
-/// Operation: cancelAnimationFrame
-/// Per spec §8.14.2: Cancels a previously scheduled animation frame callback.
-pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    // Bound natively, as requestAnimationFrame is (see there): nothing is
-    // registered through this entry.
-    _ = handle;
-}
-
 /// Fetch §5.6, fetchLater() method steps.
 pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.DeferredRequestInit)) anyerror!*runtime.Instance {
     const dom = @import("dom");
@@ -4660,21 +4658,6 @@ pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo,
     // 17. The result takes its cell hold only on successful construction.
     errdefer activated.release();
     return interfaces.FetchLaterResult.initWith(allocator, instance.ctx, .{ .deferred_activation = activated });
-}
-
-/// Operation: requestAnimationFrame (HTML 8.12). Every Window realm binds it,
-/// and cancelAnimationFrame, natively through the engine's window operations
-/// (engine.installWindowOperations -> src/browser/rendering.zig: the
-/// Browser's frame clock, the documents' maps of animation frame callbacks),
-/// which take the callback as the owned value this generated signature cannot
-/// carry (its FrameRequestCallback is not a JS callback). This entry is
-/// reached by no Window a Browser makes: it registers nothing. (Lane life1
-/// removed the timer-driven AnimationFrameScheduler it used to make here, the
-/// "requestAnimationFrame timer" the frame clock replaced.)
-pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbacks.FrameRequestCallback) anyerror!u32 {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    _ = callback;
-    return 0;
 }
 
 /// Operation: cancelIdleCallback

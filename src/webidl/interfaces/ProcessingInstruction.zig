@@ -269,9 +269,7 @@ pub const ProcessingInstruction = struct {
         return try ProcessingInstructionImpl.get_target(instance);
     }
 
-    pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ProcessingInstructionImpl.get_sheet(instance);
-    }
+    pub const get_sheet = mixins.LinkStyle.get_sheet;
 
     pub fn call_hasAttributes(instance: *runtime.Instance) anyerror!bool {
         return try ProcessingInstructionImpl.call_hasAttributes(instance);

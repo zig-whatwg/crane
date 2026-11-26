@@ -57,8 +57,6 @@ src/webidl/impls/CommandEvent.zig call_constructor 1
 src/webidl/impls/CommandEvent.zig get_command 1
 src/webidl/impls/CommandEvent.zig get_source 1
 src/webidl/impls/CompressionStream.zig call_constructor 1
-src/webidl/impls/CompressionStream.zig get_readable 1
-src/webidl/impls/CompressionStream.zig get_writable 1
 src/webidl/impls/CookieStoreManager.zig internalOf 1
 src/webidl/impls/Crypto.zig get_subtle 1
 src/webidl/impls/CryptoKey.zig createKey 1
@@ -66,8 +64,6 @@ src/webidl/impls/CryptoKey.zig deserializationSteps 1
 src/webidl/impls/CustomStateSet.zig internalOf 1
 src/webidl/impls/DOMException.zig serializationSteps 1
 src/webidl/impls/DecompressionStream.zig call_constructor 1
-src/webidl/impls/DecompressionStream.zig get_readable 1
-src/webidl/impls/DecompressionStream.zig get_writable 1
 src/webidl/impls/ElementInternals.zig getInternal 1
 src/webidl/impls/EventSource.zig getInternal 1
 src/webidl/impls/ExtendableEvent.zig call_waitUntil 1
@@ -197,14 +193,7 @@ src/webidl/impls/ServiceWorkerGlobalScope.zig get_cookieStore 1
 src/webidl/impls/SharedWorker.zig get_port 1
 src/webidl/impls/Storage.zig broadcast 1
 src/webidl/impls/TextDecoderStream.zig call_constructor 1
-src/webidl/impls/TextDecoderStream.zig get_encoding 1
-src/webidl/impls/TextDecoderStream.zig get_fatal 1
-src/webidl/impls/TextDecoderStream.zig get_ignoreBOM 1
-src/webidl/impls/TextDecoderStream.zig get_readable 1
-src/webidl/impls/TextDecoderStream.zig get_writable 1
 src/webidl/impls/TextEncoderStream.zig call_constructor 1
-src/webidl/impls/TextEncoderStream.zig get_readable 1
-src/webidl/impls/TextEncoderStream.zig get_writable 1
 src/webidl/impls/TextTrack.zig elementDestroyed 1
 src/webidl/impls/TextTrack.zig internal 1
 src/webidl/impls/TextTrackList.zig data 1

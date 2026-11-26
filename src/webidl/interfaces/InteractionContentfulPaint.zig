@@ -210,14 +210,10 @@ pub const InteractionContentfulPaint = struct {
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_paintTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
-        return try InteractionContentfulPaintImpl.get_paintTime(instance);
-    }
+    pub const get_paintTime = mixins.PaintTimingMixin.get_paintTime;
 
     /// Extended attributes: [Exposed=Window]
-    pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?DOMHighResTimeStamp {
-        return try InteractionContentfulPaintImpl.get_presentationTime(instance);
-    }
+    pub const get_presentationTime = mixins.PaintTimingMixin.get_presentationTime;
 
     /// Extended attributes: [Default]
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!InteractionContentfulPaintToJSON {

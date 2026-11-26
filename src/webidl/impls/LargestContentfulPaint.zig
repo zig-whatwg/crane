@@ -75,18 +75,6 @@ pub fn get_element(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return null;
 }
 
-/// Getter for paintTime
-pub fn get_paintTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for presentationTime
-pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?typedefs.DOMHighResTimeStamp {
-    _ = instance;
-    return null;
-}
-
 /// Operation: toJSON
 pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.LargestContentfulPaint.LargestContentfulPaintToJSON {
     _ = instance;

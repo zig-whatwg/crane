@@ -1109,9 +1109,7 @@ pub const Element = struct {
         try ElementImpl.set_outerHTML(instance, value);
     }
 
-    pub fn get_regionOverset(instance: *runtime.Instance) anyerror!CSSOMString {
-        return try ElementImpl.get_regionOverset(instance);
-    }
+    pub const get_regionOverset = mixins.Region.get_regionOverset;
 
     /// Extended attributes: [SameObject]
     pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -1135,825 +1133,215 @@ pub const Element = struct {
 
     pub const get_nextElementSibling = mixins.NonDocumentTypeChildNode.get_nextElementSibling;
 
-    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ElementImpl.get_assignedSlot(instance);
-    }
+    pub const get_assignedSlot = mixins.Slottable.get_assignedSlot;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_role(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_role")) return try ElementImpl.get_role(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "role" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_role(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_role")) return try ElementImpl.set_role(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "role" }, value);
-    }
+    pub const get_role = mixins.ARIAMixin.get_role;
+    pub const set_role = mixins.ARIAMixin.set_role;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ElementImpl.get_ariaActiveDescendantElement(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try ElementImpl.set_ariaActiveDescendantElement(instance, value);
-    }
+    pub const get_ariaActiveDescendantElement = mixins.ARIAMixin.get_ariaActiveDescendantElement;
+    pub const set_ariaActiveDescendantElement = mixins.ARIAMixin.set_ariaActiveDescendantElement;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-atomic"]
-    pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaAtomic")) return try ElementImpl.get_ariaAtomic(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-atomic" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-atomic"]
-    pub fn set_ariaAtomic(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaAtomic")) return try ElementImpl.set_ariaAtomic(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-atomic" }, value);
-    }
+    pub const get_ariaAtomic = mixins.ARIAMixin.get_ariaAtomic;
+    pub const set_ariaAtomic = mixins.ARIAMixin.set_ariaAtomic;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-autocomplete"]
-    pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaAutoComplete")) return try ElementImpl.get_ariaAutoComplete(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-autocomplete" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-autocomplete"]
-    pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaAutoComplete")) return try ElementImpl.set_ariaAutoComplete(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-autocomplete" }, value);
-    }
+    pub const get_ariaAutoComplete = mixins.ARIAMixin.get_ariaAutoComplete;
+    pub const set_ariaAutoComplete = mixins.ARIAMixin.set_ariaAutoComplete;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-braillelabel"]
-    pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaBrailleLabel")) return try ElementImpl.get_ariaBrailleLabel(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-braillelabel" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-braillelabel"]
-    pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaBrailleLabel")) return try ElementImpl.set_ariaBrailleLabel(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-braillelabel" }, value);
-    }
+    pub const get_ariaBrailleLabel = mixins.ARIAMixin.get_ariaBrailleLabel;
+    pub const set_ariaBrailleLabel = mixins.ARIAMixin.set_ariaBrailleLabel;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-brailleroledescription"]
-    pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaBrailleRoleDescription")) return try ElementImpl.get_ariaBrailleRoleDescription(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-brailleroledescription" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-brailleroledescription"]
-    pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaBrailleRoleDescription")) return try ElementImpl.set_ariaBrailleRoleDescription(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-brailleroledescription" }, value);
-    }
+    pub const get_ariaBrailleRoleDescription = mixins.ARIAMixin.get_ariaBrailleRoleDescription;
+    pub const set_ariaBrailleRoleDescription = mixins.ARIAMixin.set_ariaBrailleRoleDescription;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-busy"]
-    pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaBusy")) return try ElementImpl.get_ariaBusy(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-busy" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-busy"]
-    pub fn set_ariaBusy(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaBusy")) return try ElementImpl.set_ariaBusy(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-busy" }, value);
-    }
+    pub const get_ariaBusy = mixins.ARIAMixin.get_ariaBusy;
+    pub const set_ariaBusy = mixins.ARIAMixin.set_ariaBusy;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-checked"]
-    pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaChecked")) return try ElementImpl.get_ariaChecked(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-checked" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-checked"]
-    pub fn set_ariaChecked(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaChecked")) return try ElementImpl.set_ariaChecked(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-checked" }, value);
-    }
+    pub const get_ariaChecked = mixins.ARIAMixin.get_ariaChecked;
+    pub const set_ariaChecked = mixins.ARIAMixin.set_ariaChecked;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colcount"]
-    pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaColCount")) return try ElementImpl.get_ariaColCount(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-colcount" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-colcount"]
-    pub fn set_ariaColCount(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaColCount")) return try ElementImpl.set_ariaColCount(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-colcount" }, value);
-    }
+    pub const get_ariaColCount = mixins.ARIAMixin.get_ariaColCount;
+    pub const set_ariaColCount = mixins.ARIAMixin.set_ariaColCount;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindex"]
-    pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaColIndex")) return try ElementImpl.get_ariaColIndex(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-colindex" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-colindex"]
-    pub fn set_ariaColIndex(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaColIndex")) return try ElementImpl.set_ariaColIndex(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-colindex" }, value);
-    }
+    pub const get_ariaColIndex = mixins.ARIAMixin.get_ariaColIndex;
+    pub const set_ariaColIndex = mixins.ARIAMixin.set_ariaColIndex;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindextext"]
-    pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaColIndexText")) return try ElementImpl.get_ariaColIndexText(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-colindextext" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-colindextext"]
-    pub fn set_ariaColIndexText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaColIndexText")) return try ElementImpl.set_ariaColIndexText(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-colindextext" }, value);
-    }
+    pub const get_ariaColIndexText = mixins.ARIAMixin.get_ariaColIndexText;
+    pub const set_ariaColIndexText = mixins.ARIAMixin.set_ariaColIndexText;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colspan"]
-    pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaColSpan")) return try ElementImpl.get_ariaColSpan(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-colspan" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-colspan"]
-    pub fn set_ariaColSpan(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaColSpan")) return try ElementImpl.set_ariaColSpan(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-colspan" }, value);
-    }
+    pub const get_ariaColSpan = mixins.ARIAMixin.get_ariaColSpan;
+    pub const set_ariaColSpan = mixins.ARIAMixin.set_ariaColSpan;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-controls"]
-    pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        return try ElementImpl.get_ariaControlsElements(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-controls"]
-    pub fn set_ariaControlsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try ElementImpl.set_ariaControlsElements(instance, value);
-    }
+    pub const get_ariaControlsElements = mixins.ARIAMixin.get_ariaControlsElements;
+    pub const set_ariaControlsElements = mixins.ARIAMixin.set_ariaControlsElements;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-current"]
-    pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaCurrent")) return try ElementImpl.get_ariaCurrent(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-current" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-current"]
-    pub fn set_ariaCurrent(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaCurrent")) return try ElementImpl.set_ariaCurrent(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-current" }, value);
-    }
+    pub const get_ariaCurrent = mixins.ARIAMixin.get_ariaCurrent;
+    pub const set_ariaCurrent = mixins.ARIAMixin.set_ariaCurrent;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-describedby"]
-    pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        return try ElementImpl.get_ariaDescribedByElements(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-describedby"]
-    pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try ElementImpl.set_ariaDescribedByElements(instance, value);
-    }
+    pub const get_ariaDescribedByElements = mixins.ARIAMixin.get_ariaDescribedByElements;
+    pub const set_ariaDescribedByElements = mixins.ARIAMixin.set_ariaDescribedByElements;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-description"]
-    pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaDescription")) return try ElementImpl.get_ariaDescription(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-description" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-description"]
-    pub fn set_ariaDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaDescription")) return try ElementImpl.set_ariaDescription(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-description" }, value);
-    }
+    pub const get_ariaDescription = mixins.ARIAMixin.get_ariaDescription;
+    pub const set_ariaDescription = mixins.ARIAMixin.set_ariaDescription;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-details"]
-    pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        return try ElementImpl.get_ariaDetailsElements(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-details"]
-    pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try ElementImpl.set_ariaDetailsElements(instance, value);
-    }
+    pub const get_ariaDetailsElements = mixins.ARIAMixin.get_ariaDetailsElements;
+    pub const set_ariaDetailsElements = mixins.ARIAMixin.set_ariaDetailsElements;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-disabled"]
-    pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaDisabled")) return try ElementImpl.get_ariaDisabled(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-disabled" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-disabled"]
-    pub fn set_ariaDisabled(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaDisabled")) return try ElementImpl.set_ariaDisabled(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-disabled" }, value);
-    }
+    pub const get_ariaDisabled = mixins.ARIAMixin.get_ariaDisabled;
+    pub const set_ariaDisabled = mixins.ARIAMixin.set_ariaDisabled;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-errormessage"]
-    pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        return try ElementImpl.get_ariaErrorMessageElements(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-errormessage"]
-    pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try ElementImpl.set_ariaErrorMessageElements(instance, value);
-    }
+    pub const get_ariaErrorMessageElements = mixins.ARIAMixin.get_ariaErrorMessageElements;
+    pub const set_ariaErrorMessageElements = mixins.ARIAMixin.set_ariaErrorMessageElements;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-expanded"]
-    pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaExpanded")) return try ElementImpl.get_ariaExpanded(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-expanded" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-expanded"]
-    pub fn set_ariaExpanded(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaExpanded")) return try ElementImpl.set_ariaExpanded(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-expanded" }, value);
-    }
+    pub const get_ariaExpanded = mixins.ARIAMixin.get_ariaExpanded;
+    pub const set_ariaExpanded = mixins.ARIAMixin.set_ariaExpanded;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-flowto"]
-    pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        return try ElementImpl.get_ariaFlowToElements(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-flowto"]
-    pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try ElementImpl.set_ariaFlowToElements(instance, value);
-    }
+    pub const get_ariaFlowToElements = mixins.ARIAMixin.get_ariaFlowToElements;
+    pub const set_ariaFlowToElements = mixins.ARIAMixin.set_ariaFlowToElements;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-haspopup"]
-    pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaHasPopup")) return try ElementImpl.get_ariaHasPopup(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-haspopup" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-haspopup"]
-    pub fn set_ariaHasPopup(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaHasPopup")) return try ElementImpl.set_ariaHasPopup(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-haspopup" }, value);
-    }
+    pub const get_ariaHasPopup = mixins.ARIAMixin.get_ariaHasPopup;
+    pub const set_ariaHasPopup = mixins.ARIAMixin.set_ariaHasPopup;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-hidden"]
-    pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaHidden")) return try ElementImpl.get_ariaHidden(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-hidden" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-hidden"]
-    pub fn set_ariaHidden(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaHidden")) return try ElementImpl.set_ariaHidden(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-hidden" }, value);
-    }
+    pub const get_ariaHidden = mixins.ARIAMixin.get_ariaHidden;
+    pub const set_ariaHidden = mixins.ARIAMixin.set_ariaHidden;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-invalid"]
-    pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaInvalid")) return try ElementImpl.get_ariaInvalid(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-invalid" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-invalid"]
-    pub fn set_ariaInvalid(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaInvalid")) return try ElementImpl.set_ariaInvalid(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-invalid" }, value);
-    }
+    pub const get_ariaInvalid = mixins.ARIAMixin.get_ariaInvalid;
+    pub const set_ariaInvalid = mixins.ARIAMixin.set_ariaInvalid;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-keyshortcuts"]
-    pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaKeyShortcuts")) return try ElementImpl.get_ariaKeyShortcuts(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-keyshortcuts" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-keyshortcuts"]
-    pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaKeyShortcuts")) return try ElementImpl.set_ariaKeyShortcuts(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-keyshortcuts" }, value);
-    }
+    pub const get_ariaKeyShortcuts = mixins.ARIAMixin.get_ariaKeyShortcuts;
+    pub const set_ariaKeyShortcuts = mixins.ARIAMixin.set_ariaKeyShortcuts;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-label"]
-    pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaLabel")) return try ElementImpl.get_ariaLabel(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-label" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-label"]
-    pub fn set_ariaLabel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaLabel")) return try ElementImpl.set_ariaLabel(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-label" }, value);
-    }
+    pub const get_ariaLabel = mixins.ARIAMixin.get_ariaLabel;
+    pub const set_ariaLabel = mixins.ARIAMixin.set_ariaLabel;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-labelledby"]
-    pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        return try ElementImpl.get_ariaLabelledByElements(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-labelledby"]
-    pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try ElementImpl.set_ariaLabelledByElements(instance, value);
-    }
+    pub const get_ariaLabelledByElements = mixins.ARIAMixin.get_ariaLabelledByElements;
+    pub const set_ariaLabelledByElements = mixins.ARIAMixin.set_ariaLabelledByElements;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-level"]
-    pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaLevel")) return try ElementImpl.get_ariaLevel(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-level" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-level"]
-    pub fn set_ariaLevel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaLevel")) return try ElementImpl.set_ariaLevel(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-level" }, value);
-    }
+    pub const get_ariaLevel = mixins.ARIAMixin.get_ariaLevel;
+    pub const set_ariaLevel = mixins.ARIAMixin.set_ariaLevel;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-live"]
-    pub fn get_ariaLive(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaLive")) return try ElementImpl.get_ariaLive(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-live" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-live"]
-    pub fn set_ariaLive(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaLive")) return try ElementImpl.set_ariaLive(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-live" }, value);
-    }
+    pub const get_ariaLive = mixins.ARIAMixin.get_ariaLive;
+    pub const set_ariaLive = mixins.ARIAMixin.set_ariaLive;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-modal"]
-    pub fn get_ariaModal(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaModal")) return try ElementImpl.get_ariaModal(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-modal" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-modal"]
-    pub fn set_ariaModal(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaModal")) return try ElementImpl.set_ariaModal(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-modal" }, value);
-    }
+    pub const get_ariaModal = mixins.ARIAMixin.get_ariaModal;
+    pub const set_ariaModal = mixins.ARIAMixin.set_ariaModal;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiline"]
-    pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaMultiLine")) return try ElementImpl.get_ariaMultiLine(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-multiline" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-multiline"]
-    pub fn set_ariaMultiLine(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaMultiLine")) return try ElementImpl.set_ariaMultiLine(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-multiline" }, value);
-    }
+    pub const get_ariaMultiLine = mixins.ARIAMixin.get_ariaMultiLine;
+    pub const set_ariaMultiLine = mixins.ARIAMixin.set_ariaMultiLine;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiselectable"]
-    pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaMultiSelectable")) return try ElementImpl.get_ariaMultiSelectable(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-multiselectable" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-multiselectable"]
-    pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaMultiSelectable")) return try ElementImpl.set_ariaMultiSelectable(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-multiselectable" }, value);
-    }
+    pub const get_ariaMultiSelectable = mixins.ARIAMixin.get_ariaMultiSelectable;
+    pub const set_ariaMultiSelectable = mixins.ARIAMixin.set_ariaMultiSelectable;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-orientation"]
-    pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaOrientation")) return try ElementImpl.get_ariaOrientation(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-orientation" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-orientation"]
-    pub fn set_ariaOrientation(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaOrientation")) return try ElementImpl.set_ariaOrientation(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-orientation" }, value);
-    }
+    pub const get_ariaOrientation = mixins.ARIAMixin.get_ariaOrientation;
+    pub const set_ariaOrientation = mixins.ARIAMixin.set_ariaOrientation;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-owns"]
-    pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        return try ElementImpl.get_ariaOwnsElements(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-owns"]
-    pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        try ElementImpl.set_ariaOwnsElements(instance, value);
-    }
+    pub const get_ariaOwnsElements = mixins.ARIAMixin.get_ariaOwnsElements;
+    pub const set_ariaOwnsElements = mixins.ARIAMixin.set_ariaOwnsElements;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-placeholder"]
-    pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaPlaceholder")) return try ElementImpl.get_ariaPlaceholder(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-placeholder" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-placeholder"]
-    pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaPlaceholder")) return try ElementImpl.set_ariaPlaceholder(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-placeholder" }, value);
-    }
+    pub const get_ariaPlaceholder = mixins.ARIAMixin.get_ariaPlaceholder;
+    pub const set_ariaPlaceholder = mixins.ARIAMixin.set_ariaPlaceholder;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-posinset"]
-    pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaPosInSet")) return try ElementImpl.get_ariaPosInSet(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-posinset" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-posinset"]
-    pub fn set_ariaPosInSet(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaPosInSet")) return try ElementImpl.set_ariaPosInSet(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-posinset" }, value);
-    }
+    pub const get_ariaPosInSet = mixins.ARIAMixin.get_ariaPosInSet;
+    pub const set_ariaPosInSet = mixins.ARIAMixin.set_ariaPosInSet;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-pressed"]
-    pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaPressed")) return try ElementImpl.get_ariaPressed(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-pressed" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-pressed"]
-    pub fn set_ariaPressed(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaPressed")) return try ElementImpl.set_ariaPressed(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-pressed" }, value);
-    }
+    pub const get_ariaPressed = mixins.ARIAMixin.get_ariaPressed;
+    pub const set_ariaPressed = mixins.ARIAMixin.set_ariaPressed;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-readonly"]
-    pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaReadOnly")) return try ElementImpl.get_ariaReadOnly(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-readonly" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-readonly"]
-    pub fn set_ariaReadOnly(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaReadOnly")) return try ElementImpl.set_ariaReadOnly(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-readonly" }, value);
-    }
+    pub const get_ariaReadOnly = mixins.ARIAMixin.get_ariaReadOnly;
+    pub const set_ariaReadOnly = mixins.ARIAMixin.set_ariaReadOnly;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-relevant"]
-    pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaRelevant")) return try ElementImpl.get_ariaRelevant(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-relevant" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-relevant"]
-    pub fn set_ariaRelevant(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaRelevant")) return try ElementImpl.set_ariaRelevant(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-relevant" }, value);
-    }
+    pub const get_ariaRelevant = mixins.ARIAMixin.get_ariaRelevant;
+    pub const set_ariaRelevant = mixins.ARIAMixin.set_ariaRelevant;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-required"]
-    pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaRequired")) return try ElementImpl.get_ariaRequired(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-required" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-required"]
-    pub fn set_ariaRequired(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaRequired")) return try ElementImpl.set_ariaRequired(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-required" }, value);
-    }
+    pub const get_ariaRequired = mixins.ARIAMixin.get_ariaRequired;
+    pub const set_ariaRequired = mixins.ARIAMixin.set_ariaRequired;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-roledescription"]
-    pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaRoleDescription")) return try ElementImpl.get_ariaRoleDescription(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-roledescription" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-roledescription"]
-    pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaRoleDescription")) return try ElementImpl.set_ariaRoleDescription(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-roledescription" }, value);
-    }
+    pub const get_ariaRoleDescription = mixins.ARIAMixin.get_ariaRoleDescription;
+    pub const set_ariaRoleDescription = mixins.ARIAMixin.set_ariaRoleDescription;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowcount"]
-    pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaRowCount")) return try ElementImpl.get_ariaRowCount(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-rowcount" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-rowcount"]
-    pub fn set_ariaRowCount(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaRowCount")) return try ElementImpl.set_ariaRowCount(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-rowcount" }, value);
-    }
+    pub const get_ariaRowCount = mixins.ARIAMixin.get_ariaRowCount;
+    pub const set_ariaRowCount = mixins.ARIAMixin.set_ariaRowCount;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindex"]
-    pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaRowIndex")) return try ElementImpl.get_ariaRowIndex(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-rowindex" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-rowindex"]
-    pub fn set_ariaRowIndex(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaRowIndex")) return try ElementImpl.set_ariaRowIndex(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-rowindex" }, value);
-    }
+    pub const get_ariaRowIndex = mixins.ARIAMixin.get_ariaRowIndex;
+    pub const set_ariaRowIndex = mixins.ARIAMixin.set_ariaRowIndex;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindextext"]
-    pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaRowIndexText")) return try ElementImpl.get_ariaRowIndexText(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-rowindextext" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-rowindextext"]
-    pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaRowIndexText")) return try ElementImpl.set_ariaRowIndexText(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-rowindextext" }, value);
-    }
+    pub const get_ariaRowIndexText = mixins.ARIAMixin.get_ariaRowIndexText;
+    pub const set_ariaRowIndexText = mixins.ARIAMixin.set_ariaRowIndexText;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowspan"]
-    pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaRowSpan")) return try ElementImpl.get_ariaRowSpan(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-rowspan" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-rowspan"]
-    pub fn set_ariaRowSpan(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaRowSpan")) return try ElementImpl.set_ariaRowSpan(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-rowspan" }, value);
-    }
+    pub const get_ariaRowSpan = mixins.ARIAMixin.get_ariaRowSpan;
+    pub const set_ariaRowSpan = mixins.ARIAMixin.set_ariaRowSpan;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-selected"]
-    pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaSelected")) return try ElementImpl.get_ariaSelected(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-selected" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-selected"]
-    pub fn set_ariaSelected(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaSelected")) return try ElementImpl.set_ariaSelected(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-selected" }, value);
-    }
+    pub const get_ariaSelected = mixins.ARIAMixin.get_ariaSelected;
+    pub const set_ariaSelected = mixins.ARIAMixin.set_ariaSelected;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-setsize"]
-    pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaSetSize")) return try ElementImpl.get_ariaSetSize(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-setsize" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-setsize"]
-    pub fn set_ariaSetSize(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaSetSize")) return try ElementImpl.set_ariaSetSize(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-setsize" }, value);
-    }
+    pub const get_ariaSetSize = mixins.ARIAMixin.get_ariaSetSize;
+    pub const set_ariaSetSize = mixins.ARIAMixin.set_ariaSetSize;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-sort"]
-    pub fn get_ariaSort(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaSort")) return try ElementImpl.get_ariaSort(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-sort" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-sort"]
-    pub fn set_ariaSort(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaSort")) return try ElementImpl.set_ariaSort(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-sort" }, value);
-    }
+    pub const get_ariaSort = mixins.ARIAMixin.get_ariaSort;
+    pub const set_ariaSort = mixins.ARIAMixin.set_ariaSort;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemax"]
-    pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaValueMax")) return try ElementImpl.get_ariaValueMax(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-valuemax" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-valuemax"]
-    pub fn set_ariaValueMax(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaValueMax")) return try ElementImpl.set_ariaValueMax(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-valuemax" }, value);
-    }
+    pub const get_ariaValueMax = mixins.ARIAMixin.get_ariaValueMax;
+    pub const set_ariaValueMax = mixins.ARIAMixin.set_ariaValueMax;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemin"]
-    pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaValueMin")) return try ElementImpl.get_ariaValueMin(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-valuemin" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-valuemin"]
-    pub fn set_ariaValueMin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaValueMin")) return try ElementImpl.set_ariaValueMin(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-valuemin" }, value);
-    }
+    pub const get_ariaValueMin = mixins.ARIAMixin.get_ariaValueMin;
+    pub const set_ariaValueMin = mixins.ARIAMixin.set_ariaValueMin;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuenow"]
-    pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaValueNow")) return try ElementImpl.get_ariaValueNow(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-valuenow" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-valuenow"]
-    pub fn set_ariaValueNow(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaValueNow")) return try ElementImpl.set_ariaValueNow(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-valuenow" }, value);
-    }
+    pub const get_ariaValueNow = mixins.ARIAMixin.get_ariaValueNow;
+    pub const set_ariaValueNow = mixins.ARIAMixin.set_ariaValueNow;
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuetext"]
-    pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_ariaValueText")) return try ElementImpl.get_ariaValueText(instance);
-        return try reflection.get(?runtime.DOMString, instance, .{ .name = "aria-valuetext" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect="aria-valuetext"]
-    pub fn set_ariaValueText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(ElementImpl, "set_ariaValueText")) return try ElementImpl.set_ariaValueText(instance, value);
-        try reflection.set(?runtime.DOMString, instance, .{ .name = "aria-valuetext" }, value);
-    }
+    pub const get_ariaValueText = mixins.ARIAMixin.get_ariaValueText;
+    pub const set_ariaValueText = mixins.ARIAMixin.set_ariaValueText;
 
     pub fn call_getSpatialNavigationContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.call_getSpatialNavigationContainer(instance);
@@ -2000,9 +1388,7 @@ pub const Element = struct {
 
     pub const call_append = mixins.ParentNode.call_append;
 
-    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
-        return try ElementImpl.call_getBoxQuads(instance, options);
-    }
+    pub const call_getBoxQuads = mixins.GeometryUtils.call_getBoxQuads;
 
     /// Extended attributes: [CEReactions]
     pub fn call_appendHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
@@ -2089,9 +1475,7 @@ pub const Element = struct {
         return result;
     }
 
-    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        return try ElementImpl.call_convertQuadFromNode(instance, quad, from, options);
-    }
+    pub const call_convertQuadFromNode = mixins.GeometryUtils.call_convertQuadFromNode;
 
     pub const call_beforeHTML = mixins.NonDocumentTypeChildNode.call_beforeHTML;
 
@@ -2266,9 +1650,7 @@ pub const Element = struct {
         return try ElementImpl.call_getAttributeNames(instance);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        return try ElementImpl.call_convertPointFromNode(instance, point, from, options);
-    }
+    pub const call_convertPointFromNode = mixins.GeometryUtils.call_convertPointFromNode;
 
     pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
         return try ElementImpl.call_getElementsByTagNameNS(instance, namespace, localName);
@@ -2289,13 +1671,9 @@ pub const Element = struct {
         return try ElementImpl.call_streamAppendHTMLUnsafe(instance, options);
     }
 
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        return try ElementImpl.call_convertRectFromNode(instance, rect, from, options);
-    }
+    pub const call_convertRectFromNode = mixins.GeometryUtils.call_convertRectFromNode;
 
-    pub fn call_ariaNotify(instance: *runtime.Instance, announcement: runtime.DOMString, options: webidl.Opt(AriaNotificationOptions)) anyerror!void {
-        return try ElementImpl.call_ariaNotify(instance, announcement, options);
-    }
+    pub const call_ariaNotify = mixins.ARIANotifyMixin.call_ariaNotify;
 
     pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
         return try ElementImpl.call_scrollTo(instance, options);
@@ -2332,9 +1710,7 @@ pub const Element = struct {
         return try ElementImpl.call_removeAttribute(instance, qualifiedName);
     }
 
-    pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        return try ElementImpl.call_getRegionFlowRanges(instance);
-    }
+    pub const call_getRegionFlowRanges = mixins.Region.call_getRegionFlowRanges;
 
     /// Extended attributes: [CEReactions]
     pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {

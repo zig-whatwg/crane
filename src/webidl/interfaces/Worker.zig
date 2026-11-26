@@ -220,37 +220,14 @@ pub const Worker = struct {
         }
     }
 
-    const event_handlers = @import("dom").event_handlers;
+    pub const get_onerror = mixins.AbstractWorker.get_onerror;
+    pub const set_onerror = mixins.AbstractWorker.set_onerror;
 
-    pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(WorkerImpl, "get_onerror")) return try WorkerImpl.get_onerror(instance);
-        return event_handlers.value(EventHandler, instance, "onerror");
-    }
+    pub const get_onmessage = mixins.MessageEventTarget.get_onmessage;
+    pub const set_onmessage = mixins.MessageEventTarget.set_onmessage;
 
-    pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(WorkerImpl, "set_onerror")) return try WorkerImpl.set_onerror(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onerror", value);
-    }
-
-    pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(WorkerImpl, "get_onmessage")) return try WorkerImpl.get_onmessage(instance);
-        return event_handlers.value(EventHandler, instance, "onmessage");
-    }
-
-    pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(WorkerImpl, "set_onmessage")) return try WorkerImpl.set_onmessage(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
-    }
-
-    pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(WorkerImpl, "get_onmessageerror")) return try WorkerImpl.get_onmessageerror(instance);
-        return event_handlers.value(EventHandler, instance, "onmessageerror");
-    }
-
-    pub fn set_onmessageerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(WorkerImpl, "set_onmessageerror")) return try WorkerImpl.set_onmessageerror(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onmessageerror", value);
-    }
+    pub const get_onmessageerror = mixins.MessageEventTarget.get_onmessageerror;
+    pub const set_onmessageerror = mixins.MessageEventTarget.set_onmessageerror;
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
         return try WorkerImpl.call_postMessage(instance, message, transfer);

@@ -133,6 +133,7 @@ pub fn installHooks() void {
     dom.teardown_sweeps.install(.element_types, &sweepLive);
     dom.character_data.installProcessingInstruction(.{ .data_changed = &dataChanged });
     dom.style.hooks.install(.{ .pi_sheet_of = &sheetOf, .pi_sheet_arrived = &sheetArrived });
+    dom.style_sheet_owners.installSheetRecord(&sheetOf);
     dom.mutation.registerChildrenChangedCallback(&documentChildrenChanged) catch {};
     dom.mutation.registerRemovingStepsCallback(&removingSteps) catch {};
 }
@@ -196,13 +197,6 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.target);
-}
-
-/// Getter for sheet (from LinkStyle mixin - CSSOM)
-/// Returns the associated stylesheet, if any
-pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const record = sheetOf(instance) orelse return null;
-    return try dom.style.objects.sheetObject(record, instance.ctx);
 }
 
 /// CSSOM 6.3.4: the prolog is the Document's children before its element.

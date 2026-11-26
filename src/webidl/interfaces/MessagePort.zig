@@ -194,27 +194,11 @@ pub const MessagePort = struct {
         }
     }
 
-    const event_handlers = @import("dom").event_handlers;
+    pub const get_onmessage = mixins.MessageEventTarget.get_onmessage;
+    pub const set_onmessage = mixins.MessageEventTarget.set_onmessage;
 
-    pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(MessagePortImpl, "get_onmessage")) return try MessagePortImpl.get_onmessage(instance);
-        return event_handlers.value(EventHandler, instance, "onmessage");
-    }
-
-    pub fn set_onmessage(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(MessagePortImpl, "set_onmessage")) return try MessagePortImpl.set_onmessage(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onmessage", value);
-    }
-
-    pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(MessagePortImpl, "get_onmessageerror")) return try MessagePortImpl.get_onmessageerror(instance);
-        return event_handlers.value(EventHandler, instance, "onmessageerror");
-    }
-
-    pub fn set_onmessageerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(MessagePortImpl, "set_onmessageerror")) return try MessagePortImpl.set_onmessageerror(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onmessageerror", value);
-    }
+    pub const get_onmessageerror = mixins.MessageEventTarget.get_onmessageerror;
+    pub const set_onmessageerror = mixins.MessageEventTarget.set_onmessageerror;
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
         return try MessagePortImpl.call_postMessage(instance, message, transfer);

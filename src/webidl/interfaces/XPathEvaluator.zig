@@ -186,20 +186,11 @@ pub const XPathEvaluator = struct {
         }
     }
 
-    pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
-        return try XPathEvaluatorImpl.call_createNSResolver(instance, nodeResolver);
-    }
+    pub const call_createNSResolver = mixins.XPathEvaluatorBase.call_createNSResolver;
 
-    pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(?runtime.BorrowedCallbackInterface), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
-        return try XPathEvaluatorImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
-    }
+    pub const call_evaluate = mixins.XPathEvaluatorBase.call_evaluate;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-
-        return try XPathEvaluatorImpl.call_createExpression(instance, expression, resolver);
-    }
+    pub const call_createExpression = mixins.XPathEvaluatorBase.call_createExpression;
 
     /// WebIDL interface types: the interface each interface-typed argument
     /// and attribute value converts to - a TypeError unless the value implements

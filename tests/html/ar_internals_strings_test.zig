@@ -4,6 +4,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 
 fn exercise() !void {
+    interfaces.process_hooks.startHooksForTest();
     runtime.initializeRuntime(std.testing.allocator);
     defer runtime.deinitializeRuntime();
     var context = try runtime.ContextData.init(std.testing.allocator, .{});
@@ -47,6 +48,7 @@ test "ARIA internals copy inputs and outputs, preserve empty versus null and rel
 }
 
 fn allocationFailure() !void {
+    interfaces.process_hooks.startHooksForTest();
     runtime.initializeRuntime(std.testing.allocator);
     defer runtime.deinitializeRuntime();
     var context = try runtime.ContextData.init(std.testing.allocator, .{});

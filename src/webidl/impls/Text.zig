@@ -164,13 +164,6 @@ pub fn get_wholeText(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return runtime.DOMString.initOwned(owned);
 }
 
-/// Slottable's assignedSlot getter: "return the result of find a slot given
-/// this and true" - null for a slot in a closed shadow root.
-/// Spec: https://dom.spec.whatwg.org/#dom-slotable-assignedslot
-pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return dom.shadow_dom_algorithms.assignedSlotForScript(instance);
-}
-
 // =============================================================================
 // Operations - DOM §4.12
 // =============================================================================
@@ -259,61 +252,6 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtim
 // =============================================================================
 // Geometry Mixin Operations (stubs - require CSSOM integration)
 // =============================================================================
-
-/// Operation: getBoxQuads (from GeometryUtils mixin)
-/// Spec: https://drafts.csswg.org/cssom-view/#dom-geometryutils-getboxquads
-///
-/// Returns a sequence of DOMQuads representing the CSS boxes for this element.
-/// Note: Returns empty array stub - requires CSSOM/layout integration
-pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    // Return undefined for now - layout engine required for actual box computation
-    // TODO: Return proper empty array when V8 array creation is available
-    return runtime.JSValue.jsUndefined;
-}
-
-/// Operation: convertQuadFromNode (from GeometryUtils mixin)
-/// Spec: https://drafts.csswg.org/cssom-view/#dom-geometryutils-convertquadfromnode
-///
-/// Converts a DOMQuadInit from another node's coordinate system to this node's.
-/// Note: Returns null - requires CSSOM/layout integration for coordinate transforms
-pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = quad;
-    _ = from;
-    _ = options;
-    // Return null - coordinate transforms require layout engine
-    return error.NotImplemented;
-}
-
-/// Operation: convertRectFromNode (from GeometryUtils mixin)
-/// Spec: https://drafts.csswg.org/cssom-view/#dom-geometryutils-convertrectfromnode
-///
-/// Converts a DOMRectReadOnly from another node's coordinate system to this node's.
-/// Note: Returns null - requires CSSOM/layout integration for coordinate transforms
-pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = rect;
-    _ = from;
-    _ = options;
-    // Return null - coordinate transforms require layout engine
-    return error.NotImplemented;
-}
-
-/// Operation: convertPointFromNode (from GeometryUtils mixin)
-/// Spec: https://drafts.csswg.org/cssom-view/#dom-geometryutils-convertpointfromnode
-///
-/// Converts a DOMPointInit from another node's coordinate system to this node's.
-/// Note: Returns null - requires CSSOM/layout integration for coordinate transforms
-pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = point;
-    _ = from;
-    _ = options;
-    // Return null - coordinate transforms require layout engine
-    return error.NotImplemented;
-}
 
 /// dom.teardown_sweeps: at its Browser's end, every Text state still in
 /// `scope`'s table - an orphan's no teardown reached - frees what it owns.

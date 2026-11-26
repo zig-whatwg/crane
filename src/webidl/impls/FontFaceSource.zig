@@ -1,46 +1,35 @@
-//! Implementation for FontFaceSource interface
+//! Implementation for the FontFaceSource mixin (CSS Font Loading §3.3):
+//! readonly attribute FontFaceSet fonts, shared by Document and
+//! WorkerGlobalScope.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const dom = @import("dom");
 const FontFaceSource = interfaces.FontFaceSource;
 
 pub const State = FontFaceSource.State;
 
 pub const ImplError = error{
-    NotImplemented,
+    InvalidStateError,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for fonts
+/// Getter for fonts (CSS Font Loading §3.3).
 pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    if (dom.document_internals.getInternal(instance)) |internal| {
+        const fonts = internal.fonts_kept.get() orelse blk: {
+            const made = interfaces.FontFaceSet.initWith(internal.allocator, instance.ctx, .{ .font_document = instance }) catch return error.OutOfMemory;
+            internal.fonts_kept.made(made);
+            break :blk made;
+        };
+        internal.fonts_kept.handOut(instance, fonts, .{ .name = "fonts" });
+        return fonts;
+    }
+    if (try dom.document_internals.workerFontsOf(instance)) |fonts| {
+        return fonts;
+    }
+    return error.InvalidStateError;
 }

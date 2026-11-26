@@ -215,15 +215,8 @@ pub const ServiceWorker = struct {
         try event_handlers.setValue(EventHandler, instance, "onstatechange", value);
     }
 
-    pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
-        if (comptime @hasDecl(ServiceWorkerImpl, "get_onerror")) return try ServiceWorkerImpl.get_onerror(instance);
-        return event_handlers.value(EventHandler, instance, "onerror");
-    }
-
-    pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        if (comptime @hasDecl(ServiceWorkerImpl, "set_onerror")) return try ServiceWorkerImpl.set_onerror(instance, value);
-        try event_handlers.setValue(EventHandler, instance, "onerror", value);
-    }
+    pub const get_onerror = mixins.AbstractWorker.get_onerror;
+    pub const set_onerror = mixins.AbstractWorker.set_onerror;
 
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
         return try ServiceWorkerImpl.call_postMessage(instance, message, transfer);

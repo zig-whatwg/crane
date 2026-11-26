@@ -22,6 +22,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const csp = @import("csp");
 const html_core = @import("html_core");
+const Hook = @import("hook.zig").Hook;
 
 // Document's state type (dom.document_state): the impl owns each Document's
 // state and registers it in `Registry`; these algorithms read it there.
@@ -31,6 +32,27 @@ pub const DocType = document_state.DocType;
 /// The document mode (DOM): "no-quirks", "quirks" or "limited-quirks".
 pub const Mode = document_state.Mode;
 pub const SpeculationEagerness = @import("document_scripts.zig").SpeculationEagerness;
+
+// =============================================================================
+// FontFaceSource hook for WorkerGlobalScope
+// =============================================================================
+// lint-impls: hook for WorkerGlobalScope
+
+pub const WorkerFontsGetter = *const fn (instance: *runtime.Instance) anyerror!?*runtime.Instance;
+
+var worker_fonts_getter: Hook(?WorkerFontsGetter) = .init(null);
+
+/// Installed by WorkerGlobalScope.installHooks() at process start.
+pub fn installWorkerFonts(getter: WorkerFontsGetter) void {
+    worker_fonts_getter.install(getter);
+}
+
+/// Return a WorkerGlobalScope's FontFaceSet, or null if `instance` is not a
+/// WorkerGlobalScope.
+pub fn workerFontsOf(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    const getter = worker_fonts_getter.get() orelse return null;
+    return getter(instance);
+}
 
 // =============================================================================
 // Internal State Access

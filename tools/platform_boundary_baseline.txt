@@ -553,8 +553,6 @@ src/webidl/impls/NavigateEvent.zig clock.@import 1
 src/webidl/impls/NavigateEvent.zig clock.monotonicMillis 1
 src/webidl/impls/NavigationCurrentEntryChangeEvent.zig clock.@import 1
 src/webidl/impls/NavigationCurrentEntryChangeEvent.zig clock.monotonicMillis 1
-src/webidl/impls/Navigator.zig builtin.os.tag 2
-src/webidl/impls/Navigator.zig std.Thread.getCpuCount 1
 src/webidl/impls/PageRevealEvent.zig clock.@import 1
 src/webidl/impls/PageRevealEvent.zig clock.monotonicMillis 1
 src/webidl/impls/PageSwapEvent.zig clock.@import 1

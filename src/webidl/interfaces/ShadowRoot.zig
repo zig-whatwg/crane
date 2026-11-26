@@ -373,9 +373,7 @@ pub const ShadowRoot = struct {
         try ShadowRootImpl.set_innerHTML(instance, value);
     }
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ShadowRootImpl.get_customElementRegistry(instance);
-    }
+    pub const get_customElementRegistry = mixins.DocumentOrShadowRoot.get_customElementRegistry;
 
     /// Extended attributes: [SameObject]
     pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -384,44 +382,24 @@ pub const ShadowRoot = struct {
         if (state.own.cached_styleSheets) |cached| {
             return cached;
         }
-        const value = try ShadowRootImpl.get_styleSheets(instance);
+        const value = try mixins.DocumentOrShadowRoot.get_styleSheets(instance);
         state.own.cached_styleSheets = value;
         @import("dom").same_object_cache.made(instance, value, "styleSheets");
         return value;
     }
 
-    pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try ShadowRootImpl.get_adoptedStyleSheets(instance);
-    }
-
-    pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        try ShadowRootImpl.set_adoptedStyleSheets(instance, value);
-    }
+    pub const get_adoptedStyleSheets = mixins.DocumentOrShadowRoot.get_adoptedStyleSheets;
+    pub const set_adoptedStyleSheets = mixins.DocumentOrShadowRoot.set_adoptedStyleSheets;
 
     /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ShadowRootImpl.get_fullscreenElement(instance);
-    }
+    pub const get_fullscreenElement = mixins.DocumentOrShadowRoot.get_fullscreenElement;
+    pub const set_fullscreenElement = mixins.DocumentOrShadowRoot.set_fullscreenElement;
 
-    /// Extended attributes: [LegacyLenientSetter]
-    pub fn set_fullscreenElement(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        // [LegacyLenientSetter] - Silently do nothing (no-op setter)
-        // Per WebIDL §4.3.10: The setter steps are to return.
-        _ = instance;
-        _ = value;
-    }
+    pub const get_activeElement = mixins.DocumentOrShadowRoot.get_activeElement;
 
-    pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ShadowRootImpl.get_activeElement(instance);
-    }
+    pub const get_pictureInPictureElement = mixins.DocumentOrShadowRoot.get_pictureInPictureElement;
 
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ShadowRootImpl.get_pictureInPictureElement(instance);
-    }
-
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ShadowRootImpl.get_pointerLockElement(instance);
-    }
+    pub const get_pointerLockElement = mixins.DocumentOrShadowRoot.get_pointerLockElement;
 
     /// Extended attributes: [NewObject]
     pub fn call_streamAppendHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
@@ -526,9 +504,7 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.call_getHTML(instance, options);
     }
 
-    pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try ShadowRootImpl.call_getAnimations(instance);
-    }
+    pub const call_getAnimations = mixins.DocumentOrShadowRoot.call_getAnimations;
 
     /// Extended attributes: [CEReactions]
     pub fn call_appendHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!void {

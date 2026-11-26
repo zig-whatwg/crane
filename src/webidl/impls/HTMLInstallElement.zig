@@ -53,18 +53,6 @@ pub fn get_manifestId(instance: *runtime.Instance) anyerror!?runtime.USVString {
     return null;
 }
 
-/// Getter for isValid
-pub fn get_isValid(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for invalidReason
-pub fn get_invalidReason(instance: *runtime.Instance) anyerror!enums.ActivationBlockersMixinBlockerReason {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Setter for manifest
 pub fn set_manifest(instance: *runtime.Instance, value: ?runtime.USVString) anyerror!void {
     _ = instance;

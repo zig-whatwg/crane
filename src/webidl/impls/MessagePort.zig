@@ -271,11 +271,6 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// "The first time a MessagePort object's onmessage IDL attribute is set, the
 /// port's port message queue must be enabled, as if the start() method had
 /// been called."
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try dom.event_handlers.set(typedefs.EventHandler, instance, "message", value);
-    enableQueue(instance);
-}
-
 /// Operation: start
 /// "The start() method steps are to enable this's port message queue, if it
 /// is not already enabled."

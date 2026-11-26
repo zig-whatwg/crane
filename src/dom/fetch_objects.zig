@@ -22,6 +22,9 @@ const runtime = @import("runtime");
 /// for the same reason the request and response are opaque.
 pub const Guard = enum { immutable, request, request_no_cors, response, none };
 
+/// A Body mixin consumption method (Fetch §5.2).
+pub const BodyMethod = enum { array_buffer, blob, bytes, form_data, json, text };
+
 pub const RequestSteps = struct {
     /// `request_object`'s request (a `*fetch.internal.InternalRequest`),
     /// borrowed: it lives as long as the Request object.
@@ -37,6 +40,11 @@ pub const RequestSteps = struct {
     /// guard is immutable").
     /// It gets a new AbortSignal (Fetch: every Request object has one).
     adopt: *const fn (request_object: *runtime.Instance, request: *anyopaque, guard: Guard) anyerror!void,
+    /// Body mixin: body getter, bodyUsed getter, body consumption, and textStream().
+    body_stream_get: ?*const fn (request_object: *runtime.Instance) anyerror!?*runtime.Instance = null,
+    body_used: ?*const fn (request_object: *runtime.Instance) anyerror!bool = null,
+    body_consume: ?*const fn (request_object: *runtime.Instance, method: BodyMethod) anyerror!runtime.JSValue = null,
+    body_text_stream: ?*const fn (request_object: *runtime.Instance) anyerror!*runtime.Instance = null,
 };
 
 pub const ResponseSteps = struct {
@@ -51,6 +59,11 @@ pub const ResponseSteps = struct {
     /// `response_object`'s response (a `*fetch.internal.InternalResponse`),
     /// borrowed: it lives as long as the Response object.
     response_of: *const fn (response_object: *runtime.Instance) ?*anyopaque,
+    /// Body mixin: body getter, bodyUsed getter, body consumption, and textStream().
+    body_stream_get: ?*const fn (response_object: *runtime.Instance) anyerror!?*runtime.Instance = null,
+    body_used: ?*const fn (response_object: *runtime.Instance) anyerror!bool = null,
+    body_consume: ?*const fn (response_object: *runtime.Instance, method: BodyMethod) anyerror!runtime.JSValue = null,
+    body_text_stream: ?*const fn (response_object: *runtime.Instance) anyerror!*runtime.Instance = null,
 };
 
 var request_steps: Hook(?RequestSteps) = .init(null);
@@ -110,6 +123,62 @@ pub fn adoptResponse(response_object: *runtime.Instance, response: *anyopaque, g
     const steps = response_steps.get() orelse return false;
     steps.adopt(response_object, response, guard);
     return true;
+}
+
+/// Body mixin: `Request.body`.
+pub fn requestBodyStreamGet(request_object: *runtime.Instance) anyerror!?*runtime.Instance {
+    const steps = request_steps.get() orelse return null;
+    const step = steps.body_stream_get orelse return null;
+    return step(request_object);
+}
+
+/// Body mixin: `Request.bodyUsed`.
+pub fn requestBodyUsed(request_object: *runtime.Instance) anyerror!bool {
+    const steps = request_steps.get() orelse return false;
+    const step = steps.body_used orelse return false;
+    return step(request_object);
+}
+
+/// Body mixin: consume a Request body.
+pub fn requestBodyConsume(request_object: *runtime.Instance, method: BodyMethod) anyerror!runtime.JSValue {
+    const steps = request_steps.get() orelse return error.InvalidState;
+    const step = steps.body_consume orelse return error.InvalidState;
+    return step(request_object, method);
+}
+
+/// Body mixin: `Response.body`.
+pub fn responseBodyStreamGet(response_object: *runtime.Instance) anyerror!?*runtime.Instance {
+    const steps = response_steps.get() orelse return null;
+    const step = steps.body_stream_get orelse return null;
+    return step(response_object);
+}
+
+/// Body mixin: `Response.bodyUsed`.
+pub fn responseBodyUsed(response_object: *runtime.Instance) anyerror!bool {
+    const steps = response_steps.get() orelse return false;
+    const step = steps.body_used orelse return false;
+    return step(response_object);
+}
+
+/// Body mixin: consume a Response body.
+pub fn responseBodyConsume(response_object: *runtime.Instance, method: BodyMethod) anyerror!runtime.JSValue {
+    const steps = response_steps.get() orelse return error.InvalidState;
+    const step = steps.body_consume orelse return error.InvalidState;
+    return step(response_object, method);
+}
+
+/// Body mixin: `Request.textStream()`.
+pub fn requestBodyTextStream(request_object: *runtime.Instance) anyerror!*runtime.Instance {
+    const steps = request_steps.get() orelse return error.InvalidState;
+    const step = steps.body_text_stream orelse return error.InvalidState;
+    return step(request_object);
+}
+
+/// Body mixin: `Response.textStream()`.
+pub fn responseBodyTextStream(response_object: *runtime.Instance) anyerror!*runtime.Instance {
+    const steps = response_steps.get() orelse return error.InvalidState;
+    const step = steps.body_text_stream orelse return error.InvalidState;
+    return step(response_object);
 }
 
 test "without installed steps nothing is asked of an object" {

@@ -52,6 +52,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start.
 pub fn installHooks() void {
     dom_module.style_sheet_owners.installSvgStyleParserSteps(.{ .created = &createdByParser, .popped = &poppedByParser });
+    dom_module.style_sheet_owners.installSheetRecord(&sheetOf);
     // The associated CSS style sheet's media follows the attribute (HTML
     // 4.2.6, by SVG 2 15.3). The step is the SVG namespace's for `media`;
     // it leaves alone every element that is not an SVG style element.
@@ -202,14 +203,6 @@ pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
     const record = internal.sheet orelse return false;
     return record.disabled;
-}
-
-/// Getter for sheet (LinkStyle, CSSOM 6.3.2): the associated CSS style
-/// sheet's CSSStyleSheet object, or null.
-pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return null;
-    const record = internal.sheet orelse return null;
-    return try dom_module.style.objects.sheetObject(record, instance.ctx);
 }
 
 /// Setter for type: reflects.
