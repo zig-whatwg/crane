@@ -19,6 +19,17 @@ fn evaluateString(browser: *Browser, script: []const u8) ![]u8 {
     return ctx.evaluateScriptToString(script, testing.allocator);
 }
 
+/// Spin the event loop until `condition_js` evaluates to `"true"` (up to 5 s).
+fn spinUntil(browser: *Browser, condition_js: []const u8) !void {
+    for (0..500) |_| {
+        _ = try browser.runEventLoopBlocking(10);
+        const done = try evaluateString(browser, condition_js);
+        defer testing.allocator.free(done);
+        if (std.mem.eql(u8, done, "true")) return;
+    }
+    return error.TimedOutWaitingForCondition;
+}
+
 test "default platform source with granted geolocation permission yields POSITION_UNAVAILABLE" {
     const browser = try Browser.init(testing.allocator, .{});
     defer browser.deinit();
@@ -38,7 +49,7 @@ test "default platform source with granted geolocation permission yields POSITIO
     defer testing.allocator.free(setup);
     try testing.expectEqualStrings("armed", setup);
 
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.out.length >= 1)");
 
     const out = try evaluateString(browser, "globalThis.out.join('|')");
     defer testing.allocator.free(out);
@@ -72,7 +83,7 @@ test "scripted platform position source delivers coordinates and enforces statio
         \\'ok'
     );
     defer testing.allocator.free(setup1);
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.p1 !== null)");
 
     const out1 = try evaluateString(browser,
         \\[p1.latitude, p1.longitude, p1.accuracy, p1.altitude, p1.altitudeAccuracy, p1.heading, p1.speed].join('|')
@@ -98,7 +109,7 @@ test "scripted platform position source delivers coordinates and enforces statio
         \\'ok'
     );
     defer testing.allocator.free(setup2);
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.p2 !== null)");
 
     const out2 = try evaluateString(browser, "String(p2.heading) + '|' + String(p2.speed)");
     defer testing.allocator.free(out2);
@@ -130,7 +141,7 @@ test "watchPosition receives PlatformEvent.position pushes and clearWatch releas
     defer testing.allocator.free(setup);
     try testing.expectEqualStrings("true", setup);
 
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.watchLog.length >= 1)");
     try testing.expectEqual(@as(usize, 1), platform.adapter.activeGeolocationWatchCount(bp));
 
     // Push a live platform position update via PlatformEvent.position.
@@ -141,7 +152,7 @@ test "watchPosition receives PlatformEvent.position pushes and clearWatch releas
         .accuracy = 8.0,
     });
     try testing.expectEqual(@as(usize, 1), pushed);
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.watchLog.length >= 2)");
 
     const log = try evaluateString(browser, "globalThis.watchLog.join('|')");
     defer testing.allocator.free(log);
@@ -178,7 +189,7 @@ test "maximumAge reuses [[cachedPosition]] and enableHighAccuracy mismatch bypas
         \\'1'
     );
     defer testing.allocator.free(s1);
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.cLog.length >= 1)");
     try testing.expectEqual(@as(usize, 1), platform.adapter.geolocationRequestCalls(bp));
 
     // Change platform position, then call with maximumAge: 60000 and enableHighAccuracy: false.
@@ -200,7 +211,7 @@ test "maximumAge reuses [[cachedPosition]] and enableHighAccuracy mismatch bypas
         \\'2'
     );
     defer testing.allocator.free(s2);
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.cLog.length >= 2)");
     try testing.expectEqual(@as(usize, 1), platform.adapter.geolocationRequestCalls(bp));
 
     // Request with enableHighAccuracy: true must NOT reuse low-accuracy cache.
@@ -213,7 +224,7 @@ test "maximumAge reuses [[cachedPosition]] and enableHighAccuracy mismatch bypas
         \\'3'
     );
     defer testing.allocator.free(s3);
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.cLog.length >= 3)");
     try testing.expectEqual(@as(usize, 2), platform.adapter.geolocationRequestCalls(bp));
 
     const out = try evaluateString(browser, "globalThis.cLog.join('|')");
@@ -241,7 +252,7 @@ test "slow platform source expires with TIMEOUT and cancels pending platform req
     );
     defer testing.allocator.free(setup);
 
-    _ = try browser.runEventLoopBlocking(120);
+    try spinUntil(browser, "String(globalThis.tOut.length >= 1)");
 
     const out = try evaluateString(browser, "globalThis.tOut.join('|')");
     defer testing.allocator.free(out);
@@ -281,7 +292,7 @@ test "emulation override wins over platform source and clear falls back to platf
         \\'1'
     );
     defer testing.allocator.free(s1);
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.ovLog.length >= 1)");
 
     // Updating the override notifies active watches; setting position_unavailable delivers code 2.
     html.geolocation.setEmulatedPositionData(bc, 42, .{ .coordinates = .{
@@ -289,10 +300,10 @@ test "emulation override wins over platform source and clear falls back to platf
         .longitude = -122.4194,
         .accuracy = 0.0,
     } });
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.ovLog.length >= 2)");
 
     html.geolocation.setEmulatedPositionData(bc, 42, .position_unavailable);
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.ovLog.length >= 3)");
 
     // Clear override -> next getCurrentPosition falls back to platform source (10, 20).
     html.geolocation.setEmulatedPositionData(bc, 0, null);
@@ -305,7 +316,7 @@ test "emulation override wins over platform source and clear falls back to platf
         \\'2'
     );
     defer testing.allocator.free(s2);
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.ovLog.length >= 4)");
 
     const out = try evaluateString(browser, "globalThis.ovLog.join('|')");
     defer testing.allocator.free(out);
@@ -331,7 +342,11 @@ test "Browser teardown with pending platform requests and active watches leaks n
     try testing.expectEqualStrings("active", setup);
 
     // Let StartTasks run so requests are live in both Registry and testing GeolocationSource.
-    _ = try browser.runEventLoopBlocking(20);
+    for (0..500) |_| {
+        _ = try browser.runEventLoopBlocking(10);
+        if (platform.adapter.activeGeolocationWatchCount(bp) >= 2 and
+            platform.adapter.pendingGeolocationRequestCount(bp) >= 3) break;
+    }
     try testing.expect(platform.adapter.activeGeolocationWatchCount(bp) >= 2);
     try testing.expect(platform.adapter.pendingGeolocationRequestCount(bp) >= 3);
     // defer browser.deinit() cleans up all pending replies, timers, callbacks, and watches.

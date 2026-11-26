@@ -13,6 +13,17 @@ fn evaluateString(browser: *Browser, script: []const u8) ![]u8 {
     return ctx.evaluateScriptToString(script, testing.allocator);
 }
 
+/// Spin the event loop until `condition_js` evaluates to `"true"` (up to 5 s).
+fn spinUntil(browser: *Browser, condition_js: []const u8) !void {
+    for (0..500) |_| {
+        _ = try browser.runEventLoopBlocking(10);
+        const done = try evaluateString(browser, condition_js);
+        defer testing.allocator.free(done);
+        if (std.mem.eql(u8, done, "true")) return;
+    }
+    return error.TimedOutWaitingForCondition;
+}
+
 test "navigator.geolocation is [SameObject] and exposes methods and GeolocationPositionError constants" {
     const browser = try Browser.init(testing.allocator, .{});
     defer browser.deinit();
@@ -60,7 +71,7 @@ test "non-secure context asynchronously calls errorCallback with PERMISSION_DENI
     defer testing.allocator.free(setup);
     try testing.expectEqualStrings("false|true", setup);
 
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.geoOut.length >= 2)");
 
     const out = try evaluateString(browser, "globalThis.geoOut.join('|')");
     defer testing.allocator.free(out);
@@ -94,7 +105,7 @@ test "non-fully-active iframe returns watchId 0 and asynchronously delivers POSI
     defer testing.allocator.free(setup);
     try testing.expectEqualStrings("0|0", setup);
 
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.nfaOut.length >= 2)");
 
     const out = try evaluateString(browser, "globalThis.nfaOut.join('|')");
     defer testing.allocator.free(out);
@@ -122,7 +133,7 @@ test "headless secure context with prompt permission denies cleanly and tears do
     defer testing.allocator.free(setup);
     try testing.expectEqualStrings("true", setup);
 
-    _ = try browser.runEventLoopBlocking(50);
+    try spinUntil(browser, "String(globalThis.permOut.length >= 2)");
 
     const out = try evaluateString(browser, "globalThis.permOut.join('|')");
     defer testing.allocator.free(out);
