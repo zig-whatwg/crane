@@ -723,7 +723,9 @@ fn invokeCallback(realm: runtime.Context, record: *Record, lock: ?*runtime.Insta
     const callback = record.callback orelse return null;
     record.callback = null;
     defer callback.release();
-    return callbacks.call.LockGrantedCallback.invoke(realm, &callback, .undefined, .{ .lock = lock }) catch |err| {
+    // Golden rule 2 (live probes of Chrome 157 & Firefox 159/161): both pass
+    // a same-realm %Promise% through with 0 extra microtask ticks.
+    return callbacks.call.LockGrantedCallback.invokePromiseResolve(realm, &callback, .undefined, .{ .lock = lock }) catch |err| {
         log.debug("lock callback not invoked: {s}", .{@errorName(err)});
         return null;
     };

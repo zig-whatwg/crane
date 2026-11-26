@@ -98,7 +98,9 @@ test "generated promise callbacks emit invokeCallbackFunctionToPromise and callb
     defer testing.allocator.free(file);
     try testing.expect(contains(file, "pub const is_promise = true;"));
     try testing.expect(contains(file, "node: *runtime.Instance,"));
-    try testing.expect(contains(file, "engine.invokeCallbackFunctionToPromise(realm, callback, this_arg, args)"));
+    try testing.expect(contains(file, "engine.invokeCallbackFunctionToPromise(.webidl, realm, callback, this_arg, args)"));
+    try testing.expect(contains(file, "pub fn invokePromiseResolve("));
+    try testing.expect(contains(file, "engine.invokeCallbackFunctionToPromise(.promise_resolve, realm, callback, this_arg, args)"));
 
     const root = try out.fileIn("callbacks", "root");
     defer testing.allocator.free(root);

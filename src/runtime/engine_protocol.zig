@@ -2363,36 +2363,36 @@ pub inline fn invokeCallbackFunctionAs(
     return impl.invokeCallbackFunctionAs(R, return_options, realm, callback, this_arg, args, behavior, allocator);
 }
 
+/// How a Promise-returning callback function converts a normal JS return value V:
+/// - `.webidl`: literal WebIDL 3.2.24 — always a new `%Promise%` in F's
+///   associated realm resolved with V (`NewPromiseCapability` + `Resolve(V)`,
+///   +2 microtask ticks when V is already a `%Promise%`). Required by WHATWG
+///   Streams (`streams/transform-streams/{cancel,errors,general}.any.js`:
+///   232/232 PASS when both `startPromise` and `cancel()` follow WebIDL 3.2.24).
+/// - `.promise_resolve`: ECMAScript `PromiseResolve(%Promise%, V)` — passes a
+///   same-realm `%Promise%` through unchanged (`delta = 0` microtask ticks,
+///   `thenGets = 0`), while non-promises, thenables, subclasses and cross-realm
+///   promises still wrap in a new `%Promise%` of F's realm. Used where golden
+///   rule 2 (Chrome 157 + Firefox 159/161 2-of-3 majority) requires 0 extra
+///   ticks (`navigation-api/ordering-and-transition/*-intercept-reject.html`
+///   wpt.fyi `cc74d2669f`, `ViewTransition`, `LockManager`).
+pub const PromiseResolution = enum { webidl, promise_resolve };
+
 /// WebIDL "invoke a callback function" (3.12) for a callback whose return type
 /// is `Promise<T>`: step 10 typed arguments; step 13 converts a normal result
-/// via ECMAScript `PromiseResolve(%Promise%, V)` in F's associated realm;
-/// step 14.7-14.9 converts an abrupt completion (from the call or from
-/// `Get(V, "constructor")`) into a promise rejected with the thrown value in
-/// F's associated realm. Never returns a JS throw; the returned `Owned` is
-/// OWNED.
-///
-/// Deviation from WebIDL 3.2.24 text, stated (golden rule 2): WebIDL 3.2.24
-/// specifies `NewPromiseCapability(%Promise%)` + `[[Resolve]](V)` (always a
-/// new promise, adding 2 microtask ticks when `V` is already a `%Promise%`).
-/// Live probes of Chrome 157.0.8103.51 and Firefox 159.0.1/161.0 across all
-/// five Promise-returning callback APIs (`WritableStream` `write`,
-/// `NavigateEvent.intercept` `handler` and `precommitHandler`,
-/// `navigator.locks.request`, `document.startViewTransition`) show BOTH pass a
-/// same-realm `%Promise%` through unchanged (`delta = 0` microtask ticks,
-/// `thenGets = 0` during return conversion; Firefox performs `PromiseResolve`
-/// with `Get(V, "constructor")`, Chrome checks `IsPromise`), while Safari 27
-/// wraps in a new promise and fails all 8 variants of
-/// `navigation-api/ordering-and-transition/{navigate-same-document,reload,anchor-download,location-href}-intercept-reject.html`
-/// (wpt.fyi `cc74d2669f`), which Chrome and Firefox both pass. By golden rule
-/// 2 (2-of-3 browser majority), Crane converts with `PromiseResolve(%Promise%, V)`.
+/// per `resolution` in F's associated realm; step 14.7-14.9 converts an abrupt
+/// completion (from the call or from `Get(V, "constructor")` under
+/// `.promise_resolve`) into a promise rejected with the thrown value in F's
+/// associated realm. Never returns a JS throw; the returned `Owned` is OWNED.
 pub inline fn invokeCallbackFunctionToPromise(
+    comptime resolution: PromiseResolution,
     realm: Context,
     callback: *const CallbackFunction,
     this_arg: CallbackThis,
     args: anytype,
 ) Error!Owned {
     runtime.native_holds.assertNone(realm.agent, "invokeCallbackFunctionToPromise");
-    return impl.invokeCallbackFunctionToPromise(realm, callback, this_arg, args);
+    return impl.invokeCallbackFunctionToPromise(resolution, realm, callback, this_arg, args);
 }
 
 /// WebIDL "construct a callback function" (3.12) with typed arguments (step 9)

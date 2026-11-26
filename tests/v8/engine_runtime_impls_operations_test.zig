@@ -452,7 +452,8 @@ test "every protocol operation's V8 function compiles" {
         const cb_iface: protocol.CallbackInterface = undefined;
         const held_void: protocol.Held(void) = undefined;
         _ = v8.protocol.invokeCallbackFunctionAs(void, .{}, ctx, &cb_fn, .undefined, .{}, .rethrow, std.testing.allocator) catch {};
-        _ = v8.protocol.invokeCallbackFunctionToPromise(ctx, &cb_fn, .undefined, .{}) catch {};
+        _ = v8.protocol.invokeCallbackFunctionToPromise(.webidl, ctx, &cb_fn, .undefined, .{}) catch {};
+        _ = v8.protocol.invokeCallbackFunctionToPromise(.promise_resolve, ctx, &cb_fn, .undefined, .{}) catch {};
         _ = v8.protocol.constructCallbackFunctionAs(void, .{}, ctx, &cb_fn, .{}, std.testing.allocator) catch {};
         _ = v8.protocol.callUserObjectOperationAs(void, .{}, ctx, &cb_iface, "op", .undefined, .{}, .rethrow, std.testing.allocator) catch {};
         _ = v8.protocol.convertFromJS(void, .{}, ctx, .jsUndefined, std.testing.allocator) catch {};

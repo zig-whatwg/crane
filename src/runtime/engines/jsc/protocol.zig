@@ -413,7 +413,7 @@ pub fn callUserObjectOperation(_: Context, _: *const engine.CallbackInterface, _
 pub fn invokeCallbackFunctionAs(comptime R: type, comptime _: engine.ReturnOptions, _: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: anytype, _: engine.ExceptionBehavior, _: std.mem.Allocator) Error!engine.Returned(R) {
     return error.NotSupported;
 }
-pub fn invokeCallbackFunctionToPromise(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: anytype) Error!Owned {
+pub fn invokeCallbackFunctionToPromise(comptime _: engine.PromiseResolution, _: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: anytype) Error!Owned {
     return error.NotSupported;
 }
 pub fn constructCallbackFunctionAs(comptime R: type, comptime _: engine.ReturnOptions, _: Context, _: *const engine.CallbackFunction, _: anytype, _: std.mem.Allocator) Error!engine.Returned(R) {

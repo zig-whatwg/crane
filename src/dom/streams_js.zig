@@ -205,27 +205,18 @@ pub const Realm = struct {
     // Promises
     // ------------------------------------------------------------------
 
-    /// WebIDL "a promise resolved with" (`PromiseResolve(%Promise%, value)`):
-    /// passes a same-realm `%Promise%` through unchanged (0 extra microtask
-    /// ticks, matching Blink and Gecko), adopts thenables and cross-realm
-    /// promises into a new `%Promise%`, and rejects with any abrupt
-    /// `Get(value, "constructor")`. Owned.
+    /// WebIDL "a promise resolved with" (3.2.24.1): always a new promise,
+    /// resolved with `value` - so a thenable is adopted and TransformStream's
+    /// startPromise vs cancelPromise microtask order matches WHATWG Streams.
+    /// Owned.
     pub fn promiseResolvedWith(self: Realm, value: Value) Error!Value {
-        const resolved = engine.promiseResolve(self.ctx, value.value) catch |err| return fromEngineError(err);
-        return switch (resolved) {
-            .normal => |promise| self.adoptOwned(promise),
-            .throw => |reason| blk: {
-                defer reason.release();
-                const rejected = engine.createRejectedPromise(self.ctx, reason.borrow()) catch |err| return fromEngineError(err);
-                break :blk self.adoptOwned(rejected);
-            },
-        };
+        const promise = engine.createResolvedPromise(self.ctx, value.value) catch |err| return fromEngineError(err);
+        return adopt(self.ctx, promise);
     }
 
     /// Owned.
     pub fn promiseResolvedWithUndefined(self: Realm) Error!Value {
-        const promise = engine.createResolvedPromise(self.ctx, .undefined) catch |err| return fromEngineError(err);
-        return self.adoptOwned(promise);
+        return self.promiseResolvedWith(try self.undefinedValue());
     }
 
     /// WebIDL "a promise rejected with". Owned.

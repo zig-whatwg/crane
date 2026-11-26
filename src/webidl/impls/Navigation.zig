@@ -1845,7 +1845,10 @@ fn runPrecommitHandlers(instance: *runtime.Instance, internal: *InternalState, r
     var i: usize = 0;
     while (i < record.precommit_handlers.items.len) : (i += 1) {
         const handler = record.precommit_handlers.items[i];
-        const promise = callbacks.call.NavigationPrecommitHandler.invoke(realm, &handler, .undefined, .{ .controller = controller }) catch |err| {
+        // Golden rule 2 (wpt.fyi cc74d2669f: Chrome 154+ & Firefox 157+ pass all 8
+        // navigation-api/ordering-and-transition/*-intercept-reject.html variants,
+        // Safari 27 fails): PromiseResolve keeps a same-realm %Promise% unchanged.
+        const promise = callbacks.call.NavigationPrecommitHandler.invokePromiseResolve(realm, &handler, .undefined, .{ .controller = controller }) catch |err| {
             log.debug("[navigation] precommit handler not invoked: {s}", .{@errorName(err)});
             continue;
         };
@@ -1949,7 +1952,10 @@ fn interceptCommitHandlerSteps(instance: *runtime.Instance, internal: *InternalS
     var i: usize = 0;
     while (i < record.handlers.items.len) : (i += 1) {
         const handler = record.handlers.items[i];
-        const promise = callbacks.call.NavigationInterceptHandler.invoke(realm, &handler, .undefined, .{}) catch |err| {
+        // Golden rule 2 (wpt.fyi cc74d2669f: Chrome 154+ & Firefox 157+ pass all 8
+        // navigation-api/ordering-and-transition/*-intercept-reject.html variants,
+        // Safari 27 fails): PromiseResolve keeps a same-realm %Promise% unchanged.
+        const promise = callbacks.call.NavigationInterceptHandler.invokePromiseResolve(realm, &handler, .undefined, .{}) catch |err| {
             log.debug("[navigation] handler not invoked: {s}", .{@errorName(err)});
             continue;
         };

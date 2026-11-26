@@ -641,11 +641,11 @@ pub fn invokeCallbackFunctionAs(comptime R: type, comptime return_options: engin
     return protocol_callbacks.invokeCallbackFunctionAs(R, return_options, realm, callback, this_arg, args, behavior, allocator);
 }
 
-pub fn invokeCallbackFunctionToPromise(realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: anytype) Error!Owned {
+pub fn invokeCallbackFunctionToPromise(comptime resolution: engine.PromiseResolution, realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: anytype) Error!Owned {
     forbidScriptInHold(realm);
     const algorithm = dom_algorithm.enterCallback(realm);
     defer dom_algorithm.leaveCallback(algorithm);
-    return protocol_callbacks.invokeCallbackFunctionToPromise(realm, callback, this_arg, args);
+    return protocol_callbacks.invokeCallbackFunctionToPromise(resolution, realm, callback, this_arg, args);
 }
 
 pub fn constructCallbackFunctionAs(comptime R: type, comptime return_options: engine.ReturnOptions, realm: Context, callback: *const engine.CallbackFunction, args: anytype, allocator: std.mem.Allocator) Error!engine.Returned(R) {

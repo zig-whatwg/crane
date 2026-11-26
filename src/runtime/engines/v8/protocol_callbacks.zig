@@ -985,6 +985,7 @@ pub fn invokeCallbackFunctionAs(
 /// wraps an abrupt completion (from the call or from `Get(V, "constructor")`)
 /// in a rejected `%Promise%` in F's associated realm.
 pub fn invokeCallbackFunctionToPromise(
+    comptime resolution: engine.PromiseResolution,
     realm: Context,
     callback: *const engine.CallbackFunction,
     this_arg: engine.CallbackThis,
@@ -1039,29 +1040,39 @@ pub fn invokeCallbackFunctionToPromise(
                 self.result = err;
                 return;
             };
-            // 13. Convert normal return via PromiseResolve(%Promise%, V) inside
-            // prepared scopes (same-realm %Promise% passes through unchanged,
-            // matching Chrome 157 + Firefox 159/161 across all 5 Promise
-            // callback APIs; non-promises, thenables, subclasses and
-            // cross-realm promises wrap in a new %Promise% of F's realm).
-            const at: struct {
-                isolate: *ffi.Isolate,
-                ctx: *ffi.Context,
-                pub fn context(s: @This()) *ffi.Context {
-                    return s.ctx;
-                }
-            } = .{ .isolate = self.isolate, .ctx = self.context };
+            // 13. Convert normal return inside prepared scopes:
+            // - `.webidl`: WebIDL 3.2.24 (always a new %Promise% resolved with V).
+            // - `.promise_resolve`: ECMAScript PromiseResolve(%Promise%, V)
+            //   (same-realm %Promise% passes through with 0 extra microtask ticks).
             switch (raw) {
                 .thrown => |t| self.result = .{ .thrown = t },
                 .normal => |v| {
                     defer ffi.v8_Global_Dispose(v);
-                    const resolved = support.promiseResolve(at, v) catch |err| {
-                        self.result = err;
-                        return;
-                    };
-                    switch (resolved) {
-                        .normal => |promise| self.result = .{ .resolved = support.owned(promise) },
-                        .thrown => |exc| self.result = .{ .thrown = .{ .value = exc } },
+                    switch (resolution) {
+                        .webidl => {
+                            const promise = settledPromiseInContext(self.context, v, true) catch |err| {
+                                self.result = err;
+                                return;
+                            };
+                            self.result = .{ .resolved = promise };
+                        },
+                        .promise_resolve => {
+                            const at: struct {
+                                isolate: *ffi.Isolate,
+                                ctx: *ffi.Context,
+                                pub fn context(s: @This()) *ffi.Context {
+                                    return s.ctx;
+                                }
+                            } = .{ .isolate = self.isolate, .ctx = self.context };
+                            const resolved = support.promiseResolve(at, v) catch |err| {
+                                self.result = err;
+                                return;
+                            };
+                            switch (resolved) {
+                                .normal => |promise| self.result = .{ .resolved = support.owned(promise) },
+                                .thrown => |exc| self.result = .{ .thrown = .{ .value = exc } },
+                            }
+                        },
                     }
                 },
             }

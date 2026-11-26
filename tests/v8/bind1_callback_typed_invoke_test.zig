@@ -430,33 +430,42 @@ test "invokeCallbackFunctionAs: return conversion throws inside callback context
     }
 }
 
-test "invokeCallbackFunctionToPromise: PromiseResolve passes through same-realm Promise, wraps non-promise/cross-realm, sync throw rejects" {
+test "invokeCallbackFunctionToPromise: webidl wraps in new Promise, promise_resolve passes same-realm Promise through, sync throw rejects" {
     const page = try Page.open();
     defer page.close();
 
-    // Non-promise return is wrapped in a fulfilled Promise
+    // Non-promise return is wrapped in a fulfilled Promise (both modes)
     {
         const cb = try Page.makeCallback(page.realm, "() => 123", page.realm);
         defer cb.release();
-        const p = try protocol.invokeCallbackFunctionToPromise(page.realm, &cb, .undefined, .{});
-        defer p.release();
+        const p1 = try protocol.invokeCallbackFunctionToPromise(.webidl, page.realm, &cb, .undefined, .{});
+        defer p1.release();
+        const p2 = try protocol.invokeCallbackFunctionToPromise(.promise_resolve, page.realm, &cb, .undefined, .{});
+        defer p2.release();
         // V8 PromiseState: 0 = pending, 1 = fulfilled, 2 = rejected.
-        try testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(@ptrCast(@alignCast(p.value.handle.ptr))));
+        try testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(@ptrCast(@alignCast(p1.value.handle.ptr))));
+        try testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(@ptrCast(@alignCast(p2.value.handle.ptr))));
     }
 
-    // Same-realm %Promise% passes through unchanged (PromiseResolve: 0 extra
-    // microtask ticks, Chrome 157 + Firefox 159/161 2-of-3 browser majority).
+    // Same-realm %Promise%: `.webidl` wraps in a NEW Promise (WebIDL 3.2.24);
+    // `.promise_resolve` passes through unchanged (0 extra microtask ticks).
     {
         const setup_res = try page.eval("globalThis.origPromise = Promise.resolve(123); globalThis.fnRetP = () => globalThis.origPromise; globalThis.fnRetP");
         const cb: protocol.CallbackFunction = .{ .function = setup_res, .context = page.realm };
         defer cb.release();
 
-        const p = try protocol.invokeCallbackFunctionToPromise(page.realm, &cb, .undefined, .{});
-        defer p.release();
+        const p_webidl = try protocol.invokeCallbackFunctionToPromise(.webidl, page.realm, &cb, .undefined, .{});
+        defer p_webidl.release();
+        const p_pr = try protocol.invokeCallbackFunctionToPromise(.promise_resolve, page.realm, &cb, .undefined, .{});
+        defer p_pr.release();
 
-        const check_cb = try Page.makeCallback(page.realm, "(p) => (p instanceof Promise) && (p === globalThis.origPromise)", page.realm);
+        const check_cb = try Page.makeCallback(
+            page.realm,
+            "(pw, pp) => (pw instanceof Promise) && (pw !== globalThis.origPromise) && (pp instanceof Promise) && (pp === globalThis.origPromise)",
+            page.realm,
+        );
         defer check_cb.release();
-        const check = try protocol.invokeCallbackFunctionAs(bool, .{}, page.realm, &check_cb, .undefined, .{p.borrow()}, .rethrow, testing.allocator);
+        const check = try protocol.invokeCallbackFunctionAs(bool, .{}, page.realm, &check_cb, .undefined, .{ p_webidl.borrow(), p_pr.borrow() }, .rethrow, testing.allocator);
         switch (check) {
             .normal => |held| {
                 defer held.release(testing.allocator);
@@ -477,12 +486,12 @@ test "invokeCallbackFunctionToPromise: PromiseResolve passes through same-realm 
         defer other_p.release();
         const cb = try Page.makeCallback(page.realm, "(p) => p", page.realm);
         defer cb.release();
-        const returned = try protocol.invokeCallbackFunctionToPromise(page.realm, &cb, .undefined, .{other_p.borrow()});
+        const returned = try protocol.invokeCallbackFunctionToPromise(.promise_resolve, page.realm, &cb, .undefined, .{other_p.borrow()});
         defer returned.release();
         try testing.expect(!protocol.sameValue(page.realm, other_p.borrow(), returned.borrow()));
     }
 
-    // Promise whose .constructor getter throws becomes a rejected Promise (never throws).
+    // Promise whose .constructor getter throws becomes a rejected Promise under .promise_resolve (never throws).
     {
         const cb = try Page.makeCallback(
             page.realm,
@@ -490,19 +499,22 @@ test "invokeCallbackFunctionToPromise: PromiseResolve passes through same-realm 
             page.realm,
         );
         defer cb.release();
-        const p = try protocol.invokeCallbackFunctionToPromise(page.realm, &cb, .undefined, .{});
+        const p = try protocol.invokeCallbackFunctionToPromise(.promise_resolve, page.realm, &cb, .undefined, .{});
         defer p.release();
         try testing.expectEqual(@as(c_int, 2), ffi.v8_Promise_State(@ptrCast(@alignCast(p.value.handle.ptr))));
     }
 
-    // Sync throw returns a rejected Promise (never throws)
+    // Sync throw returns a rejected Promise in both modes (never throws)
     {
         const cb = try Page.makeCallback(page.realm, "() => { throw new TypeError('boom'); }", page.realm);
         defer cb.release();
-        const p = try protocol.invokeCallbackFunctionToPromise(page.realm, &cb, .undefined, .{});
-        defer p.release();
+        const p1 = try protocol.invokeCallbackFunctionToPromise(.webidl, page.realm, &cb, .undefined, .{});
+        defer p1.release();
+        const p2 = try protocol.invokeCallbackFunctionToPromise(.promise_resolve, page.realm, &cb, .undefined, .{});
+        defer p2.release();
         // V8 PromiseState: 0 = pending, 1 = fulfilled, 2 = rejected.
-        try testing.expectEqual(@as(c_int, 2), ffi.v8_Promise_State(@ptrCast(@alignCast(p.value.handle.ptr))));
+        try testing.expectEqual(@as(c_int, 2), ffi.v8_Promise_State(@ptrCast(@alignCast(p1.value.handle.ptr))));
+        try testing.expectEqual(@as(c_int, 2), ffi.v8_Promise_State(@ptrCast(@alignCast(p2.value.handle.ptr))));
     }
 }
 
@@ -665,9 +677,11 @@ test "handle counts over 64 calls: zero global handle bytes leaked across all B6
                     .normal => |h| h.release(alloc),
                     .throw => |t| t.release(),
                 }
-                const p1 = try protocol.invokeCallbackFunctionToPromise(r, c_str, .undefined, .{runtime.DOMString.initInterned("a")});
+                const p1 = try protocol.invokeCallbackFunctionToPromise(.webidl, r, c_str, .undefined, .{runtime.DOMString.initInterned("a")});
                 p1.release();
-                const p2 = try protocol.invokeCallbackFunctionToPromise(r, c_throw, .undefined, .{});
+                const p1b = try protocol.invokeCallbackFunctionToPromise(.promise_resolve, r, c_str, .undefined, .{runtime.DOMString.initInterned("a")});
+                p1b.release();
+                const p2 = try protocol.invokeCallbackFunctionToPromise(.webidl, r, c_throw, .undefined, .{});
                 p2.release();
                 switch (try protocol.constructCallbackFunctionAs(*runtime.Instance, .{ .interface = interfaces.HTMLElement }, r, c_ctor, .{}, alloc)) {
                     .normal => |h| h.release(alloc),
@@ -839,7 +853,7 @@ test "convertFromJS: BasePropertyIndexedKeyframe and BaseKeyframe end-to-end via
     }
 }
 
-test "TransformStream readable.cancel() and parallel writable.close() reject when async cancel() calls controller.error()" {
+test "TransformStream start/cancel microtask invariants (cancel.any.js:79, errors.any.js:253, general.any.js:379)" {
     const page = try Page.open();
     defer page.close();
     const a = testing.allocator;
@@ -849,17 +863,37 @@ test "TransformStream readable.cancel() and parallel writable.close() reject whe
         \\() => {
         \\  globalThis.__tsResult = 'pending';
         \\  const thrownError = new Error('boom');
-        \\  let controller;
-        \\  const ts = new TransformStream({
-        \\    start(c) { controller = c; },
-        \\    async cancel() { controller.error(thrownError); },
+        \\  // 1. cancel.any.js:79 — async cancel() calls controller.error(): both cancel and parallel close reject with thrownError.
+        \\  let c1;
+        \\  const ts1 = new TransformStream({
+        \\    start(c) { c1 = c; },
+        \\    async cancel() { c1.error(thrownError); },
         \\  });
-        \\  const cancelP = ts.readable.cancel('reason');
-        \\  const closeP = ts.writable.close();
+        \\  const p1Cancel = ts1.readable.cancel('reason');
+        \\  const p1Close = ts1.writable.close();
+        \\
+        \\  // 2. errors.any.js:253 — no cancel callback, controller.error() right after readable.cancel(): cancel resolves, writer.closed rejects with thrownError.
+        \\  let c2;
+        \\  const ts2 = new TransformStream({ start(c) { c2 = c; } });
+        \\  const p2Cancel = ts2.readable.cancel('ignored');
+        \\  c2.error(thrownError);
+        \\  const p2Closed = ts2.writable.getWriter().closed;
+        \\
+        \\  // 3. general.any.js:379 — no cancel callback, controller.terminate() right after readable.cancel(): cancel resolves, writer.closed rejects with TypeError.
+        \\  let c3;
+        \\  const ts3 = new TransformStream({ start(c) { c3 = c; } });
+        \\  const p3Cancel = ts3.readable.cancel('ignored');
+        \\  c3.terminate();
+        \\  const p3Closed = ts3.writable.getWriter().closed;
+        \\
         \\  Promise.all([
-        \\    cancelP.then(() => 'cancel-resolved', e => e === thrownError ? 'ok' : 'cancel-wrong'),
-        \\    closeP.then(() => 'close-resolved', e => e === thrownError ? 'ok' : 'close-wrong'),
-        \\  ]).then(([c, w]) => { globalThis.__tsResult = c + ':' + w; });
+        \\    p1Cancel.then(() => '1c-res', e => e === thrownError ? 'ok' : '1c-err'),
+        \\    p1Close.then(() => '1w-res', e => e === thrownError ? 'ok' : '1w-err'),
+        \\    p2Cancel.then(() => 'ok', () => '2c-rej'),
+        \\    p2Closed.then(() => '2w-res', e => e === thrownError ? 'ok' : '2w-err'),
+        \\    p3Cancel.then(() => 'ok', () => '3c-rej'),
+        \\    p3Closed.then(() => '3w-res', e => e instanceof TypeError ? 'ok' : '3w-err'),
+        \\  ]).then(parts => { globalThis.__tsResult = parts.join(':'); });
         \\}
     ,
         page.realm,
@@ -877,7 +911,7 @@ test "TransformStream readable.cancel() and parallel writable.close() reject whe
     switch (try protocol.invokeCallbackFunctionAs(runtime.DOMString, .{}, page.realm, &read_res, .undefined, .{}, .rethrow, a)) {
         .normal => |h| {
             defer h.release(a);
-            try testing.expectEqualStrings("ok:ok", h.value.asSlice());
+            try testing.expectEqualStrings("ok:ok:ok:ok:ok:ok", h.value.asSlice());
         },
         .throw => |t| {
             t.release();
