@@ -180,7 +180,7 @@ pub fn scan(io: std.Io, arena: std.mem.Allocator, dir: std.Io.Dir, list_out: ?*s
         std.mem.replaceScalar(u8, path, '\\', '/');
         if (!isScanned(path)) continue;
         const source = try dir.readFileAllocOptions(io, path, arena, .limited(64 << 20), .of(u8), 0);
-        var found = try uses(arena, source);
+        const found = try uses(arena, source);
         var file_unmarked: usize = 0;
         for (found.items) |u| {
             if (u.marked) {
