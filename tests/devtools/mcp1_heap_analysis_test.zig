@@ -193,3 +193,52 @@ test "heap snapshot analysis tools: summary, details, class nodes, object detail
     try testing.expect(bad_ext.is_error);
     try testing.expect(std.mem.indexOf(u8, bad_ext.text, "must have a .heapsnapshot or .heaptimeline extension.") != null);
 }
+
+test "live V8 take_heapsnapshot round-trip analyzed by summary, details, and close" {
+    var gpa = replay.LeakChecked.init;
+    defer testing.expectEqual(.ok, gpa.deinit()) catch {};
+    const allocator = gpa.allocator();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir_path = try tmp.dir.realPathFileAlloc(testing.io, ".", allocator);
+    defer allocator.free(dir_path);
+    const snap_path = try std.fmt.allocPrint(allocator, "{s}/live.heapsnapshot", .{dir_path});
+    defer allocator.free(snap_path);
+
+    var host = try browser_mod.BrowserHost.start(allocator, .{});
+    defer host.stop();
+    const dt = try devtools.Server.start(allocator, .{ .port = 0, .default_host = host });
+    defer dt.stop();
+
+    const roots = [_][]const u8{dir_path};
+    const srv = try McpServer.createWith(allocator, dt, .{
+        .filesystem_roots = &roots,
+        .memory_debugging = true,
+    });
+    defer srv.destroy();
+
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    // Allocate a distinctive constructor on the live V8 heap and capture a snapshot.
+    const eval_res = try callTool(srv, arena, "evaluate_script", "{\"pageId\":1,\"function\":\"() => { class CraneHeapMarker { constructor(v) { this.v = v; } } globalThis.__craneHeapMarkers = [new CraneHeapMarker(1), new CraneHeapMarker(2)]; return globalThis.__craneHeapMarkers.length; }\"}");
+    try testing.expect(!eval_res.is_error);
+
+    const taken = try callTool(srv, arena, "take_heapsnapshot", try std.fmt.allocPrint(arena, "{{\"pageId\":1,\"filePath\":{f}}}", .{std.json.fmt(snap_path, .{})}));
+    try testing.expect(!taken.is_error);
+
+    const summary = try callTool(srv, arena, "get_heapsnapshot_summary", try std.fmt.allocPrint(arena, "{{\"filePath\":{f}}}", .{std.json.fmt(snap_path, .{})}));
+    try testing.expect(!summary.is_error);
+    try testing.expect(std.mem.indexOf(u8, summary.text, "## Heap Snapshot Data") != null);
+    try testing.expect(std.mem.indexOf(u8, summary.text, "### Native Contexts") != null);
+    try testing.expect(std.mem.indexOf(u8, summary.text, "### Retained by Context Summary") != null);
+
+    const details = try callTool(srv, arena, "get_heapsnapshot_details", try std.fmt.allocPrint(arena, "{{\"filePath\":{f},\"pageSize\":500}}", .{std.json.fmt(snap_path, .{})}));
+    try testing.expect(!details.is_error);
+    try testing.expect(std.mem.indexOf(u8, details.text, ",CraneHeapMarker,2,") != null);
+
+    const closed = try callTool(srv, arena, "close_heapsnapshot", try std.fmt.allocPrint(arena, "{{\"filePath\":{f}}}", .{std.json.fmt(snap_path, .{})}));
+    try testing.expect(!closed.is_error);
+}
