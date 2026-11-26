@@ -224,6 +224,7 @@ pub const ArrayBufferViewDescription = @import("engine_types.zig").ArrayBufferVi
 // ---- end lane: runtime-impls ----
 // ---- lane: engine-boundary ----
 pub const SerializedWithTransfer = @import("engine_types.zig").SerializedWithTransfer;
+pub const SerializedForStorage = @import("engine_types.zig").SerializedForStorage;
 pub const SharedMemory = @import("engine_types.zig").SharedMemory;
 pub const TransferableState = @import("engine_types.zig").TransferableState;
 pub const TransferableCheck = @import("engine_types.zig").TransferableCheck;
@@ -245,6 +246,7 @@ pub const serialization_record = @import("serialization_record.zig");
 pub const SerializationRecord = serialization_record.SerializationRecord;
 pub const DeserializationRecord = serialization_record.DeserializationRecord;
 pub const SerializableSteps = serialization_record.SerializableSteps;
+pub const SerializedAttachments = serialization_record.SerializedAttachments;
 
 // Engine Context abstraction - type-safe wrapper for engine_ctx pointers
 // Replaces direct use of engine_ctx: *anyopaque with structured type

@@ -327,6 +327,9 @@ pub const SerializedWithTransfer = struct {
     platform_objects: []*Instance,
     /// OWNED, released by deinit or moved to the receiving message.
     shared_memory: ?*SharedMemory = null,
+    /// OWNED sidecar attachments (e.g. file-backed BlobData handles), released
+    /// by deinit or moved to the receiving message.
+    attachments: ?*@import("serialization_record.zig").SerializedAttachments = null,
 
     pub fn deinit(self: *SerializedWithTransfer, allocator: std.mem.Allocator) void {
         allocator.free(self.serialized);
@@ -334,7 +337,23 @@ pub const SerializedWithTransfer = struct {
         allocator.free(self.array_buffers);
         allocator.free(self.platform_objects);
         if (self.shared_memory) |memory| memory.release();
+        if (self.attachments) |attachments| attachments.release();
         self.* = .{ .serialized = &.{}, .array_buffers = &.{}, .platform_objects = &.{} };
+    }
+};
+
+/// Result of `structuredSerializeForStorageWithAttachments`: serialized with
+/// `forStorage = true` (rejecting SharedArrayBuffer / Wasm.Module synchronously)
+/// while carrying file-backed Blob handles lazily in `attachments` so callers
+/// (IndexedDB `put`/`add`/`cursor.update`) can defer disk reads until storage.
+pub const SerializedForStorage = struct {
+    bytes: []u8,
+    attachments: ?*@import("serialization_record.zig").SerializedAttachments = null,
+
+    pub fn deinit(self: *SerializedForStorage, allocator: std.mem.Allocator) void {
+        allocator.free(self.bytes);
+        if (self.attachments) |attachments| attachments.release();
+        self.* = .{ .bytes = &.{} };
     }
 };
 

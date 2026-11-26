@@ -46,6 +46,10 @@ pub const AttributionAggregationServices = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// Maplike declaration (WebIDL 2.5.11): the binding defines its members
+        /// (3.7.11) over the impl's map entries (`maplikeEntries`).
+        pub const maplike = .{ .key_type = "USVString", .value_type = "AttributionAggregationService", .readonly = true };
     };
 
     pub const State = runtime.FlattenedState(
@@ -55,10 +59,6 @@ pub const AttributionAggregationServices = struct {
             _internal: ?*AttributionAggregationServicesImpl.InternalState = null,
         },
     );
-
-    // ========================================
-    // Constants (static getters)
-    // ========================================
 
     const delegates = .{
         .deinit = &deinit,
@@ -147,5 +147,11 @@ pub const AttributionAggregationServices = struct {
         if (comptime @hasDecl(impls, "AttributionAggregationServices")) {
             if (comptime @hasDecl(impls.AttributionAggregationServices, "installHooks")) impls.AttributionAggregationServices.installHooks();
         }
+    }
+
+    /// The map entries of this maplike object (WebIDL 2.5.11), for the
+    /// binding's maplike members.
+    pub fn maplikeEntries(instance: *runtime.Instance) ?*webidl.maplike.PlatformObjects {
+        return AttributionAggregationServicesImpl.maplikeEntries(instance);
     }
 };

@@ -64,7 +64,7 @@ fn round(kind: Kind) !void {
     defer browser.deinit();
     try browser.navigateWithOptions(base, .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;
-    try page.loadHTML("<!doctype html><body>", .{ .base_url = base });
+    try page.loadHTML("<!doctype html><link rel=\"icon\" href=\"data:,\"><body>", .{ .base_url = base });
     const script = try std.fmt.allocPrint(testing.allocator,
         \\globalThis.ready = false; globalThis.failure = '';
         \\const url = '{s}body';

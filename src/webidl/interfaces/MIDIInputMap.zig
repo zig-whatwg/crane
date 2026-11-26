@@ -49,6 +49,10 @@ pub const MIDIInputMap = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// Maplike declaration (WebIDL 2.5.11): the binding defines its members
+        /// (3.7.11) over the impl's map entries (`maplikeEntries`).
+        pub const maplike = .{ .key_type = "DOMString", .value_type = "MIDIInput", .readonly = true };
     };
 
     pub const State = runtime.FlattenedState(
@@ -58,10 +62,6 @@ pub const MIDIInputMap = struct {
             _internal: ?*MIDIInputMapImpl.InternalState = null,
         },
     );
-
-    // ========================================
-    // Constants (static getters)
-    // ========================================
 
     const delegates = .{
         .deinit = &deinit,
@@ -150,5 +150,11 @@ pub const MIDIInputMap = struct {
         if (comptime @hasDecl(impls, "MIDIInputMap")) {
             if (comptime @hasDecl(impls.MIDIInputMap, "installHooks")) impls.MIDIInputMap.installHooks();
         }
+    }
+
+    /// The map entries of this maplike object (WebIDL 2.5.11), for the
+    /// binding's maplike members.
+    pub fn maplikeEntries(instance: *runtime.Instance) ?*webidl.maplike.PlatformObjects {
+        return MIDIInputMapImpl.maplikeEntries(instance);
     }
 };

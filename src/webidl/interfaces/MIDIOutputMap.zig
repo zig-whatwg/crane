@@ -49,6 +49,10 @@ pub const MIDIOutputMap = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// Maplike declaration (WebIDL 2.5.11): the binding defines its members
+        /// (3.7.11) over the impl's map entries (`maplikeEntries`).
+        pub const maplike = .{ .key_type = "DOMString", .value_type = "MIDIOutput", .readonly = true };
     };
 
     pub const State = runtime.FlattenedState(
@@ -58,10 +62,6 @@ pub const MIDIOutputMap = struct {
             _internal: ?*MIDIOutputMapImpl.InternalState = null,
         },
     );
-
-    // ========================================
-    // Constants (static getters)
-    // ========================================
 
     const delegates = .{
         .deinit = &deinit,
@@ -150,5 +150,11 @@ pub const MIDIOutputMap = struct {
         if (comptime @hasDecl(impls, "MIDIOutputMap")) {
             if (comptime @hasDecl(impls.MIDIOutputMap, "installHooks")) impls.MIDIOutputMap.installHooks();
         }
+    }
+
+    /// The map entries of this maplike object (WebIDL 2.5.11), for the
+    /// binding's maplike members.
+    pub fn maplikeEntries(instance: *runtime.Instance) ?*webidl.maplike.PlatformObjects {
+        return MIDIOutputMapImpl.maplikeEntries(instance);
     }
 };

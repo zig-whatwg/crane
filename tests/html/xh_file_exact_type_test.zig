@@ -32,7 +32,7 @@ fn exercise(comptime case: Case) !void {
         var content_type = try interfaces.Blob.get_type(copy);
         defer content_type.deinit(std.testing.allocator);
         try std.testing.expectEqualStrings(exact_type, content_type.asSlice());
-        try std.testing.expectEqualStrings("body", blob_bytes.bytesOf(copy).?);
+        try std.testing.expectEqualStrings("body", blob_bytes.dataOf(copy).?.memoryBytes().?);
         try std.testing.expectEqual(serialized.bytes.items.len, reader.position);
         return;
     }
@@ -55,7 +55,7 @@ fn exercise(comptime case: Case) !void {
         var content_type = try interfaces.Blob.get_type(file);
         defer content_type.deinit(realm.allocator);
         try std.testing.expectEqualStrings(old_type, content_type.asSlice());
-        try std.testing.expectEqualStrings("body", blob_bytes.bytesOf(file).?);
+        try std.testing.expectEqualStrings("body", blob_bytes.dataOf(file).?.memoryBytes().?);
         return;
     }
 
@@ -69,7 +69,7 @@ fn exercise(comptime case: Case) !void {
     }));
     const generation = runtime.SlabAllocator.generationOf(file);
     defer file.releaseIfUnwrapped(generation);
-    const bytes = blob_bytes.bytesOf(file).?;
+    const bytes = blob_bytes.dataOf(file).?.memoryBytes().?;
     if (case == .oom) {
         failing.fail_index = failing.alloc_index;
         const result = blob_bytes.setExactType(file, exact_type);
@@ -82,8 +82,8 @@ fn exercise(comptime case: Case) !void {
     var content_type = try interfaces.Blob.get_type(file);
     defer content_type.deinit(realm.allocator);
     try std.testing.expectEqualStrings(if (case == .oom) old_type else exact_type, content_type.asSlice());
-    try std.testing.expectEqualStrings("body", blob_bytes.bytesOf(file).?);
-    try std.testing.expectEqual(bytes.ptr, blob_bytes.bytesOf(file).?.ptr);
+    try std.testing.expectEqualStrings("body", blob_bytes.dataOf(file).?.memoryBytes().?);
+    try std.testing.expectEqual(bytes.ptr, blob_bytes.dataOf(file).?.memoryBytes().?.ptr);
     try std.testing.expectEqual(@as(i64, 123), try interfaces.File.get_lastModified(file));
 }
 

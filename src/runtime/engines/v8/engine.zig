@@ -237,10 +237,46 @@ pub fn v8StructuredSerializeForStorage(realm: runtime.Context, value: runtime.JS
     // forStorage: a WebAssembly.Module throws DataCloneError, so no record
     // here names an agent cluster.
     const options: ffi.StructuredSerializeOptions = .{ .for_storage = true, .agent_cluster = 0 };
-    const bytes = ffi.v8_Value_StructuredSerializeWithTransfer(object, &no_transfer, 0, &size, &no_buffers, &code, host.hostObjectSteps(), &options) orelse
+    const bytes = ffi.v8_Value_StructuredSerializeWithTransfer(object, &no_transfer, 0, &size, &no_buffers, &code, host.hostObjectSteps(), &options) orelse {
+        if (host.io_failed) return EngineError.OperationFailed;
         return if (code == 3) EngineError.ExceptionPending else EngineError.DataCloneError;
+    };
     defer ffi.v8_Free_SerializedBuffer(bytes);
     return allocator.dupe(u8, bytes[0..size]) catch EngineError.OutOfMemory;
+}
+
+pub fn v8StructuredSerializeForStorageWithAttachments(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) EngineError!runtime.SerializedForStorage {
+    const entered = try enterRealm(realm);
+    defer entered.leaveAgent();
+    defer entered.leaveScope();
+    const made: ?*ffi.Value = switch (value) {
+        .handle => null,
+        else => value_operations.ownHandle(entered.isolate, entered.scope.context, value) catch
+            return EngineError.OperationFailed,
+    };
+    defer if (made) |v| ffi.v8_Global_Dispose(v);
+    const object: *ffi.Value = made orelse @ptrCast(@alignCast(value.handle.ptr));
+    var no_transfer: [1]*ffi.Value = undefined;
+    var no_buffers: [1]ffi.ArrayBufferTransferData = undefined;
+    var size: usize = 0;
+    var code: c_int = 0;
+    var attachments: ?*runtime.SerializedAttachments = null;
+    errdefer if (attachments) |a| a.release();
+    var host: serializable_objects.Host = .{
+        .realm = realm,
+        .for_storage = true,
+        .allocator = allocator,
+        .write_attachments = &attachments,
+        .attachments_allocator = allocator,
+    };
+    const options: ffi.StructuredSerializeOptions = .{ .for_storage = true, .agent_cluster = 0 };
+    const bytes = ffi.v8_Value_StructuredSerializeWithTransfer(object, &no_transfer, 0, &size, &no_buffers, &code, host.hostObjectSteps(), &options) orelse {
+        if (host.io_failed) return EngineError.OperationFailed;
+        return if (code == 3) EngineError.ExceptionPending else EngineError.DataCloneError;
+    };
+    defer ffi.v8_Free_SerializedBuffer(bytes);
+    const duped = allocator.dupe(u8, bytes[0..size]) catch return EngineError.OutOfMemory;
+    return .{ .bytes = duped, .attachments = attachments };
 }
 
 pub fn v8StructuredDeserialize(realm: runtime.Context, bytes: []const u8) EngineError!runtime.JSValue {

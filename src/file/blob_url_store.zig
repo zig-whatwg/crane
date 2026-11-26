@@ -241,11 +241,14 @@ pub const BlobURLStore = struct {
         blob.deinit();
     }
 
-    fn readPayload(ptr: *anyopaque, allocator: std.mem.Allocator) error{OutOfMemory}!CapturedEntry.Data {
-        // BlobData's bytes and MIME type are immutable; its atomic retained
+    fn readPayload(ptr: *anyopaque, allocator: std.mem.Allocator) error{ OutOfMemory, ReadFailed }!CapturedEntry.Data {
+        // BlobData's MIME type and parts are immutable; its atomic retained
         // reference outlives this read even when another thread revokes.
         const blob: *BlobData = @ptrCast(@alignCast(ptr));
-        const bytes = try allocator.dupe(u8, blob.bytes);
+        const bytes = blob.materialize(allocator) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.NotFoundError, error.NotReadableError => error.ReadFailed,
+        };
         errdefer allocator.free(bytes);
         return .{ .bytes = bytes, .content_type = try allocator.dupe(u8, blob.mime_type) };
     }
@@ -476,7 +479,7 @@ test "BlobURLStore - createObjectURL and resolve" {
     const resolved = store.resolve(url, .{ .environment = "https://example.com" });
     try std.testing.expect(resolved != null);
     defer resolved.?.deinit();
-    try std.testing.expectEqualStrings("Hello", resolved.?.bytes);
+    try std.testing.expectEqualStrings("Hello", resolved.?.memoryBytes().?);
 
     // Should not resolve from different origin
     const cross_origin = store.resolve(url, .{ .environment = "https://other.com" });
@@ -578,8 +581,8 @@ test "BlobURLStore - an entry holds its blob after the Blob lets go of it" {
     blob.deinit();
 
     const resolved = store.resolve(url, .{ .environment = "https://example.com" }) orelse return error.TestExpectedEntry;
-    try std.testing.expectEqual(source.len, resolved.bytes.len);
-    try std.testing.expectEqualStrings(source, resolved.bytes);
+    try std.testing.expectEqual(source.len, resolved.memoryBytes().?.len);
+    try std.testing.expectEqualStrings(source, resolved.memoryBytes().?);
     try std.testing.expectEqualStrings("text/javascript", resolved.mime_type);
     resolved.deinit();
 
@@ -620,8 +623,8 @@ test "BlobURLStore - two URLs for one blob hold it independently" {
 
     store.revokeObjectURL(url1, "https://example.com");
     const resolved = store.resolve(url2, .{ .environment = "https://example.com" }) orelse return error.TestExpectedEntry;
-    try std.testing.expectEqual(@as(usize, 6), resolved.bytes.len);
-    try std.testing.expectEqualStrings("shared", resolved.bytes);
+    try std.testing.expectEqual(@as(usize, 6), resolved.memoryBytes().?.len);
+    try std.testing.expectEqualStrings("shared", resolved.memoryBytes().?);
     resolved.deinit();
     store.revokeObjectURL(url2, "https://example.com");
 }
@@ -653,7 +656,7 @@ test "BlobURLStore - an environment's entries go when it ends, and no one else's
     try std.testing.expect(store.resolve(url_a1, .{ .environment = "https://example.com" }) == null);
     try std.testing.expect(store.resolve(url_a2, .{ .environment = "https://example.com" }) == null);
     const kept = store.resolve(url_b, .{ .environment = "https://example.com" }) orelse return error.TestExpectedEntry;
-    try std.testing.expectEqualStrings("page data", kept.bytes);
+    try std.testing.expectEqualStrings("page data", kept.memoryBytes().?);
     kept.deinit();
 
     // The last entry's end frees the data (std.testing.allocator fails the

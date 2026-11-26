@@ -2124,7 +2124,7 @@ pub fn deliverPortMessage(
     };
     defer received.deinit();
 
-    const data = engine.structuredDeserializeWithOptions(realm, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = received.values, .shared_memory = message.shared_memory }) catch {
+    const data = engine.structuredDeserializeWithOptions(realm, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = received.values, .shared_memory = message.shared_memory, .attachments = message.attachments }) catch {
         fire(realm, target, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
     };

@@ -30,7 +30,7 @@ test "list_network_requests and get_network_request: a document, its subresource
     r = try h.tool("list_network_requests", "{\"pageId\":1}");
     var lines = std.mem.splitScalar(u8, r.text, '\n');
     try testing.expectEqualStrings("## Network requests", lines.next().?);
-    try testing.expectEqualStrings("Showing 1-4 of 4 (Page 1 of 1).", lines.next().?);
+    try testing.expectEqualStrings("Showing 1-5 of 5 (Page 1 of 1).", lines.next().?);
     try testing.expectEqualStrings(try std.fmt.allocPrint(a, "reqid=1 GET {s} [200]", .{root}), lines.next().?);
     // The frame and the script, in the order they were asked for.
     var seen_frame = false;
@@ -41,7 +41,10 @@ test "list_network_requests and get_network_request: a document, its subresource
         if (std.mem.endsWith(u8, line, try std.fmt.allocPrint(a, " GET {s}app.js [200]", .{root}))) seen_script = true;
     }
     try testing.expect(seen_frame and seen_script);
-    try testing.expectEqualStrings(try std.fmt.allocPrint(a, "reqid=4 GET {s}missing [404]", .{root}), lines.next().?);
+    // Default /favicon.ico fetched after load (Chrome 157 parity; lane icon1).
+    const fav_line = lines.next().?;
+    try testing.expect(std.mem.startsWith(u8, fav_line, try std.fmt.allocPrint(a, "reqid=4 GET {s}favicon.ico [", .{root})));
+    try testing.expectEqualStrings(try std.fmt.allocPrint(a, "reqid=5 GET {s}missing [404]", .{root}), lines.next().?);
 
     r = try h.tool("list_network_requests", "{\"pageId\":1,\"resourceTypes\":[\"script\"]}");
     try testing.expect(std.mem.startsWith(u8, r.text, "## Network requests\nShowing 1-1 of 1 (Page 1 of 1).\nreqid="));
@@ -66,9 +69,14 @@ test "list_network_requests and get_network_request: a document, its subresource
     r = try h.tool("get_network_request", "{\"pageId\":1}");
     try testing.expectEqualStrings("Nothing is currently selected in the DevTools Network panel.", r.text);
 
-    // A new document: the list starts again, the ids go on.
+    // A new document: the list starts again, the ids go on (data.json + post-load /favicon.ico).
     r = try h.tool("navigate_page", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"url\":\"{s}data.json\"}}", .{root}));
     try testing.expect(!r.is_error);
     r = try h.tool("list_network_requests", "{\"pageId\":1}");
-    try testing.expectEqualStrings(try std.fmt.allocPrint(a, "## Network requests\nShowing 1-1 of 1 (Page 1 of 1).\nreqid=5 GET {s}data.json [200]", .{root}), r.text);
+    var lines2 = std.mem.splitScalar(u8, r.text, '\n');
+    try testing.expectEqualStrings("## Network requests", lines2.next().?);
+    try testing.expectEqualStrings("Showing 1-2 of 2 (Page 1 of 1).", lines2.next().?);
+    try testing.expectEqualStrings(try std.fmt.allocPrint(a, "reqid=6 GET {s}data.json [200]", .{root}), lines2.next().?);
+    const fav2_line = lines2.next().?;
+    try testing.expect(std.mem.startsWith(u8, fav2_line, try std.fmt.allocPrint(a, "reqid=7 GET {s}favicon.ico [", .{root})));
 }

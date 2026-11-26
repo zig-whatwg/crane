@@ -7,8 +7,8 @@
 //! ## Algorithm Overview
 //!
 //! The process blob parts algorithm converts a sequence of BlobPart values
-//! into a single byte sequence. BlobPart can be:
-//! - Blob (copy bytes)
+//! into a BlobData (or raw byte sequence for in-memory parts):
+//! - Blob (retains file-backed parts lazily, or copies memory bytes)
 //! - BufferSource (ArrayBuffer, ArrayBufferView - copy bytes)
 //! - USVString (encode as UTF-8)
 //!
@@ -18,7 +18,9 @@
 //! converted to the platform's native format (CRLF on Windows, LF elsewhere).
 
 const std = @import("std");
-const BlobData = @import("../blob_internals.zig").BlobData;
+const blob_internals = @import("../blob_internals.zig");
+const BlobData = blob_internals.BlobData;
+const Part = blob_internals.Part;
 const line_endings = @import("line_endings.zig");
 
 /// A BlobPart can be one of several types.
@@ -46,10 +48,123 @@ pub const Endings = enum {
     native,
 };
 
-/// Process blob parts algorithm per W3C File API spec §3.1.
+/// Build a `BlobData` from `parts`, `options`, and `mime_type`.
+///
+/// Fast path: if every Blob part is in memory, concatenates all bytes into a
+/// single `.memory` `BlobData` (zero extra overhead).
+/// File-backed path (Blink's BlobData parts model): retains each `.file` part
+/// lazily without reading from disk and coalesces adjacent in-memory chunks.
+pub fn processBlobPartsToData(
+    allocator: std.mem.Allocator,
+    parts: []const BlobPart,
+    options: ProcessOptions,
+    mime_type: []const u8,
+) !*BlobData {
+    var has_file = false;
+    for (parts) |part| {
+        if (part == .blob and !part.blob.isMemoryOnly()) {
+            has_file = true;
+            break;
+        }
+    }
+
+    if (!has_file) {
+        const bytes = try processBlobParts(allocator, parts, options);
+        defer allocator.free(bytes);
+        return BlobData.init(allocator, bytes, mime_type);
+    }
+
+    var out_parts: std.ArrayListUnmanaged(Part) = .empty;
+    errdefer {
+        for (out_parts.items) |part| switch (part) {
+            .bytes => |b| if (b.len > 0) allocator.free(@constCast(b)),
+            .file => |f| f.backing.release(),
+        };
+        out_parts.deinit(allocator);
+    }
+
+    var pending_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer pending_bytes.deinit(allocator);
+    var total_size: u64 = 0;
+
+    for (parts) |part| {
+        switch (part) {
+            .blob => |blob| switch (blob.storage) {
+                .memory => |mem| {
+                    if (mem.bytes.len > 0) {
+                        try pending_bytes.appendSlice(allocator, mem.bytes);
+                        total_size += mem.bytes.len;
+                    }
+                },
+                .parts => |sub| {
+                    for (sub.items) |sub_part| switch (sub_part) {
+                        .bytes => |b| {
+                            if (b.len > 0) {
+                                try pending_bytes.appendSlice(allocator, b);
+                                total_size += b.len;
+                            }
+                        },
+                        .file => |f| {
+                            if (pending_bytes.items.len > 0) {
+                                const flushed = try pending_bytes.toOwnedSlice(allocator);
+                                errdefer allocator.free(flushed);
+                                try out_parts.append(allocator, .{ .bytes = flushed });
+                            }
+                            try out_parts.ensureUnusedCapacity(allocator, 1);
+                            out_parts.appendAssumeCapacity(.{
+                                .file = .{
+                                    .backing = f.backing.retain(),
+                                    .offset = f.offset,
+                                    .length = f.length,
+                                },
+                            });
+                            total_size += f.length;
+                        },
+                    };
+                },
+            },
+            .buffer => |buf| {
+                if (buf.len > 0) {
+                    try pending_bytes.appendSlice(allocator, buf);
+                    total_size += buf.len;
+                }
+            },
+            .string => |str| {
+                if (str.len > 0) {
+                    if (options.endings == .native) {
+                        const expanded = try line_endings.convertLineEndingsToNativeAlloc(allocator, str);
+                        defer allocator.free(expanded);
+                        try pending_bytes.appendSlice(allocator, expanded);
+                        total_size += expanded.len;
+                    } else {
+                        try pending_bytes.appendSlice(allocator, str);
+                        total_size += str.len;
+                    }
+                }
+            },
+        }
+    }
+
+    if (pending_bytes.items.len > 0) {
+        const flushed = try pending_bytes.toOwnedSlice(allocator);
+        errdefer allocator.free(flushed);
+        try out_parts.append(allocator, .{ .bytes = flushed });
+    }
+
+    const owned = try out_parts.toOwnedSlice(allocator);
+    errdefer {
+        for (owned) |part| switch (part) {
+            .bytes => |b| if (b.len > 0) allocator.free(@constCast(b)),
+            .file => |f| f.backing.release(),
+        };
+        allocator.free(owned);
+    }
+    return BlobData.initParts(allocator, owned, total_size, mime_type);
+}
+
+/// Process blob parts algorithm per W3C File API spec §3.1 (in-memory parts).
 ///
 /// Converts a sequence of BlobPart values into a single byte sequence.
-///
 /// Returns the concatenated bytes (caller owns memory).
 pub fn processBlobParts(
     allocator: std.mem.Allocator,
@@ -60,11 +175,10 @@ pub fn processBlobParts(
     var total_size: usize = 0;
     for (parts) |part| {
         switch (part) {
-            .blob => |blob| total_size += blob.bytes.len,
+            .blob => |blob| total_size += @intCast(blob.size()),
             .buffer => |buf| total_size += buf.len,
             .string => |str| {
                 if (options.endings == .native) {
-                    // Count potential line ending expansion
                     total_size += countWithLineEndingExpansion(str);
                 } else {
                     total_size += str.len;
@@ -81,8 +195,10 @@ pub fn processBlobParts(
     for (parts) |part| {
         switch (part) {
             .blob => |blob| {
-                @memcpy(result[offset..][0..blob.bytes.len], blob.bytes);
-                offset += blob.bytes.len;
+                var bytes = try blob.readBytes(allocator);
+                defer bytes.deinit();
+                @memcpy(result[offset..][0..bytes.slice.len], bytes.slice);
+                offset += bytes.slice.len;
             },
             .buffer => |buf| {
                 @memcpy(result[offset..][0..buf.len], buf);
@@ -114,16 +230,12 @@ fn countWithLineEndingExpansion(str: []const u8) usize {
     var i: usize = 0;
     while (i < str.len) : (i += 1) {
         if (str[i] == '\n') {
-            // On Windows, \n becomes \r\n (2 bytes)
-            // On Unix, \n stays \n (1 byte)
             count += line_endings.NATIVE_LINE_ENDING.len;
         } else if (str[i] == '\r') {
             if (i + 1 < str.len and str[i + 1] == '\n') {
-                // \r\n stays as native ending
                 count += line_endings.NATIVE_LINE_ENDING.len;
-                i += 1; // Skip the \n
+                i += 1;
             } else {
-                // Lone \r becomes native ending
                 count += line_endings.NATIVE_LINE_ENDING.len;
             }
         } else {

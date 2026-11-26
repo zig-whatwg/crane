@@ -45,6 +45,10 @@ pub const AudioParamMap = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// Maplike declaration (WebIDL 2.5.11): the binding defines its members
+        /// (3.7.11) over the impl's map entries (`maplikeEntries`).
+        pub const maplike = .{ .key_type = "DOMString", .value_type = "AudioParam", .readonly = true };
     };
 
     pub const State = runtime.FlattenedState(
@@ -54,10 +58,6 @@ pub const AudioParamMap = struct {
             _internal: ?*AudioParamMapImpl.InternalState = null,
         },
     );
-
-    // ========================================
-    // Constants (static getters)
-    // ========================================
 
     const delegates = .{
         .deinit = &deinit,
@@ -146,5 +146,11 @@ pub const AudioParamMap = struct {
         if (comptime @hasDecl(impls, "AudioParamMap")) {
             if (comptime @hasDecl(impls.AudioParamMap, "installHooks")) impls.AudioParamMap.installHooks();
         }
+    }
+
+    /// The map entries of this maplike object (WebIDL 2.5.11), for the
+    /// binding's maplike members.
+    pub fn maplikeEntries(instance: *runtime.Instance) ?*webidl.maplike.PlatformObjects {
+        return AudioParamMapImpl.maplikeEntries(instance);
     }
 };

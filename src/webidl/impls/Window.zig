@@ -2575,7 +2575,7 @@ const SerializedMessage = union(enum) {
             .serialized => |serialized| {
                 // No transfer list (`.with_transfer` has one): no platform
                 // object was transferred.
-                const value = try engine.structuredDeserializeWithOptions(realm, serialized.serialized, .{ .array_buffers = serialized.array_buffers, .shared_memory = serialized.shared_memory });
+                const value = try engine.structuredDeserializeWithOptions(realm, serialized.serialized, .{ .array_buffers = serialized.array_buffers, .shared_memory = serialized.shared_memory, .attachments = serialized.attachments });
                 return value.take();
             },
             // Delivered by `deliverWithTransfer`, which receives its ports.
@@ -2713,7 +2713,7 @@ fn deliverWithTransfer(target: *runtime.Instance, message: *@import("dom").port_
         return;
     };
     defer received.deinit();
-    const data = engine.structuredDeserializeWithOptions(target.ctx, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = received.values, .shared_memory = message.shared_memory }) catch {
+    const data = engine.structuredDeserializeWithOptions(target.ctx, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = received.values, .shared_memory = message.shared_memory, .attachments = message.attachments }) catch {
         fireTransferEvent(target, "messageerror", runtime.JSValue.jsUndefined, origin, source, &.{});
         return;
     };
