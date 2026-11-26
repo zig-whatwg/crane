@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>CSS Styles Fixture</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+@property --accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: purple;
+}
+body {
+  font-family: sans-serif;
+  color: navy;
+  --accent: teal;
+  border: 1px solid gray;
+}
+.card {
+  color: blue;
+  background-color: yellow;
+  animation-name: pulse;
+}
+#hero {
+  color: orange;
+  padding: 8px 16px;
+}
+#hero::before {
+  content: "hi";
+  color: gray;
+}
+@scope (.wrapper) {
+  .card {
+    line-height: 1.5;
+  }
+}
+@container cardbox style(--mode: dark) {
+  .card {
+    text-align: left;
+  }
+}
+.wrapper {
+  & .card {
+    text-indent: 2px;
+  }
+}
+</style>
+</head>
+<body>
+<div class="wrapper" style="container-name: cardbox; --mode: dark">
+  <div id="hero" class="card" role="region" aria-label="Hero Card" style="color: red !important; margin: 4px; bogus-prop: nope">Hello CSS</div>
+  <span id="plain" role="status">Plain</span>
+</div>
+</body>
+</html>

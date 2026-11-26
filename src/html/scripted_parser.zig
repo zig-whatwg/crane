@@ -454,7 +454,18 @@ pub const DocumentParser = struct {
         if (self.trace_failure != null) return;
         // No wrapper and no engine call per node: the parser's structures are
         // its holds (design 5.1).
-        adapter.onNodeCreated(node) catch |err| self.failedNode(node, err);
+        adapter.onNodeCreated(node) catch |err| {
+            self.failedNode(node, err);
+            return;
+        };
+        if (dom.inspector_probes.titlesObserved() and node.node_type == .element and node.hasTagName("style")) {
+            if (node.dom_node) |opaque_node| {
+                const instance: *runtime.Instance = @ptrCast(@alignCast(opaque_node));
+                const line = self.tokenizer.input.line;
+                const col = self.tokenizer.input.column;
+                dom.inspector_probes.styleElementCreated(instance, line -| 1, col -| 1);
+            }
+        }
     }
 
     fn failedNode(self: *DocumentParser, node: *TreeNode, err: anyerror) void {

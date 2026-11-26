@@ -1173,6 +1173,10 @@ pub fn structuredSerializeForStorage(realm: Context, value: JSValue, allocator: 
     return v8_engine.v8StructuredSerializeForStorage(realm, value, allocator) catch |err| protocolError(err);
 }
 
+pub fn structuredSerializeForStorageWithAttachments(realm: Context, value: JSValue, allocator: Allocator) Error!engine.SerializedForStorage {
+    return v8_engine.v8StructuredSerializeForStorageWithAttachments(realm, value, allocator) catch |err| protocolError(err);
+}
+
 pub fn structuredDeserialize(realm: Context, bytes: []const u8) Error!Owned {
     return owned(v8_engine.v8StructuredDeserialize(realm, bytes) catch |err| return protocolError(err));
 }

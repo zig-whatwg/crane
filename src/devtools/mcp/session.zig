@@ -212,6 +212,40 @@ pub const Page = struct {
     network: network.Collector = .{},
     /// Puppeteer's page.keyboard: the keys held.
     keyboard: keyboard_mod.Keyboard = .{},
+    /// CDP CSS.styleSheetAdded headers kept for `get_css_styles`.
+    css_enabled: bool = false,
+    css_sheets: std.StringArrayHashMapUnmanaged(CssSheetHeader) = .empty,
+
+    pub const CssSheetHeader = struct {
+        source_url: []u8,
+        origin: []u8,
+        start_line: i64 = 0,
+        start_col: i64 = 0,
+        is_inline: bool = false,
+        is_constructed: bool = false,
+
+        pub fn deinit(self: *CssSheetHeader, allocator: Allocator) void {
+            allocator.free(self.source_url);
+            allocator.free(self.origin);
+        }
+    };
+
+    pub fn clearCssSheets(self: *Page, allocator: Allocator) void {
+        for (self.css_sheets.keys()) |k| allocator.free(k);
+        for (self.css_sheets.values()) |*v| v.deinit(allocator);
+        self.css_sheets.clearRetainingCapacity();
+    }
+
+    pub fn putCssSheet(self: *Page, allocator: Allocator, id: []const u8, hdr: CssSheetHeader) !void {
+        if (self.css_sheets.getPtr(id)) |existing| {
+            existing.deinit(allocator);
+            existing.* = hdr;
+            return;
+        }
+        const owned_key = try allocator.dupe(u8, id);
+        errdefer allocator.free(owned_key);
+        try self.css_sheets.put(allocator, owned_key, hdr);
+    }
 
     fn deinit(self: *Page, allocator: Allocator) void {
         allocator.free(self.target_id);
@@ -225,6 +259,8 @@ pub const Page = struct {
         self.console.deinit(allocator);
         self.network.deinit(allocator);
         self.keyboard.deinit(allocator);
+        self.clearCssSheets(allocator);
+        self.css_sheets.deinit(allocator);
         for (self.contexts.items) |*c| c.deinit(allocator);
         self.contexts.deinit(allocator);
         self.dropSnapshot(allocator);
@@ -602,6 +638,7 @@ pub const Session = struct {
             }
             try page.console.split(self.allocator, null);
             try page.network.split(self.allocator, page.mainFrameId());
+            page.clearCssSheets(self.allocator);
             if (self.watch) |w| if (w.page == page) {
                 w.loaded_new_document = true;
                 w.navigation_started = true;
@@ -640,6 +677,38 @@ pub const Session = struct {
             const id = p.get("executionContextId") orelse return;
             if (id != .integer or !page.isMainWorld(id.integer)) return;
             if (try console.fromConsoleApi(self.allocator, p)) |message| try page.console.add(self.allocator, message);
+            return;
+        }
+        if (std.mem.eql(u8, method, "CSS.styleSheetAdded")) {
+            const header_val = p.get("header") orelse return;
+            if (header_val != .object) return;
+            const h = header_val.object;
+            const sid = str(h.get("styleSheetId"));
+            if (sid.len == 0) return;
+            const url = try self.allocator.dupe(u8, str(h.get("sourceURL")));
+            errdefer self.allocator.free(url);
+            const origin = try self.allocator.dupe(u8, str(h.get("origin")));
+            errdefer self.allocator.free(origin);
+            const start_line: i64 = if (h.get("startLine")) |v| switch (v) {
+                .integer => v.integer,
+                .float => @intFromFloat(v.float),
+                else => 0,
+            } else 0;
+            const start_col: i64 = if (h.get("startColumn")) |v| switch (v) {
+                .integer => v.integer,
+                .float => @intFromFloat(v.float),
+                else => 0,
+            } else 0;
+            const is_inline = if (h.get("isInline")) |v| v == .bool and v.bool else false;
+            const is_constructed = if (h.get("isConstructed")) |v| v == .bool and v.bool else false;
+            try page.putCssSheet(self.allocator, sid, .{
+                .source_url = url,
+                .origin = origin,
+                .start_line = start_line,
+                .start_col = start_col,
+                .is_inline = is_inline,
+                .is_constructed = is_constructed,
+            });
             return;
         }
         if (std.mem.eql(u8, method, "Log.entryAdded")) {

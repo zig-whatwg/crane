@@ -104,6 +104,9 @@ pub const PortMessage = struct {
     array_buffers: [][]u8,
     /// OWNED shared backing stores; safe to release on any drop thread.
     shared_memory: ?*runtime.SharedMemory = null,
+    /// OWNED sidecar attachments (e.g. file-backed BlobData handles); safe to
+    /// release on any drop thread.
+    attachments: ?*runtime.SerializedAttachments = null,
     /// The transferred platform objects' data holders, in transfer-list order
     /// (StructuredSerializeWithTransfer's [[TransferDataHolders]]): held by
     /// this message until the receiver takes them (`takeHolders`), discarded
@@ -119,11 +122,13 @@ pub const PortMessage = struct {
             .serialized = result.serialized,
             .array_buffers = result.array_buffers,
             .shared_memory = result.shared_memory,
+            .attachments = result.attachments,
             .holders = holders,
         };
         result.serialized = &.{};
         result.array_buffers = &.{};
         result.shared_memory = null;
+        result.attachments = null;
         return self;
     }
 
@@ -143,6 +148,7 @@ pub const PortMessage = struct {
         for (self.array_buffers) |contents| self.allocator.free(contents);
         self.allocator.free(self.array_buffers);
         if (self.shared_memory) |memory| memory.release();
+        if (self.attachments) |attachments| attachments.release();
         self.allocator.destroy(self);
     }
 };

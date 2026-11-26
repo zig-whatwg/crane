@@ -1620,30 +1620,19 @@ fn generateInterfaceFile(
         switch (member.type) {
             .maplike => {
                 // WebIDL 2.5.11: the binding defines the members over the
-                // impl's map entries (maplike.zig), for an interface whose
-                // impl keeps them; the others keep their old parser
-                // placeholder, as unimplemented setlike declarations do.
-                if (maplike_mod.isImplemented(interface.name)) {
-                    maplike_member = member.maplike;
-                } else try own_constants.append(allocator, .{
-                    .name = "_skipped",
-                    .idlType = .{ .type = "void" },
-                    .value = .null,
-                });
+                // impl's map entries (maplike.zig). Resolve typedefs (e.g.
+                // `UUID` -> `DOMString`) so Meta and delegates see canonical types.
+                if (member.maplike) |map| {
+                    maplike_member = maplike_mod.resolve(ir, map);
+                }
             },
             .setlike => {
                 // WebIDL 2.5.12: the binding defines the members over the
-                // impl's set entries (setlike.zig), for an interface whose
-                // impl keeps them. The others stay byte-for-byte stable:
-                // their old parser placeholder emitted only the empty
-                // constants heading, until their owners opt in.
-                if (setlike_mod.isImplemented(interface.name)) {
-                    setlike_member = member.setlike;
-                } else try own_constants.append(allocator, .{
-                    .name = "_skipped",
-                    .idlType = .{ .type = "void" },
-                    .value = .null,
-                });
+                // impl's set entries (setlike.zig). Resolve typedefs so Meta
+                // and delegates see canonical types.
+                if (member.setlike) |set| {
+                    setlike_member = setlike_mod.resolve(ir, set);
+                }
             },
             .attribute => if (member.attribute) |attr| {
                 try own_attrs.append(allocator, attr);

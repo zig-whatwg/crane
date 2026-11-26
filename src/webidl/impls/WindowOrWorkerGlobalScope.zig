@@ -291,12 +291,16 @@ fn createImageBitmap(global: *runtime.Instance, image: typedefs.ImageBitmapSourc
         },
         .blob => |blob| blk: {
             // 6, Blob: 1. read image's data; 2. sniff it with its type as
-            //    the official type; 3. not a supported image, or no
-            //    dimensions: an InvalidStateError - in a task.
-            const bytes = dom.blob_bytes.bytesOf(blob) orelse &.{};
+            //    the official type; 3. not a supported image, unreadable file,
+            //    or no dimensions: an InvalidStateError - in a task.
+            var materialized = dom.blob_bytes.materialize(blob, allocator) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.NotFoundError, error.NotReadableError => return settleInTask(global, null),
+            } orelse return settleInTask(global, null);
+            defer materialized.deinit();
             var blob_type = try interfaces.Blob.get_type(blob);
             defer blob_type.deinit(allocator);
-            var decoded = dom.image_bitmaps.decodeBlob(allocator, bytes, blob_type.asSlice()) orelse
+            var decoded = dom.image_bitmaps.decodeBlob(allocator, materialized.slice, blob_type.asSlice()) orelse
                 return settleInTask(global, null);
             defer decoded.deinit();
             // 4. "Set imageBitmap's bitmap data to imageData, cropped to the
@@ -529,7 +533,7 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
     defer if (transferred_values) |values| values.release();
     // Steps 2-3: the value, deserialized with the received objects as the
     // transferred objects it refers to (memory, step 3.5).
-    const deserialized = try engine.structuredDeserializeWithOptions(instance.ctx, serialized.serialized, .{ .array_buffers = serialized.array_buffers, .transferred = received.values, .shared_memory = serialized.shared_memory });
+    const deserialized = try engine.structuredDeserializeWithOptions(instance.ctx, serialized.serialized, .{ .array_buffers = serialized.array_buffers, .transferred = received.values, .shared_memory = serialized.shared_memory, .attachments = serialized.attachments });
     return deserialized.take();
 }
 

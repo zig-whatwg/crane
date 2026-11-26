@@ -64,8 +64,43 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// by crane.Process through the generated interface.
 pub fn installHooks() void {
     // The HTML file upload's Files of a chosen directory carry their path
-    // under it (html/file_selection.zig).
-    dom.blob_bytes.installFile(.{ .set_relative_path = &setRelativePath });
+    // under it, and lazy file-backed Files are created directly from their
+    // BlobData (html/file_selection.zig).
+    dom.blob_bytes.installFile(.{
+        .set_relative_path = &setRelativePath,
+        .create_file_from_data = &createFromBlobData,
+    });
+}
+
+/// Create an unwrapped File taking ownership of `blob_data` on success (on
+/// error the caller still owns `blob_data`), with `name`, optional
+/// `last_modified_ms` (null = now), and optional `webkitRelativePath`.
+fn createFromBlobData(
+    ctx: runtime.Context,
+    blob_data: *file.BlobData,
+    name: []const u8,
+    last_modified_ms: ?i64,
+    relative_path: []const u8,
+) anyerror!*runtime.Instance {
+    const instance = try interfaces.File.init(ctx.allocator, ctx);
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    var data_attached = false;
+    errdefer {
+        if (!data_attached) {
+            // Caller retains ownership of `blob_data` on error.
+        } else {
+            // Blob's own deinit will release `blob_data`; undo attachment if
+            // we want caller ownership? No: setBlobData succeeded, so
+            // `releaseIfUnwrapped` will deinit `blob_data` cleanly; re-retain
+            // so caller's errdefer `blob_data.deinit()` balances!
+            _ = blob_data.retain();
+        }
+        instance.releaseIfUnwrapped(generation);
+    }
+    try dom.blob_bytes.setData(instance, blob_data);
+    data_attached = true;
+    try setFileState(instance, ctx.allocator, name, last_modified_ms, relative_path);
+    return instance;
 }
 
 /// webkitRelativePath set natively on a new File (dom.blob_bytes.FileSteps).
@@ -91,30 +126,32 @@ pub fn call_constructor(instance: *runtime.Instance, fileBits: runtime.JSValue, 
         }
         break :blk .transparent;
     };
-    const bytes = try dom.blob_parts.process(ctx, fileBits, endings);
-    defer if (bytes.len > 0) ctx.allocator.free(bytes);
-
     // File API steps 3.1-3.2: BlobData rejects outside U+0020-U+007E
     // and lowercases the rest, without MIME parsing. Chrome/Firefox/Safari
     // agree on all Blob/File cases (353/955 each, wpt.fyi cc74d2669f):
     // https://wpt.fyi/results/mimesniff/mime-types/parsing.any.html?sha=cc74d2669f
     const mime_type: []const u8 = if (options.wasPassed() and options.value.base.type != null) options.value.base.type.?.asSlice() else "";
-    // The Blob part's bytes and type: Blob's step (dom.blob_bytes), with the
-    // allocator of the File's realm, `ctx`.
-    try dom.blob_bytes.setBytes(instance, bytes, mime_type);
+    // Step 1: process blob parts into a BlobData (retaining file-backed parts
+    // lazily without reading from disk).
+    const blob_data = try dom.blob_parts.processToData(ctx, fileBits, endings, mime_type);
+    errdefer blob_data.deinit();
+    try dom.blob_bytes.setData(instance, blob_data);
 
     // Steps 2 and 3.3: the name, and lastModified - now, when not given.
     const last_modified = if (options.wasPassed()) options.value.lastModified else null;
-    try setFileState(instance, ctx.allocator, fileName, last_modified);
+    try setFileState(instance, ctx.allocator, fileName, last_modified, "");
 }
 
-fn setFileState(instance: *runtime.Instance, allocator: std.mem.Allocator, name: []const u8, last_modified: ?i64) !void {
+fn setFileState(instance: *runtime.Instance, allocator: std.mem.Allocator, name: []const u8, last_modified: ?i64, relative_path: []const u8) !void {
     const internal = try allocator.create(InternalState);
     errdefer allocator.destroy(internal);
+    const owned_name = try allocator.dupe(u8, name);
+    errdefer allocator.free(owned_name);
+    const owned_rel = if (relative_path.len > 0) try allocator.dupe(u8, relative_path) else "";
     internal.* = .{
-        .name = try allocator.dupe(u8, name),
+        .name = owned_name,
         .last_modified = last_modified orelse clock.wallMillis(),
-        .webkit_relative_path = "",
+        .webkit_relative_path = owned_rel,
         .allocator = allocator,
     };
     instance.getState(State).own._internal = internal;
@@ -140,10 +177,11 @@ fn setFileState(instance: *runtime.Instance, allocator: std.mem.Allocator, name:
 pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
     // Steps 1-2.
     try interfaces.Blob.serializationSteps(value, serialized);
-    // Steps 3-4.
+    // Steps 3-4, plus webkitRelativePath (Blink serializes relative_path).
     const internal = getInternal(value);
     try serialized.writeString(if (internal) |i| i.name else "");
     try serialized.writeInt64(if (internal) |i| i.last_modified else 0);
+    try serialized.writeString(if (internal) |i| i.webkit_relative_path else "");
 }
 
 /// File API, File's deserialization steps, given `serialized` and `value`:
@@ -156,10 +194,11 @@ pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.Seriali
 pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
     // Steps 1-2: the File's Blob part.
     try interfaces.Blob.deserializationSteps(serialized, value, target_realm);
-    // Steps 3-4.
+    // Steps 3-4, plus webkitRelativePath.
     const name = try serialized.readString();
     const last_modified = try serialized.readInt64();
-    try setFileState(value, value.ctx.allocator, name, last_modified);
+    const relative_path = try serialized.readString();
+    try setFileState(value, value.ctx.allocator, name, last_modified, relative_path);
 }
 
 /// Get internal state from instance

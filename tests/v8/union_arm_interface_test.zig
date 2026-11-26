@@ -215,9 +215,10 @@ fn blobPartsOf(realm: runtime.Context, source: []const u8, endings: Endings) ![]
     } });
     const blob = try interfaces.Blob.call_constructor(realm, BlobPartsArgument.passed(parts.value), options);
     defer runtime.Instance.deinit(blob);
-    const bytes = blob_bytes.bytesOf(blob) orelse return error.NotABlob;
-    if (bytes.len == 0) return "";
-    return realm.allocator.dupe(u8, bytes);
+    var materialized = (try blob_bytes.materialize(blob, realm.allocator)) orelse return error.NotABlob;
+    defer materialized.deinit();
+    if (materialized.slice.len == 0) return "";
+    return materialized.intoOwned(realm.allocator);
 }
 
 test "a BlobPart is a buffer source's bytes, or else the USVString it converts to" {

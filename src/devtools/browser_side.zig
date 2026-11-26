@@ -99,6 +99,32 @@ pub const BrowserSide = struct {
     /// Browser thread only: the sessions whose Accessibility domain is
     /// enabled, which the same probes reach (dom_events.zig; lane a11y1).
     ax_agents: dom_events.Agents = .{},
+    /// Browser thread only: 0-based (line, column) source start of parser-created
+    /// `<style>` elements (keyed by `@intFromPtr(element)` with slab generation
+    /// guard; cleared on `uninstall`/`destroy`).
+    style_starts: std.AutoArrayHashMapUnmanaged(usize, StyleStart) = .empty,
+
+    pub const StyleStart = struct {
+        generation: u64,
+        start_line: u32,
+        start_col: u32,
+    };
+
+    pub fn recordStyleStart(self: *BrowserSide, element: *@import("runtime").Instance, start_line: u32, start_col: u32) void {
+        const key = @intFromPtr(element);
+        const gen = @import("runtime").SlabAllocator.generationOf(element);
+        self.style_starts.put(self.allocator, key, .{
+            .generation = gen,
+            .start_line = start_line,
+            .start_col = start_col,
+        }) catch {};
+    }
+
+    pub fn styleStartOf(self: *const BrowserSide, element: *@import("runtime").Instance) ?StyleStart {
+        const entry = self.style_starts.get(@intFromPtr(element)) orelse return null;
+        if (entry.generation != @import("runtime").SlabAllocator.generationOf(element)) return null;
+        return entry;
+    }
 
     pub fn create(allocator: Allocator, host: *host_bridge.BrowserHost, token: u64, context_id: [32]u8, sink: TargetSink) Allocator.Error!*BrowserSide {
         const self = try allocator.create(BrowserSide);
@@ -112,6 +138,7 @@ pub const BrowserSide = struct {
         self.sessions.deinit(self.allocator);
         self.dom_agents.deinit(self.allocator);
         self.ax_agents.deinit(self.allocator);
+        self.style_starts.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 

@@ -51,6 +51,7 @@ const interfaces = @import("interfaces");
 const css = @import("css");
 const selector = @import("selector");
 const rules_mod = @import("rules.zig");
+const inspector_probes = @import("../inspector_probes.zig");
 
 const DeclarationBlock = css.declarations.DeclarationBlock;
 const MediaQueryList = css.media_queries.MediaQueryList;
@@ -337,8 +338,13 @@ pub const SheetRecord = struct {
         for (list.items) |r| r.parent_sheet = self;
         self.rules = list;
         self.import_slots = slots;
-        if (self.text) |t| self.allocator.free(t);
-        self.text = null;
+        // Retain raw stylesheet source text only while DevTools has adopted a
+        // Browser (`titlesObserved`), so `CSS.getStyleSheetText` and source
+        // line ranges work with zero memory overhead on normal pages.
+        if (!inspector_probes.titlesObserved()) {
+            if (self.text) |t| self.allocator.free(t);
+            self.text = null;
+        }
         return &self.rules.?;
     }
 

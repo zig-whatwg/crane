@@ -49,6 +49,10 @@ pub const GPUSupportedFeatures = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// Setlike declaration (WebIDL 2.5.12): the binding defines its members
+        /// (3.7.12) over the impl's set entries (`setlikeEntries`).
+        pub const setlike = .{ .value_type = "DOMString", .readonly = true };
     };
 
     pub const State = runtime.FlattenedState(
@@ -58,10 +62,6 @@ pub const GPUSupportedFeatures = struct {
             _internal: ?*GPUSupportedFeaturesImpl.InternalState = null,
         },
     );
-
-    // ========================================
-    // Constants (static getters)
-    // ========================================
 
     const delegates = .{
         .deinit = &deinit,
@@ -150,5 +150,11 @@ pub const GPUSupportedFeatures = struct {
         if (comptime @hasDecl(impls, "GPUSupportedFeatures")) {
             if (comptime @hasDecl(impls.GPUSupportedFeatures, "installHooks")) impls.GPUSupportedFeatures.installHooks();
         }
+    }
+
+    /// The set entries of this setlike object (WebIDL 2.5.12), for the
+    /// binding's setlike members.
+    pub fn setlikeEntries(instance: *runtime.Instance) ?*webidl.setlike.Strings {
+        return GPUSupportedFeaturesImpl.setlikeEntries(instance);
     }
 };

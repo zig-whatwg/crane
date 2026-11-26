@@ -1414,15 +1414,35 @@ pub fn call_send(instance: *runtime.Instance, data: typedefs.BufferSourceOrBlobO
     const internal = getInternal(instance) orelse return;
     const connection = internal.connection orelse return;
 
-    var scratch: ?[]const u8 = null;
-    defer if (scratch) |s| internal.allocator.free(s);
-
-    var payload = try payloadOf(instance, internal, data, &scratch);
-
-    // Step 1. Read the state after conversion, including its side effects.
+    // Step 1. Read the state after WebIDL union conversion (already done by
+    // the binding, including its side effects).
     if (internal.getReadyState() == 0) {
         return error.InvalidStateError;
     }
+
+    // If CLOSING or CLOSED and data is a Blob, count its snapshot size without
+    // reading disk (steps 4-5: discard data, increase bufferedAmount).
+    if (internal.getReadyState() != 1 and data == .blob) {
+        const size: u64 = interfaces.Blob.get_size(data.blob) catch 0;
+        internal.buffered_amount += @intCast(size);
+        syncState(instance);
+        return;
+    }
+
+    var scratch: ?[]const u8 = null;
+    defer if (scratch) |s| internal.allocator.free(s);
+
+    var payload = payloadOf(instance, internal, data, &scratch) catch |err| switch (err) {
+        error.NotFoundError, error.NotReadableError => {
+            // Blink WebSocketChannelImpl::BlobLoader: reading a Blob whose
+            // backing file is missing or modified fails the connection (error
+            // event then close 1006, wasClean=false).
+            connection.fail();
+            if (internal.poll) |token| token.arm(0, pumpCallback);
+            return;
+        },
+        else => return err,
+    };
 
     // "If data is a string: let data be the result of converting data to a
     // sequence of Unicode scalar values." A lone surrogate becomes U+FFFD
@@ -1484,7 +1504,9 @@ fn payloadOf(
         // ahead of those sent after, which is the order the spec's read
         // preserves. Copied - the queue outlives the call.
         .blob => |object| {
-            const bytes = try allocator.dupe(u8, @import("dom").blob_bytes.bytesOf(object) orelse "");
+            var materialized = (try @import("dom").blob_bytes.materialize(object, allocator)) orelse return .{ .bytes = "", .is_text = false };
+            defer materialized.deinit();
+            const bytes = try materialized.intoOwned(allocator);
             scratch.* = bytes;
             return .{ .bytes = bytes, .is_text = false };
         },

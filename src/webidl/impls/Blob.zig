@@ -51,9 +51,15 @@ pub const InternalState = struct {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
-    // Fetch, FormData's encoding and fetch()'s upload read a Blob's bytes
+    // Fetch, FormData's encoding and fetch()'s upload read a Blob's data
     // through this hook.
-    @import("dom").blob_bytes.install(.{ .bytes_of = &bytesOf, .set_bytes = &setBytes, .set_bytes_exact_type = &setBytesExactType, .set_exact_type = &setExactType, .data_of = &dataOf });
+    @import("dom").blob_bytes.install(.{
+        .set_bytes = &setBytes,
+        .set_bytes_exact_type = &setBytesExactType,
+        .set_data = &setData,
+        .set_exact_type = &setExactType,
+        .data_of = &dataOf,
+    });
 }
 
 /// Initialize instance (creates the instance)
@@ -67,16 +73,16 @@ pub fn init(
     return instance;
 }
 
-/// dom.blob_bytes: this Blob's bytes, borrowed - a Blob's data never changes.
-fn bytesOf(instance: *runtime.Instance) ?[]const u8 {
-    const internal = getInternal(instance) orelse return null;
-    return internal.blob_data.bytes;
-}
-
-/// dom.blob_bytes: this Blob's data, shared (a blob URL entry keeps it).
+/// dom.blob_bytes: this Blob's data, shared (a blob URL entry or composite
+/// Blob keeps it via retain).
 fn dataOf(instance: *runtime.Instance) ?*file.BlobData {
     const internal = getInternal(instance) orelse return null;
     return internal.blob_data;
+}
+
+/// dom.blob_bytes: give a new Blob ownership of `blob_data` on success.
+fn setData(instance: *runtime.Instance, blob_data: *file.BlobData) anyerror!void {
+    try setBlobData(instance, instance.ctx.allocator, blob_data);
 }
 
 /// dom.blob_bytes: give a new Blob a copy of `bytes`, and `mime_type` as its
@@ -113,19 +119,27 @@ fn setExactType(instance: *runtime.Instance, serialized_type: []const u8) anyerr
 // Serializable objects (HTML 2.7.1; File API: Blob is [Serializable])
 // ============================================================================
 
+const serialized_format_inline: u32 = 0;
+const serialized_format_attachment: u32 = 1;
+
+fn releaseBlobDataAttachment(ptr: *anyopaque) void {
+    const data: *file.BlobData = @ptrCast(@alignCast(ptr));
+    data.deinit();
+}
+
 /// File API, Blob's serialization steps, given `value` and `serialized`:
 ///
 /// 1. Set serialized.[[SnapshotState]] to value's snapshot state.
 /// 2. Set serialized.[[ByteSequence]] to value's underlying byte sequence.
 ///
-/// Crane's Blobs hold their bytes in memory and none is backed by a file
-/// whose snapshot state could change, so there is no snapshot state to keep.
-/// The byte sequence is COPIED into the record, never shared: this realm's
-/// BlobData has a plain ref count and lives in this agent's allocator, while
-/// a worker's message is read on the worker's thread and an IndexedDB record
-/// outlives the agent (Blink shares a thread-safe BlobDataHandle for messages
-/// and keeps a separate blob array for IndexedDB; copying is the simple form
-/// of both).
+/// When `value` is backed by a file source and `serialized` carries an
+/// attachment sidecar (`structuredClone`, `postMessage`, `BroadcastChannel`,
+/// Workers, IDB synchronous clone), we retain the thread-safe `*file.BlobData`
+/// handle directly into `SerializedAttachments` (Blink's `BlobDataHandle`
+/// sidecar) with zero disk I/O at clone time. For in-memory Blobs or
+/// persistent storage (`structuredSerializeForStorage`, where no sidecar is
+/// attached), bytes are materialized inline — returning `NotFoundError` /
+/// `NotReadableError` if a file-backed Blob's disk snapshot cannot be read.
 ///
 /// Deviation: the record also carries the Blob's type, which File API's
 /// steps leave out. Without it a clone's `type` would be "", where every
@@ -134,8 +148,25 @@ fn setExactType(instance: *runtime.Instance, serialized_type: []const u8) anyerr
 /// w3c/FileAPI#226.
 pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
     const internal = getInternal(value);
-    try serialized.writeString(if (internal) |i| i.blob_data.getType() else "");
-    try serialized.writeBytes(if (internal) |i| i.blob_data.bytes else "");
+    if (internal) |i| {
+        if (!i.blob_data.isMemoryOnly() and serialized.supportsAttachments()) {
+            const retained = i.blob_data.retain();
+            errdefer retained.deinit();
+            const index = try serialized.addAttachment(runtime.SerializedAttachments.blob_tag, retained, &releaseBlobDataAttachment);
+            try serialized.writeUint32(serialized_format_attachment);
+            try serialized.writeUint32(index);
+            return;
+        }
+        var bytes = try i.blob_data.readBytes(value.ctx.allocator);
+        defer bytes.deinit();
+        try serialized.writeUint32(serialized_format_inline);
+        try serialized.writeString(i.blob_data.getType());
+        try serialized.writeBytes(bytes.slice);
+    } else {
+        try serialized.writeUint32(serialized_format_inline);
+        try serialized.writeString("");
+        try serialized.writeBytes("");
+    }
 }
 
 /// File API, Blob's deserialization steps, given `serialized` and `value`:
@@ -143,13 +174,28 @@ pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.Seriali
 /// 1. Set value's snapshot state to serialized.[[SnapshotState]].
 /// 2. Set value's underlying byte sequence to serialized.[[ByteSequence]].
 ///
-/// (and its type, which the serialization steps above add). The bytes are
-/// copied into a BlobData of `value`'s realm.
+/// (and its type, which the serialization steps above add). File-backed
+/// attachments retain the shared thread-safe `BlobData`; inline records copy
+/// the bytes into a fresh in-memory `BlobData` of `value`'s realm.
 pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
     _ = target_realm;
-    const mime_type = try serialized.readString();
-    const bytes = try serialized.readBytes();
-    try setBytesExactType(value, bytes, mime_type);
+    const format = try serialized.readUint32();
+    switch (format) {
+        serialized_format_inline => {
+            const mime_type = try serialized.readString();
+            const bytes = try serialized.readBytes();
+            try setBytesExactType(value, bytes, mime_type);
+        },
+        serialized_format_attachment => {
+            const index = try serialized.readUint32();
+            const raw = try serialized.readAttachment(index, runtime.SerializedAttachments.blob_tag);
+            const blob_data: *file.BlobData = @ptrCast(@alignCast(raw));
+            const retained = blob_data.retain();
+            errdefer retained.deinit();
+            try setData(value, retained);
+        },
+        else => return error.DataCloneError,
+    }
 }
 
 /// Deinitialize instance - clean up owned resources only
@@ -202,11 +248,7 @@ pub fn call_constructor(instance: *runtime.Instance, blobParts: webidl.Opt(runti
     // Process blob parts if provided. An optional argument that is
     // undefined is missing (WebIDL 3.7.x "overload resolution", step 12.1).
     const parts: ?runtime.JSValue = if (blobParts.wasPassed() and engine.typeOf(ctx, blobParts.value) != .undefined) blobParts.value else null;
-    const bytes = try @import("dom").blob_parts.process(ctx, parts, endings_mode);
-    defer if (bytes.len > 0) ctx.allocator.free(bytes);
-
-    // Create the internal BlobData
-    const blob_data = try file.BlobData.init(ctx.allocator, bytes, mime_type);
+    const blob_data = try @import("dom").blob_parts.processToData(ctx, parts, endings_mode, mime_type);
     errdefer blob_data.deinit();
     try setBlobData(instance, ctx.allocator, blob_data);
 }
@@ -336,6 +378,30 @@ pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webi
     };
 }
 
+fn readErrorName(err: file.FileReadError) []const u8 {
+    return switch (err) {
+        error.NotFoundError => "NotFoundError",
+        error.NotReadableError => "NotReadableError",
+        error.OutOfMemory => "NotReadableError",
+    };
+}
+
+fn readErrorMessage(err: file.FileReadError) []const u8 {
+    return switch (err) {
+        error.NotFoundError => "A requested file or directory could not be found at the time an operation was processed.",
+        error.NotReadableError => "The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.",
+        error.OutOfMemory => "The blob could not be read.",
+    };
+}
+
+fn rejectWithReadError(realm: runtime.Context, err: file.FileReadError) !runtime.JSValue {
+    if (err == error.OutOfMemory) return error.OutOfMemory;
+    const dom_err = try engine.createDOMException(realm, readErrorName(err), readErrorMessage(err));
+    defer dom_err.release();
+    const promise = try engine.createRejectedPromise(realm, dom_err.value);
+    return promise.take();
+}
+
 /// Operation: text
 ///
 /// Spec: https://www.w3.org/TR/FileAPI/#dom-blob-text
@@ -348,13 +414,11 @@ pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webi
 /// 4. Return the result of transforming promise with UTF-8 decode.
 pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    // The blob's bytes are in memory and never change, so reading all of
-    // them through a stream (steps 1-3) is those bytes, and the promise is
-    // fulfilled with them already. A new promise, and the values it is
-    // fulfilled with, are the current realm's (the transform's handler).
     const realm = engine.currentRealm() orelse instance.ctx;
+    var materialized = internal.blob_data.readBytes(realm.allocator) catch |err| return rejectWithReadError(realm, err);
+    defer materialized.deinit();
     // 4. ... UTF-8 decode on its first argument.
-    const text = try utf8Decode(realm.allocator, internal.blob_data.bytes);
+    const text = try utf8Decode(realm.allocator, materialized.slice);
     defer realm.allocator.free(text);
     const promise = try engine.createResolvedPromise(realm, runtime.JSValue.fromStringRef(text));
     return promise.take();
@@ -437,7 +501,8 @@ const BlobStream = struct {
         return .{ .normal = try realm.undefinedValue() };
     }
 
-    /// Enqueue the next chunk, and close the stream after the last.
+    /// Enqueue the next chunk, and close the stream after the last (or error
+    /// the stream with a DOMException if reading a file-backed source fails).
     fn pull(ctx: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance) js.Error!js.Value {
         const self: *BlobStream = @ptrCast(@alignCast(ctx.?));
         self.busy += 1;
@@ -446,9 +511,46 @@ const BlobStream = struct {
             self.freeIfDone();
         }
         if (self.done) return realm.promiseResolvedWithUndefined();
-        const bytes = if (getInternal(self.blob)) |internal| internal.blob_data.bytes else &[_]u8{};
-        if (self.position < bytes.len) {
-            const chunk = bytes[self.position..][0..@min(chunk_size, bytes.len - self.position)];
+        const blob_data = if (getInternal(self.blob)) |internal| internal.blob_data else {
+            self.done = true;
+            engine.forgetTracedChild(controller, js.slot.source);
+            try srd.byteControllerClose(realm, controller);
+            return realm.promiseResolvedWithUndefined();
+        };
+        if (blob_data.memoryBytes()) |bytes| {
+            if (self.position < bytes.len) {
+                const chunk = bytes[self.position..][0..@min(chunk_size, bytes.len - self.position)];
+                self.position += chunk.len;
+                const buffer = js.allocateBufferIn(realm, chunk.len) orelse return error.V8Failure;
+                defer js.dispose(buffer);
+                if (js.bufferBytes(buffer)) |dest| @memcpy(dest[0..chunk.len], chunk);
+                const view = try js.newView(.uint8, buffer, 0, chunk.len);
+                defer js.dispose(view);
+                try srd.byteControllerEnqueue(realm, controller, view);
+            }
+            if (!self.detached and self.position >= bytes.len) {
+                self.done = true;
+                engine.forgetTracedChild(controller, js.slot.source);
+                try srd.byteControllerClose(realm, controller);
+            }
+            return realm.promiseResolvedWithUndefined();
+        }
+
+        // File-backed Blob: read one chunk lazily (and probe 0-byte files).
+        const chunk = blob_data.readRange(self.allocator, self.position, chunk_size) catch |err| {
+            self.done = true;
+            engine.forgetTracedChild(controller, js.slot.source);
+            if (err == error.OutOfMemory) return error.OutOfMemory;
+            const dom_err = engine.createDOMException(realm.ctx, readErrorName(err), readErrorMessage(err)) catch return error.V8Failure;
+            defer dom_err.release();
+            const reason = realm.fromRuntime(dom_err.value) catch return error.V8Failure;
+            defer js.dispose(reason);
+            srd.byteControllerError(realm, controller, reason);
+            return realm.promiseResolvedWithUndefined();
+        };
+        defer self.allocator.free(chunk);
+
+        if (chunk.len > 0) {
             self.position += chunk.len;
             const buffer = js.allocateBufferIn(realm, chunk.len) orelse return error.V8Failure;
             defer js.dispose(buffer);
@@ -457,8 +559,7 @@ const BlobStream = struct {
             defer js.dispose(view);
             try srd.byteControllerEnqueue(realm, controller, view);
         }
-        if (!self.detached and self.position >= bytes.len) {
-            // All of it is enqueued: nothing more to read, so let the blob go.
+        if (!self.detached and self.position >= blob_data.size()) {
             self.done = true;
             engine.forgetTracedChild(controller, js.slot.source);
             try srd.byteControllerClose(realm, controller);
@@ -497,14 +598,14 @@ const BlobStream = struct {
 /// 4. Return the result of transforming promise to create Uint8Array from bytes.
 pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    // Steps 1-3 as in text(): the bytes are the blob's own.
     const realm = engine.currentRealm() orelse instance.ctx;
+    var materialized = internal.blob_data.readBytes(realm.allocator) catch |err| return rejectWithReadError(realm, err);
+    defer materialized.deinit();
     // 4. ... a new Uint8Array wrapping an ArrayBuffer containing its first
     //    argument.
-    const bytes = internal.blob_data.bytes;
-    const buffer = try engine.createArrayBuffer(realm, bytes);
+    const buffer = try engine.createArrayBuffer(realm, materialized.slice);
     defer buffer.release();
-    const view = try engine.createArrayBufferView(realm, .uint8_array, buffer.value, 0, bytes.len);
+    const view = try engine.createArrayBufferView(realm, .uint8_array, buffer.value, 0, materialized.slice.len);
     defer view.release();
     const promise = try engine.createResolvedPromise(realm, view.value);
     return promise.take();
@@ -522,10 +623,11 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// 4. Return the result of transforming promise to create ArrayBuffer from bytes.
 pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    // Steps 1-3 as in text(): the bytes are the blob's own.
     const realm = engine.currentRealm() orelse instance.ctx;
+    var materialized = internal.blob_data.readBytes(realm.allocator) catch |err| return rejectWithReadError(realm, err);
+    defer materialized.deinit();
     // 4. ... a new ArrayBuffer whose contents are its first argument.
-    const buffer = try engine.createArrayBuffer(realm, internal.blob_data.bytes);
+    const buffer = try engine.createArrayBuffer(realm, materialized.slice);
     defer buffer.release();
     const promise = try engine.createResolvedPromise(realm, buffer.value);
     return promise.take();

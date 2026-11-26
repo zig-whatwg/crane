@@ -2082,6 +2082,72 @@
       ]
     },
     {
+      "name": "css: get_css_styles",
+      "about": "get_css_styles before snapshot, on styled element with inline/matched/inherited/wrappers/pseudo/keyframes/property, pagination, plain element, and unknown uid.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/styles.html"
+          }
+        },
+        {
+          "tool": "get_css_styles",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "get_css_styles",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1",
+            "pageSize": 50
+          }
+        },
+        {
+          "tool": "get_css_styles",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1",
+            "pageSize": 3,
+            "pageIdx": 0
+          }
+        },
+        {
+          "tool": "get_css_styles",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1",
+            "pageSize": 3,
+            "pageIdx": 1
+          }
+        },
+        {
+          "tool": "get_css_styles",
+          "args": {
+            "pageId": 1,
+            "uid": "1_3"
+          }
+        },
+        {
+          "tool": "get_css_styles",
+          "args": {
+            "pageId": 1,
+            "uid": "9_9"
+          }
+        }
+      ]
+    },
+    {
       "name": "emulate: cpu throttling",
       "about": "emulate cpuThrottlingRate: sets 4x and 2.5x slowdown lines, multiplies navigation timeout with networkConditions, persists across navigation, resets on rate 1 or omission, and validates schema bounds (1..20).",
       "calls": [

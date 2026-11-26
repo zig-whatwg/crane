@@ -973,6 +973,7 @@ pub fn bodyOwner(instance: *runtime.Instance) ?fetch_body.Owner {
 fn bodyStreamToSend(request_object: *runtime.Instance) ?*runtime.Instance {
     const o = bodyOwner(request_object) orelse return null;
     const body = o.body orelse return null;
+    if (body.lazy != null) return fetch_body.bodyStream(o) catch null;
     if (body.source != .none) return null;
     return o.stream.*;
 }

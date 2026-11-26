@@ -2899,7 +2899,7 @@ const TeeClone = struct {
         const self: *TeeClone = @ptrCast(@alignCast(data.?));
         var serialized = try engine.structuredSerializeWithTransfer(self.realm, self.chunk, &.{}, noTransfer, null, self.realm.allocator);
         defer serialized.deinit(self.realm.allocator);
-        self.value = try engine.structuredDeserializeWithOptions(self.realm, serialized.serialized, .{ .array_buffers = serialized.array_buffers, .shared_memory = serialized.shared_memory });
+        self.value = try engine.structuredDeserializeWithOptions(self.realm, serialized.serialized, .{ .array_buffers = serialized.array_buffers, .shared_memory = serialized.shared_memory, .attachments = serialized.attachments });
     }
 
     fn noTransfer(_: ?*anyopaque, _: *runtime.Instance) runtime.TransferableState {

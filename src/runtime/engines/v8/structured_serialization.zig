@@ -96,12 +96,21 @@ pub fn structuredSerializeWithTransfer(
     defer allocator.free(buffer_data);
     var size: usize = 0;
     var code: c_int = 0;
+    var attachments: ?*runtime.SerializedAttachments = null;
+    errdefer if (attachments) |a| a.release();
     // StructuredSerializeInternal(value, false, memory): a [Serializable]
     // platform object runs its interface's serialization steps, forStorage
     // false (serializable_objects.zig); one of the transfer list's platform
     // objects is in memory already (step 2.4) and is written as a reference
     // to its data holder, by its index among `objects`.
-    var host: serializable_objects.Host = .{ .realm = realm, .for_storage = false, .allocator = allocator, .transferred = objects.items };
+    var host: serializable_objects.Host = .{
+        .realm = realm,
+        .for_storage = false,
+        .allocator = allocator,
+        .transferred = objects.items,
+        .write_attachments = &attachments,
+        .attachments_allocator = allocator,
+    };
     // A WebAssembly.Module's [[AgentCluster]]: the current realm's.
     const options: ffi.StructuredSerializeOptions = .{ .for_storage = false, .agent_cluster = protocol_agents.agentClusterOf(isolate, realm), .cross_origin_isolated = protocol_agents.crossOriginIsolatedCapability(isolate, realm) };
     var shared_memory: ?*ffi.SharedMemory = null;
@@ -143,6 +152,7 @@ pub fn structuredSerializeWithTransfer(
         .array_buffers = contents,
         .platform_objects = objects.toOwnedSlice(allocator) catch return EngineError.OutOfMemory,
         .shared_memory = if (shared_memory) |memory| @ptrCast(memory) else null,
+        .attachments = attachments,
     };
 }
 
@@ -183,7 +193,13 @@ pub fn structuredDeserializeWithOptions(realm: runtime.Context, serialized: []co
     // Step 4, StructuredDeserialize(serialized, targetRealm = `realm`,
     // memory): a platform object is made there by its interface's
     // deserialization steps; a transferred one is memory's.
-    var host: serializable_objects.Host = .{ .realm = realm, .for_storage = false, .allocator = std.heap.c_allocator, .transferred = transferred };
+    var host: serializable_objects.Host = .{
+        .realm = realm,
+        .for_storage = false,
+        .allocator = std.heap.c_allocator,
+        .transferred = transferred,
+        .read_attachments = options.attachments,
+    };
     const value = ffi.v8_Value_DeserializeWithSharedMemory(serialized.ptr, serialized.len, data.ptr, data.len, &code, host.hostObjectSteps(), agent_cluster, if (options.shared_memory) |memory| @ptrCast(memory) else null, protocol_agents.crossOriginIsolatedCapability(entered.isolate, realm)) orelse
         return EngineError.DataCloneError;
     return .{ .handle = .{ .ptr = @ptrCast(value) } };

@@ -7499,6 +7499,211 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         // ====================================================================
+        // WebIDL 3.7.11 / 3.7.12 shared collection type conversions
+        // ====================================================================
+
+        const CollectionTypeKind = enum {
+            dom_string,
+            usv_string,
+            byte_string,
+            primitive,
+            sequence_primitive,
+            js_object,
+            data_view,
+            interface,
+        };
+
+        fn collectionPrimitiveType(comptime idl: []const u8) ?type {
+            if (std.mem.eql(u8, idl, "boolean")) return bool;
+            if (std.mem.eql(u8, idl, "byte")) return i8;
+            if (std.mem.eql(u8, idl, "octet")) return u8;
+            if (std.mem.eql(u8, idl, "short")) return i16;
+            if (std.mem.eql(u8, idl, "unsigned short")) return u16;
+            if (std.mem.eql(u8, idl, "long")) return i32;
+            if (std.mem.eql(u8, idl, "unsigned long")) return u32;
+            if (std.mem.eql(u8, idl, "long long")) return i64;
+            if (std.mem.eql(u8, idl, "unsigned long long")) return u64;
+            if (std.mem.eql(u8, idl, "float") or std.mem.eql(u8, idl, "unrestricted float")) return f32;
+            if (std.mem.eql(u8, idl, "double") or std.mem.eql(u8, idl, "unrestricted double")) return f64;
+            return null;
+        }
+
+        fn collectionTypeKind(comptime idl: []const u8) CollectionTypeKind {
+            if (std.mem.eql(u8, idl, "DOMString") or std.mem.eql(u8, idl, "CSSOMString")) return .dom_string;
+            if (std.mem.eql(u8, idl, "USVString")) return .usv_string;
+            if (std.mem.eql(u8, idl, "ByteString")) return .byte_string;
+            if (std.mem.eql(u8, idl, "object")) return .js_object;
+            if (std.mem.eql(u8, idl, "DataView")) return .data_view;
+            if (std.mem.startsWith(u8, idl, "sequence<") and std.mem.endsWith(u8, idl, ">")) return .sequence_primitive;
+            if (collectionPrimitiveType(idl) != null) return .primitive;
+            return .interface;
+        }
+
+        fn collectionSequenceElementType(comptime idl: []const u8) type {
+            const inner = idl["sequence<".len .. idl.len - 1];
+            return collectionPrimitiveType(inner) orelse
+                @compileError(interface_name ++ ": unsupported collection sequence element '" ++ inner ++ "'");
+        }
+
+        fn CollectionArgType(comptime idl: []const u8) type {
+            return switch (collectionTypeKind(idl)) {
+                .dom_string, .usv_string, .byte_string => []const u8,
+                .primitive => collectionPrimitiveType(idl).?,
+                .sequence_primitive => []const collectionSequenceElementType(idl),
+                .interface => *runtime.Instance,
+                .js_object, .data_view => *anyopaque,
+            };
+        }
+
+        fn CollectionEntryArgType(comptime idl: []const u8) type {
+            return switch (collectionTypeKind(idl)) {
+                .interface => *anyopaque,
+                else => CollectionArgType(idl),
+            };
+        }
+
+        fn collectionFreeArg(comptime idl: []const u8, allocator: std.mem.Allocator, value: CollectionArgType(idl)) void {
+            switch (comptime collectionTypeKind(idl)) {
+                .dom_string, .usv_string, .byte_string, .sequence_primitive => {
+                    if (value.len > 0) allocator.free(value);
+                },
+                .primitive, .interface, .js_object, .data_view => {},
+            }
+        }
+
+        fn collectionEntryArg(comptime idl: []const u8, value: CollectionArgType(idl)) CollectionEntryArgType(idl) {
+            if (comptime collectionTypeKind(idl) == .interface) return @ptrCast(value);
+            return value;
+        }
+
+        /// Convert `arg` (BORROWED from caller, kept alive for the callback) to
+        /// the IDL value of `idl` (WebIDL 3.7.11.7-10 / 3.7.12.7-9 steps 4-5,
+        /// including -0 -> +0 normalization). Returns null with an exception
+        /// pending/thrown on conversion failure.
+        fn collectionArgFromV8(
+            comptime idl: []const u8,
+            isolate: *v8.Isolate,
+            context: *v8.Context,
+            arg: *v8.Value,
+            allocator: std.mem.Allocator,
+        ) ?CollectionArgType(idl) {
+            switch (comptime collectionTypeKind(idl)) {
+                .dom_string => {
+                    var string = conv.fromV8Value(runtime.DOMString, allocator, isolate, context, arg) catch |err| {
+                        throwMemberError(isolate, context, err);
+                        return null;
+                    };
+                    defer string.deinit(allocator);
+                    return allocator.dupe(u8, string.asSlice()) catch {
+                        throwMemberError(isolate, context, error.OutOfMemory);
+                        return null;
+                    };
+                },
+                .usv_string => {
+                    return conv.fromV8Value(runtime.USVString, allocator, isolate, context, arg) catch |err| {
+                        throwMemberError(isolate, context, err);
+                        return null;
+                    };
+                },
+                .byte_string => {
+                    return conv.fromV8ByteString(allocator, isolate, context, arg) catch |err| {
+                        throwMemberError(isolate, context, err);
+                        return null;
+                    };
+                },
+                .primitive => {
+                    const Prim = collectionPrimitiveType(idl).?;
+                    var val = conv.fromV8Value(Prim, allocator, isolate, context, arg) catch |err| {
+                        throwMemberError(isolate, context, err);
+                        return null;
+                    };
+                    if (comptime std.mem.eql(u8, idl, "float") or std.mem.eql(u8, idl, "double")) {
+                        if (!std.math.isFinite(val)) {
+                            conv.throwTypeErrorFromContext(isolate, context, "The provided " ++ idl ++ " value is non-finite.");
+                            return null;
+                        }
+                    }
+                    // WebIDL 3.7.11.7-10 / 3.7.12.7-9 step 5: "If key/value is -0, set it to +0."
+                    if (comptime @typeInfo(Prim) == .float) {
+                        if (val == 0) val = 0;
+                    }
+                    return val;
+                },
+                .sequence_primitive => {
+                    const Elem = collectionSequenceElementType(idl);
+                    return conv.fromV8Value([]const Elem, allocator, isolate, context, arg) catch |err| {
+                        throwMemberError(isolate, context, err);
+                        return null;
+                    };
+                },
+                .interface => {
+                    // WebIDL 3.2.20: a platform object implementing `idl`, else TypeError.
+                    const TargetInterface = @field(@import("interfaces"), idl);
+                    const instance = conv.platformObjectOf(arg) orelse {
+                        conv.throwTypeErrorFromContext(isolate, context, "The value is not a " ++ idl);
+                        return null;
+                    };
+                    if (!conv.implements(instance, TargetInterface)) {
+                        conv.throwTypeErrorFromContext(isolate, context, "The value is not a " ++ idl);
+                        return null;
+                    }
+                    return instance;
+                },
+                .js_object => {
+                    if (!v8.v8_Value_IsObject(arg)) {
+                        conv.throwTypeErrorFromContext(isolate, context, "The value is not an object");
+                        return null;
+                    }
+                    return @ptrCast(arg);
+                },
+                .data_view => {
+                    if (!v8.v8_Value_IsDataView(arg)) {
+                        conv.throwTypeErrorFromContext(isolate, context, "The value is not a DataView");
+                        return null;
+                    }
+                    return @ptrCast(arg);
+                },
+            }
+        }
+
+        /// Convert a stored setlike/maplike entry key or value of IDL type `idl`
+        /// to an OWNED ECMAScript value (caller disposes).
+        fn collectionValueToV8(
+            comptime idl: []const u8,
+            isolate: *v8.Isolate,
+            context: *v8.Context,
+            value: anytype,
+        ) ?*v8.Value {
+            switch (comptime collectionTypeKind(idl)) {
+                .dom_string, .usv_string => return conv.newStringFromWtf8(isolate, value),
+                .byte_string => return conv.byteStringToV8([]const u8, isolate, value) catch null,
+                .primitive => {
+                    const Prim = collectionPrimitiveType(idl).?;
+                    if (comptime Prim == bool) return v8.v8_Boolean_New(isolate, value);
+                    if (comptime @typeInfo(Prim) == .int) return @ptrCast(v8.v8_Number_New(isolate, @floatFromInt(value)));
+                    if (comptime @typeInfo(Prim) == .float) return @ptrCast(v8.v8_Number_New(isolate, @floatCast(value)));
+                    unreachable;
+                },
+                .sequence_primitive => {
+                    // WebIDL 3.2.21: converting a sequence to JS creates a new Array every time.
+                    const Elem = collectionSequenceElementType(idl);
+                    const arr = conv.toV8Sequence(Elem, isolate, context, value) catch return null;
+                    return @ptrCast(arr);
+                },
+                .interface => {
+                    const instance: *runtime.Instance = @ptrCast(@alignCast(value));
+                    const wrapper = conv.instanceToV8Checked(isolate, instance) catch return null;
+                    if (v8.v8_Value_IsUndefined(wrapper)) return wrapper;
+                    return v8.v8_Global_Clone(wrapper);
+                },
+                .js_object, .data_view => {
+                    const handle: *v8.Value = @ptrCast(@alignCast(value));
+                    return v8.v8_Global_Clone(handle);
+                },
+            }
+        }
+
+        // ====================================================================
         // WebIDL 3.7.12 setlike declarations
         // ====================================================================
         //
@@ -7506,9 +7711,9 @@ pub fn V8Interface(comptime Interface: type) type {
         // has, forEach, entries, keys, values and %Symbol.iterator% - and,
         // read-write and not declared by the interface, add, delete and clear
         // - each a built-in function over the object's set entries, which the
-        // impl keeps in a webidl.setlike.SetEntries (the generated
-        // `setlikeEntries` hands them over). None is an operation an impl
-        // implements (codegen's setlike.zig). An iterator is an object of
+        // impl keeps in a webidl.setlike.SetEntries or PlatformObjects (the
+        // generated `setlikeEntries` hands them over). None is an operation an
+        // impl implements (codegen's setlike.zig). An iterator is an object of
         // this realm's "<Interface> Iterator" prototype holding, in private
         // properties, the set's wrapper, its kind and the sequence of the
         // entry it yielded last (SetEntries.after): live, as a JavaScript
@@ -7522,23 +7727,6 @@ pub fn V8Interface(comptime Interface: type) type {
             @typeInfo(@typeInfo(@typeInfo(@TypeOf(Interface.setlikeEntries)).@"fn".return_type.?).optional.child).pointer.child
         else
             void;
-
-        /// Whether the declaration's values are platform objects (an
-        /// interface value type: FontFaceSet's FontFace) rather than strings.
-        /// Their set entries are the impl's traced list
-        /// (webidl.setlike.PlatformObjects); a value is never owned here.
-        const setlike_values_are_objects = if (has_setlike) !(std.mem.eql(u8, Meta.setlike.value_type, "DOMString") or
-            std.mem.eql(u8, Meta.setlike.value_type, "USVString") or std.mem.eql(u8, Meta.setlike.value_type, "ByteString") or
-            std.mem.eql(u8, Meta.setlike.value_type, "CSSOMString")) else false;
-
-        /// A converted setlike argument: an owned string, or a BORROWED
-        /// platform object (its wrapper, the argument, keeps it alive).
-        const SetlikeValue = if (setlike_values_are_objects) *runtime.Instance else []const u8;
-
-        fn setlikeFreeValue(allocator: std.mem.Allocator, value: SetlikeValue) void {
-            if (comptime setlike_values_are_objects) return;
-            allocator.free(value);
-        }
 
         const setlike_key_prefix = "crane:setlike:" ++ interface_name ++ ":";
         const setlike_target_key = setlike_key_prefix ++ "target";
@@ -7575,69 +7763,6 @@ pub fn V8Interface(comptime Interface: type) type {
             return getInstance(runtime.Instance, this_obj).?.ctx.allocator;
         }
 
-        /// `valueArg` converted to an IDL value of the declaration's value
-        /// type (3.7.12.7-9 step 4), OWNED by `allocator`; null with the
-        /// exception thrown (or pending) when the conversion threw. A missing
-        /// argument is undefined: these are built-in functions taking one
-        /// argument, not operations with a required one.
-        fn setlikeValueArgument(isolate: *v8.Isolate, context: *v8.Context, info: *const v8.FunctionCallbackInfo, allocator: std.mem.Allocator) ?SetlikeValue {
-            // Owned: info.get makes a Global for the call, v8_Undefined one too.
-            const arg = (if (info.length() >= 1) info.get(0) else v8.v8_Undefined(isolate)) orelse return null;
-            defer v8.v8_Value_Dispose(arg);
-            if (comptime setlike_values_are_objects) {
-                // WebIDL 3.2.20 (interface types): a platform object that
-                // implements the interface, else a TypeError. The argument's
-                // wrapper keeps it alive for the call.
-                const ValueInterface = @field(@import("interfaces"), Meta.setlike.value_type);
-                const instance = conv.platformObjectOf(arg) orelse {
-                    conv.throwTypeErrorFromContext(isolate, context, "The value is not a " ++ Meta.setlike.value_type);
-                    return null;
-                };
-                if (!conv.implements(instance, ValueInterface)) {
-                    conv.throwTypeErrorFromContext(isolate, context, "The value is not a " ++ Meta.setlike.value_type);
-                    return null;
-                }
-                return instance;
-            } else if (comptime std.mem.eql(u8, Meta.setlike.value_type, "USVString")) {
-                return conv.fromV8Value(runtime.USVString, allocator, isolate, context, arg) catch |err| {
-                    throwMemberError(isolate, context, err);
-                    return null;
-                };
-            } else if (comptime std.mem.eql(u8, Meta.setlike.value_type, "DOMString") or std.mem.eql(u8, Meta.setlike.value_type, "CSSOMString")) {
-                var string = conv.fromV8Value(runtime.DOMString, allocator, isolate, context, arg) catch |err| {
-                    throwMemberError(isolate, context, err);
-                    return null;
-                };
-                defer string.deinit(allocator);
-                return allocator.dupe(u8, string.asSlice()) catch {
-                    throwMemberError(isolate, context, error.OutOfMemory);
-                    return null;
-                };
-            } else {
-                @compileError(interface_name ++ ": setlike<" ++ Meta.setlike.value_type ++ "> values are not converted yet");
-            }
-        }
-
-        /// A set entry's value converted to an ECMAScript value, OWNED: a
-        /// string made here, or a platform object's wrapper - the wrapper
-        /// cache's, so cloned (conv.instanceToV8: only the undefined of an
-        /// object that cannot be wrapped is the caller's).
-        fn setlikeValueToV8(isolate: *v8.Isolate, value: anytype) ?*v8.Value {
-            if (comptime setlike_values_are_objects) {
-                const instance: *runtime.Instance = @ptrCast(@alignCast(value));
-                const wrapper = conv.instanceToV8Checked(isolate, instance) catch return null;
-                if (v8.v8_Value_IsUndefined(wrapper)) return wrapper;
-                return v8.v8_Global_Clone(wrapper);
-            }
-            return conv.newStringFromWtf8(isolate, value);
-        }
-
-        /// What SetEntries.contains/append/remove take for `value`.
-        fn setlikeEntryArgument(value: SetlikeValue) if (setlike_values_are_objects) *anyopaque else []const u8 {
-            if (comptime setlike_values_are_objects) return @ptrCast(value);
-            return value;
-        }
-
         /// The current context, OWNED, or null with nothing to release.
         fn setlikeContext(isolate: *v8.Isolate) ?*v8.Context {
             return v8.v8_Isolate_GetCurrentContext(isolate);
@@ -7665,13 +7790,16 @@ pub fn V8Interface(comptime Interface: type) type {
             defer v8.v8_Object_Dispose(this_obj);
             const entries = setlikeEntriesOf(isolate, context, this_obj) orelse return;
             const allocator = setlikeAllocator(this_obj);
-            const value = setlikeValueArgument(isolate, context, info, allocator) orelse return;
-            defer setlikeFreeValue(allocator, value);
-            setlikeReturnBoolean(info, isolate, entries.contains(setlikeEntryArgument(value)));
+            const arg = (if (info.length() >= 1) info.get(0) else v8.v8_Undefined(isolate)) orelse return;
+            defer v8.v8_Value_Dispose(arg);
+            const value = collectionArgFromV8(Meta.setlike.value_type, isolate, context, arg, allocator) orelse return;
+            defer collectionFreeArg(Meta.setlike.value_type, allocator, value);
+            setlikeReturnBoolean(info, isolate, entries.contains(collectionEntryArg(Meta.setlike.value_type, value)));
         }
 
         /// 3.7.12.8 add: append the converted value, then return O.
         fn setlikeAddCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            if (comptime Meta.setlike.readonly or declaresOperation("add")) unreachable;
             const isolate = info.getIsolate();
             const context = setlikeContext(isolate) orelse return;
             defer v8.v8_Context_Dispose(context);
@@ -7679,11 +7807,13 @@ pub fn V8Interface(comptime Interface: type) type {
             defer v8.v8_Object_Dispose(this_obj);
             const entries = setlikeEntriesOf(isolate, context, this_obj) orelse return;
             const allocator = setlikeAllocator(this_obj);
-            const value = setlikeValueArgument(isolate, context, info, allocator) orelse return;
-            defer setlikeFreeValue(allocator, value);
+            const arg = (if (info.length() >= 1) info.get(0) else v8.v8_Undefined(isolate)) orelse return;
+            defer v8.v8_Value_Dispose(arg);
+            const value = collectionArgFromV8(Meta.setlike.value_type, isolate, context, arg, allocator) orelse return;
+            defer collectionFreeArg(Meta.setlike.value_type, allocator, value);
             // A platform-object set's impl owns its list and the traced
             // edges: the view appends through it (Highlight's ranges).
-            entries.append(setlikeEntryArgument(value)) catch |err| {
+            entries.append(collectionEntryArg(Meta.setlike.value_type, value)) catch |err| {
                 throwMemberError(isolate, context, err);
                 return;
             };
@@ -7694,6 +7824,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// 3.7.12.9 delete: whether the set contained the converted value,
         /// which it no longer does.
         fn setlikeDeleteCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            if (comptime Meta.setlike.readonly or declaresOperation("delete")) unreachable;
             const isolate = info.getIsolate();
             const context = setlikeContext(isolate) orelse return;
             defer v8.v8_Context_Dispose(context);
@@ -7701,14 +7832,17 @@ pub fn V8Interface(comptime Interface: type) type {
             defer v8.v8_Object_Dispose(this_obj);
             const entries = setlikeEntriesOf(isolate, context, this_obj) orelse return;
             const allocator = setlikeAllocator(this_obj);
-            const value = setlikeValueArgument(isolate, context, info, allocator) orelse return;
-            defer setlikeFreeValue(allocator, value);
-            setlikeReturnBoolean(info, isolate, entries.remove(setlikeEntryArgument(value)));
+            const arg = (if (info.length() >= 1) info.get(0) else v8.v8_Undefined(isolate)) orelse return;
+            defer v8.v8_Value_Dispose(arg);
+            const value = collectionArgFromV8(Meta.setlike.value_type, isolate, context, arg, allocator) orelse return;
+            defer collectionFreeArg(Meta.setlike.value_type, allocator, value);
+            setlikeReturnBoolean(info, isolate, entries.remove(collectionEntryArg(Meta.setlike.value_type, value)));
         }
 
         /// 3.7.12.10 clear: empty the set - the same set, so a suspended
         /// iterator yields what is added afterwards.
         fn setlikeClearCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            if (comptime Meta.setlike.readonly or declaresOperation("clear")) unreachable;
             const isolate = info.getIsolate();
             const context = setlikeContext(isolate) orelse return;
             defer v8.v8_Context_Dispose(context);
@@ -7752,7 +7886,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 const entries = setlikeEntriesOf(isolate, context, this_obj) orelse return;
                 const entry = entries.after(cursor) orelse break;
                 cursor = entry.sequence;
-                const value = setlikeValueToV8(isolate, entry.value) orelse return;
+                const value = collectionValueToV8(Meta.setlike.value_type, isolate, context, entry.value) orelse return;
                 defer v8.v8_Value_Dispose(value);
                 const args = [_]*v8.Value{ value, value, @ptrCast(this_obj) };
                 var threw = false;
@@ -7844,7 +7978,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 return setlikeReturnIterResult(info, isolate, context, null, true);
             };
             setlikeSetCursor(isolate, this_obj, entry.sequence);
-            const value = setlikeValueToV8(isolate, entry.value) orelse return;
+            const value = collectionValueToV8(Meta.setlike.value_type, isolate, context, entry.value) orelse return;
             defer v8.v8_Value_Dispose(value);
             switch (kind) {
                 .value => setlikeReturnIterResult(info, isolate, context, value, false),
@@ -7923,11 +8057,13 @@ pub fn V8Interface(comptime Interface: type) type {
         fn registerSetlikeExternalReferences() void {
             const ext_refs = @import("external_references.zig");
             inline for (.{
-                setlikeSizeCallback,   setlikeHasCallback,     setlikeAddCallback,
-                setlikeDeleteCallback, setlikeClearCallback,   setlikeForEachCallback,
+                setlikeSizeCallback,   setlikeHasCallback,     setlikeForEachCallback,
                 setlikeValuesCallback, setlikeEntriesCallback, setlikeIteratorNextCallback,
                 iteratorSelfCallback,
             }) |callback| ext_refs.registerCallbackRuntime(callback);
+            if (comptime !(Meta.setlike.readonly or declaresOperation("add"))) ext_refs.registerCallbackRuntime(setlikeAddCallback);
+            if (comptime !(Meta.setlike.readonly or declaresOperation("delete"))) ext_refs.registerCallbackRuntime(setlikeDeleteCallback);
+            if (comptime !(Meta.setlike.readonly or declaresOperation("clear"))) ext_refs.registerCallbackRuntime(setlikeClearCallback);
         }
 
         // ====================================================================
@@ -7938,14 +8074,14 @@ pub fn V8Interface(comptime Interface: type) type {
         // entries (also %Symbol.iterator%), forEach, get, has, keys and
         // values - and, read-write and not declared by the interface, set,
         // delete and clear - each a built-in function over the object's map
-        // entries, which the impl keeps (webidl.maplike.PlatformObjects, the
-        // generated `maplikeEntries` hands them over). None is an operation
-        // an impl implements (codegen's maplike.zig). An iterator is an object
-        // of this realm's "<Interface> Iterator" prototype holding, in private
-        // properties, the map's wrapper, its kind and the sequence of the
-        // entry it yielded last: live, as a JavaScript Map iterator is, with
-        // nothing in the map pointing back at it (the setlike iterators'
-        // model, above).
+        // entries, which the impl keeps (webidl.maplike.MapEntries,
+        // PlatformObjects, or View; the generated `maplikeEntries` hands them
+        // over). None is an operation an impl implements (codegen's maplike.zig).
+        // An iterator is an object of this realm's "<Interface> Iterator"
+        // prototype holding, in private properties, the map's wrapper, its
+        // kind and the sequence of the entry it yielded last: live, as a
+        // JavaScript Map iterator is, with nothing in the map pointing back at
+        // it (the setlike iterators' model, above).
 
         const MaplikeEntries = if (has_maplike)
             @typeInfo(@typeInfo(@typeInfo(@TypeOf(Interface.maplikeEntries)).@"fn".return_type.?).optional.child).pointer.child
@@ -7979,65 +8115,6 @@ pub fn V8Interface(comptime Interface: type) type {
             return if (info.length() > index) info.get(index) else v8.v8_Undefined(isolate);
         }
 
-        /// The key argument converted to an IDL value of the key type
-        /// (3.7.11.4-7 step 4), OWNED by `allocator`; null with the exception
-        /// thrown when the conversion threw.
-        fn maplikeKeyArgument(isolate: *v8.Isolate, context: *v8.Context, info: *const v8.FunctionCallbackInfo, allocator: std.mem.Allocator) ?[]u8 {
-            const arg = maplikeArgument(isolate, info, 0) orelse return null;
-            defer v8.v8_Value_Dispose(arg);
-            if (comptime std.mem.eql(u8, Meta.maplike.key_type, "USVString")) {
-                return conv.fromV8Value(runtime.USVString, allocator, isolate, context, arg) catch |err| {
-                    throwMemberError(isolate, context, err);
-                    return null;
-                };
-            } else if (comptime std.mem.eql(u8, Meta.maplike.key_type, "DOMString") or std.mem.eql(u8, Meta.maplike.key_type, "CSSOMString")) {
-                var string = conv.fromV8Value(runtime.DOMString, allocator, isolate, context, arg) catch |err| {
-                    throwMemberError(isolate, context, err);
-                    return null;
-                };
-                defer string.deinit(allocator);
-                return allocator.dupe(u8, string.asSlice()) catch {
-                    throwMemberError(isolate, context, error.OutOfMemory);
-                    return null;
-                };
-            } else {
-                @compileError(interface_name ++ ": maplike<" ++ Meta.maplike.key_type ++ ", ...> keys are not converted yet");
-            }
-        }
-
-        /// The value argument (argument 1) converted to the value type: a
-        /// platform object implementing it (WebIDL 3.2.20), BORROWED - the
-        /// argument's wrapper keeps it alive for the call; null with a
-        /// TypeError thrown.
-        fn maplikeValueArgument(isolate: *v8.Isolate, context: *v8.Context, info: *const v8.FunctionCallbackInfo) ?*runtime.Instance {
-            const arg = maplikeArgument(isolate, info, 1) orelse return null;
-            defer v8.v8_Value_Dispose(arg);
-            const ValueInterface = @field(@import("interfaces"), Meta.maplike.value_type);
-            const instance = conv.platformObjectOf(arg) orelse {
-                conv.throwTypeErrorFromContext(isolate, context, "The value is not a " ++ Meta.maplike.value_type);
-                return null;
-            };
-            if (!conv.implements(instance, ValueInterface)) {
-                conv.throwTypeErrorFromContext(isolate, context, "The value is not a " ++ Meta.maplike.value_type);
-                return null;
-            }
-            return instance;
-        }
-
-        /// A map entry's value converted to an ECMAScript value, OWNED: the
-        /// platform object's wrapper (the wrapper cache's, so cloned).
-        fn maplikeValueToV8(isolate: *v8.Isolate, value: *anyopaque) ?*v8.Value {
-            const instance: *runtime.Instance = @ptrCast(@alignCast(value));
-            const wrapper = conv.instanceToV8Checked(isolate, instance) catch return null;
-            if (v8.v8_Value_IsUndefined(wrapper)) return wrapper;
-            return v8.v8_Global_Clone(wrapper);
-        }
-
-        /// A map entry's key converted to an ECMAScript value, OWNED.
-        fn maplikeKeyToV8(isolate: *v8.Isolate, key: []const u8) ?*v8.Value {
-            return conv.newStringFromWtf8(isolate, key);
-        }
-
         /// 3.7.11.1 size: the map's size.
         fn maplikeSizeCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
@@ -8060,10 +8137,12 @@ pub fn V8Interface(comptime Interface: type) type {
             defer v8.v8_Object_Dispose(this_obj);
             const entries = maplikeEntriesOf(isolate, context, this_obj) orelse return;
             const allocator = setlikeAllocator(this_obj);
-            const key = maplikeKeyArgument(isolate, context, info, allocator) orelse return;
-            defer allocator.free(key);
-            const found = entries.get(key) orelse return conv.setReturnUndefined(info);
-            const value = maplikeValueToV8(isolate, found) orelse return;
+            const arg = maplikeArgument(isolate, info, 0) orelse return;
+            defer v8.v8_Value_Dispose(arg);
+            const key = collectionArgFromV8(Meta.maplike.key_type, isolate, context, arg, allocator) orelse return;
+            defer collectionFreeArg(Meta.maplike.key_type, allocator, key);
+            const found = entries.get(collectionEntryArg(Meta.maplike.key_type, key)) orelse return conv.setReturnUndefined(info);
+            const value = collectionValueToV8(Meta.maplike.value_type, isolate, context, found) orelse return;
             defer v8.v8_Value_Dispose(value);
             info.setReturnValue(value);
         }
@@ -8077,13 +8156,16 @@ pub fn V8Interface(comptime Interface: type) type {
             defer v8.v8_Object_Dispose(this_obj);
             const entries = maplikeEntriesOf(isolate, context, this_obj) orelse return;
             const allocator = setlikeAllocator(this_obj);
-            const key = maplikeKeyArgument(isolate, context, info, allocator) orelse return;
-            defer allocator.free(key);
-            setlikeReturnBoolean(info, isolate, entries.contains(key));
+            const arg = maplikeArgument(isolate, info, 0) orelse return;
+            defer v8.v8_Value_Dispose(arg);
+            const key = collectionArgFromV8(Meta.maplike.key_type, isolate, context, arg, allocator) orelse return;
+            defer collectionFreeArg(Meta.maplike.key_type, allocator, key);
+            setlikeReturnBoolean(info, isolate, entries.contains(collectionEntryArg(Meta.maplike.key_type, key)));
         }
 
         /// 3.7.11.8 set: map[key] = value, then return O.
         fn maplikeSetCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            if (comptime Meta.maplike.readonly or declaresOperation("set")) unreachable;
             const isolate = info.getIsolate();
             const context = setlikeContext(isolate) orelse return;
             defer v8.v8_Context_Dispose(context);
@@ -8091,10 +8173,15 @@ pub fn V8Interface(comptime Interface: type) type {
             defer v8.v8_Object_Dispose(this_obj);
             const entries = maplikeEntriesOf(isolate, context, this_obj) orelse return;
             const allocator = setlikeAllocator(this_obj);
-            const key = maplikeKeyArgument(isolate, context, info, allocator) orelse return;
-            defer allocator.free(key);
-            const value = maplikeValueArgument(isolate, context, info) orelse return;
-            entries.set(key, @ptrCast(value)) catch |err| {
+            const key_arg = maplikeArgument(isolate, info, 0) orelse return;
+            defer v8.v8_Value_Dispose(key_arg);
+            const key = collectionArgFromV8(Meta.maplike.key_type, isolate, context, key_arg, allocator) orelse return;
+            defer collectionFreeArg(Meta.maplike.key_type, allocator, key);
+            const val_arg = maplikeArgument(isolate, info, 1) orelse return;
+            defer v8.v8_Value_Dispose(val_arg);
+            const value = collectionArgFromV8(Meta.maplike.value_type, isolate, context, val_arg, allocator) orelse return;
+            defer collectionFreeArg(Meta.maplike.value_type, allocator, value);
+            entries.set(collectionEntryArg(Meta.maplike.key_type, key), collectionEntryArg(Meta.maplike.value_type, value)) catch |err| {
                 throwMemberError(isolate, context, err);
                 return;
             };
@@ -8105,6 +8192,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// 3.7.11.9 delete: whether the map contained the converted key,
         /// which it no longer does.
         fn maplikeDeleteCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            if (comptime Meta.maplike.readonly or declaresOperation("delete")) unreachable;
             const isolate = info.getIsolate();
             const context = setlikeContext(isolate) orelse return;
             defer v8.v8_Context_Dispose(context);
@@ -8112,14 +8200,17 @@ pub fn V8Interface(comptime Interface: type) type {
             defer v8.v8_Object_Dispose(this_obj);
             const entries = maplikeEntriesOf(isolate, context, this_obj) orelse return;
             const allocator = setlikeAllocator(this_obj);
-            const key = maplikeKeyArgument(isolate, context, info, allocator) orelse return;
-            defer allocator.free(key);
-            setlikeReturnBoolean(info, isolate, entries.remove(key));
+            const arg = maplikeArgument(isolate, info, 0) orelse return;
+            defer v8.v8_Value_Dispose(arg);
+            const key = collectionArgFromV8(Meta.maplike.key_type, isolate, context, arg, allocator) orelse return;
+            defer collectionFreeArg(Meta.maplike.key_type, allocator, key);
+            setlikeReturnBoolean(info, isolate, entries.remove(collectionEntryArg(Meta.maplike.key_type, key)));
         }
 
         /// 3.7.11.10 clear: empty the map - the same map, so a suspended
         /// iterator yields what is set afterwards.
         fn maplikeClearCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            if (comptime Meta.maplike.readonly or declaresOperation("clear")) unreachable;
             const isolate = info.getIsolate();
             const context = setlikeContext(isolate) orelse return;
             defer v8.v8_Context_Dispose(context);
@@ -8156,9 +8247,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 const entries = maplikeEntriesOf(isolate, context, this_obj) orelse return;
                 const entry = entries.after(cursor) orelse break;
                 cursor = entry.sequence;
-                const value = maplikeValueToV8(isolate, entry.value) orelse return;
+                const value = collectionValueToV8(Meta.maplike.value_type, isolate, context, entry.value) orelse return;
                 defer v8.v8_Value_Dispose(value);
-                const key = maplikeKeyToV8(isolate, entry.key) orelse return;
+                const key = collectionValueToV8(Meta.maplike.key_type, isolate, context, entry.key) orelse return;
                 defer v8.v8_Value_Dispose(key);
                 const args = [_]*v8.Value{ value, key, @ptrCast(this_obj) };
                 var threw = false;
@@ -8248,19 +8339,19 @@ pub fn V8Interface(comptime Interface: type) type {
             maplikeSetCursor(isolate, this_obj, entry.sequence);
             switch (kind) {
                 .key => {
-                    const key = maplikeKeyToV8(isolate, entry.key) orelse return;
+                    const key = collectionValueToV8(Meta.maplike.key_type, isolate, context, entry.key) orelse return;
                     defer v8.v8_Value_Dispose(key);
                     setlikeReturnIterResult(info, isolate, context, key, false);
                 },
                 .value => {
-                    const value = maplikeValueToV8(isolate, entry.value) orelse return;
+                    const value = collectionValueToV8(Meta.maplike.value_type, isolate, context, entry.value) orelse return;
                     defer v8.v8_Value_Dispose(value);
                     setlikeReturnIterResult(info, isolate, context, value, false);
                 },
                 .key_value => {
-                    const key = maplikeKeyToV8(isolate, entry.key) orelse return;
+                    const key = collectionValueToV8(Meta.maplike.key_type, isolate, context, entry.key) orelse return;
                     defer v8.v8_Value_Dispose(key);
-                    const value = maplikeValueToV8(isolate, entry.value) orelse return;
+                    const value = collectionValueToV8(Meta.maplike.value_type, isolate, context, entry.value) orelse return;
                     defer v8.v8_Value_Dispose(value);
                     const pair = v8.v8_Array_NewInContext(context, 2) orelse return;
                     defer v8.v8_Array_Dispose(pair);
@@ -8316,10 +8407,12 @@ pub fn V8Interface(comptime Interface: type) type {
             const ext_refs = @import("external_references.zig");
             inline for (.{
                 maplikeSizeCallback,    maplikeGetCallback,          maplikeHasCallback,
-                maplikeSetCallback,     maplikeDeleteCallback,       maplikeClearCallback,
                 maplikeForEachCallback, maplikeEntriesCallback,      maplikeKeysCallback,
                 maplikeValuesCallback,  maplikeIteratorNextCallback, iteratorSelfCallback,
             }) |callback| ext_refs.registerCallbackRuntime(callback);
+            if (comptime !(Meta.maplike.readonly or declaresOperation("set"))) ext_refs.registerCallbackRuntime(maplikeSetCallback);
+            if (comptime !(Meta.maplike.readonly or declaresOperation("delete"))) ext_refs.registerCallbackRuntime(maplikeDeleteCallback);
+            if (comptime !(Meta.maplike.readonly or declaresOperation("clear"))) ext_refs.registerCallbackRuntime(maplikeClearCallback);
         }
 
         // ====================================================================

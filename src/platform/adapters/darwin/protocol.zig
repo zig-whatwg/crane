@@ -132,7 +132,7 @@ fn openUserDirectory(browser: *platform.BrowserPlatform, path: platform.Str, rep
     State.of(browser).extra.user_files.openDirectory(path, reply);
 }
 
-fn readUserFile(browser: *platform.BrowserPlatform, file: platform.FileToken, offset: u64, length: u32, reply: platform.Reply(platform.Bytes)) void {
+fn readUserFile(browser: *platform.BrowserPlatform, file: platform.FileToken, offset: u64, length: u32, reply: platform.Reply(platform.PickedFileRead)) void {
     State.of(browser).extra.user_files.read(file, offset, length, reply);
 }
 

@@ -81,8 +81,11 @@ pub const BodyInit = union(enum) {
         size: u64,
         /// Blob MIME type (may be empty).
         mime_type: []const u8,
-        /// Blob bytes (for extraction).
-        bytes: []const u8,
+        /// Blob bytes (for in-memory extraction).
+        bytes: []const u8 = &.{},
+        /// Optional lazy source for file-backed Blobs (takes ownership on
+        /// success when non-null).
+        lazy: ?body_mod.LazySource = null,
     };
 };
 
@@ -172,12 +175,15 @@ pub fn extract(allocator: Allocator, object: BodyInit) !BodyWithType {
 
         .blob => |blob_info| {
             // Blob - source is blob, length is size, type is MIME type.
-            const body = try Body.fromBytes(allocator, blob_info.bytes);
+            const body = if (blob_info.lazy) |lazy|
+                try Body.fromLazy(allocator, .{ .blob = blob_info.ptr }, lazy, blob_info.size)
+            else blk: {
+                const b = try Body.fromBytes(allocator, blob_info.bytes);
+                b.source = .{ .blob = blob_info.ptr };
+                b.length = blob_info.size;
+                break :blk b;
+            };
             errdefer body.deinit();
-
-            // Set source to blob pointer.
-            body.source = .{ .blob = blob_info.ptr };
-            body.length = blob_info.size;
 
             // Content-Type is blob's MIME type if non-empty.
             const content_type: ?[]const u8 = if (blob_info.mime_type.len > 0)

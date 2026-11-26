@@ -247,10 +247,9 @@ fn readOperation(instance: *runtime.Instance, blob: *runtime.Instance, read_type
 
     // 5-9, and 10's reading. "Let stream be the result of calling get stream
     // on blob", read chunk by chunk "in parallel", appending each to bytes:
-    // a Blob's bytes are in memory and never change, so the chunks its
-    // stream yields are those bytes, in order, and reading them here is
-    // reading them in parallel with nothing between. What stays observable
-    // is the tasks 10 queues, which `ReadOperation` queues.
+    // Retain the Blob's data now and defer reading to the queued task so a
+    // file-backed Blob is read asynchronously (and abort() before the task
+    // runs cancels cleanly without reading disk).
     const op = try ReadOperation.create(instance, blob, read_type, encoding_name);
 
     // 2. Set fr's state to "loading".
@@ -261,21 +260,16 @@ fn readOperation(instance: *runtime.Instance, blob: *runtime.Instance, read_type
     internal.setError(null, null);
 
     internal.operation = op;
-    // 10.2. The first chunk read - or the end, for an empty blob - queues a
-    //       task to fire a progress event called loadstart at fr.
-    op.queue(.loadstart);
-    // 10.4.3. A chunk read queues a progress event, "if roughly 50ms have
-    //         passed since these steps were last invoked" - they never were,
-    //         at the first chunk, and the rest arrive within the same
-    //         instant. An empty blob has no chunk, and no progress.
-    if (op.bytes.len > 0) op.queue(.progress);
-    // 10.5. The end queues a task to run the rest.
-    op.queue(.done);
+    // Queue the initial read task: on success it fires loadstart (step 10.2)
+    // and queues progress (when non-empty) + done; on failure it runs step
+    // 10.6 (state = done, error = DOMException, fire error, then loadend).
+    op.queue(.start);
 }
 
-/// A read operation in flight: the bytes read, what "package data" needs,
-/// and the tasks it has queued. A FileReader has at most one that abort()
-/// can reach; a task of a terminated one does nothing.
+/// A read operation in flight: the retained BlobData, the bytes read once the
+/// read starts, what "package data" needs, and the tasks it has queued. A
+/// FileReader has at most one that abort() can reach; a task of a terminated
+/// one does nothing.
 const ReadOperation = struct {
     allocator: std.mem.Allocator,
     reader: *runtime.Instance,
@@ -284,8 +278,11 @@ const ReadOperation = struct {
     /// let go).
     keep: same_object.Pin = .{},
     read_type: ReadType,
-    /// "bytes": the blob's, read. Owned.
-    bytes: []u8,
+    /// Retained BlobData to read when the initial task runs (released once
+    /// read or when the operation is freed).
+    blob_data: ?*file.BlobData,
+    /// "bytes": the blob's, materialized when `.start` runs. Owned.
+    bytes: []u8 = &.{},
     /// blob's type, for "package data". Owned.
     blob_type: []u8,
     /// encodingName, for "package data" (Text). Owned.
@@ -295,13 +292,14 @@ const ReadOperation = struct {
     terminated: bool = false,
     /// Tasks queued and not yet run or dropped.
     queued: u32 = 0,
+    /// Active runStep calls on the stack: freeing waits until all return so a
+    /// reentrant abort() inside a listener cannot free `self` under us.
+    busy: u32 = 0,
 
-    const Step = enum { loadstart, progress, done };
+    const Step = enum { start, progress, done };
 
     fn create(reader: *runtime.Instance, blob: *runtime.Instance, read_type: ReadType, encoding_name: ?[]const u8) !*ReadOperation {
         const allocator = reader.ctx.allocator;
-        const bytes = try allocator.dupe(u8, blob_bytes.bytesOf(blob) orelse "");
-        errdefer allocator.free(bytes);
         var blob_type = try interfaces.Blob.get_type(blob);
         defer blob_type.deinit(blob.ctx.allocator);
         const type_copy = try allocator.dupe(u8, blob_type.asSlice());
@@ -309,11 +307,12 @@ const ReadOperation = struct {
         const encoding_copy: ?[]u8 = if (encoding_name) |e| try allocator.dupe(u8, e) else null;
         errdefer if (encoding_copy) |e| allocator.free(e);
         const self = try allocator.create(ReadOperation);
+        const retained = if (blob_bytes.dataOf(blob)) |d| d.retain() else null;
         self.* = .{
             .allocator = allocator,
             .reader = reader,
             .read_type = read_type,
-            .bytes = bytes,
+            .blob_data = retained,
             .blob_type = type_copy,
             .encoding_name = encoding_copy,
         };
@@ -334,10 +333,10 @@ const ReadOperation = struct {
             return;
         }
         // Nowhere to queue it (a bare realm with no event loop - a unit
-        // test's): the steps run now, which is better than never.
+        // test's): the steps run now, which is better than never. `runStep`
+        // owns the final `maybeFree` check; do not touch `self` after it.
         self.allocator.destroy(task);
         self.runStep(step);
-        self.maybeFree();
     }
 
     /// abort() step 3-4, the reader going, or the operation's end: its
@@ -349,8 +348,9 @@ const ReadOperation = struct {
     }
 
     fn maybeFree(self: *ReadOperation) void {
-        if (!self.terminated or self.queued > 0) return;
-        self.allocator.free(self.bytes);
+        if (!self.terminated or self.queued > 0 or self.busy > 0) return;
+        if (self.blob_data) |d| d.deinit();
+        if (self.bytes.len > 0) self.allocator.free(self.bytes);
         self.allocator.free(self.blob_type);
         if (self.encoding_name) |e| self.allocator.free(e);
         self.allocator.destroy(self);
@@ -361,8 +361,14 @@ const ReadOperation = struct {
     /// - its document was destroyed (HTML "destroy a document" step 7) or its
     /// realm ended - never sees the read finish: the operation ends here, and
     /// with it the hold on the reader's wrapper (Blink: FileReader's
-    /// ContextDestroyed terminates it). The caller frees it (`maybeFree`).
+    /// ContextDestroyed terminates it). This call always runs the final
+    /// `maybeFree` on exit; callers must not touch `self` after it returns.
     fn runStep(self: *ReadOperation, step: Step) void {
+        self.busy += 1;
+        defer {
+            self.busy -= 1;
+            self.maybeFree();
+        }
         if (self.terminated) return;
         var run: StepRun = .{ .op = self, .step = step };
         engine.runTaskInRealm(self.reader.ctx, StepRun.steps, &run) catch {
@@ -386,7 +392,6 @@ const ReadOperation = struct {
             const step = task.step;
             op.allocator.destroy(task);
             op.queued -= 1;
-            defer op.maybeFree();
             op.runStep(step);
         }
 
@@ -409,12 +414,54 @@ const ReadOperation = struct {
             const self: *StepRun = @ptrCast(@alignCast(data.?));
             const op = self.op;
             switch (self.step) {
-                .loadstart => fireProgressEvent(op.reader, "loadstart"),
+                .start => op.startAndLoadStart(),
                 .progress => fireProgressEvent(op.reader, "progress"),
                 .done => op.finish(),
             }
         }
     };
+
+    /// Step 10.1-10.6: read the Blob's bytes; on failure run step 10.6
+    /// (error then loadend, no loadstart); on success fire loadstart (step
+    /// 10.2) and queue progress (when non-empty) + done.
+    fn startAndLoadStart(self: *ReadOperation) void {
+        if (self.blob_data) |data| {
+            self.blob_data = null;
+            defer data.deinit();
+            self.bytes = data.materialize(self.allocator) catch |err| {
+                self.failRead(err);
+                return;
+            };
+        }
+        // Step 10.2: first chunk fulfilled -> fire loadstart.
+        fireProgressEvent(self.reader, "loadstart");
+        // A loadstart listener may have called abort() or started a new read.
+        if (self.terminated) return;
+        // Step 10.4.3: non-empty blob queues progress.
+        if (self.bytes.len > 0) self.queue(.progress);
+        if (self.terminated) return;
+        // Step 10.5: end queues done.
+        self.queue(.done);
+    }
+
+    /// Step 10.6: stream errored - set state to "done", set error to the
+    /// DOMException, fire error, then loadend if state is not "loading".
+    fn failRead(self: *ReadOperation, err: file.FileReadError) void {
+        const reader = self.reader;
+        const internal = getInternal(reader) orelse return;
+        if (internal.operation == self) internal.operation = null;
+        self.terminated = true;
+        defer self.keep.release();
+
+        // 10.6.1. Set fr's state to "done".
+        internal.state = .done;
+        // 10.6.2. Set fr's error to error.
+        self.setDOMExceptionError(internal, err);
+        // 10.6.3. Fire a progress event called error at fr.
+        fireProgressEvent(reader, "error");
+        // 10.6.4. If fr's state is not "loading", fire loadend at fr.
+        if (internal.state != .loading) fireProgressEvent(reader, "loadend");
+    }
 
     /// Step 10.5: the stream is done - "set fr's state ... and abort this
     /// algorithm".
@@ -442,7 +489,7 @@ const ReadOperation = struct {
             //    allocate the value can: a NotReadableError, as for a read
             //    that fails)
             // 3.1. Set fr's error to error.
-            self.setReadError(internal);
+            self.setDOMExceptionError(internal, error.NotReadableError);
             // 3.2. Fire a progress event called error at fr.
             fireProgressEvent(reader, "error");
         }
@@ -452,9 +499,17 @@ const ReadOperation = struct {
         if (internal.state != .loading) fireProgressEvent(reader, "loadend");
     }
 
-    fn setReadError(self: *ReadOperation, internal: *InternalState) void {
+    fn setDOMExceptionError(self: *ReadOperation, internal: *InternalState, err: file.FileReadError) void {
         const realm = self.reader.ctx;
-        const exception = engine.createDOMException(realm, "NotReadableError", "The blob could not be read.") catch return;
+        const name: []const u8 = switch (err) {
+            error.NotFoundError => "NotFoundError",
+            error.NotReadableError, error.OutOfMemory => "NotReadableError",
+        };
+        const message: []const u8 = switch (err) {
+            error.NotFoundError => "A requested file or directory could not be found at the time an operation was processed.",
+            error.NotReadableError, error.OutOfMemory => "The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.",
+        };
+        const exception = engine.createDOMException(realm, name, message) catch return;
         internal.setError(exception, engine.convertToPlatformObject(realm, exception.value));
     }
 

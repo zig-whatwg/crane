@@ -1625,6 +1625,13 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
         const form_data_generation = runtime.SlabAllocator.generationOf(form_data);
         var post = entityBody(allocator, enctype, form_data, entries.items, encoding) catch |err| {
             form_data.releaseIfUnwrapped(form_data_generation);
+            if (err == error.NotFoundError or err == error.NotReadableError) {
+                // Reading a file-backed entry during multipart encoding failed:
+                // abort the submission cleanly as a network error rather than
+                // submitting truncated/empty data or throwing into submit().
+                allocator.free(target);
+                return;
+            }
             return err;
         };
         errdefer post.deinit(allocator);
@@ -1710,7 +1717,10 @@ fn multipartBody(allocator: std.mem.Allocator, form_data: *runtime.Instance, enc
     };
     defer extracted.deinit();
     const body_object = extracted.body orelse return error.TypeError;
-    const body = try allocator.dupe(u8, body_object.getBytes());
+    const body = if (body_object.lazy) |lazy|
+        try lazy.read(allocator)
+    else
+        try allocator.dupe(u8, body_object.getBytes());
     errdefer allocator.free(body);
     const content_type = extracted.content_type orelse return error.TypeError;
     extracted.content_type = null;

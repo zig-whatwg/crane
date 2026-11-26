@@ -90,13 +90,13 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 
 /// File API §6.5.1.4, readAsArrayBuffer.
 pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = getInternal(instance) orelse return error.InvalidState;
-    // 1–4. Blob data is immutable and already in memory; reading all of its
-    // stream produces these same bytes, as in Blob.text()/arrayBuffer().
-    const bytes = blob_bytes.bytesOf(blob) orelse return error.InvalidState;
-    // 5. Package as a new ArrayBuffer. The engine copies the contents once;
-    // do not allocate and discard an intermediate native buffer.
-    const buffer = try engine.createArrayBuffer(engine.currentRealm() orelse instance.ctx, bytes);
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    // 1–4. Materialize the Blob's bytes, propagating NotFoundError /
+    // NotReadableError as thrown DOMExceptions (File API §7.1).
+    var materialized = (try blob_bytes.materialize(blob, internal.allocator)) orelse return error.InvalidState;
+    defer materialized.deinit();
+    // 5. Package as a new ArrayBuffer.
+    const buffer = try engine.createArrayBuffer(engine.currentRealm() orelse instance.ctx, materialized.slice);
     return buffer.take();
 }
 
@@ -118,12 +118,14 @@ pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, enc
 
 fn packageString(instance: *runtime.Instance, blob: *runtime.Instance, comptime read_type: file.algorithms.PackageReadType, encoding_label: ?[]const u8) !runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    // 1–4. Read the immutable in-memory Blob through its owning hook.
-    const bytes = blob_bytes.bytesOf(blob) orelse return error.InvalidState;
+    // 1–4. Materialize the Blob's bytes, propagating NotFoundError /
+    // NotReadableError as thrown DOMExceptions (File API §7.1).
+    var materialized = (try blob_bytes.materialize(blob, internal.allocator)) orelse return error.InvalidState;
+    defer materialized.deinit();
     var mime_type = try Blob.get_type(blob);
     defer mime_type.deinit(blob.ctx.allocator);
     // 5. Both readers use File API's package data algorithm. Its string is
     // allocated, so return an owned DOMString for the binding to release.
-    const result = try file.algorithms.packageData(internal.allocator, bytes, read_type, mime_type.asSlice(), encoding_label);
+    const result = try file.algorithms.packageData(internal.allocator, materialized.slice, read_type, mime_type.asSlice(), encoding_label);
     return runtime.DOMString.initOwned(result.string);
 }
