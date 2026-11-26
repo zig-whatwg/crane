@@ -1781,13 +1781,9 @@ pub const Document = struct {
         return value;
     }
 
-    pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try DocumentImpl.get_fonts(instance);
-    }
+    pub const get_fonts = mixins.FontFaceSource.get_fonts;
 
-    pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_customElementRegistry(instance);
-    }
+    pub const get_customElementRegistry = mixins.DocumentOrShadowRoot.get_customElementRegistry;
 
     /// Extended attributes: [SameObject]
     pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -1796,44 +1792,24 @@ pub const Document = struct {
         if (state.own.cached_styleSheets) |cached| {
             return cached;
         }
-        const value = try DocumentImpl.get_styleSheets(instance);
+        const value = try mixins.DocumentOrShadowRoot.get_styleSheets(instance);
         state.own.cached_styleSheets = value;
         @import("dom").same_object_cache.made(instance, value, "styleSheets");
         return value;
     }
 
-    pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try DocumentImpl.get_adoptedStyleSheets(instance);
-    }
-
-    pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        try DocumentImpl.set_adoptedStyleSheets(instance, value);
-    }
+    pub const get_adoptedStyleSheets = mixins.DocumentOrShadowRoot.get_adoptedStyleSheets;
+    pub const set_adoptedStyleSheets = mixins.DocumentOrShadowRoot.set_adoptedStyleSheets;
 
     /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_fullscreenElement(instance);
-    }
+    pub const get_fullscreenElement = mixins.DocumentOrShadowRoot.get_fullscreenElement;
+    pub const set_fullscreenElement = mixins.DocumentOrShadowRoot.set_fullscreenElement;
 
-    /// Extended attributes: [LegacyLenientSetter]
-    pub fn set_fullscreenElement(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        // [LegacyLenientSetter] - Silently do nothing (no-op setter)
-        // Per WebIDL §4.3.10: The setter steps are to return.
-        _ = instance;
-        _ = value;
-    }
+    pub const get_activeElement = mixins.DocumentOrShadowRoot.get_activeElement;
 
-    pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_activeElement(instance);
-    }
+    pub const get_pictureInPictureElement = mixins.DocumentOrShadowRoot.get_pictureInPictureElement;
 
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_pictureInPictureElement(instance);
-    }
-
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_pointerLockElement(instance);
-    }
+    pub const get_pointerLockElement = mixins.DocumentOrShadowRoot.get_pointerLockElement;
 
     /// Extended attributes: [SameObject]
     pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -2248,9 +2224,7 @@ pub const Document = struct {
         return try DocumentImpl.call_static_parseHTML(instance, html, options);
     }
 
-    pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
-        return try DocumentImpl.call_createNSResolver(instance, nodeResolver);
-    }
+    pub const call_createNSResolver = mixins.XPathEvaluatorBase.call_createNSResolver;
 
     /// Extended attributes: [CEReactions], [NewObject]
     pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, options: webidl.Opt(DOMStringOrElementCreationOptions)) anyerror!*runtime.Instance {
@@ -2517,15 +2491,11 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandValue(instance, commandId);
     }
 
-    pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(?runtime.BorrowedCallbackInterface), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
-        return try DocumentImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
-    }
+    pub const call_evaluate = mixins.XPathEvaluatorBase.call_evaluate;
 
     pub const call_prepend = mixins.ParentNode.call_prepend;
 
-    pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try DocumentImpl.call_getAnimations(instance);
-    }
+    pub const call_getAnimations = mixins.DocumentOrShadowRoot.call_getAnimations;
 
     /// Extended attributes: [NewObject]
     pub fn call_createDocumentFragment(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -2542,12 +2512,7 @@ pub const Document = struct {
 
     pub const call_moveBefore = mixins.ParentNode.call_moveBefore;
 
-    /// Extended attributes: [NewObject]
-    pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-
-        return try DocumentImpl.call_createExpression(instance, expression, resolver);
-    }
+    pub const call_createExpression = mixins.XPathEvaluatorBase.call_createExpression;
 
     pub fn call_open__1(instance: *runtime.Instance, url: runtime.USVString, name: runtime.DOMString, features: runtime.DOMString) anyerror!?WindowProxy {
         if (comptime @hasDecl(DocumentImpl, "call_open__1")) {

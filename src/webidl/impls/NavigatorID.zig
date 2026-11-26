@@ -4,12 +4,12 @@
 //! Navigator and WorkerNavigator.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 const html = @import("html");
 const fetch = @import("fetch");
+const platform = @import("platform");
 const NavigatorID = interfaces.NavigatorID;
 
 pub const State = NavigatorID.State;
@@ -57,19 +57,12 @@ pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// compile target's platform string.
 pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
     if (hostOverridesOf(instance)) |overrides| {
-        if (overrides.platform) |platform| return runtime.DOMString.initDupe(instance.ctx.allocator, platform);
+        if (overrides.platform) |plat| return runtime.DOMString.initDupe(instance.ctx.allocator, plat);
     }
     if (userAgentOverrideOf(instance)) |snapshot| {
-        if (snapshot.platform) |platform| return runtime.DOMString.initDupe(instance.ctx.allocator, platform);
+        if (snapshot.platform) |plat| return runtime.DOMString.initDupe(instance.ctx.allocator, plat);
     }
-    return runtime.DOMString.initInterned(switch (builtin.os.tag) {
-        .macos => "MacIntel",
-        .linux => "Linux x86_64",
-        .windows => "Win32",
-        .freebsd => "FreeBSD",
-        .ios => "iPhone",
-        else => "Unknown",
-    });
+    return runtime.DOMString.initInterned(platform.identity.navigator_platform.slice());
 }
 
 /// Getter for product (HTML 8.9.1.1): "Must return the string 'Gecko'."
@@ -116,12 +109,7 @@ pub fn get_vendorSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for oscpu (HTML 8.9.1.1, [Exposed=Window]).
 pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return runtime.DOMString.initInterned(switch (builtin.os.tag) {
-        .macos => "Intel Mac OS X",
-        .linux => "Linux x86_64",
-        .windows => "Windows NT 10.0; Win64; x64",
-        else => "Unknown",
-    });
+    return runtime.DOMString.initInterned(platform.identity.oscpu.slice());
 }
 
 /// Operation: taintEnabled (HTML 8.9.1.1, [Exposed=Window]).

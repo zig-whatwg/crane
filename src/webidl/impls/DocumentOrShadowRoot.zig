@@ -1,132 +1,96 @@
-//! Implementation for DocumentOrShadowRoot mixin
-//!
-//! Spec: https://dom.spec.whatwg.org/#interface-documentorshadowroot
-//! Also: https://html.spec.whatwg.org/multipage/dom.html#documentorshadowroot
-//!
-//! This impl contains the actual logic for DocumentOrShadowRoot methods.
-//! The mixin file delegates to these functions.
-//!
-//! The DocumentOrShadowRoot mixin defines:
-//! - activeElement - The deepest element that has focus
-//! - adoptedStyleSheets - List of adopted stylesheets
-//! - styleSheets - List of stylesheets
-//! - fullscreenElement - Element currently in fullscreen
-//! - pictureInPictureElement - Element in picture-in-picture
-//! - pointerLockElement - Element with pointer lock
-//! - getAnimations() - Returns all animations
+//! Implementation for the DocumentOrShadowRoot mixin (DOM §4.2.5 / CSSOM /
+//! Fullscreen / Pointer Lock / Picture-in-Picture / Web Animations / HTML):
+//! activeElement, styleSheets, adoptedStyleSheets, fullscreenElement,
+//! pictureInPictureElement, pointerLockElement, customElementRegistry, and
+//! getAnimations(), shared by Document and ShadowRoot.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const dom = @import("dom");
+const html = @import("html");
+const DocumentOrShadowRoot = interfaces.DocumentOrShadowRoot;
 
-pub const State = interfaces.DocumentOrShadowRoot.State;
+pub const State = DocumentOrShadowRoot.State;
 
 pub const ImplError = error{
     NotImplemented,
     InvalidStateError,
-    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
+fn ensureInitialized(instance: *runtime.Instance) !void {
+    if (dom.document_internals.getInternal(instance) != null) return;
+    if (instance.stateAs(interfaces.ShadowRoot.State) != null and dom.shadow_hosts.hasInternal(instance)) return;
+    return error.InvalidStateError;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-// =============================================================================
-// DocumentOrShadowRoot Attributes
-// =============================================================================
-
-/// activeElement - Returns the deepest element that has focus
-/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-documentorshadowroot-activeelement
+/// Getter for activeElement (HTML §6.6.3).
 pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    // TODO: Implement focus tracking
-    _ = instance;
-    return null;
+    try ensureInitialized(instance);
+    return html.focus.activeElement(instance);
 }
 
-/// styleSheets - Returns a StyleSheetList of associated stylesheets
-/// Spec: https://drafts.csswg.org/cssom/#dom-documentorshadowroot-stylesheets
+/// Getter for styleSheets (CSSOM §6.4.3).
 pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // TODO: Implement StyleSheetList creation
-    _ = instance;
-    return error.NotImplemented;
+    if (dom.document_internals.getInternal(instance)) |internal| {
+        const sheets = internal.style_sheets_kept.get() orelse blk: {
+            const made = interfaces.StyleSheetList.initWith(internal.allocator, instance.ctx, .{ .sheets_of = instance }) catch return error.OutOfMemory;
+            internal.style_sheets_kept.made(made);
+            break :blk made;
+        };
+        internal.style_sheets_kept.handOut(instance, sheets, .{ .name = "styleSheets" });
+        return sheets;
+    }
+    if (instance.stateAs(interfaces.ShadowRoot.State) != null) {
+        return dom.shadow_hosts.styleSheetsOf(instance);
+    }
+    return error.InvalidStateError;
 }
 
-/// adoptedStyleSheets - Returns adopted stylesheets
-/// Spec: https://drafts.csswg.org/cssom/#dom-documentorshadowroot-adoptedstylesheets
+/// Getter for adoptedStyleSheets (CSSOM §6.4.3).
 pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    // TODO: Implement adopted stylesheets storage and retrieval
-    _ = instance;
-    return error.NotImplemented;
+    try ensureInitialized(instance);
+    return dom.style.adopted.get(instance);
 }
 
-/// setAdoptedStyleSheets - Sets adopted stylesheets
-/// Spec: https://drafts.csswg.org/cssom/#dom-documentorshadowroot-adoptedstylesheets
+/// Setter for adoptedStyleSheets (CSSOM §6.4.3).
 pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    // TODO: Implement adopted stylesheets storage
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try ensureInitialized(instance);
+    try dom.style.adopted.set(instance, value);
 }
 
-/// fullscreenElement - Returns the element in fullscreen mode
-/// Spec: https://fullscreen.spec.whatwg.org/#dom-documentorshadowroot-fullscreenelement
+/// Getter for fullscreenElement (Fullscreen §3).
 pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    // TODO: Implement fullscreen tracking
-    _ = instance;
-    return null;
+    try ensureInitialized(instance);
+    return dom.designated_elements.of(instance, .fullscreen);
 }
 
-/// pictureInPictureElement - Returns the element in picture-in-picture
-/// Spec: https://w3c.github.io/picture-in-picture/#dom-documentorshadowroot-pictureinpictureelement
+/// Getter for pictureInPictureElement (Picture-in-Picture §4).
 pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    // TODO: Implement PiP tracking
-    _ = instance;
-    return null;
+    try ensureInitialized(instance);
+    return dom.designated_elements.of(instance, .picture_in_picture);
 }
 
-/// pointerLockElement - Returns the element with pointer lock
-/// Spec: https://w3c.github.io/pointerlock/#dom-documentorshadowroot-pointerlockelement
+/// Getter for pointerLockElement (Pointer Lock §6).
 pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    // TODO: Implement pointer lock tracking
-    _ = instance;
-    return null;
+    try ensureInitialized(instance);
+    return dom.designated_elements.of(instance, .pointer_lock);
 }
 
-/// customElementRegistry - Returns the CustomElementRegistry
-/// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#dom-window-customelements
+/// Getter for customElementRegistry (DOM §4.2.5).
 pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    // TODO: Implement custom element registry
-    _ = instance;
-    return null;
+    if (dom.document_internals.getInternal(instance)) |internal| {
+        return internal.custom_element_registry.get();
+    }
+    if (instance.stateAs(interfaces.ShadowRoot.State) != null) {
+        return dom.shadow_hosts.customElementRegistryOf(instance);
+    }
+    return error.InvalidStateError;
 }
 
-// =============================================================================
-// DocumentOrShadowRoot Methods
-// =============================================================================
-
-/// getAnimations - Returns all animations in the document/shadow root
-/// Spec: https://drafts.csswg.org/web-animations-1/#dom-documentorshadowroot-getanimations
+/// Operation: getAnimations (Web Animations §6.9).
 pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    // TODO: Implement animation collection
-    _ = instance;
-    return error.NotImplemented;
+    return dom.animations.rootAnimations(instance);
 }

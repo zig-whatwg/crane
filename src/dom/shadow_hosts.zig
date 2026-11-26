@@ -36,6 +36,9 @@ pub const Implementation = struct {
     root_for_host: ?*const fn (host: *runtime.Instance) ?*runtime.Instance = null,
     scope_serial: ?*const fn (shadow: *runtime.Instance) u64 = null,
     next_scope_serial: ?*const fn (document: *runtime.Instance) u64 = null,
+    style_sheets: ?*const fn (shadow: *runtime.Instance) anyerror!*runtime.Instance = null,
+    custom_element_registry: ?*const fn (shadow: *runtime.Instance) anyerror!?*runtime.Instance = null,
+    has_internal: ?*const fn (shadow: *runtime.Instance) bool = null,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -48,6 +51,9 @@ pub fn install(impl: Implementation) void {
     if (impl.root_for_host) |step| combined.root_for_host = step;
     if (impl.scope_serial) |step| combined.scope_serial = step;
     if (impl.next_scope_serial) |step| combined.next_scope_serial = step;
+    if (impl.style_sheets) |step| combined.style_sheets = step;
+    if (impl.custom_element_registry) |step| combined.custom_element_registry = step;
+    if (impl.has_internal) |step| combined.has_internal = step;
     implementation.install(combined);
 }
 
@@ -140,4 +146,25 @@ pub fn nextScopeSerial(document: *runtime.Instance) u64 {
     const impl = implementation.get() orelse return 0;
     const step = impl.next_scope_serial orelse return 0;
     return step(document);
+}
+
+/// DocumentOrShadowRoot.styleSheets on a ShadowRoot.
+pub fn styleSheetsOf(shadow: *runtime.Instance) anyerror!*runtime.Instance {
+    const impl = implementation.get() orelse return error.InvalidStateError;
+    const step = impl.style_sheets orelse return error.InvalidStateError;
+    return step(shadow);
+}
+
+/// DocumentOrShadowRoot.customElementRegistry on a ShadowRoot.
+pub fn customElementRegistryOf(shadow: *runtime.Instance) anyerror!?*runtime.Instance {
+    const impl = implementation.get() orelse return error.InvalidStateError;
+    const step = impl.custom_element_registry orelse return error.InvalidStateError;
+    return step(shadow);
+}
+
+/// Whether `shadow` has initialized ShadowRoot internal state.
+pub fn hasInternal(shadow: *runtime.Instance) bool {
+    const impl = implementation.get() orelse return false;
+    const step = impl.has_internal orelse return false;
+    return step(shadow);
 }

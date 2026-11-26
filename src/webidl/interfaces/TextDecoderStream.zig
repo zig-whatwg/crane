@@ -193,23 +193,13 @@ pub const TextDecoderStream = struct {
         }
     }
 
-    pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try TextDecoderStreamImpl.get_encoding(instance);
-    }
+    pub const get_encoding = mixins.TextDecoderCommon.get_encoding;
 
-    pub fn get_fatal(instance: *runtime.Instance) anyerror!bool {
-        return try TextDecoderStreamImpl.get_fatal(instance);
-    }
+    pub const get_fatal = mixins.TextDecoderCommon.get_fatal;
 
-    pub fn get_ignoreBOM(instance: *runtime.Instance) anyerror!bool {
-        return try TextDecoderStreamImpl.get_ignoreBOM(instance);
-    }
+    pub const get_ignoreBOM = mixins.TextDecoderCommon.get_ignoreBOM;
 
-    pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try TextDecoderStreamImpl.get_readable(instance);
-    }
+    pub const get_readable = mixins.GenericTransformStream.get_readable;
 
-    pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try TextDecoderStreamImpl.get_writable(instance);
-    }
+    pub const get_writable = mixins.GenericTransformStream.get_writable;
 };

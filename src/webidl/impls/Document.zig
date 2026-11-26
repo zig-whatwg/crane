@@ -1848,28 +1848,6 @@ pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!*runtime.Inst
     return error.NotImplemented;
 }
 
-/// Getter for fonts
-/// Returns the FontFaceSet associated with this document.
-/// Spec: https://drafts.csswg.org/css-font-loading/#dom-fontfacesource-fonts
-/// Lazily creates a FontFaceSet on first access ([SameObject] semantics).
-pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const fonts = internal.fonts_kept.get() orelse blk: {
-        const made = interfaces.FontFaceSet.initWith(internal.allocator, instance.ctx, .{ .font_document = instance }) catch return error.OutOfMemory;
-        internal.fonts_kept.made(made);
-        break :blk made;
-    };
-    internal.fonts_kept.handOut(instance, fonts, .{ .name = "fonts" });
-    return fonts;
-}
-
-/// Getter for customElementRegistry
-/// Returns the custom element registry associated with this document, or null.
-/// A registry whose keeper went reads null, never a freed one (CE2-M2).
-pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.get();
-}
-
 fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.custom_element_registry.get() != registry) releaseNativeGlobalRegistry(internal);
@@ -1897,76 +1875,11 @@ fn ensureGlobalRegistry(instance: *runtime.Instance) !*runtime.Instance {
     return registry;
 }
 
-/// Getter for fullscreenElement (Fullscreen, "the fullscreenElement getter
-/// steps"): the fullscreen element retargeted against this document, if in
-/// its tree - an element inside a shadow tree reads as its host
-/// (dom.designated_elements).
-/// Spec: https://fullscreen.spec.whatwg.org/#dom-document-fullscreenelement
-pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    return @import("dom").designated_elements.of(instance, .fullscreen);
-}
-
-/// Getter for pictureInPictureElement (Picture-in-Picture 4.3): the
-/// Picture-in-Picture element retargeted against this document, if in its
-/// tree (dom.designated_elements).
-pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    return @import("dom").designated_elements.of(instance, .picture_in_picture);
-}
-
-/// Getter for pointerLockElement (Pointer Lock 2.0): the element in pointer
-/// lock retargeted against this document, if in its tree
-/// (dom.designated_elements).
-/// Spec: https://w3c.github.io/pointerlock/#dom-documentorshadowroot-pointerlockelement
-pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    return @import("dom").designated_elements.of(instance, .pointer_lock);
-}
-
-/// Getter for styleSheets: "a StyleSheetList collection representing the
-/// document or shadow root CSS style sheets" (CSSOM 6.2.3) - the list
-/// reads this document's style engine live; made on first access.
-pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const sheets = internal.style_sheets_kept.get() orelse blk: {
-        const made = interfaces.StyleSheetList.initWith(internal.allocator, instance.ctx, .{ .sheets_of = instance }) catch return error.OutOfMemory;
-        internal.style_sheets_kept.made(made);
-        break :blk made;
-    };
-    internal.style_sheets_kept.handOut(instance, sheets, .{ .name = "styleSheets" });
-    return sheets;
-}
-
-/// Getter for adoptedStyleSheets ([SameObject] in effect): the document's
-/// ObservableArray<CSSStyleSheet>, made on first read (dom.style.adopted).
-/// Spec: https://drafts.csswg.org/cssom/#dom-documentorshadowroot-adoptedstylesheets
-pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    return @import("dom").style.adopted.get(instance);
-}
-
 /// dom.style's `document_adopted_sheets`.
 fn adoptedSheetsOf(instance: *runtime.Instance) ?*@import("dom").style.adopted.AdoptedSheets {
     // The registry answers only for a Document (its subclasses included).
     const internal = getInternal(instance) orelse return null;
     return &internal.adopted_style_sheets;
-}
-
-/// Getter for activeElement (DocumentOrShadowRoot): HTML's activeElement
-/// getter steps, in src/html/focus.zig - the focused area's DOM anchor
-/// retargeted against this document; the body element, else the document
-/// element, when the viewport has the focus.
-///
-/// A removed focused area becomes the viewport at the removal (HTML removing
-/// steps step 2, html.focus.removingSteps); the rendering-time focus fixup
-/// (update the rendering step 17, for a focused area that stopped being
-/// focusable) is html.focus.focusedAreaOf, applied when the focused area is
-/// read, here and in every other reader.
-/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-documentorshadowroot-activeelement
-pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    if (getInternal(instance) == null) return error.InvalidStateError;
-    return @import("html").focus.activeElement(instance);
 }
 
 /// Set the active element (focused element) for this document.
@@ -2255,15 +2168,6 @@ pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerr
     try dom.reflection.set(runtime.DOMString, body, .{ .name = "bgcolor" }, value);
 }
 
-/// Setter for adoptedStyleSheets: WebIDL's for an observable array
-/// attribute - the value converted to sequence<CSSStyleSheet>, then the
-/// backing list replaced, each value through CSSOM's set-an-indexed-value
-/// check (dom.style.adopted).
-pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    try @import("dom").style.adopted.set(instance, value);
-}
-
 /// Operation: exitPointerLock
 /// Exits pointer lock mode. No-op without pointer lock support.
 pub fn call_exitPointerLock(instance: *runtime.Instance) anyerror!void {
@@ -2401,15 +2305,6 @@ fn globalOfRealm(realm: runtime.Context) ?*runtime.Instance {
 pub fn call_exitPictureInPicture(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
-}
-
-/// Operation: createExpression
-pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(?runtime.BorrowedCallbackInterface)) anyerror!*runtime.Instance {
-    // DOM XPath: compile once; namespace callbacks run during construction.
-    return interfaces.XPathExpression.initWith(instance.ctx.allocator, instance.ctx, .{
-        .expression = expression,
-        .resolver = resolver,
-    });
 }
 
 /// Operation: elementFromPoint
@@ -3293,12 +3188,6 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
     return error.NotImplemented;
 }
 
-/// Operation: getAnimations (Web Animations 1 6.10): the relevant
-/// animations for this document's subtree, in composite order.
-pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return @import("dom").animations.rootAnimations(instance);
-}
-
 /// Operation: getElementsByClassName
 ///
 /// Spec: https://dom.spec.whatwg.org/#dom-document-getelementsbyclassname
@@ -3342,18 +3231,6 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
     // The same collection for the same argument while it lives and this
     // document's type is unchanged (dom.live_collections.collectionFor).
     return live_collections.collectionFor(instance, .{ .qualified_name = qualifiedName.asSlice() });
-}
-
-/// Operation: evaluate
-pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(?runtime.BorrowedCallbackInterface), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
-    // DOM Level 3 XPath §1.4: compile, evaluate and convert to the requested type.
-    const compiled = try interfaces.XPathExpression.initWith(instance.ctx.allocator, instance.ctx, .{
-        .expression = expression,
-        .resolver = resolver,
-    });
-    // This private, unwrapped temporary owns both its grammar and instance storage.
-    defer runtime.Instance.deinit(compiled);
-    return interfaces.XPathExpression.call_evaluate(compiled, contextNode, @"type", result);
 }
 
 /// Operation: hasStorageAccess
@@ -3407,10 +3284,10 @@ pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, opt
         },
     };
     if (fallback_registry) |registry| {
-        if (!@import("dom").custom_elements.isScoped(registry) and registry != try get_customElementRegistry(instance)) return error.NotSupportedError;
+        if (!@import("dom").custom_elements.isScoped(registry) and registry != try interfaces.Document.get_customElementRegistry(instance)) return error.NotSupportedError;
     }
     // Steps 6–7: the fallback applies only to null source associations.
-    if (fallback_registry == null) fallback_registry = try get_customElementRegistry(instance);
+    if (fallback_registry == null) fallback_registry = try interfaces.Document.get_customElementRegistry(instance);
     return dom_creation.cloneWithRegistry(node, instance, subtree, null, fallback_registry);
 }
 
@@ -5732,13 +5609,6 @@ pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOM
 pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
-}
-
-/// Operation: createNSResolver
-pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    // DOM §8.3: return nodeResolver (the legacy method is an identity).
-    return nodeResolver;
 }
 
 /// Operation: createNodeIterator

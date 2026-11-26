@@ -1,22 +1,15 @@
-//! Implementation for ReadableStreamGenericReader mixin
-//!
-//! Spec: https://streams.spec.whatwg.org/#readablestreamgenericreader
-//!
-//! This mixin provides shared functionality for all reader types:
-//! - ReadableStreamDefaultReader
-//! - ReadableStreamBYOBReader
-//!
-//! The actual implementation is in the concrete reader classes.
-//! This mixin provides the interface contract that both readers implement.
+//! Implementation for the ReadableStreamGenericReader mixin (Streams §4.4):
+//! closed and cancel(reason), shared by ReadableStreamDefaultReader and
+//! ReadableStreamBYOBReader.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const dom = @import("dom");
+const js = dom.streams_js;
+const srd = dom.streams_readable;
+const sw = dom.streams_writable;
 const ReadableStreamGenericReader = interfaces.ReadableStreamGenericReader;
 
 pub const State = ReadableStreamGenericReader.State;
@@ -27,94 +20,23 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Internal state for mixin
-///
-/// Note: Mixins don't typically have their own instances.
-/// The state is managed by the concrete reader implementations.
-pub const InternalState = struct {
-    allocator: std.mem.Allocator,
-};
+pub const InternalState = struct {};
 
-/// Initialize instance
-///
-/// Note: This mixin is not typically instantiated directly.
-/// Use ReadableStreamDefaultReader or ReadableStreamBYOBReader instead.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for closed
-///
-/// Spec: § 4.4.2 "The closed getter steps are:"
-/// Returns a promise that fulfills when the stream closes or rejects if it errors.
-///
-/// Note: This delegates to the concrete reader implementation via interfaces (per Golden Rule #13).
-/// Both DefaultReader and BYOBReader implement this via their internal closedPromise.
+/// Getter for closed (Streams §4.4.2): returns this reader's [[closedPromise]].
 pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    // Determine which reader type this is and delegate via interface
-    // Try DefaultReader first
-    if (instance.vtable == &interfaces.ReadableStreamDefaultReader.vtable) {
-        return interfaces.ReadableStreamDefaultReader.get_closed(instance) catch |err| {
-            return switch (err) {
-                error.InvalidState => error.InvalidState,
-                else => error.InvalidState,
-            };
-        };
-    }
-
-    // Try BYOBReader
-    if (instance.vtable == &interfaces.ReadableStreamBYOBReader.vtable) {
-        return interfaces.ReadableStreamBYOBReader.get_closed(instance) catch |err| {
-            return switch (err) {
-                error.InvalidState => error.InvalidState,
-                else => error.InvalidState,
-            };
-        };
-    }
-
-    return error.TypeError;
+    const reader = srd.readerOf(instance) orelse return error.TypeError;
+    return js.toReturnKept(reader.closed_promise.?.promise);
 }
 
-/// Operation: cancel
-///
-/// Spec: § 4.4.3 "The cancel(reason) method steps are:"
-/// Cancels the stream with the given reason.
-///
-/// Note: This delegates to the concrete reader implementation via interfaces (per Golden Rule #13).
+/// Operation: cancel (Streams §4.4.3):
+/// 1. If this.[[stream]] is undefined, return a promise rejected with a TypeError.
+/// 2. Return ! ReadableStreamReaderGenericCancel(this, reason).
 pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-    // Determine which reader type this is and delegate via interface
-    // Try DefaultReader first
-    if (instance.vtable == &interfaces.ReadableStreamDefaultReader.vtable) {
-        return interfaces.ReadableStreamDefaultReader.call_cancel(instance, reason) catch |err| {
-            return switch (err) {
-                error.TypeError => error.TypeError,
-                error.InvalidState => error.InvalidState,
-                else => error.InvalidState,
-            };
-        };
-    }
-
-    // Try BYOBReader
-    if (instance.vtable == &interfaces.ReadableStreamBYOBReader.vtable) {
-        return interfaces.ReadableStreamBYOBReader.call_cancel(instance, reason) catch |err| {
-            return switch (err) {
-                error.TypeError => error.TypeError,
-                error.InvalidState => error.InvalidState,
-                else => error.InvalidState,
-            };
-        };
-    }
-
-    return error.TypeError;
+    const reader = srd.readerOf(instance) orelse return error.TypeError;
+    const realm = try js.Realm.of(instance);
+    if (reader.stream == null)
+        return sw.give(try realm.promiseRejectedWithTypeError("The reader has been released"));
+    const r = try realm.fromOptional(reason);
+    defer js.dispose(r);
+    return sw.give(try srd.readerGenericCancel(realm, reader, r));
 }

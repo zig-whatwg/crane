@@ -41,15 +41,3 @@ pub fn call_constructor(instance: *runtime.Instance, options: dictionaries.SFram
     _ = options;
     // TODO: Implement constructor logic with parameters
 }
-
-/// Getter for readable
-pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for writable
-pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}

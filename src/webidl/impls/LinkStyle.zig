@@ -1,12 +1,11 @@
-//! Implementation for LinkStyle interface
+//! Implementation for the LinkStyle mixin (CSSOM §6.3.1):
+//! readonly attribute CSSStyleSheet? sheet, shared by HTMLLinkElement,
+//! HTMLStyleElement, SVGStyleElement, and ProcessingInstruction.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
+const dom = @import("dom");
 const LinkStyle = interfaces.LinkStyle;
 
 pub const State = LinkStyle.State;
@@ -15,26 +14,11 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+/// Getter for sheet (CSSOM §6.3.1): return this's associated CSS style sheet,
+/// or null if there is none.
+pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    const record = dom.style_sheet_owners.sheetRecordOf(instance) orelse return null;
+    return try dom.style.objects.sheetObject(record, instance.ctx);
 }

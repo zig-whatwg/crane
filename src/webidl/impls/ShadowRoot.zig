@@ -152,6 +152,26 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
+fn shadowHasInternal(instance: *runtime.Instance) bool {
+    return getInternal(instance) != null;
+}
+
+fn shadowStyleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const sheets = internal.style_sheets_kept.get() orelse blk: {
+        const made = interfaces.StyleSheetList.initWith(runtime.allocatorOf(instance), instance.ctx, .{ .sheets_of = instance }) catch return error.OutOfMemory;
+        internal.style_sheets_kept.made(made);
+        break :blk made;
+    };
+    internal.style_sheets_kept.handOut(instance, sheets, .{ .name = "styleSheets" });
+    return sheets;
+}
+
+fn shadowCustomElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.registry_edge.get();
+}
+
 pub fn installHooks() void {
     @import("dom").custom_elements.installShadow(.{
         .set_registry = &setCustomElementRegistry,
@@ -160,8 +180,14 @@ pub fn installHooks() void {
         .available_to_internals = &isAvailableToElementInternals,
         .keeps_registry_null = &keepsRegistryNull,
     });
-    // A host's teardown reaches its shadow root through this hook.
-    @import("dom").shadow_hosts.install(.{ .host_destroyed = &hostDestroyed, .scope_serial = &treeScopeSerial });
+    // A host's teardown and DocumentOrShadowRoot mixin reach ShadowRoot through this hook.
+    @import("dom").shadow_hosts.install(.{
+        .host_destroyed = &hostDestroyed,
+        .scope_serial = &treeScopeSerial,
+        .style_sheets = &shadowStyleSheets,
+        .custom_element_registry = &shadowCustomElementRegistry,
+        .has_internal = &shadowHasInternal,
+    });
     @import("dom").adopting_steps.install(&adoptingSteps);
     // domindex1: its tree scope's ID map.
     @import("dom").tree_ordered_map.installShadowRoot(&treeIndexOf);
@@ -385,76 +411,10 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
 // DocumentOrShadowRoot mixin attributes
 // ============================================================================
 
-/// DocumentOrShadowRoot.customElementRegistry getter
-/// Returns null if no custom element registry is associated
-pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.registry_edge.get();
-}
-
-/// DocumentOrShadowRoot.fullscreenElement (Fullscreen, "the fullscreenElement
-/// getter steps"): null while this root's host is not connected, else the
-/// document's fullscreen element retargeted against this, if in this tree.
-pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    return @import("dom").designated_elements.of(instance, .fullscreen);
-}
-
-/// DocumentOrShadowRoot.pictureInPictureElement (Picture-in-Picture 4.3):
-/// the fullscreen steps over the document's Picture-in-Picture element.
-pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    return @import("dom").designated_elements.of(instance, .picture_in_picture);
-}
-
-/// DocumentOrShadowRoot.pointerLockElement (Pointer Lock 2.0): the element in
-/// pointer lock retargeted against this, if the two are in the same tree.
-pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    return @import("dom").designated_elements.of(instance, .pointer_lock);
-}
-
-/// DocumentOrShadowRoot.styleSheets getter: "a StyleSheetList collection
-/// representing the document or shadow root CSS style sheets" (CSSOM
-/// 6.2.3) - the list reads the style engine live; made on first access and
-/// kept as long as the shadow root (same_object.KeptChild).
-pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const sheets = internal.style_sheets_kept.get() orelse blk: {
-        const made = interfaces.StyleSheetList.initWith(runtime.allocatorOf(instance), instance.ctx, .{ .sheets_of = instance }) catch return error.OutOfMemory;
-        internal.style_sheets_kept.made(made);
-        break :blk made;
-    };
-    internal.style_sheets_kept.handOut(instance, sheets, .{ .name = "styleSheets" });
-    return sheets;
-}
-
-/// DocumentOrShadowRoot.adoptedStyleSheets getter: the shadow root's
-/// ObservableArray<CSSStyleSheet>, made on first read (dom.style.adopted).
-pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    return @import("dom").style.adopted.get(instance);
-}
-
-/// DocumentOrShadowRoot.adoptedStyleSheets setter: the value converted to
-/// sequence<CSSStyleSheet>, then the backing list replaced
-/// (dom.style.adopted).
-pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    try @import("dom").style.adopted.set(instance, value);
-}
-
 /// dom.style's `shadow_root_adopted_sheets`.
 fn adoptedSheetsOf(instance: *runtime.Instance) ?*@import("dom").style.adopted.AdoptedSheets {
     const internal = getInternal(instance) orelse return null;
     return &internal.adopted_style_sheets;
-}
-
-/// HTML DocumentOrShadowRoot.activeElement steps 1–7: the document's
-/// focused area, retargeted into this tree (also used by Document).
-pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = getInternal(instance) orelse return error.InvalidStateError;
-    return @import("html").focus.activeElement(instance);
 }
 
 // ============================================================================
@@ -578,12 +538,6 @@ pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyer
     // OWNED, handed to the binding.
     const array = try engine.createSequenceOfValues(engine.currentRealm() orelse instance.ctx, &.{});
     return array.take();
-}
-
-/// getAnimations() (Web Animations 1 6.10): the relevant animations for
-/// this shadow root's subtree, in composite order.
-pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return @import("dom").animations.rootAnimations(instance);
 }
 
 // ============================================================================

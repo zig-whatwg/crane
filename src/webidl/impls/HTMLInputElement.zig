@@ -2284,25 +2284,6 @@ pub fn get_webkitEntries(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return error.NotImplemented;
 }
 
-/// Getter for popoverTargetElement
-pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}
-
-/// Getter for popoverTargetAction: "must reflect the popovertargetaction
-/// attribute, limited to only known values" - toggle, show and hide, whose
-/// "missing value default and invalid value default are both the Toggle
-/// state" (HTML 6.12.6).
-pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const value = attribute(instance, "popovertargetaction") orelse return runtime.DOMString.initInterned("toggle");
-    defer instance.ctx.allocator.free(value);
-    inline for (.{ "toggle", "show", "hide" }) |keyword| {
-        if (std.ascii.eqlIgnoreCase(value, keyword)) return runtime.DOMString.initInterned(keyword);
-    }
-    return runtime.DOMString.initInterned("toggle");
-}
-
 /// Setter for colorSpace
 pub fn set_colorSpace(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("colorspace"), .{ .domstring = value });
@@ -2340,18 +2321,6 @@ pub fn set_webkitdirectory(instance: *runtime.Instance, value: bool) anyerror!vo
     _ = instance;
     _ = value;
     return error.NotImplemented;
-}
-
-/// Setter for popoverTargetElement
-pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for popoverTargetAction: sets the reflected content attribute.
-pub fn set_popoverTargetAction(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("popovertargetaction"), .{ .domstring = value });
 }
 
 /// Operation: showPicker

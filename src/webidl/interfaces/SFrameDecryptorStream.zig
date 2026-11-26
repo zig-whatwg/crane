@@ -219,13 +219,9 @@ pub const SFrameDecryptorStream = struct {
         }
     }
 
-    pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SFrameDecryptorStreamImpl.get_readable(instance);
-    }
+    pub const get_readable = mixins.GenericTransformStream.get_readable;
 
-    pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try SFrameDecryptorStreamImpl.get_writable(instance);
-    }
+    pub const get_writable = mixins.GenericTransformStream.get_writable;
 
     pub const get_onerror = mixins.SFrameDecryptorManager.get_onerror;
     pub const set_onerror = mixins.SFrameDecryptorManager.set_onerror;

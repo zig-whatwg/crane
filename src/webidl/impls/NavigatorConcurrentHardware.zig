@@ -4,6 +4,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const platform = @import("platform");
 const NavigatorConcurrentHardware = interfaces.NavigatorConcurrentHardware;
 
 pub const State = NavigatorConcurrentHardware.State;
@@ -18,6 +19,5 @@ pub const InternalState = struct {};
 /// logical processors available to run threads.
 pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
-    const cpu_count = std.Thread.getCpuCount() catch 1;
-    return @intCast(cpu_count);
+    return @intCast(platform.logicalProcessorCount());
 }
