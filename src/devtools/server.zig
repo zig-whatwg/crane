@@ -619,6 +619,7 @@ pub const Server = struct {
         const connection = self.connectionById(parent.connection_id) orelse return error.ConnectionGone;
         const link = try outbound.SessionLink.create(self.allocator, connection.outbound, id.slice());
         errdefer link.release();
+        link.is_local = connection.transport == .local;
         const session = try self.allocator.create(targets.Session);
         errdefer self.allocator.destroy(session);
         // What holds is the tab's first navigation, kept on its page target:
@@ -663,6 +664,7 @@ pub const Server = struct {
         const id = self.freshToken();
         const link = try outbound.SessionLink.create(self.allocator, connection.outbound, id.slice());
         errdefer link.release();
+        link.is_local = connection.transport == .local;
         const session = try self.allocator.create(targets.Session);
         errdefer self.allocator.destroy(session);
         session.* = .{ .id = id, .implicit = false, .kind = .browser, .connection_id = parent.connection_id, .link = link, .parent = parent, .server = self };

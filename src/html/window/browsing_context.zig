@@ -192,6 +192,10 @@ pub const Navigables = struct {
     /// Page.windowOpen). One slot, which the Browser sets to its own
     /// dispatcher.
     window_open: ?@import("../navigation/window_open.zig").Hook = null,
+    /// The Browser's file chooser hook (navigation/file_chooser.zig): told as
+    /// an `<input type="file">` opens a file chooser (CDP's
+    /// Page.setInterceptFileChooserDialog / Page.fileChooserOpened).
+    file_chooser: ?@import("../navigation/file_chooser.zig").Hook = null,
     /// Whether a tab made from now on starts with system focus (HTML 6.6.2;
     /// runtime.TabScope.system_focus): every tab does, unless the Browser's
     /// host narrowed focus to its active tab (BrowserConfig.focus =

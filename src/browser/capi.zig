@@ -271,8 +271,9 @@ const CBrowser = struct {
                 out.flag = closed.accepted;
                 out.message = strings.z(closed.user_input);
             },
-            // A host's own bookkeeping (CDP's lazy contexts): not a C event.
-            .frame_touched => return,
+            // A host's own bookkeeping (CDP's lazy contexts and file chooser
+            // interception): not C events.
+            .frame_touched, .file_chooser_opening => return,
             .window_open => |opened| {
                 out.kind = @backingInt(EventKind.window_open);
                 out.tab = opened.tab;
