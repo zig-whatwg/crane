@@ -871,15 +871,20 @@ pub const releaseIteratorRecord = protocol_conversions.releaseIteratorRecord;
 pub fn createSequenceOfValues(realm: Context, values: []const JSValue) Error!Owned {
     const entered = try enter(realm);
     defer entered.leave();
-    const relevant = try support.RelevantList.of(entered.isolate, values);
+    var relevant: support.RelevantList = undefined;
+    try relevant.init(entered.isolate, values);
     defer relevant.release();
-    return owned(webidl_conversions.createSequenceOfValues(realm, relevant.values) catch |err| return protocolError(err));
+    return owned(webidl_conversions.createSequenceOfValues(realm, relevant.slice()) catch |err| return protocolError(err));
 }
 
 pub fn createSequenceOfPlatformObjects(realm: Context, instances: []const *Instance) Error!Owned {
-    const alloc = realm.allocator;
-    const values = alloc.alloc(JSValue, instances.len) catch return error.OutOfMemory;
-    defer alloc.free(values);
+    var stack: [16]JSValue = undefined;
+    const heap_buf: ?[]JSValue = if (instances.len <= stack.len) null else blk: {
+        @branchHint(.cold);
+        break :blk realm.allocator.alloc(JSValue, instances.len) catch return error.OutOfMemory;
+    };
+    defer if (heap_buf) |b| realm.allocator.free(b);
+    const values = heap_buf orelse stack[0..instances.len];
     for (instances, values) |instance, *value| value.* = .{ .instance = instance };
     return createSequenceOfValues(realm, values);
 }
@@ -895,15 +900,25 @@ pub fn createLocationObject(realm: Context, ordinary_target: JSValue) Error!Owne
 pub fn createDictionaryObject(realm: Context, members: []const engine.DictionaryMember) Error!Owned {
     const entered = try enter(realm);
     defer entered.leave();
-    const alloc = realm.allocator;
-    const values = alloc.alloc(JSValue, members.len) catch return error.OutOfMemory;
-    defer alloc.free(values);
+    var stack_values: [16]JSValue = undefined;
+    const heap_values: ?[]JSValue = if (members.len <= stack_values.len) null else blk: {
+        @branchHint(.cold);
+        break :blk realm.allocator.alloc(JSValue, members.len) catch return error.OutOfMemory;
+    };
+    defer if (heap_values) |b| realm.allocator.free(b);
+    const values = heap_values orelse stack_values[0..members.len];
     for (members, values) |member, *value| value.* = member.value;
-    const relevant = try support.RelevantList.of(entered.isolate, values);
+    var relevant: support.RelevantList = undefined;
+    try relevant.init(entered.isolate, values);
     defer relevant.release();
-    const relevant_members = alloc.alloc(engine.DictionaryMember, members.len) catch return error.OutOfMemory;
-    defer alloc.free(relevant_members);
-    for (members, relevant.values, relevant_members) |member, value, *out| out.* = .{ .name = member.name, .value = value };
+    var stack_members: [16]engine.DictionaryMember = undefined;
+    const heap_members: ?[]engine.DictionaryMember = if (members.len <= stack_members.len) null else blk: {
+        @branchHint(.cold);
+        break :blk realm.allocator.alloc(engine.DictionaryMember, members.len) catch return error.OutOfMemory;
+    };
+    defer if (heap_members) |b| realm.allocator.free(b);
+    const relevant_members = heap_members orelse stack_members[0..members.len];
+    for (members, relevant.slice(), relevant_members) |member, value, *out| out.* = .{ .name = member.name, .value = value };
     return owned(value_construction.createDictionaryObject(realm, relevant_members) catch |err| return protocolError(err));
 }
 
