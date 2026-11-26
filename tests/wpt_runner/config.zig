@@ -223,6 +223,8 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "dpub-aam", .description = "DPUB-ARIA computed roles" },
     .{ .name = "graphics-aria", .description = "WAI-ARIA Graphics computed roles" },
     .{ .name = "svg-aam", .description = "SVG accessible names and computed roles" },
+    // The integrator, 2026-11-25 7:41 PM ET (lane xfo1): HTML 7.7 X-Frame-Options.
+    .{ .name = "x-frame-options", .description = "X-Frame-Options framing control (HTML 7.7)" },
 };
 
 /// Exclusion patterns for paths that shouldn't be tested
