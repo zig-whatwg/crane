@@ -2417,3 +2417,14 @@ pass_rate = 26/40
 condition = a sweep's load: the file alone in a fresh runner process with 28 busy threads beside it on server1's 32 (wpt_runner --repeat=40 --load=28); unloaded it passes 44/60 (gap min 9 / p50 115 / max 432 us)
 measured_at = 9e13a4650
 paths = src/service_worker/fetch_event.zig, src/service_worker/registry.zig, src/hr_time/time_origin.zig, src/hr_time/coarsen.zig, src/dom/performance_timeline.zig
+
+[navigation-timing/nav2-test-timing-persistent.html]
+generation = 237
+kind = timing-bound
+why = Same 125 us sub-tick gap as navigation-timing/test-timing-attributes-dependent-on-document-load.html and nav2-test-redirect-server.html: Part 1 navigates an iframe via location.href to /common/redirect.py?location=.../blank_page_yellow.html and asserts redirectStart > 0. startTime (0) is navigation_start taken at navigate() entry and redirectStart is the first hop's fetch start relative to navigation_start, both coarsened to the 125 us tick with nothing waiting between them, so redirectStart reads 0 whenever the navigate() -> fetch_start gap stays within one 125 us tick. Lane crane-red1, a diagnostic production runner of 7b948b945 (FLK3GAP in createNavigationTimingEntry, never committed) on server1 in a closed, quiet window (load 0.02, 2026-11-26 10:39 AM ET), 60 fresh processes: redirected iframe navigation gap min 118 / p50 123 / max 458 us (tick model predicts 58.8/60, 60/60 per-run tick agreement); clean production x10 on server1 PASS 9 / FAIL 1 (same "timing values should be positive numbers: redirectStart expected a number greater than 0 but got 0"; also FAIL on ab-base production and bug-tip in crane-red1's 382-file wpt_ab). Approved by the integrator 2026-11-26 10:41 AM ET.
+tick_us = 125
+gap_us = min 118 / p50 123 / max 458
+pass_rate = 9/10
+condition = an iframe location.href redirect whose first-hop fetch starts 118-458 us (p50 123) after navigation_start, reading redirectStart == 0 whenever that gap stays within one 125 us tick (clean production x10 PASS 9 / FAIL 1; also fails in both production and bug-finding under 16-runner load)
+measured_at = 7b948b945
+paths = src/webidl/impls/Location.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
