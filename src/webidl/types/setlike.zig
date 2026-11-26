@@ -227,6 +227,30 @@ pub const PlatformObjects = struct {
         const f = self.vtable.empty orelse return;
         f(self.context);
     }
+
+    const empty_sentinel: u8 = 0;
+    const empty_vtable: VTable = .{
+        .size = emptySize,
+        .contains = emptyContains,
+        .after = emptyAfter,
+    };
+
+    fn emptySize(_: *anyopaque) usize {
+        return 0;
+    }
+
+    fn emptyContains(_: *anyopaque, _: *anyopaque) bool {
+        return false;
+    }
+
+    fn emptyAfter(_: *anyopaque, _: u64) ?Entry {
+        return null;
+    }
+
+    /// An empty readonly view for setlike interfaces whose impl has no entries yet.
+    pub fn initEmpty() PlatformObjects {
+        return .{ .context = @ptrCast(@constCast(&empty_sentinel)), .vtable = &empty_vtable };
+    }
 };
 
 /// The name the webidl module re-exports (root.zig).

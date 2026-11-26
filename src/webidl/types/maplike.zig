@@ -252,78 +252,240 @@ pub fn Maplike(comptime K: type, comptime V: type) type {
 
 const testing = std.testing;
 
-/// The map entries of a maplike declaration whose keys are strings and whose
-/// values are an interface's platform objects (maplike<DOMString,
-/// Highlight>), as the binding reads them (WebIDL 2.5.11, 3.7.11): a view of
-/// the ordered map its impl keeps, and traces, itself - a platform object in
-/// a map must stay alive while the map does, which only its owner's traced
-/// edges say (the HighlightRegistry's highlights). The values are platform
-/// objects (`runtime.Instance`s; opaque here, below the runtime).
+/// The map entries of a maplike object whose keys are `K` and values are `V`:
+/// `[]const u8` keys/values are copied and owned by the map; scalar keys/values
+/// are compared/stored by value.
+///
+/// Iteration is live, as a JavaScript Map's is (WebIDL 3.7.11.2): every entry
+/// keeps the sequence number it was inserted with, increasing; an iterator keeps
+/// only the sequence of the entry it yielded last and asks for the first entry
+/// after it (`after`). Updating an existing key preserves its position and
+/// sequence; `clear()` preserves `next_sequence` so entries added afterwards are
+/// yielded by suspended iterators.
+pub fn MapEntries(comptime K: type, comptime V: type) type {
+    const owns_key_strings = K == []const u8;
+    const owns_value_strings = V == []const u8;
+    return struct {
+        allocator: std.mem.Allocator,
+        entries: std.ArrayList(Entry) = .empty,
+        /// The sequence the next inserted entry takes; 0 is "before every
+        /// entry", where an iterator starts.
+        next_sequence: u64 = 1,
+
+        const Self = @This();
+
+        pub const Entry = struct {
+            sequence: u64,
+            key: K,
+            value: V,
+        };
+
+        pub fn init(allocator: std.mem.Allocator) Self {
+            return .{ .allocator = allocator };
+        }
+
+        pub fn deinit(self: *Self) void {
+            for (self.entries.items) |entry| {
+                if (owns_key_strings) self.allocator.free(entry.key);
+                if (owns_value_strings) self.allocator.free(entry.value);
+            }
+            self.entries.deinit(self.allocator);
+            self.* = undefined;
+        }
+
+        fn normalizeKey(key: K) K {
+            // WebIDL 3.7.11.7-10 step 5: "If key is -0, set key to +0."
+            if (@typeInfo(K) == .float and key == 0) return 0;
+            return key;
+        }
+
+        fn eqlKey(a: K, b: K) bool {
+            if (owns_key_strings) return std.mem.eql(u8, a, b);
+            return a == b;
+        }
+
+        fn indexOf(self: *const Self, key: K) ?usize {
+            const norm = normalizeKey(key);
+            for (self.entries.items, 0..) |entry, index| {
+                if (eqlKey(entry.key, norm)) return index;
+            }
+            return null;
+        }
+
+        /// The map's size (Infra: the number of entries).
+        pub fn size(self: *const Self) usize {
+            return self.entries.items.len;
+        }
+
+        /// The value of `key`, or null when the map does not contain it.
+        pub fn get(self: *const Self, key: K) ?V {
+            const index = self.indexOf(key) orelse return null;
+            return self.entries.items[index].value;
+        }
+
+        /// Whether the map contains `key`.
+        pub fn contains(self: *const Self, key: K) bool {
+            return self.indexOf(key) != null;
+        }
+
+        /// Infra "set" map[key] to `value`: an existing key keeps its position
+        /// and sequence; a new key is appended at the end.
+        pub fn set(self: *Self, key: K, value: V) !void {
+            const norm = normalizeKey(key);
+            if (self.indexOf(norm)) |index| {
+                const stored_val = if (owns_value_strings) try self.allocator.dupe(u8, value) else value;
+                if (owns_value_strings) self.allocator.free(self.entries.items[index].value);
+                self.entries.items[index].value = stored_val;
+                return;
+            }
+            const stored_key = if (owns_key_strings) try self.allocator.dupe(u8, norm) else norm;
+            errdefer if (owns_key_strings) self.allocator.free(stored_key);
+            const stored_val = if (owns_value_strings) try self.allocator.dupe(u8, value) else value;
+            errdefer if (owns_value_strings) self.allocator.free(stored_val);
+            try self.entries.append(self.allocator, .{
+                .sequence = self.next_sequence,
+                .key = stored_key,
+                .value = stored_val,
+            });
+            self.next_sequence += 1;
+        }
+
+        /// Infra "remove" map[key]; whether the map contained it.
+        pub fn remove(self: *Self, key: K) bool {
+            const index = self.indexOf(key) orelse return false;
+            const entry = self.entries.orderedRemove(index);
+            if (owns_key_strings) self.allocator.free(entry.key);
+            if (owns_value_strings) self.allocator.free(entry.value);
+            return true;
+        }
+
+        /// Infra "clear": keeps `next_sequence` so suspended iterators yield
+        /// entries set afterwards (WebIDL 3.7.11.11).
+        pub fn clear(self: *Self) void {
+            for (self.entries.items) |entry| {
+                if (owns_key_strings) self.allocator.free(entry.key);
+                if (owns_value_strings) self.allocator.free(entry.value);
+            }
+            self.entries.clearRetainingCapacity();
+        }
+
+        /// The first entry inserted after `sequence` (0: before the first), or
+        /// null: an iterator's next step. Entries are in sequence order, so a
+        /// binary search finds it. Slices are borrowed until the map changes.
+        pub fn after(self: *const Self, sequence: u64) ?Entry {
+            const items = self.entries.items;
+            var low: usize = 0;
+            var high: usize = items.len;
+            while (low < high) {
+                const middle = low + (high - low) / 2;
+                if (items[middle].sequence <= sequence) low = middle + 1 else high = middle;
+            }
+            return if (low < items.len) items[low] else null;
+        }
+    };
+}
+
+/// A vtable-backed view of map entries `<K, V>` kept (and traced, for platform
+/// objects or JS values) by an impl, as the binding reads them (WebIDL 2.5.11,
+/// 3.7.11).
 ///
 /// Iteration is live, as a JavaScript Map's is (3.7.11.2): every entry keeps
 /// the sequence number it was added with, increasing; an iterator keeps the
 /// sequence of the entry it yielded last and asks for the first entry after
 /// it (`after`). Setting the value of an existing key keeps its place.
-pub const PlatformObjects = struct {
-    context: *anyopaque,
-    vtable: *const VTable,
+pub fn View(comptime K: type, comptime V: type) type {
+    return struct {
+        context: *anyopaque,
+        vtable: *const VTable,
 
-    pub const Entry = struct {
-        sequence: u64,
-        /// Borrowed until the map changes.
-        key: []const u8,
-        value: *anyopaque,
+        const Self = @This();
+
+        pub const Entry = struct {
+            sequence: u64,
+            /// Borrowed until the map changes (when K is a slice).
+            key: K,
+            /// Borrowed until the map changes (when V is a slice or pointer).
+            value: V,
+        };
+
+        pub const VTable = struct {
+            size: *const fn (context: *anyopaque) usize,
+            get: *const fn (context: *anyopaque, key: K) ?V,
+            after: *const fn (context: *anyopaque, sequence: u64) ?Entry,
+            /// A read-write maplike whose interface does not declare set,
+            /// delete and clear itself (3.7.11.8-10): the binding's members
+            /// change the impl's map through these; null otherwise.
+            set: ?*const fn (context: *anyopaque, key: K, value: V) anyerror!void = null,
+            remove: ?*const fn (context: *anyopaque, key: K) bool = null,
+            clear: ?*const fn (context: *anyopaque) void = null,
+        };
+
+        /// The map's size.
+        pub fn size(self: *const Self) usize {
+            return self.vtable.size(self.context);
+        }
+
+        /// The value of `key`, or null when the map does not contain it.
+        pub fn get(self: *const Self, key: K) ?V {
+            return self.vtable.get(self.context, key);
+        }
+
+        /// Whether the map contains `key`.
+        pub fn contains(self: *const Self, key: K) bool {
+            return self.get(key) != null;
+        }
+
+        /// An iterator's next step after the entry with `sequence` (0: before
+        /// the first), or null.
+        pub fn after(self: *const Self, sequence: u64) ?Entry {
+            return self.vtable.after(self.context, sequence);
+        }
+
+        /// Infra "set" map[key] to `value` (the impl copies owned keys/values);
+        /// error.NotSupported where the interface declares set itself or is readonly.
+        pub fn set(self: *Self, key: K, value: V) anyerror!void {
+            const f = self.vtable.set orelse return error.NotSupported;
+            return f(self.context, key, value);
+        }
+
+        /// Infra "remove" map[key]; whether the map contained it.
+        pub fn remove(self: *Self, key: K) bool {
+            const f = self.vtable.remove orelse return false;
+            return f(self.context, key);
+        }
+
+        /// Infra "clear".
+        pub fn clear(self: *Self) void {
+            const f = self.vtable.clear orelse return;
+            f(self.context);
+        }
+
+        const empty_sentinel: u8 = 0;
+        const empty_vtable: VTable = .{
+            .size = emptySize,
+            .get = emptyGet,
+            .after = emptyAfter,
+        };
+
+        fn emptySize(_: *anyopaque) usize {
+            return 0;
+        }
+
+        fn emptyGet(_: *anyopaque, _: K) ?V {
+            return null;
+        }
+
+        fn emptyAfter(_: *anyopaque, _: u64) ?Entry {
+            return null;
+        }
+
+        /// An empty readonly view for maplike interfaces whose impl has no entries yet.
+        pub fn initEmpty() Self {
+            return .{ .context = @ptrCast(@constCast(&empty_sentinel)), .vtable = &empty_vtable };
+        }
     };
+}
 
-    pub const VTable = struct {
-        size: *const fn (context: *anyopaque) usize,
-        get: *const fn (context: *anyopaque, key: []const u8) ?*anyopaque,
-        after: *const fn (context: *anyopaque, sequence: u64) ?Entry,
-        /// A read-write maplike whose interface does not declare set,
-        /// delete and clear itself (3.7.11.8-10): the binding's members
-        /// change the impl's map through these; null otherwise.
-        set: ?*const fn (context: *anyopaque, key: []const u8, value: *anyopaque) anyerror!void = null,
-        remove: ?*const fn (context: *anyopaque, key: []const u8) bool = null,
-        clear: ?*const fn (context: *anyopaque) void = null,
-    };
-
-    /// The map's size.
-    pub fn size(self: *const PlatformObjects) usize {
-        return self.vtable.size(self.context);
-    }
-
-    /// The value of `key`, or null when the map does not contain it.
-    pub fn get(self: *const PlatformObjects, key: []const u8) ?*anyopaque {
-        return self.vtable.get(self.context, key);
-    }
-
-    /// Whether the map contains `key`.
-    pub fn contains(self: *const PlatformObjects, key: []const u8) bool {
-        return self.get(key) != null;
-    }
-
-    /// An iterator's next step after the entry with `sequence` (0: before
-    /// the first), or null.
-    pub fn after(self: *const PlatformObjects, sequence: u64) ?Entry {
-        return self.vtable.after(self.context, sequence);
-    }
-
-    /// Infra "set" map[key] to `value` (the impl copies the key);
-    /// error.NotSupported where the interface declares set itself.
-    pub fn set(self: *PlatformObjects, key: []const u8, value: *anyopaque) anyerror!void {
-        const f = self.vtable.set orelse return error.NotSupported;
-        return f(self.context, key, value);
-    }
-
-    /// Infra "remove" map[key]; whether the map contained it.
-    pub fn remove(self: *PlatformObjects, key: []const u8) bool {
-        const f = self.vtable.remove orelse return false;
-        return f(self.context, key);
-    }
-
-    /// Infra "clear".
-    pub fn clear(self: *PlatformObjects) void {
-        const f = self.vtable.clear orelse return;
-        f(self.context);
-    }
-};
+/// The map entries of a maplike declaration whose keys are strings and whose
+/// values are an interface's platform objects (e.g. maplike<DOMString, Highlight>).
+pub const PlatformObjects = View([]const u8, *anyopaque);
