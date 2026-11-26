@@ -252,8 +252,15 @@ pub const Policy = struct {
             .path => |p| p,
             .invalid => |message| return self.deny(arena, "{s}", .{message}),
         };
+        const bytes = try self.readFile(arena, path);
+        return decodeUtf8Lossy(arena, bytes);
+    }
+
+    /// Read raw file bytes after path validation (matching Node's fs error
+    /// texts for ENOENT/EACCES/EISDIR).
+    pub fn readFile(self: *Policy, arena: Allocator, path: []const u8) (Denied || Allocator.Error)![]const u8 {
         const checked = try self.validatePath(arena, path);
-        const bytes = self.fs.readFile(self.fs.context, arena, checked) catch |err| switch (err) {
+        return self.fs.readFile(self.fs.context, arena, checked) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             // Node's fs.readFile message for the common cases.
             error.NotFound => return self.deny(arena, "ENOENT: no such file or directory, open '{s}'", .{checked}),
@@ -261,7 +268,6 @@ pub const Policy = struct {
             error.IsDir => return self.deny(arena, "EISDIR: illegal operation on a directory, read", .{}),
             else => return self.deny(arena, "{t}, open '{s}'", .{ err, checked }),
         };
-        return decodeUtf8Lossy(arena, bytes);
     }
 };
 
