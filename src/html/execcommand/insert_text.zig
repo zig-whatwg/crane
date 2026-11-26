@@ -12,6 +12,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
+const dom = @import("dom");
 const common = @import("common.zig");
 const delete = @import("delete.zig");
 const whitespace = @import("whitespace.zig");
@@ -334,9 +335,12 @@ fn actionReplacing(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAc
             if (try common.isCollapsedLineBreak(only)) try edit.removeNode(only);
         }
         // Steps 14.2-14.3: a new Text node at the active range.
-        const text = try interfaces.Document.call_createTextNode(edit.document, DOMString.initInterned(value));
         const range = (try edit.activeRange()) orelse return true;
-        try edit.insertNode(range, text);
+        const text = try interfaces.Document.call_createTextNode(edit.document, DOMString.initInterned(value));
+        {
+            errdefer dom.node_creation.destroyUninserted(text);
+            try edit.insertNode(range, text);
+        }
         // Steps 14.4-14.5: select it.
         try edit.collapse(text, 0);
         try edit.extend(text, length);
