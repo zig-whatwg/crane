@@ -427,6 +427,7 @@ pub fn initialize(element: *runtime.Instance, prefix: ?[]const u8, is_value: ?[]
 }
 pub fn setState(element: *runtime.Instance, state: State) void {
     (implementation.read().element orelse return).set_state(element, state);
+    @import("style/engine.zig").dynamicStateChanged(element);
 }
 pub fn setDefinition(element: *runtime.Instance, definition: ?*Definition) void {
     (implementation.read().element orelse return).set_definition(element, definition);

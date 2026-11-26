@@ -141,12 +141,3 @@ pub fn executeInsertText(
 
     return .{ .success = true };
 }
-
-// =============================================================================
-// Tests
-// =============================================================================
-
-test "structure commands exist" {
-    // Just verify the module compiles
-    try std.testing.expect(true);
-}

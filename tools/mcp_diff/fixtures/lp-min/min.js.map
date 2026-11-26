@@ -1,0 +1,1 @@
+{"version":3,"sources":["src/cart.ts"],"sourcesContent":["export function checkout(cartTotal: number, discount: number): number {\n  const finalAmount = cartTotal - discount;\n  return finalAmount;\n}\n"],"names":["cartTotal","discount","finalAmount"],"mappings":"AAAA,kBAAyBA,EAAmBC,GAC1C,MAAMC,EAAcF,EAAYC,EAChC,OAAOC"}

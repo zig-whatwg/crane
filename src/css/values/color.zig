@@ -919,14 +919,105 @@ pub const SystemColor = enum(u8) {
         };
     }
 
-    /// The color in `scheme`'s palette.
+    /// The color in `scheme`'s palette (normal mode).
     pub fn color(self: SystemColor, scheme: Scheme) Color {
+        return self.colorIn(scheme, false);
+    }
+
+    /// The color in `scheme`'s palette; when `forced_colors` is true, uses
+    /// CSS Color Adjustment 1 §5.2's Forced Colors Mode Color Palettes.
+    pub fn colorIn(self: SystemColor, scheme: Scheme, forced_colors: bool) Color {
+        const std_color = self.standard();
+        if (forced_colors) {
+            return colorFromHex(switch (scheme) {
+                .light => forcedLightRgb(std_color),
+                .dark => forcedDarkRgb(std_color),
+            });
+        }
         return colorFromHex(switch (scheme) {
-            .light => lightRgb(self.standard()),
-            .dark => darkRgb(self.standard()),
+            .light => lightRgb(std_color),
+            .dark => darkRgb(std_color),
         });
     }
+
+    /// CSS Color 4 §6.2 system color pairings & CSS Color Adjustment 1 §3.1:
+    /// the background system color opposite `self` when forcing
+    /// `background-color` against the element's used `color`, using
+    /// `CanvasText` as the opposite of `Canvas`.
+    pub fn oppositeBackground(self: SystemColor) SystemColor {
+        return switch (self.standard()) {
+            .canvas => .canvastext,
+            .canvastext, .linktext, .visitedtext, .activetext, .graytext, .buttonborder => .canvas,
+            .buttontext => .buttonface,
+            .buttonface => .buttontext,
+            .fieldtext => .field,
+            .field => .fieldtext,
+            .marktext => .mark,
+            .mark => .marktext,
+            .highlighttext => .highlight,
+            .highlight => .highlighttext,
+            .selecteditemtext => .selecteditem,
+            .selecteditem => .selecteditemtext,
+            .accentcolortext => .accentcolor,
+            .accentcolor => .accentcolortext,
+            else => unreachable, // deprecated: `standard` first
+        };
+    }
 };
+
+/// CSS Color Adjustment 1 §5.2: Forced Colors Mode emulation palette ("light").
+/// Mark and MarkText are explicitly not adjusted.
+fn forcedLightRgb(c: SystemColor) u32 {
+    return switch (c) {
+        .accentcolor => 0xffffff,
+        .accentcolortext => 0x000000,
+        .activetext => 0x00009f,
+        .buttonborder => 0x000000,
+        .buttonface => 0xffffff,
+        .buttontext => 0x000000,
+        .canvas => 0xffffff,
+        .canvastext => 0x000000,
+        .field => 0xffffff,
+        .fieldtext => 0x000000,
+        .graytext => 0x600000,
+        .highlight => 0x37006e,
+        .highlighttext => 0xffffff,
+        .linktext => 0x00009f,
+        .mark => lightRgb(.mark),
+        .marktext => lightRgb(.marktext),
+        .selecteditem => 0x37006e,
+        .selecteditemtext => 0xffffff,
+        .visitedtext => 0x00009f,
+        else => unreachable, // deprecated: `standard` first
+    };
+}
+
+/// CSS Color Adjustment 1 §5.2: Forced Colors Mode emulation palette ("dark").
+/// Mark and MarkText are explicitly not adjusted.
+fn forcedDarkRgb(c: SystemColor) u32 {
+    return switch (c) {
+        .accentcolor => 0x000000,
+        .accentcolortext => 0xffffff,
+        .activetext => 0xffff00,
+        .buttonborder => 0x000000,
+        .buttonface => 0x000000,
+        .buttontext => 0xffffff,
+        .canvas => 0x000000,
+        .canvastext => 0xffffff,
+        .field => 0x000000,
+        .fieldtext => 0xffffff,
+        .graytext => 0x3ff23f,
+        .highlight => 0x1aebff,
+        .highlighttext => 0x000000,
+        .linktext => 0xffff00,
+        .mark => darkRgb(.mark),
+        .marktext => darkRgb(.marktext),
+        .selecteditem => 0x1aebff,
+        .selecteditemtext => 0x000000,
+        .visitedtext => 0xffff00,
+        else => unreachable, // deprecated: `standard` first
+    };
+}
 
 fn lightRgb(c: SystemColor) u32 {
     return switch (c) {

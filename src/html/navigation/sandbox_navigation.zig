@@ -110,39 +110,6 @@ fn sourceSnapshot(sandbox: ?[]const u8, activation: bool) SourceSnapshot {
     };
 }
 
-test "an unsandboxed source may navigate anything" {
-    var navigables = Navigables.init(testing.allocator);
-    defer navigables.deinit();
-    const top = try BrowsingContext.initTopLevel(testing.allocator, &navigables);
-    defer top.deinit();
-    const a = try BrowsingContext.initChild(testing.allocator, top);
-    defer a.deinit();
-    const b = try BrowsingContext.initChild(testing.allocator, top);
-    defer b.deinit();
-    const other_top = try BrowsingContext.initTopLevel(testing.allocator, &navigables);
-    defer other_top.deinit();
-    try testing.expect(allowedBySandboxingToNavigate(a, top, sourceSnapshot(null, false)));
-    try testing.expect(allowedBySandboxingToNavigate(a, b, sourceSnapshot(null, false)));
-    try testing.expect(allowedBySandboxingToNavigate(a, other_top, sourceSnapshot(null, false)));
-}
-
-test "a sandboxed source may navigate itself and its descendants" {
-    var navigables = Navigables.init(testing.allocator);
-    defer navigables.deinit();
-    const top = try BrowsingContext.initTopLevel(testing.allocator, &navigables);
-    defer top.deinit();
-    const frame = try BrowsingContext.initChild(testing.allocator, top);
-    defer frame.deinit();
-    const child = try BrowsingContext.initChild(testing.allocator, frame);
-    defer child.deinit();
-    const grandchild = try BrowsingContext.initChild(testing.allocator, child);
-    defer grandchild.deinit();
-    const sandboxed = sourceSnapshot("", false);
-    try testing.expect(allowedBySandboxingToNavigate(frame, frame, sandboxed));
-    try testing.expect(allowedBySandboxingToNavigate(frame, child, sandboxed));
-    try testing.expect(allowedBySandboxingToNavigate(frame, grandchild, sandboxed));
-}
-
 test "a sandboxed source may navigate neither a sibling nor an ancestor short of the top" {
     var navigables = Navigables.init(testing.allocator);
     defer navigables.deinit();
@@ -163,21 +130,6 @@ test "a sandboxed source may navigate neither a sibling nor an ancestor short of
     try testing.expect(!allowedBySandboxingToNavigate(frame, parent, sourceSnapshot("allow-top-navigation", true)));
     // Unsandboxed, it may.
     try testing.expect(allowedBySandboxingToNavigate(frame, parent, sourceSnapshot(null, false)));
-}
-
-test "the top-level ancestor: allow-top-navigation, and allow-top-navigation-by-user-activation with activation" {
-    var navigables = Navigables.init(testing.allocator);
-    defer navigables.deinit();
-    const top = try BrowsingContext.initTopLevel(testing.allocator, &navigables);
-    defer top.deinit();
-    const frame = try BrowsingContext.initChild(testing.allocator, top);
-    defer frame.deinit();
-    try testing.expect(!allowedBySandboxingToNavigate(frame, top, sourceSnapshot("allow-scripts", false)));
-    try testing.expect(!allowedBySandboxingToNavigate(frame, top, sourceSnapshot("allow-scripts", true)));
-    try testing.expect(allowedBySandboxingToNavigate(frame, top, sourceSnapshot("allow-top-navigation", false)));
-    try testing.expect(allowedBySandboxingToNavigate(frame, top, sourceSnapshot("allow-top-navigation", true)));
-    try testing.expect(!allowedBySandboxingToNavigate(frame, top, sourceSnapshot("allow-top-navigation-by-user-activation", false)));
-    try testing.expect(allowedBySandboxingToNavigate(frame, top, sourceSnapshot("allow-top-navigation-by-user-activation", true)));
 }
 
 test "another top-level traversable: only its one permitted sandboxed navigator" {

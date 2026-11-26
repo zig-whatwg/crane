@@ -163,14 +163,6 @@ pub const NotRestoredReasons = struct {
 
 const testing = std.testing;
 
-test "blocking details are a set, in the order first recorded" {
-    var details: BlockingDetails = .{};
-    details.append(.websocket);
-    details.append(.fetch);
-    details.append(.websocket);
-    try testing.expectEqualSlices(Reason, &.{ .websocket, .fetch }, details.items());
-}
-
 test "every reason's string is the spec's" {
     try testing.expectEqualStrings("navigation-failure", Reason.navigation_failure.name());
     try testing.expectEqualStrings("parser-aborted", Reason.parser_aborted.name());

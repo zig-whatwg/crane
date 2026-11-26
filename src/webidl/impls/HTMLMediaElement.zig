@@ -137,6 +137,10 @@ pub const InternalState = struct {
         if (!self.activity.playing) self.unregister();
         self.syncDelay();
         self.activity.sync();
+        self.styleStateChanged();
+    }
+    fn styleStateChanged(self: *InternalState) void {
+        if (self.activity.instance) |instance| dom.style.dynamicStateChanged(instance);
     }
     fn cancel(self: *InternalState) void {
         self.stopClock();
@@ -149,9 +153,11 @@ pub const InternalState = struct {
         for (self.pending_play.items) |*promise| engine.releasePromiseCapability(promise);
         self.pending_play.clearRetainingCapacity();
         self.activity.sync();
+        self.styleStateChanged();
     }
     fn selectLater(self: *InternalState) !void {
         const generation = self.load.beginSelection();
+        self.styleStateChanged();
         self.syncDelay();
         try self.register();
         self.delayUntilSelection();
@@ -262,6 +268,19 @@ pub const InternalState = struct {
                 }
             },
             .dedicated_failure => {
+                // Chrome, Firefox and Safari set `error` synchronously when
+                // entering the dedicated media source failure steps before the
+                // queued `error` event task runs (whatwg/html#11155;
+                // error-sequence.html subtests 1–2 pass 3/3 on wpt.fyi).
+                if (self.activity.instance) |instance| {
+                    const error_object = hooks.createError(instance.ctx, .source_not_supported) catch {
+                        self.cancel();
+                        return;
+                    };
+                    self.load.error_code = .source_not_supported;
+                    self.error_object = error_object;
+                    self.error_edge.hold(instance, error_object);
+                }
                 self.activity.queuePlay(@backingInt(Kind.failure), self.load.generation, "error", &self.pending_play, "NotSupportedError") catch {
                     self.cancel();
                     return;
@@ -466,6 +485,7 @@ pub const InternalState = struct {
 
     /// Queue what a ready-state change asks (4.8.11.7), in its order.
     fn readyChanged(self: *InternalState, change: LoadState.ReadyChange) !void {
+        self.styleStateChanged();
         if (change.loadedmetadata) try self.event("loadedmetadata");
         if (change.loadeddata) {
             self.syncDelay();
@@ -500,6 +520,7 @@ pub const InternalState = struct {
         // yet (src/html/permissions_policy.zig is not delivered), so every
         // document is allowed, as a top-level or same-origin one is.
         const steps = self.load.autoplay() orelse return;
+        self.styleStateChanged();
         // Step 2: the show poster flag was set; time marches on.
         if (steps.time_marches_on) self.timeMarchesOn(false);
         if (steps.play_event) try self.event("play");
@@ -845,6 +866,7 @@ pub const InternalState = struct {
         // Steps 2-11: nothing with no resource; the position moves now.
         self.advanceClock();
         _ = self.load.beginSeek(target) orelse return;
+        self.styleStateChanged();
         self.holdOfficial();
         try self.seekInParallel();
     }
@@ -858,6 +880,17 @@ pub const InternalState = struct {
         // Step 13: await a stable state.
         try self.activity.stable(self.load.generation, seekStable);
     }
+
+    fn internalPause(self: *InternalState) !void {
+        // The current playback position up to now, before it stops moving.
+        self.advanceClock();
+        if (!self.load.pause()) return;
+        self.styleStateChanged();
+        self.syncClock();
+        // Internal pause steps 2.2-2.3: take the pending play promises; one task
+        // fires timeupdate and pause, then rejects them.
+        try self.activity.queuePlay(@backingInt(Kind.pause), self.load.generation, "pause", &self.pending_play, "AbortError");
+    }
 };
 
 fn seekStable(context: *anyopaque, generation: u64) void {
@@ -865,6 +898,7 @@ fn seekStable(context: *anyopaque, generation: u64) void {
     if (generation != self.load.generation) return;
     // Step 14: only the newest seek finishes.
     if (!self.load.finishSeek(self.load.seek_id)) return;
+    self.styleStateChanged();
     // The frame at the new position may have another size.
     self.followSize(null);
     // Step 16: time marches on.
@@ -918,12 +952,14 @@ fn sweepRemaining(scope: *runtime.BrowserScope) void {
     var entries = Registry.iterator(scope) orelse return;
     while (entries.next()) |entry| {
         const self = entry.internal;
-        // The element is not deinit'd and never will be: nothing is kept
-        // alive for it (an orphan has no wrapper to keep).
+        // The element is not deinit'd and never will be: stop any active clock,
+        // fetch or decoder (removed() pauses rather than cancels, HTML 4.8.11.8)
+        // and release nothing to script (an orphan has no wrapper to keep).
+        self.stopClock();
+        self.endFetch();
+        self.activity.discardTasks(false);
         self.activity.instance = null;
         self.activity.kept_alive = false;
-        if (self.decoder) |*decoder| decoder.deinit();
-        self.decoder = null;
         for (self.pending_play.items) |*promise| engine.releasePromiseCapability(promise);
         self.pending_play.clearRetainingCapacity();
         self.activity.maybeFree();
@@ -964,6 +1000,7 @@ pub fn installHooks() void {
     dom.media_elements.installMediaElement(delaysLoad, trackParentChanged, trackModeChanged, cuesChanged, naturalSize, selectorState);
     dom.mutation.registerInsertionStepsCallback(inserted) catch @panic("media insertion hook allocation");
     dom.mutation.registerRemovingStepsCallback(removed) catch @panic("media removing hook allocation");
+    dom.mutation.registerMovingStepsCallback(moved) catch @panic("media moving hook allocation");
     dom.document_fetches.install(.{ .discard = cancelRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
     dom.unloading_cleanup.install(cancelRealm);
     // The states no deinit reached - orphaned media elements' - at their
@@ -1147,12 +1184,24 @@ fn nextSource(self: *InternalState) ?*runtime.Instance {
     }
     return null;
 }
+fn hasNullNamespaceSrc(instance: *runtime.Instance) bool {
+    return interfaces.Element.call_hasAttributeNS(instance, null, .initInterned("src")) catch false;
+}
+fn pauseOnRemoveStable(context: *anyopaque, _: u64) void {
+    const self: *InternalState = @ptrCast(@alignCast(context));
+    const instance = self.activity.instance orelse return;
+    const node = dom.instance_bridge.getNodeBase(instance) orelse return;
+    // HTML 4.8.11.8 "When a media element is removed from a Document":
+    // 2. If the media element is in a document, return.
+    if (node.is_connected) return;
+    // 3. Run the internal pause steps for the media element.
+    self.internalPause() catch {};
+}
 fn inserted(node: *dom.NodeBase) void {
     const instance = dom.instance_bridge.getInstanceTyped(runtime.Instance, node) orelse return;
-    if (common.isMedia(instance)) {
-        if (data(instance).load.network == .empty) data(instance).selectLater() catch data(instance).cancel();
-        return;
-    }
+    // HTML 4.8.11.2 / 4.8.11.5: inserting a media element into a document does
+    // not invoke resource selection (networkState stays NETWORK_EMPTY).
+    if (common.isMedia(instance)) return;
     const owner = parent(instance) orelse return;
     if (!common.isMedia(owner)) return;
     const self = data(owner);
@@ -1161,18 +1210,41 @@ fn inserted(node: *dom.NodeBase) void {
         if ((interfaces.Node.get_previousSibling(instance) catch null) == before) setCursor(self, before, instance);
     }
     if (!isSource(instance)) return;
-    if (self.load.network == .empty) self.selectLater() catch self.cancel() else if (self.load.phase == .waiting) self.resumeSelection() catch self.cancel();
+    // HTML 4.8.2 <source> insertion steps + 4.8.11.5 children step 22.
+    if (self.load.network == .empty and !hasNullNamespaceSrc(owner)) {
+        self.selectLater() catch self.cancel();
+    } else if (self.load.phase == .waiting and self.after != null) {
+        self.resumeSelection() catch self.cancel();
+    }
 }
 fn removed(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
     const instance = dom.instance_bridge.getInstanceTyped(runtime.Instance, node) orelse return;
     if (common.isMedia(instance)) {
-        data(instance).cancel();
+        // HTML 4.8.11.8: when a media element is removed from a Document,
+        // await a stable state; if still not in a document, run internal pause
+        // steps (without cancelling the load or invoking resource selection).
+        const was_in_doc = if (old_parent) |p| (p.is_connected or p.node_type == dom.NodeBase.DOCUMENT_NODE) else false;
+        if (was_in_doc and !node.is_connected and instance.ctx.hasEngine()) {
+            const self = data(instance);
+            if ((!self.load.paused or self.load.can_autoplay) and !self.activity.hasStableFor(0, pauseOnRemoveStable)) {
+                self.activity.stable(0, pauseOnRemoveStable) catch {};
+            }
+        }
         return;
     }
     const old = old_parent orelse return;
     const owner = dom.instance_bridge.getInstanceTyped(runtime.Instance, old) orelse return;
     if (!common.isMedia(owner)) return;
+    // DOM passes the removed subtree's old ancestor to descendants; only a
+    // direct child removed from this media element affects its pointer/candidate.
+    if (parent(instance) != null) return;
     const self = data(owner);
+    // HTML 4.8.11.5 children step 1: "If candidate is removed from the media
+    // element, or moved out of it, then set candidate to null."
+    if (self.candidate) |link| if (link.instance == instance) {
+        self.candidate = null;
+        engine.forgetTracedChild(owner, .{ .name = "sourceCandidate" });
+    };
     if (self.before) |link| if (link.instance == instance) {
         const after = if (self.after) |a| (if (a.isLive() and parent(a.instance) == owner) a.instance else null) else null;
         const before = if (after) |a| interfaces.Node.get_previousSibling(a) catch null else interfaces.Node.get_lastChild(owner) catch null;
@@ -1184,6 +1256,47 @@ fn removed(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
         setCursor(self, before, if (before) |b| child(b, false) else child(owner, true));
     };
 }
+fn moved(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
+    const instance = dom.instance_bridge.getInstanceTyped(runtime.Instance, node) orelse return;
+    const new_owner = parent(instance);
+    const old_owner = if (old_parent) |old| dom.instance_bridge.getInstanceTyped(runtime.Instance, old) else null;
+    if (old_owner) |old_media| if (common.isMedia(old_media)) {
+        const old_self = data(old_media);
+        // HTML 4.8.11.5 children step 1: moving candidate out of its media
+        // element sets candidate to null.
+        if (old_owner != new_owner) {
+            if (old_self.candidate) |link| if (link.instance == instance) {
+                old_self.candidate = null;
+                engine.forgetTracedChild(old_media, .{ .name = "sourceCandidate" });
+            };
+        }
+        if (old_self.before) |link| if (link.instance == instance) {
+            const after = if (old_self.after) |a| (if (a.isLive() and parent(a.instance) == old_media) a.instance else null) else null;
+            const before = if (after) |a| interfaces.Node.get_previousSibling(a) catch null else interfaces.Node.get_lastChild(old_media) catch null;
+            setCursor(old_self, before, after);
+        };
+        if (old_self.after) |link| if (link.instance == instance) {
+            const before = if (old_self.before) |b| (if (b.isLive() and parent(b.instance) == old_media) b.instance else null) else null;
+            setCursor(old_self, before, if (before) |b| child(b, false) else child(old_media, true));
+        };
+    };
+    if (new_owner) |owner| if (common.isMedia(owner)) {
+        const self = data(owner);
+        // HTML 4.8.11.5 children step 1: insertions/moves at pointer go after
+        // pointer.
+        if (self.load.mode == .children) {
+            const before = if (self.before) |link| (if (link.isLive() and parent(link.instance) == owner) link.instance else null) else null;
+            if ((interfaces.Node.get_previousSibling(instance) catch null) == before) setCursor(self, before, instance);
+        }
+        if (!isSource(instance)) return;
+        // HTML 4.8.2 <source> moving steps + 4.8.11.5 children step 22.
+        if (self.load.network == .empty and !hasNullNamespaceSrc(owner)) {
+            self.selectLater() catch self.cancel();
+        } else if (self.load.phase == .waiting and self.after != null) {
+            self.resumeSelection() catch self.cancel();
+        }
+    };
+}
 fn stable(context: *anyopaque, generation: u64) void {
     const self: *InternalState = @ptrCast(@alignCast(context));
     if (generation != self.load.generation) return;
@@ -1193,7 +1306,7 @@ fn selection(self: *InternalState) !void {
     const instance = self.activity.instance orelse return;
     const generation = self.load.generation;
     if (self.load.phase == .stable_state) {
-        const mode = self.load.select(generation, .{ .provider_object = self.src_object != null, .src_attribute = try interfaces.Element.call_hasAttribute(instance, .initInterned("src")), .source_child = firstSource(instance) != null }, true) orelse return;
+        const mode = self.load.select(generation, .{ .provider_object = self.src_object != null, .src_attribute = hasNullNamespaceSrc(instance), .source_child = firstSource(instance) != null }, true) orelse return;
         self.syncDelay();
         if (mode == .none) {
             self.finish(generation);
@@ -1270,12 +1383,14 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
         .progress_tick => {
             if (self.activity.fetching and self.progress.takeProgress()) {
                 self.load.stalled = false;
+                self.styleStateChanged();
                 if (task.event) |event| event.dispatch();
             }
         },
         .stalled => {
             if (self.activity.fetching and self.progress.takeStalled()) {
                 self.load.stalled = true;
+                self.styleStateChanged();
                 if (task.event) |event| event.dispatch();
             }
         },
@@ -1305,12 +1420,14 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
         },
         .failure => {
             if (!self.load.runDedicatedFailure(task.generation)) return;
-            const error_object = hooks.createError(instance.ctx, .source_not_supported) catch {
-                self.cancel();
-                return;
-            };
-            self.error_object = error_object;
-            self.error_edge.hold(instance, error_object);
+            if (self.error_object == null) {
+                const error_object = hooks.createError(instance.ctx, .source_not_supported) catch {
+                    self.cancel();
+                    return;
+                };
+                self.error_object = error_object;
+                self.error_edge.hold(instance, error_object);
+            }
             if (task.event) |event| event.dispatch();
             task.rejectPromises("NotSupportedError");
             self.finish(task.generation);
@@ -1354,6 +1471,7 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
             fire(instance, "timeupdate");
             if (self.load.endedPlayback(self.looping()) and self.load.playback_rate >= 0 and !self.load.paused) {
                 self.load.paused = true;
+                self.styleStateChanged();
                 self.syncClock();
                 fire(instance, "pause");
                 rejectPending(self, "AbortError") catch {};
@@ -1379,6 +1497,7 @@ pub fn call_load(instance: *runtime.Instance) anyerror!void {
     self.endFetch();
     self.unregister();
     const reset = self.load.beginLoad();
+    self.styleStateChanged();
     // Step 7.5's readyState back to HAVE_NOTHING unsets every cue's active
     // flag (4.8.11.11.1), as Blink's CueTimeline::OnReadyStateReset does.
     if (reset.forget_tracks) self.deactivateCues();
@@ -1425,6 +1544,7 @@ pub fn call_play(instance: *runtime.Instance) anyerror!runtime.JSValue {
     self.advanceClock();
     const loop = self.looping();
     const steps = self.load.play(loop);
+    self.styleStateChanged();
     if (steps.select) self.selectLater() catch self.cancel();
     // Step 2's seek sets the position now; the rest of it runs in parallel
     // (seek step 5), so its events and ready-state change follow step 3's.
@@ -1445,13 +1565,7 @@ pub fn call_play(instance: *runtime.Instance) anyerror!runtime.JSValue {
 pub fn call_pause(instance: *runtime.Instance) anyerror!void {
     const self = data(instance);
     if (self.load.network == .empty) try self.selectLater();
-    // The current playback position up to now, before it stops moving.
-    self.advanceClock();
-    if (!self.load.pause()) return;
-    self.syncClock();
-    // Internal pause steps 2.2-2.3: take the pending play promises; one task
-    // fires timeupdate and pause, then rejects them.
-    try self.activity.queuePlay(@backingInt(Kind.pause), self.load.generation, "pause", &self.pending_play, "AbortError");
+    try self.internalPause();
 }
 pub fn call_canPlayType(instance: *runtime.Instance, mime: runtime.DOMString) anyerror!enums.CanPlayTypeResult {
     return switch (backend.canPlayType(instance.ctx, mime.asSlice())) {
@@ -1538,7 +1652,10 @@ pub fn get_muted(instance: *runtime.Instance) anyerror!bool {
 pub fn set_muted(instance: *runtime.Instance, value: bool) anyerror!void {
     const previous = try get_muted(instance);
     data(instance).muted = value;
-    if (previous != value) try data(instance).event("volumechange");
+    if (previous != value) {
+        dom.style.dynamicStateChanged(instance);
+        try data(instance).event("volumechange");
+    }
 }
 pub fn get_defaultPlaybackRate(instance: *runtime.Instance) anyerror!f64 {
     return data(instance).load.default_playback_rate;

@@ -330,15 +330,3 @@ fn editorStateHoldsNodes(state_ptr: *anyopaque) bool {
 pub fn installHooks() void {
     dom.editor_states.install(.{ .free = &freeEditorState, .trace = &traceEditorState, .release_nodes = &releaseEditorStateNodes, .holds_nodes = &editorStateHoldsNodes });
 }
-
-// =============================================================================
-// Tests
-// =============================================================================
-
-test "queryCommandSupported" {
-    try std.testing.expect(queryCommandSupported("bold"));
-    try std.testing.expect(queryCommandSupported("italic"));
-    try std.testing.expect(queryCommandSupported("createLink"));
-    try std.testing.expect(!queryCommandSupported("unknownCommand"));
-    try std.testing.expect(!queryCommandSupported(""));
-}

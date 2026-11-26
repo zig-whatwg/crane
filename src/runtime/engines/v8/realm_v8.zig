@@ -259,12 +259,3 @@ pub fn getV8Context(realm: *const Realm) ?*v8.Context {
 pub fn getV8Isolate(realm: *const Realm) ?*v8.Isolate {
     return @ptrCast(@alignCast(realm.agent));
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "realm_v8 compiles" {
-    // This test just verifies the module compiles correctly
-    // Actual V8 tests require a running isolate/context
-}

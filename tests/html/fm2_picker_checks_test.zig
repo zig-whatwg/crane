@@ -1,10 +1,24 @@
 //! showPicker exceptions and ordering, with real activation state.
 const std = @import("std");
+const clock = @import("clock");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const browser_mod = @import("browser");
 const activation = @import("html").user_activation;
+const loop_settle = @import("loop_settle.zig");
 const testing = std.testing;
+
+fn runUntil(browser: *browser_mod.Browser, page: *browser_mod.Context, condition: []const u8) !void {
+    const start = clock.monotonicMillis();
+    while (clock.monotonicMillis() - start < loop_settle.bound_ms) {
+        const value = try page.evaluateScriptToString(condition, testing.allocator);
+        defer testing.allocator.free(value);
+        if (std.mem.eql(u8, value, "true")) return;
+        _ = try browser.runEventLoopBlocking(10);
+    }
+    std.debug.print("never true: {s}\n", .{condition});
+    return error.ConditionNeverMet;
+}
 
 fn exercise() !void {
     const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
@@ -41,8 +55,8 @@ fn exercise() !void {
     try interfaces.HTMLSelectElement.call_showPicker(select);
     try testing.expect(!activation.hasTransientActivation(window));
 
-    try page.runScript("const frame = document.createElement('iframe'); frame.id = 'cross'; frame.sandbox = 'allow-scripts'; frame.srcdoc = '<input id=picker><select id=select><option>x</select>'; document.body.append(frame);");
-    _ = try browser.runEventLoopBlocking(100);
+    try page.runScript("globalThis.crossLoaded = false; const frame = document.createElement('iframe'); frame.id = 'cross'; frame.sandbox = 'allow-scripts'; frame.addEventListener('load', () => { globalThis.crossLoaded = true; }); frame.srcdoc = '<input id=picker><select id=select><option>x</select>'; document.body.append(frame);");
+    try runUntil(browser, page, "String(globalThis.crossLoaded === true)");
     const frame = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("cross"))).?;
     const child_window = (try interfaces.HTMLIFrameElement.get_contentWindow(frame)).?;
     const child_document = try interfaces.Window.get_document(child_window);

@@ -23,14 +23,9 @@ pub const InternalState = struct {};
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try HTMLMapElement.init(ctx.allocator, ctx);
-    errdefer HTMLMapElement.deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// HTML 4.8.12: the live collection rooted at this map, matching area elements.

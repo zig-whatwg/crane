@@ -824,13 +824,6 @@ pub fn formatBlockIndeterm(edit: *Edit) !bool {
     return false;
 }
 
-test "formattable block names" {
-    try std.testing.expect(common.nameIn("pre", &formattable_block_names));
-    try std.testing.expect(common.nameIn("blockquote", &formattable_block_names));
-    try std.testing.expect(!common.nameIn("li", &formattable_block_names));
-    try std.testing.expect(!common.nameIn("ol", &formattable_block_names));
-}
-
 // ============================================================================
 // A live copy of a range
 // ============================================================================

@@ -174,8 +174,20 @@ pub const WebGLContextEvent = struct {
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
     pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInit: webidl.Opt(WebGLContextEventInit)) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try WebGLContextEventImpl.call_constructor(ctx, @"type", eventInit);
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(WebGLContextEventImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try WebGLContextEventImpl.call_constructor(instance, @"type", eventInit);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try WebGLContextEventImpl.call_constructor(ctx, @"type", eventInit);
+        }
     }
 
     pub fn get_statusMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {

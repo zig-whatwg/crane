@@ -275,10 +275,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor implementation
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try HTMLIFrameElement.init(ctx.allocator, ctx);
-    errdefer HTMLIFrameElement.deinit(instance);
-    return instance;
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
 }
 
 // ============================================================================
@@ -2836,7 +2834,7 @@ fn startFetch(record: *Navigation) void {
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
         if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
-        record.response = navigation_fetch.fetchRequestNow(allocator, url, request, .{}) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
+        record.response = navigation_fetch.fetchRequestNow(allocator, url, request) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
     // Navigate step 24.10: "attempt to populate the history entry's
@@ -2927,7 +2925,7 @@ fn fetchResourceWithoutNetwork(record: *Navigation) void {
     // popup's is a network error here, as Blink's SecurityOrigin::CanDisplay
     // refuses a local URL to a page that cannot load local resources.
     request.local_file_access = record.local_file_access;
-    record.response = navigation_fetch.fetchRequestNow(allocator, url, request, .{}) catch navigation_fetch.networkErrorResult(allocator, url) catch null;
+    record.response = navigation_fetch.fetchRequestNow(allocator, url, request) catch navigation_fetch.networkErrorResult(allocator, url) catch null;
 }
 
 /// Whether two or more of `integration`'s ancestor navigables show a
@@ -3095,7 +3093,7 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
 fn respond(record: *Navigation, result: ?*fetch_mod.algorithms.FetchResult, current_url: ?[]const u8, streaming: ?*fetch_mod.algorithms.AsyncFetch) void {
     const id = record.id;
     record.response = if (result) |r|
-        navigation_fetch.resultFromResponse(record.allocator, record.url, r.response, .{}) catch null
+        navigation_fetch.resultFromResponse(record.allocator, record.url, r.response) catch null
     else
         null;
     if (record.response) |*response| if (current_url) |url| if (!response.is_network_error and !std.mem.eql(u8, response.final_url, url)) {
@@ -3357,7 +3355,7 @@ fn enforceRedirectHop(record: *Navigation, f: *fetch_mod.algorithms.AsyncFetch, 
     const browsing_context = integration.browsing_context orelse return false;
     if (browsing_context.parent != null) return false;
     const allocator = record.allocator;
-    var hop = navigation_fetch.resultFromResponse(allocator, record.url, r.response, .{}) catch return false;
+    var hop = navigation_fetch.resultFromResponse(allocator, record.url, r.response) catch return false;
     defer hop.deinit();
     const hop_url = if (hop.final_url.len > 0) hop.final_url else record.url;
     // 21.9. responsePolicyContainer, with the hop's opener policy (21.12.1)

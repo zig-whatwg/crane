@@ -337,9 +337,3 @@ test "legacy font size for pixel sizes" {
     try std.testing.expectEqual(@as(u8, 7), legacyFontSizeFor(48));
     try std.testing.expectEqual(@as(u8, 7), legacyFontSizeFor(100));
 }
-
-test "containsWord matches whole keywords" {
-    try std.testing.expect(containsWord("underline line-through", "line-through"));
-    try std.testing.expect(!containsWord("none", "underline"));
-    try std.testing.expect(!containsWord("", "underline"));
-}

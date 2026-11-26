@@ -159,35 +159,21 @@ fn keepPorts(ctx: runtime.Context, internal: *InternalState, ports: []const *run
 
 /// new ExtendableMessageEvent(type, eventInitDict): DOM's inner event
 /// creation steps, then the dictionary's members.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableMessageEventInit)) !*runtime.Instance {
-    const instance = try ExtendableMessageEvent.init(ctx.allocator, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step (a source that is no Client, ServiceWorker or MessagePort)
-    // frees it whole. Its own deinit is its destructor, not a free, and left
-    // its slot and State until the Browser ended
-    // (tests/v8/constructor_error_receiver_test.zig;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    errdefer runtime.gc.releaseOwned(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableMessageEventInit)) !void {
+    const ctx = instance.ctx;
     const given: dictionaries.ExtendableMessageEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{} } };
     try dom.event_construction.innerEventCreationSteps(instance, @"type", dom.event_construction.eventInitFrom(given.base.base));
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     try keepData(ctx, internal, given.data orelse runtime.JSValue.jsNull);
     if (given.origin) |origin| internal.origin_string = try internal.allocator.dupe(u8, origin);
     if (given.lastEventId) |id| internal.last_event_id = try internal.allocator.dupe(u8, id.asSlice());
-    // source: (Client or ServiceWorker or MessagePort)?.
+    // source: (Client or ServiceWorker or MessagePort)?, converted by the
+    // binding - a value that is none of the three threw a TypeError there,
+    // before this ran; null and a missing member are both null.
     if (given.source) |value| switch (value) {
-        .null, .undefined => {},
-        else => {
-            const instance_source = engine.convertToPlatformObject(ctx, value) orelse return error.TypeError;
-            const accepted = instance_source.stateAs(interfaces.Client.State) != null or
-                instance_source.stateAs(interfaces.ServiceWorker.State) != null or
-                instance_source.stateAs(interfaces.MessagePort.State) != null;
-            if (!accepted) return error.TypeError;
-            try keepSource(ctx, internal, instance_source);
-        },
+        inline else => |source| try keepSource(ctx, internal, source),
     };
     try keepPorts(ctx, internal, given.ports orelse &.{});
-    return instance;
 }
 
 fn internalOf(instance: *runtime.Instance) !*InternalState {

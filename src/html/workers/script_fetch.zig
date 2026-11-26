@@ -20,6 +20,7 @@
 //! - Works with DedicatedWorker and SharedWorker
 
 const std = @import("std");
+const mimesniff = @import("mimesniff");
 const Allocator = std.mem.Allocator;
 
 const types = @import("types.zig");
@@ -233,7 +234,7 @@ pub fn fetchWorkerScript(
 
     // Step 2: Check for special URLs
     if (std.mem.startsWith(u8, url, "data:")) {
-        return handleDataUrl(allocator, url);
+        return handleDataUrl(allocator, url, options.worker_type);
     }
 
     if (std.mem.startsWith(u8, url, "blob:")) {
@@ -270,61 +271,28 @@ pub fn fetchWorkerScript(
     return WorkerScriptError.InvalidUrl;
 }
 
-/// Handle data: URL for worker scripts
-fn handleDataUrl(allocator: Allocator, url: []const u8) WorkerScriptError!FetchedScript {
-    // data:[<mediatype>][;base64],<data>
-    const data_start = std.mem.indexOf(u8, url, ",") orelse return WorkerScriptError.InvalidUrl;
-    const meta = url[5..data_start]; // After "data:"
-    const data = url[data_start + 1 ..];
-
-    // Check for base64 encoding
-    const is_base64 = std.mem.indexOf(u8, meta, ";base64") != null;
-
-    // Get content type (default to text/javascript for workers)
-    const content_type = blk: {
-        const semicolon_pos = std.mem.indexOf(u8, meta, ";");
-        if (semicolon_pos) |pos| {
-            if (pos > 0) {
-                break :blk meta[0..pos];
-            }
-        } else if (meta.len > 0) {
-            break :blk meta;
-        }
-        break :blk "text/javascript";
+/// A data: worker script: Fetch's scheme fetch "data" - the "data: URL
+/// processor" (Fetch 6) on the URL, a network error when that fails, else a
+/// response whose `Content-Type` is its MIME type serialized and whose body
+/// is its body, percent-decoded and, for a base64 type, forgiving-base64
+/// decoded - checked as HTML checks a worker script's response
+/// (`scriptFromLocalResponse`).
+fn handleDataUrl(allocator: Allocator, url: []const u8, worker_type: WorkerType) WorkerScriptError!FetchedScript {
+    const result = fetch.algorithms.scheme_fetch.schemeFetch(allocator, "data", url) catch return WorkerScriptError.OutOfMemory;
+    const response = switch (result) {
+        .response => |response| response,
+        // HTML "fetch a classic worker script" processResponseConsumeBody
+        // step 2 (and "fetch a single module script" step 1): a network
+        // error's body is null - no script.
+        .network_error => |reason| {
+            std.log.debug("handleDataUrl: {s}", .{reason orelse "network error"});
+            return WorkerScriptError.NetworkError;
+        },
     };
-
-    // Decode the data
-    var source: []const u8 = undefined;
-    if (is_base64) {
-        // Base64 decode
-        const decoded_size = std.base64.standard.Decoder.calcSizeForSlice(data) catch {
-            return WorkerScriptError.InvalidUrl;
-        };
-        const decoded = allocator.alloc(u8, decoded_size) catch {
-            return WorkerScriptError.OutOfMemory;
-        };
-        _ = std.base64.standard.Decoder.decode(decoded, data) catch {
-            allocator.free(decoded);
-            return WorkerScriptError.InvalidUrl;
-        };
-        source = decoded;
-    } else {
-        // Percent-decode
-        source = percentDecode(allocator, data) catch {
-            return WorkerScriptError.OutOfMemory;
-        };
-    }
-
-    // FetchedScript.init duplicates source, so free our allocation after
-    const result = FetchedScript.init(allocator, source, url, content_type, true) catch {
-        allocator.free(source);
-        return WorkerScriptError.OutOfMemory;
-    };
-
-    // Free original allocation since init() duplicated it
-    allocator.free(source);
-
-    return result;
+    defer response.deinit();
+    const bytes: []const u8 = if (response.body) |body| body.getBytes() else "";
+    const content_type = response.header_list.getFirstValue("content-type") orelse "";
+    return scriptFromLocalResponse(allocator, url, worker_type, bytes, content_type);
 }
 
 /// A blob: worker script URL's blob URL entry, captured when the URL is
@@ -381,24 +349,25 @@ fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_storage_key: 
     defer response.deinit();
     const bytes: []const u8 = if (response.body) |body| body.data.items else "";
     const content_type = response.header_list.getFirstValue("content-type") orelse "";
-    return scriptFromBlob(allocator, url, worker_type, bytes, content_type);
+    return scriptFromLocalResponse(allocator, url, worker_type, bytes, content_type);
 }
 
-/// A worker script from a blob's `bytes` and its `content_type`, for the
-/// blob URL `url` (its final URL).
+/// A worker script from the `bytes` and `content_type` of a blob: or data:
+/// URL's response, for that URL `url` (its final URL).
 ///
 /// HTML "fetch a classic worker script", processResponseConsumeBody step 3,
 /// refuses a script for its MIME type only when "response's URL's scheme is
-/// an HTTP(S) scheme": a classic worker's blob script runs whatever the
-/// blob's type. A module worker's script is a module script, which "fetch a
+/// an HTTP(S) scheme": a classic worker's blob: or data: script runs whatever
+/// its type. A module worker's script is a module script, which "fetch a
 /// single module script" accepts only with a JavaScript MIME type, whatever
-/// its scheme.
-pub fn scriptFromBlob(allocator: Allocator, url: []const u8, worker_type: WorkerType, bytes: []const u8, content_type: []const u8) WorkerScriptError!FetchedScript {
+/// its scheme (processResponseConsumeBody steps 2 and 7-9).
+pub fn scriptFromLocalResponse(allocator: Allocator, url: []const u8, worker_type: WorkerType, bytes: []const u8, content_type: []const u8) WorkerScriptError!FetchedScript {
     if (worker_type == .module and !isJavaScriptMimeType(content_type)) {
-        std.log.debug("handleBlobUrl: Blob has non-JavaScript MIME type: {s}", .{content_type});
+        std.log.debug("worker script {s}: non-JavaScript MIME type: {s}", .{ url[0..@min(url.len, 5)], content_type });
         return WorkerScriptError.ParseError;
     }
-    // Blob URLs are same-origin (the store answers only its origin).
+    // A blob: URL's script is same-origin (the store answers only its
+    // origin); a data: URL's is answered by no origin's server.
     return FetchedScript.init(allocator, bytes, url, content_type, true) catch WorkerScriptError.OutOfMemory;
 }
 
@@ -493,7 +462,13 @@ pub fn workerScriptRequest(
     // The outside settings' user agent override, copied now (user agent
     // data, not a step).
     const client_override = options.user_agent_override;
-    internal_request.setOverrideSnapshot(client_override.user_agent, client_override.accept_language, client_override.extra_headers) catch return WorkerScriptError.OutOfMemory;
+    internal_request.setOverrideSnapshotWithNetwork(
+        client_override.user_agent,
+        client_override.accept_language,
+        client_override.extra_headers,
+        client_override.network_offline,
+        client_override.network_rules,
+    ) catch return WorkerScriptError.OutOfMemory;
     return internal_request;
 }
 
@@ -730,45 +705,6 @@ fn resolveRelativeUrl(allocator: Allocator, url: []const u8, base_url: ?[]const 
     return try result.toOwnedSlice(allocator);
 }
 
-/// Simple percent-decoding for data URLs
-fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
-    // Count output size first
-    var output_len: usize = 0;
-    var i: usize = 0;
-    while (i < input.len) {
-        if (input[i] == '%' and i + 2 < input.len) {
-            if (std.fmt.parseInt(u8, input[i + 1 .. i + 3], 16)) |_| {
-                output_len += 1;
-                i += 3;
-                continue;
-            } else |_| {}
-        }
-        output_len += 1;
-        i += 1;
-    }
-
-    const result = try allocator.alloc(u8, output_len);
-    errdefer allocator.free(result);
-
-    var out_idx: usize = 0;
-    i = 0;
-    while (i < input.len) {
-        if (input[i] == '%' and i + 2 < input.len) {
-            if (std.fmt.parseInt(u8, input[i + 1 .. i + 3], 16)) |value| {
-                result[out_idx] = value;
-                out_idx += 1;
-                i += 3;
-                continue;
-            } else |_| {}
-        }
-        result[out_idx] = input[i];
-        out_idx += 1;
-        i += 1;
-    }
-
-    return result;
-}
-
 // ============================================================================
 // Fetch Multiple Scripts (importScripts)
 // ============================================================================
@@ -828,36 +764,14 @@ pub fn isValidWorkerScriptType(content_type: []const u8, worker_type: WorkerType
     return false;
 }
 
-/// Check if a MIME type is a JavaScript MIME type
-fn isJavaScriptMimeType(mime_type: []const u8) bool {
-    // Get the essence (type/subtype without parameters)
-    const essence = blk: {
-        if (std.mem.indexOf(u8, mime_type, ";")) |pos| {
-            break :blk mime_type[0..pos];
-        }
-        break :blk mime_type;
-    };
-
-    // Trim whitespace
-    const trimmed = std.mem.trim(u8, essence, " \t");
-
-    // Check against known JavaScript MIME types
-    const js_types = [_][]const u8{
-        "text/javascript",
-        "application/javascript",
-        "application/x-javascript",
-        "text/ecmascript",
-        "application/ecmascript",
-        "text/jscript",
-    };
-
-    for (js_types) |js_type| {
-        if (std.ascii.eqlIgnoreCase(trimmed, js_type)) {
-            return true;
-        }
-    }
-
-    return false;
+/// Whether a Content-Type value's essence is a JavaScript MIME type: MIME
+/// Sniffing §4.6, an ASCII case-insensitive essence match against its one
+/// list (mimesniff.predicates). A list of this file's own lacked
+/// text/javascript1.0-1.5, text/livescript, text/x-ecmascript,
+/// text/x-javascript and application/x-ecmascript (lane core1, B15).
+fn isJavaScriptMimeType(content_type: []const u8) bool {
+    const essence = if (std.mem.indexOfScalar(u8, content_type, ';')) |pos| content_type[0..pos] else content_type;
+    return mimesniff.predicates.isJavaScriptMimeTypeEssenceMatch(std.mem.trim(u8, essence, " \t"));
 }
 
 // ============================================================================
@@ -1090,118 +1004,4 @@ pub fn fetchServiceWorkerResource(allocator: Allocator, url: []const u8, options
         }) catch return error.OutOfMemory;
     }
     return resource;
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "handleDataUrl - plain text JavaScript" {
-    const allocator = std.testing.allocator;
-
-    var script = try handleDataUrl(allocator, "data:text/javascript,console.log('hello')");
-    defer script.deinit();
-
-    try std.testing.expectEqualStrings("console.log('hello')", script.source);
-    try std.testing.expectEqualStrings("text/javascript", script.content_type);
-}
-
-test "handleDataUrl - base64 encoded" {
-    const allocator = std.testing.allocator;
-
-    // "console.log('hi')" in base64
-    var script = try handleDataUrl(allocator, "data:text/javascript;base64,Y29uc29sZS5sb2coJ2hpJyk=");
-    defer script.deinit();
-
-    try std.testing.expectEqualStrings("console.log('hi')", script.source);
-}
-
-test "handleDataUrl - default content type" {
-    const allocator = std.testing.allocator;
-
-    var script = try handleDataUrl(allocator, "data:,var x = 1");
-    defer script.deinit();
-
-    try std.testing.expectEqualStrings("text/javascript", script.content_type);
-}
-
-test "isJavaScriptMimeType" {
-    try std.testing.expect(isJavaScriptMimeType("text/javascript"));
-    try std.testing.expect(isJavaScriptMimeType("application/javascript"));
-    try std.testing.expect(isJavaScriptMimeType("text/javascript; charset=utf-8"));
-    try std.testing.expect(!isJavaScriptMimeType("text/plain"));
-    try std.testing.expect(!isJavaScriptMimeType("application/json"));
-}
-
-test "isValidWorkerScriptType" {
-    try std.testing.expect(isValidWorkerScriptType("text/javascript", .classic));
-    try std.testing.expect(isValidWorkerScriptType("application/javascript", .module));
-    try std.testing.expect(!isValidWorkerScriptType("text/plain", .classic));
-}
-
-test "percentDecode" {
-    const allocator = std.testing.allocator;
-
-    const result = try percentDecode(allocator, "hello%20world");
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("hello world", result);
-}
-
-test "resolveRelativeUrl - absolute path" {
-    const allocator = std.testing.allocator;
-
-    const base_url = "http://localhost:8080/workers/worker.js";
-    const result = try resolveRelativeUrl(allocator, "/scripts/helper.js", base_url);
-    defer if (result) |r| allocator.free(r);
-
-    try std.testing.expectEqualStrings("http://localhost:8080/scripts/helper.js", result.?);
-}
-
-test "resolveRelativeUrl - current directory" {
-    const allocator = std.testing.allocator;
-
-    const base_url = "http://localhost:8080/workers/worker.js";
-    const result = try resolveRelativeUrl(allocator, "./helper.js", base_url);
-    defer if (result) |r| allocator.free(r);
-
-    try std.testing.expectEqualStrings("http://localhost:8080/workers/helper.js", result.?);
-}
-
-test "resolveRelativeUrl - parent directory" {
-    const allocator = std.testing.allocator;
-
-    const base_url = "http://localhost:8080/workers/sub/worker.js";
-    const result = try resolveRelativeUrl(allocator, "../helper.js", base_url);
-    defer if (result) |r| allocator.free(r);
-
-    try std.testing.expectEqualStrings("http://localhost:8080/workers/helper.js", result.?);
-}
-
-test "resolveRelativeUrl - bare name" {
-    const allocator = std.testing.allocator;
-
-    const base_url = "http://localhost:8080/workers/worker.js";
-    const result = try resolveRelativeUrl(allocator, "helper.js", base_url);
-    defer if (result) |r| allocator.free(r);
-
-    try std.testing.expectEqualStrings("http://localhost:8080/workers/helper.js", result.?);
-}
-
-test "resolveRelativeUrl - multiple parent directories" {
-    const allocator = std.testing.allocator;
-
-    const base_url = "http://localhost:8080/a/b/c/worker.js";
-    const result = try resolveRelativeUrl(allocator, "../../helper.js", base_url);
-    defer if (result) |r| allocator.free(r);
-
-    try std.testing.expectEqualStrings("http://localhost:8080/a/helper.js", result.?);
-}
-
-test "resolveRelativeUrl - no base URL returns null" {
-    const allocator = std.testing.allocator;
-
-    const result = try resolveRelativeUrl(allocator, "./helper.js", null);
-
-    try std.testing.expect(result == null);
 }

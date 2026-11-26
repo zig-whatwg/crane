@@ -11,17 +11,17 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const AudioNode = @import("interfaces").AudioNode;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const ChannelCountMode = @import("enums").ChannelCountMode;
 const IIRFilterOptions = @import("dictionaries").IIRFilterOptions;
 const Event = @import("interfaces").Event;
 const Observable = @import("interfaces").Observable;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
 const AudioParam = @import("interfaces").AudioParam;
 const ChannelInterpretation = @import("enums").ChannelInterpretation;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const DOMString = @import("typedefs").DOMString;
 
 pub const IIRFilterNode = struct {
@@ -186,8 +186,20 @@ pub const IIRFilterNode = struct {
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
     pub fn call_constructor(ctx: runtime.Context, context: *runtime.Instance, options: IIRFilterOptions) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try IIRFilterNodeImpl.call_constructor(ctx, context, options);
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(IIRFilterNodeImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try IIRFilterNodeImpl.call_constructor(instance, context, options);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try IIRFilterNodeImpl.call_constructor(ctx, context, options);
+        }
     }
 
     /// WebIDL interface types: the interface each interface-typed constructor

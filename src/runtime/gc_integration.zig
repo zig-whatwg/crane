@@ -14,41 +14,6 @@
 //! Thread safety: Callbacks are called from GC thread
 //! Memory model: Two-phase cleanup (deinit resources, then return the storage)
 //!
-//! ## Typed GC Callback Support
-//!
-//! For type-safe GC finalizers, use runtime.TypedGCCallback:
-//!
-//! ```zig
-//! const typed_callback = @import("typed_callback.zig");
-//!
-//! const NativeResource = struct {
-//!     file_handle: std.Io.File,
-//!     io: std.Io,
-//!     buffer: []u8,
-//!     allocator: std.mem.Allocator,
-//! };
-//!
-//! fn cleanupResource(resource: *NativeResource) void {
-//!     resource.file_handle.close(resource.io);
-//!     resource.allocator.free(resource.buffer);
-//! }
-//!
-//! // Create resource on heap (required for GC callbacks)
-//! var resource = try allocator.create(NativeResource);
-//! resource.* = .{ .file_handle = file, .buffer = buf, .allocator = allocator };
-//!
-//! // Create typed callback
-//! var cb = typed_callback.TypedGCCallback(NativeResource).init(
-//!     &cleanupResource,
-//!     resource,
-//!     allocator,
-//! );
-//!
-//! // Register with V8 weak callback API
-//! // The toLegacyCallbackC() provides C-compatible function pointer
-//! v8_set_weak_callback(handle, cb.getDataAnyopaque(), TypedGCCallback(NativeResource).toLegacyCallbackC());
-//! ```
-//!
 //! ## Lifetime Contracts
 //!
 //! ### GC Finalizer Callbacks
@@ -86,18 +51,9 @@ const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 ///
 /// This function uses `?*anyopaque` because it must be compatible with the C ABI
 /// for JavaScript engine callbacks. The `callconv(.c)` calling convention requires
-/// C-compatible types. For type-safe GC callbacks, use `TypedGCCallback(T)` from
-/// `runtime.typed_callback` which provides a typed wrapper that converts to this
-/// C-compatible signature.
-///
-/// Example with TypedGCCallback:
-/// ```zig
-/// const typed_callback = @import("typed_callback.zig");
-/// var cb = TypedGCCallback(MyResource).init(&cleanupFn, resource, allocator);
-/// v8.setWeakCallback(handle, cb.getDataAnyopaque(), TypedGCCallback(MyResource).toLegacyCallbackC());
-/// ```
+/// C-compatible types.
 pub fn onObjectFreed(user_data: ?*anyopaque) callconv(.c) void {
-    // KEEP: @ptrCast/@alignCast required at C ABI boundary - use TypedGCCallback for type-safe wrappers
+    // KEEP: @ptrCast/@alignCast required at C ABI boundary
     const inst = @as(*Instance, @ptrCast(@alignCast(user_data orelse return)));
 
     // Step 1: Call type-specific deinit to clean up owned resources
@@ -171,6 +127,39 @@ pub fn releaseOwned(child: *Instance) void {
         cleanup_coordinator.deferStorageRelease(child, generation)
     else
         releaseStorage(child);
+}
+
+/// The constructor steps of `instance` failed (WebIDL 3.7.1, the interface
+/// object's step 1.9), so the binding never received it: the construction
+/// that made it (step 1.8) drops its reference - the generated
+/// `call_constructor`'s errdefer (lane ctor1).
+///
+/// - No engine object can reach it (instance_lifecycle.provablyUnwrapped:
+///   never wrapped, or its last wrapper finalized): it is freed WHOLE,
+///   destructor chain and storage, by releaseOwned's rules (an interface's
+///   deinit is a destructor, not a free - docs/lessons/architecture-an-
+///   interfaces-deinit-is-a-destructor-not-a-free.md).
+/// - Its own steps wrapped it (a traced edge drew its wrapper, as a stream's
+///   setup does): it is left WHOLE to that wrapper, whose end frees it like
+///   any wrapped object's. Script may still reach it through another object
+///   the steps handed out - a controller passed to start() - so neither its
+///   destructor nor its storage may go now. That is the browsers' model:
+///   Blink's Oilpan and WebKit's Ref<> free a failed construction's object
+///   when nothing reaches it, not when the constructor threw.
+///
+/// An engine that does not track wraps (capabilities.wrap_tracking
+/// .unsupported) cannot tell the two apart; the object is left to whatever
+/// owns it, as releaseOwned leaves its storage. Makes no engine call.
+pub fn releaseFailedConstruction(instance: *Instance) void {
+    // A node is not this function's: it holds its creator's reference (the
+    // DOM's refcount7), which only Node's own teardown ends - a node
+    // constructor stays a factory and frees through
+    // dom.node_creation.releaseIfUnwrapped.
+    std.debug.assert(instance.vtable.counted == null);
+    const instance_lifecycle = @import("instance_lifecycle.zig");
+    const tracked = @import("engine").capabilities.wrap_tracking != .unsupported;
+    if (!instance_lifecycle.provablyUnwrapped(tracked, instance)) return;
+    releaseOwned(instance);
 }
 
 /// A realm's global object - a Window - whose realm has ended: its

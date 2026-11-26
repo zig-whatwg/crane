@@ -11,7 +11,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const AudioNode = @import("interfaces").AudioNode;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
 const WaveShaperOptions = @import("dictionaries").WaveShaperOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -19,10 +18,11 @@ const ChannelCountMode = @import("enums").ChannelCountMode;
 const Event = @import("interfaces").Event;
 const Observable = @import("interfaces").Observable;
 const OverSampleType = @import("enums").OverSampleType;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
 const AudioParam = @import("interfaces").AudioParam;
 const ChannelInterpretation = @import("enums").ChannelInterpretation;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const DOMString = @import("typedefs").DOMString;
 
 pub const WaveShaperNode = struct {
@@ -193,8 +193,20 @@ pub const WaveShaperNode = struct {
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
     pub fn call_constructor(ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(WaveShaperOptions)) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try WaveShaperNodeImpl.call_constructor(ctx, context, options);
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(WaveShaperNodeImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try WaveShaperNodeImpl.call_constructor(instance, context, options);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try WaveShaperNodeImpl.call_constructor(ctx, context, options);
+        }
     }
 
     /// WebIDL interface types: the interface each interface-typed constructor

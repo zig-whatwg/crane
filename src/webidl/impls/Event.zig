@@ -113,11 +113,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// The Event(type, eventInitDict) constructor steps are:
 /// 1. Set this's initialized flag.
 /// 2. Initialize this with type, bubbles, and cancelable.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.EventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &Event.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.EventInit)) !void {
+    const ctx = instance.ctx;
     // Get state and initialize
     const state = instance.getState(State);
 
@@ -153,8 +150,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // DOM inner event creation steps 3: relative high resolution coarse time
     // for the event's relevant global, also used by that global's performance.
     state.own.timeStamp = performance_timeline.now(instance.ctx) orelse 0;
-
-    return instance;
 }
 
 /// Getter for type

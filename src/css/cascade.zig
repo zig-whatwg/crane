@@ -1117,7 +1117,7 @@ const Builder = struct {
         defer value.deinit();
         var computed = try value.compute(allocator, .{
             .math = self.mathContext(.width),
-            .color = .{ .scheme = self.used_scheme },
+            .color = .{ .scheme = self.used_scheme, .forced_colors = self.style.flags.forced_colors_active },
             .writing_mode = self.writing_mode,
             .direction = self.direction,
         });
@@ -1850,6 +1850,60 @@ const Builder = struct {
         while (it.next()) |l| self.index.merge(l, self.target(l));
     }
 
+    fn forcedColorsActive(self: *const Builder) bool {
+        return if (self.ctx.media_values) |mv| mv.forced_colors else false;
+    }
+
+    /// CSS Color Adjustment 1 §3.1: the UA-origin forced text color (what an
+    /// empty author stylesheet would yield for `color`, inherited down
+    /// descendants such as `<button><em>` and `<a><em>`).
+    fn computeUAForcedColor(self: *Builder) Allocator.Error!computed_mod.ForcedColor {
+        var position = self.index.heads[@backingInt(Longhand.color)];
+        while (position != CandidateIndex.none) : (position = self.index.links[position]) {
+            const c = self.candidates[position];
+            if (c.source.origin != .user_agent) continue;
+            const preflight = try self.resolvePending(c, .color);
+            if (preflight.unavailable) continue;
+            switch (preflight.assigned) {
+                .value => |v| {
+                    if (v == .color) {
+                        if (v.color.systemKeyword()) |sys| return computed_mod.ForcedColor.fromSystemColor(sys);
+                    }
+                    break;
+                },
+                .css_wide => |k| switch (k) {
+                    .initial => return .canvastext,
+                    .inherit, .unset, .revert => break,
+                    .revert_layer, .revert_rule => continue,
+                },
+            }
+        }
+        if (self.ctx.parent) |p| return p.flags.forced_color;
+        return .canvastext;
+    }
+
+    /// CSS Color Adjustment 1 §3.1: in forced colors mode with
+    /// `forced-color-adjust: auto`, `color-scheme` computes to `light dark`.
+    /// Reuses an inherited `light dark` value without allocating.
+    fn forceLightDarkColorScheme(self: *Builder) Allocator.Error!Value {
+        const existing = self.style.get(.color_scheme);
+        if (existing == .color_scheme and
+            existing.color_scheme.support.light and
+            existing.color_scheme.support.dark and
+            !existing.color_scheme.support.only and
+            existing.color_scheme.support.first == .light and
+            std.mem.eql(u8, existing.color_scheme.text.bytes, "light dark"))
+        {
+            return existing;
+        }
+        var support: color_scheme_mod.Support = .{};
+        support.add(.light);
+        support.add(.dark);
+        const text = try values.SharedText.create(self.ctx.allocator, "light dark");
+        try self.style.set(.color_scheme, .{ .color_scheme = .{ .text = text, .support = support } });
+        return self.style.get(.color_scheme);
+    }
+
     fn run(self: *Builder) Allocator.Error!void {
         // CSS Variables 1: the custom property states first - any longhand,
         // the high-priority ones included, may substitute one, which then
@@ -1871,7 +1925,30 @@ const Builder = struct {
         self.direction = (try self.computeAndStore(.direction)).keyword;
         self.mapLogicalChains();
         _ = try self.computeAndStore(.text_orientation);
-        self.used_scheme = self.elementColorScheme(try self.computeAndStore(.color_scheme));
+        // CSS Color Adjustment 1 §3: when forced-colors is active, compute
+        // `forced-color-adjust` before `color-scheme` and `color` (zero work
+        // on default `forced-colors: none` pages).
+        const forced_active = self.forcedColorsActive();
+        if (forced_active) {
+            self.style.flags.forced_colors_active = true;
+            if (self.ctx.highlight) {
+                // CSS Pseudo 4 §3.5: highlight pseudo-elements cannot set
+                // forced-color-adjust; they honor their originating element.
+                if (self.ctx.parent) |orig| {
+                    self.style.flags.in_forced_colors_mode = orig.flags.in_forced_colors_mode;
+                    self.style.flags.forced_color = orig.flags.forced_color;
+                }
+            } else {
+                const fca = (try self.computeAndStore(.forced_color_adjust)).keyword;
+                self.style.flags.in_forced_colors_mode = (fca == .auto);
+                self.style.flags.forced_color = try self.computeUAForcedColor();
+            }
+        }
+        const scheme_value = if (self.style.flags.in_forced_colors_mode)
+            try self.forceLightDarkColorScheme()
+        else
+            try self.computeAndStore(.color_scheme);
+        self.used_scheme = self.elementColorScheme(scheme_value);
         self.style.used_color_scheme = self.used_scheme;
         try self.ensureFontSize();
         try self.ensureLineHeight();
@@ -1893,6 +1970,7 @@ const Builder = struct {
         var todo = self.index.declared;
         todo.setUnion(computed_when_untouched);
         todo.setIntersection(low_priority);
+        if (forced_active) todo.remove(.forced_color_adjust);
         // `appearance` through its guard (computed already when an
         // -internal-auto-base() asked for it).
         if (todo.contains(.appearance)) {
@@ -1955,6 +2033,16 @@ const Builder = struct {
                 // inherited value is the initial value" (Cascade 5 7.3.2),
                 // CanvasText in the root's own color scheme.
                 if (self.ctx.parent == null and l == .color) return self.computeValue(l, l.info().initial, .{});
+                // CSS Color Adjustment 1 §3.2: `preserve-parent-color` in
+                // forced colors mode computes inherited `color` to the parent's
+                // used color value.
+                if (l == .color and self.style.flags.forced_colors_active and !self.ctx.highlight and
+                    self.style.keyword(.forced_color_adjust) == .preserve_parent_color)
+                {
+                    const used = self.ctx.parent.?.effectiveCurrentColor();
+                    used.retain();
+                    return .{ .color = used };
+                }
                 // Explicit inheritance of a non-inherited property (Blink
                 // HasExplicitInheritance).
                 if (!l.inherited()) self.record("parent_non_inherited");
@@ -2048,6 +2136,7 @@ const Builder = struct {
         if (v == .caret_pair) return .{ .caret_pair = try v.caret_pair.compute(self.ctx.allocator, .{
             .scheme = self.used_scheme,
             .math = self.computationContext(l, v, source),
+            .forced_colors = self.style.flags.forced_colors_active,
         }) };
         if (v == .color) {
             // CSS Pseudo 4 §3.5: a highlight's `color: currentcolor` keeps
@@ -2059,17 +2148,25 @@ const Builder = struct {
             var root_color: ?values.Color = null;
             defer if (root_color) |color| color.release();
             const current: ?values.Color = if (l != .color) null else if (self.ctx.parent) |parent|
-                parent.get(.color).color
+                (if (self.style.flags.forced_colors_active and !self.ctx.highlight and
+                    self.style.keyword(.forced_color_adjust) == .preserve_parent_color)
+                    parent.effectiveCurrentColor()
+                else
+                    parent.get(.color).color)
             else blk: {
                 // Cascade5 §7.3.2: the root inherits its initial color in
                 // its own scheme, including a nested currentcolor origin.
-                root_color = try l.info().initial.color.resolveComputed(self.ctx.allocator, .{ .scheme = self.used_scheme });
+                root_color = try l.info().initial.color.resolveComputed(self.ctx.allocator, .{
+                    .scheme = self.used_scheme,
+                    .forced_colors = self.style.flags.forced_colors_active,
+                });
                 break :blk root_color;
             };
             return .{ .color = try v.color.resolveComputed(self.ctx.allocator, .{
                 .scheme = self.used_scheme,
                 .current = current,
                 .math = self.computationContext(l, v, source),
+                .forced_colors = self.style.flags.forced_colors_active,
             }) };
         }
 
@@ -2157,7 +2254,11 @@ const Builder = struct {
                 // Firefox and Safari (CSS Content's contents is a used rule).
                 return v;
             },
-            .fill, .stroke => return @import("svg_paint.zig").compute(v, self.ctx.allocator, .{ .scheme = self.used_scheme, .math = self.computationContext(l, v, source) }),
+            .fill, .stroke => return @import("svg_paint.zig").compute(v, self.ctx.allocator, .{
+                .scheme = self.used_scheme,
+                .math = self.computationContext(l, v, source),
+                .forced_colors = self.style.flags.forced_colors_active,
+            }),
             .stroke_width => if (v == .number) return Value.px(v.number),
             // SVG 2 §13.5.7: a <number> stroke-dashoffset is a px length.
             .stroke_dashoffset => if (v == .number) return Value.px(v.number),
@@ -2507,6 +2608,24 @@ const Builder = struct {
         // an element that supports base appearance and has it, inherited,
         // cleared on one that supports it and does not).
         s.flags.in_base_appearance = self.hasBaseAppearance();
+
+        // CSS Color Adjustment 1 §3.1: computed-value adjustments in forced
+        // colors mode when `forced-color-adjust` is `auto` (Blink StyleAdjuster
+        // / StyleCascade; zero cost when `forced-colors: none`).
+        if (s.flags.in_forced_colors_mode) {
+            if (!s.get(.box_shadow).isKeyword(.none)) try s.set(.box_shadow, Value.kw(.none));
+            if (!s.get(.text_shadow).isKeyword(.none)) try s.set(.text_shadow, Value.kw(.none));
+            const bg_image = s.get(.background_image);
+            if (!bg_image.isKeyword(.none) and bg_image.resourceUrls().len == 0) try s.set(.background_image, Value.kw(.none));
+            if (!s.get(.scrollbar_color).isKeyword(.auto)) try s.set(.scrollbar_color, Value.kw(.auto));
+            const accent = s.get(.accent_color);
+            if (accent == .color and !accent.color.isSystemColor()) try s.set(.accent_color, Value.kw(.auto));
+            const fve = s.get(.font_variant_emoji);
+            if (fve.isKeyword(.normal) or (fve == .text and std.mem.eql(u8, fve.text.bytes, "unicode"))) {
+                const text = try values.SharedText.create(self.ctx.allocator, "text");
+                try s.set(.font_variant_emoji, .{ .text = text });
+            }
+        }
     }
 };
 
@@ -3314,6 +3433,7 @@ const ComponentContext = struct {
         return value.resolveComputed(self.builder.ctx.allocator, .{
             .scheme = self.builder.used_scheme,
             .math = self.builder.computationContext(.filter, .{ .color = value }, self.source),
+            .forced_colors = self.builder.style.flags.forced_colors_active,
         });
     }
     pub fn component(self: ComponentContext, longhand: Longhand, value: Value) Allocator.Error!Value {

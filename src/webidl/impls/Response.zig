@@ -233,15 +233,9 @@ fn errorWithAbortReason(instance: *runtime.Instance, stream: *runtime.Instance) 
 
 /// Constructor - Creates a Response with optional body and init
 /// Spec: https://fetch.spec.whatwg.org/#dom-response
-pub fn call_constructor(ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyInit), init_data: webidl.Opt(dictionaries.ResponseInit)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, body: webidl.Opt(?typedefs.BodyInit), init_data: webidl.Opt(dictionaries.ResponseInit)) !void {
     // 1-2. This's response is a new response, its headers a new Headers
     //      with guard "response" (init, InternalState.headers_guard).
-    const instance = try init(ctx.allocator, State, &Response.vtable, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step frees it whole. Its own deinit is its destructor, not a
-    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    errdefer runtime.gc.releaseOwned(instance);
     const internal = instance.getState(State).own._internal.?;
 
     // 3-4. Let bodyWithType be null; if body is non-null, set it to the
@@ -257,7 +251,6 @@ pub fn call_constructor(ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyIni
 
     // 5. Perform initialize a response given this, init, and bodyWithType.
     try initializeResponse(instance, if (init_data.wasPassed()) init_data.value else .{}, if (body_with_type) |*b| b else null);
-    return instance;
 }
 
 /// Fetch "initialize a response" given `instance`, `init`, and null or a

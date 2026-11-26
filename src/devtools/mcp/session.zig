@@ -17,6 +17,7 @@ const network = @import("network.zig");
 const keyboard_mod = @import("keyboard.zig");
 const snapshot_mod = @import("snapshot.zig");
 const paths_mod = @import("paths.zig");
+const logpoints_mod = @import("logpoints.zig");
 
 const log = std.log.scoped(.mcp);
 
@@ -24,16 +25,35 @@ const log = std.log.scoped(.mcp);
 pub const command_timeout_ms: u32 = 30_000;
 
 /// A dialog open on a page (Page.javascriptDialogOpening).
-/// McpPage.emulationSettings, the settings Crane applies (network
-/// conditions, CPU throttling and geolocation are not supported yet).
-/// Strings OWNED.
+/// McpPage.emulationSettings, the settings Crane applies (CPU throttling and
+/// geolocation are not supported yet). Strings OWNED.
 pub const Emulation = struct {
+    network_conditions: ?[]u8 = null,
     viewport: ?Viewport = null,
     user_agent: ?[]u8 = null,
     color_scheme: ?[]u8 = null,
     forced_colors: ?[]u8 = null,
     prefers_contrast: ?[]u8 = null,
     prefers_reduced_motion: ?[]u8 = null,
+
+    /// McpPage's NAVIGATION_TIMEOUT (10 s) scaled by network conditions.
+    pub const base_navigation_timeout_ms: u32 = 10_000;
+
+    /// chrome-devtools-mcp's getNetworkMultiplierFromString
+    /// (src/utils/WaitForHelper.ts, chrome-devtools-mcp-v1.13.0, Apache-2.0).
+    pub fn networkMultiplier(network_conditions: ?[]const u8) f64 {
+        const name = network_conditions orelse return 1;
+        if (std.mem.eql(u8, name, "Fast 4G")) return 1;
+        if (std.mem.eql(u8, name, "Slow 4G")) return 2.5;
+        if (std.mem.eql(u8, name, "Fast 3G")) return 5;
+        if (std.mem.eql(u8, name, "Slow 3G")) return 10;
+        return 1;
+    }
+
+    /// McpPage.updateTimeouts' defaultNavigationTimeout (ms).
+    pub fn defaultNavigationTimeoutMs(network_conditions: ?[]const u8) u32 {
+        return @intFromFloat(@as(f64, @floatFromInt(base_navigation_timeout_ms)) * networkMultiplier(network_conditions));
+    }
 
     /// viewportTransform's object spread over McpPage's defaults.
     pub const Viewport = struct {
@@ -48,7 +68,7 @@ pub const Emulation = struct {
     };
 
     pub fn deinit(self: *Emulation, allocator: Allocator) void {
-        inline for (.{ "user_agent", "color_scheme", "forced_colors", "prefers_contrast", "prefers_reduced_motion" }) |field| {
+        inline for (.{ "network_conditions", "user_agent", "color_scheme", "forced_colors", "prefers_contrast", "prefers_reduced_motion" }) |field| {
             if (@field(self, field)) |s| allocator.free(s);
         }
         self.* = .{};
@@ -162,6 +182,11 @@ pub const Page = struct {
     /// McpPage.emulationSettings: what the last emulate call set, which
     /// McpResponse prints for a page tool's answer ("Emulating ...").
     emulation: Emulation = .{},
+    /// McpPage's DevTools universe: the second session on the page
+    /// (logpoints.initUniverse), its Debugger enabled. OWNED.
+    debugger_session_id: ?[]u8 = null,
+    /// set_logpoints' scripts and logpoints (logpoints.zig).
+    logpoints: logpoints_mod.State = .{},
     /// The main frame's id (Page.frameNavigated without a parentId).
     main_frame_id: ?[]u8 = null,
     /// The frames' execution contexts Puppeteer keeps (FrameManager
@@ -201,6 +226,8 @@ pub const Page = struct {
         self.dropSnapshot(allocator);
         self.uids.deinit(allocator);
         self.emulation.deinit(allocator);
+        if (self.debugger_session_id) |id| allocator.free(id);
+        self.logpoints.deinit(allocator);
     }
 
     /// Replace the page's snapshot (null: none).
@@ -253,6 +280,16 @@ pub const Page = struct {
     }
 };
 
+/// Active `take_heapsnapshot` chunk sink (tools/memory.zig): collects
+/// `HeapProfiler.addHeapSnapshotChunk` events for `session_id` while
+/// `HeapProfiler.takeHeapSnapshot` is in flight.
+pub const HeapCapture = struct {
+    session_id: []const u8,
+    allocator: Allocator,
+    chunks: std.ArrayList(u8) = .empty,
+    failed: bool = false,
+};
+
 pub const Session = struct {
     allocator: Allocator,
     client: Client,
@@ -267,6 +304,8 @@ pub const Session = struct {
     next_isolated_context: u32 = 1,
     /// The wait a tool's action runs under (wait.zig), if any.
     watch: ?*Watch = null,
+    /// Active heap snapshot capture (tools/memory.zig), if any.
+    heap_capture: ?*HeapCapture = null,
     /// The tools' definitions (tools/list's array), parsed: the input
     /// schemas calls are checked against (validate.zig).
     schemas: ?std.json.Parsed(std.json.Value) = null,
@@ -424,6 +463,9 @@ pub const Session = struct {
         if (std.mem.eql(u8, method, "Target.attachedToTarget")) {
             const info = (p.get("targetInfo") orelse return).object;
             if (!std.mem.eql(u8, str(info.get("type")), "page")) return;
+            // A second session on a page's target is its DevTools universe
+            // (logpoints.initUniverse), not a page.
+            if (self.pageByTarget(str(info.get("targetId"))) != null) return;
             const page = try self.allocator.create(Page);
             errdefer self.allocator.destroy(page);
             page.* = .{
@@ -449,13 +491,37 @@ pub const Session = struct {
         if (std.mem.eql(u8, method, "Target.detachedFromTarget") or std.mem.eql(u8, method, "Target.targetDestroyed")) {
             const target = str(p.get("targetId"));
             const by_session = str(p.get("sessionId"));
+            // The universe's session going leaves the page.
+            if (by_session.len != 0) for (self.pages.items) |page| {
+                const universe = page.debugger_session_id orelse continue;
+                if (!std.mem.eql(u8, universe, by_session)) continue;
+                self.allocator.free(universe);
+                page.debugger_session_id = null;
+                return;
+            };
             for (self.pages.items) |page| {
                 if ((target.len != 0 and std.mem.eql(u8, page.target_id, target)) or (by_session.len != 0 and std.mem.eql(u8, page.session_id, by_session))) page.closed = true;
             }
             return;
         }
+        // The universe's events: set_logpoints' scripts and resolutions.
+        if (session_id.len != 0) for (self.pages.items) |universe_page| {
+            const universe = universe_page.debugger_session_id orelse continue;
+            if (!std.mem.eql(u8, universe, session_id)) continue;
+            return universe_page.logpoints.debuggerEvent(self.allocator, method, p, universe_page.url, &self.paths);
+        };
         // A page session's events.
         const page = self.pageBySession(session_id) orelse return;
+        if (std.mem.eql(u8, method, "HeapProfiler.addHeapSnapshotChunk")) {
+            if (self.heap_capture) |cap| {
+                if (std.mem.eql(u8, cap.session_id, session_id) and !cap.failed) {
+                    cap.chunks.appendSlice(cap.allocator, str(p.get("chunk"))) catch {
+                        cap.failed = true;
+                    };
+                }
+            }
+            return;
+        }
         if (std.mem.eql(u8, method, "Page.javascriptDialogOpening")) {
             if (self.watch) |w| if (w.page == page) {
                 w.dialog_detected = true;
@@ -551,12 +617,14 @@ pub const Session = struct {
             if (id != .integer) return;
             page.removeContext(self.allocator, id.integer);
             if (page.main_context_id == id.integer) page.main_context_id = null;
+            page.logpoints.contextDestroyed(self.allocator, id.integer);
             return;
         }
         if (std.mem.eql(u8, method, "Runtime.executionContextsCleared")) {
             for (page.contexts.items) |*c| c.deinit(self.allocator);
             page.contexts.clearRetainingCapacity();
             page.main_context_id = null;
+            page.logpoints.contextsCleared(self.allocator);
             return;
         }
         if (std.mem.eql(u8, method, "Runtime.consoleAPICalled")) {

@@ -141,13 +141,19 @@ pub const List = struct {
         return self.map(allocator, ComputeMapper(@TypeOf(context)){ .l = l, .context = context });
     }
 
-    /// CSSOM §9's resolved value: currentcolor becomes this element's color.
-    pub fn resolveColors(self: *const List, allocator: Allocator, context: Color.Context) Allocator.Error!*List {
+    /// CSSOM §9's resolved value: currentcolor becomes this element's color;
+    /// in forced colors mode (`force`), non-system color leaves are forced to
+    /// `context.current` (CSS Color Adjustment 1 §3.1).
+    pub fn resolveColors(self: *const List, allocator: Allocator, context: Color.Context, force: bool) Allocator.Error!*List {
         const Mapper = struct {
             allocator: Allocator,
             context: Color.Context,
+            force: bool,
             fn leaf(m: @This(), v: Value) Allocator.Error!Value {
-                if (v == .color) return .{ .color = try v.color.resolveComputed(m.allocator, m.context) };
+                if (v == .color) {
+                    const effective: Color = if (m.force and !v.color.isSystemColor()) .current else v.color;
+                    return .{ .color = try effective.resolveComputed(m.allocator, m.context) };
+                }
                 v.retain();
                 return v;
             }
@@ -156,7 +162,7 @@ pub const List = struct {
                 return v;
             }
         };
-        return self.map(allocator, Mapper{ .allocator = allocator, .context = context });
+        return self.map(allocator, Mapper{ .allocator = allocator, .context = context, .force = force });
     }
 
     pub fn serialize(self: *const List, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
@@ -218,16 +224,19 @@ fn ComputeMapper(comptime Context: type) type {
 /// A value of a list longhand with currentcolor resolved for the receiving
 /// element (CSSOM §9); owned by the caller. A plain value is resolved as the
 /// classic longhand's is.
-pub fn resolveValue(allocator: Allocator, value: Value, context: Color.Context) Allocator.Error!Value {
-    if (value == .gap_list) return .{ .gap_list = try value.gap_list.resolveColors(allocator, context) };
-    if (value == .color) return .{ .color = try value.color.resolveComputed(allocator, context) };
+pub fn resolveValue(allocator: Allocator, value: Value, context: Color.Context, force: bool) Allocator.Error!Value {
+    if (value == .gap_list) return .{ .gap_list = try value.gap_list.resolveColors(allocator, context, force) };
+    if (value == .color) {
+        const effective: Color = if (force and !value.color.isSystemColor()) .current else value.color;
+        return .{ .color = try effective.resolveComputed(allocator, context) };
+    }
     value.retain();
     return value;
 }
 
 /// getComputedStyle's serialization of a list longhand's computed list.
-pub fn serializeResolved(l: Longhand, list: *const List, context: Color.Context, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
-    const resolved = try list.resolveColors(allocator, context);
+pub fn serializeResolved(l: Longhand, list: *const List, context: Color.Context, force: bool, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+    const resolved = try list.resolveColors(allocator, context, force);
     defer resolved.unref();
     try resolved.serialize(l, out, allocator);
 }

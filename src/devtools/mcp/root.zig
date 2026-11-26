@@ -26,6 +26,9 @@ pub const ax_tree = @import("ax_tree.zig");
 pub const query = @import("query.zig");
 pub const elements = @import("elements.zig");
 pub const paths = @import("paths.zig");
+pub const logpoints = @import("logpoints.zig");
+pub const source_map = @import("source_map.zig");
+pub const js_scopes = @import("js_scopes.zig");
 
 test {
     @import("std").testing.refAllDecls(@This());

@@ -1817,7 +1817,7 @@ test "site: the index links to /performance/" {
     _ = try runFixture(gpa, &f, "out", fixture_worklist);
     const index = try readOut(gpa, &f, "out/index.html");
     defer gpa.free(index);
-    try expectHas(index, "<div><dt>Performance</dt><dd><a href=\"performance/\">");
+    try expectHas(index, "<div><dt>Performance</dt><dd><a href=\"performance/\">Crane beside Chrome, Firefox, Safari, Lightpanda and Ladybird</a></dd></div>");
     // Only the index: the frame every page carries stays as it was.
     const page = try readOut(gpa, &f, "out/dom/index.html");
     defer gpa.free(page);

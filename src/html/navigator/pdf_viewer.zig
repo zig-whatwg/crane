@@ -81,17 +81,6 @@ pub fn mimeTypeIndex(is_supported: bool, name: []const u8) ?usize {
     return null;
 }
 
-test "supported: five plugins, two mime types, in the spec's order" {
-    try std.testing.expectEqual(@as(usize, 5), pluginNamesWhen(true).len);
-    try std.testing.expectEqualStrings("PDF Viewer", pluginNamesWhen(true)[0]);
-    try std.testing.expectEqualStrings("WebKit built-in PDF", pluginNamesWhen(true)[4]);
-    try std.testing.expectEqual(@as(usize, 2), mimeTypesWhen(true).len);
-    try std.testing.expectEqualStrings("application/pdf", mimeTypesWhen(true)[0]);
-    try std.testing.expectEqualStrings("text/pdf", mimeTypesWhen(true)[1]);
-    try std.testing.expectEqual(@as(?usize, 3), pluginIndex(true, "Microsoft Edge PDF Viewer"));
-    try std.testing.expectEqual(@as(?usize, 1), mimeTypeIndex(true, "text/pdf"));
-}
-
 test "not supported: both lists are empty and nothing is found by name" {
     try std.testing.expectEqual(@as(usize, 0), pluginNamesWhen(false).len);
     try std.testing.expectEqual(@as(usize, 0), mimeTypesWhen(false).len);

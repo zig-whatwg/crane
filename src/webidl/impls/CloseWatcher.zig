@@ -105,13 +105,14 @@ fn destroyInternal(instance: *runtime.Instance) void {
 }
 
 /// The `new CloseWatcher(options)` constructor steps.
-pub fn call_constructor(ctx: runtime.Context, options: webidl.Opt(dictionaries.CloseWatcherOptions)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CloseWatcherOptions)) !void {
+    // The generated constructor made `instance` (WebIDL 3.7.1 step 1.8)
+    // and frees it whole when a step fails (lane ctor1).
+    const ctx = instance.ctx;
     // 1. If this's relevant global object's associated Document is not fully
     // active, then throw an "InvalidStateError" DOMException.
     const window = @import("html").user_activation.windowOfRealm(ctx) orelse return error.InvalidStateError;
     if (!fullyActive(window)) return error.InvalidStateError;
-    const instance = try CloseWatcher.init(ctx.allocator, ctx);
-    errdefer runtime.Instance.deinit(instance);
     // 2. Let closeWatcher be the result of establishing a close watcher
     // given this's relevant global object, with this's cancelAction,
     // closeAction and getEnabledState.
@@ -137,7 +138,6 @@ pub fn call_constructor(ctx: runtime.Context, options: webidl.Opt(dictionaries.C
     }
     // 4. Set this's internal close watcher to closeWatcher: the manager's
     // watcher of (.object, this).
-    return instance;
 }
 
 /// The requestClose() method steps: request to close this's internal close

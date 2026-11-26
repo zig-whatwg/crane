@@ -42,14 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &MediaSource.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for handle
@@ -173,8 +168,11 @@ pub fn call_removeSourceBuffer(instance: *runtime.Instance, sourceBuffer: *runti
 }
 
 /// Operation: isTypeSupported
+/// Spec: https://w3c.github.io/media-source/#dom-mediasource-istypesupported
+/// MSE §2.2: returns false when type is empty or the UA cannot decode media
+/// data for MediaSource (Crane does not yet implement MSE SourceBuffer decoding).
 pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = @"type";
-    return error.NotImplemented;
+    return false;
 }

@@ -54,7 +54,6 @@ const traversal = @import("dom").traversal;
 const live_collections = @import("dom").live_collections;
 const OriginRecord = @import("dom").origin_record.OriginRecord;
 const SandboxingFlagSet = @import("dom").sandboxing.SandboxingFlagSet;
-const StylesheetBlockingTracker = html_core.StylesheetBlockingTracker;
 const editing = html_core.editing;
 
 pub const State = Document.State;
@@ -867,7 +866,13 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     const origin: ?*OriginRecord = if (globalOfRealm(ctx)) |global| try @import("dom").global_settings.shareableOriginOf(global) else null;
     const instance = try Document.initWith(ctx.allocator, ctx, .{ .origin = origin, .ready_state = ._complete_ });
-    errdefer Document.deinit(instance);
+    // Until it is returned, the construction holds the node's creator's
+    // reference: a failed step frees it - uninserted, unwrapped - through
+    // Node's own teardown (dom.node_creation.releaseIfUnwrapped). Its deinit
+    // alone was a destructor, not a free: the slot and State stayed until
+    // the Browser ended (lane ctor1).
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    errdefer @import("dom").node_creation.releaseIfUnwrapped(instance, generation);
 
     // Set default values
     const internal = getInternal(instance) orelse return error.InvalidStateError;
@@ -6320,77 +6325,13 @@ pub fn addPrefetchHint(
 /// HTML 4.2.7: check this document's set, then its node navigable's
 /// immediate container document's set. Ancestors beyond that do not count.
 pub fn hasStyleSheetBlockingScripts(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance) orelse return false;
-    if (internal.stylesheet_tracker.hasBlockingStylesheet() or @import("dom").style_sheet_owners.blocksScripts(instance)) return true;
+    if (getInternal(instance) == null) return false;
+    if (@import("dom").style_sheet_owners.blocksScripts(instance)) return true;
     const window = (get_defaultView(instance) catch null) orelse return false;
     const container = @import("dom").navigable_container.of(window) orelse return false;
     const container_document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return false;
-    const container_internal = getInternal(container_document) orelse return false;
-    return container_internal.stylesheet_tracker.hasBlockingStylesheet() or @import("dom").style_sheet_owners.blocksScripts(container_document);
-}
-
-/// Get the stylesheet blocking tracker for direct manipulation
-/// Used by HTMLParser and link element processing to track stylesheet loads.
-pub fn getStylesheetTracker(instance: *runtime.Instance) ?*StylesheetBlockingTracker {
-    const internal = getInternal(instance) orelse return null;
-    return &internal.stylesheet_tracker;
-}
-
-/// Add a stylesheet to the blocking tracker
-/// Spec: HTML Standard § 4.2.4 "A link element that creates a style sheet"
-///
-/// Call this when a parser-inserted stylesheet link element starts loading.
-/// The id parameter should be unique (typically the resolved URL).
-pub fn addBlockingStylesheet(
-    instance: *runtime.Instance,
-    id: []const u8,
-    url: []const u8,
-    is_blocking: bool,
-) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.stylesheet_tracker.addStylesheet(id, url, is_blocking);
-}
-
-/// Mark a stylesheet as loaded
-/// Call this when a stylesheet finishes loading successfully.
-/// This may unblock pending script execution.
-pub fn markStylesheetLoaded(instance: *runtime.Instance, id: []const u8) void {
-    const internal = getInternal(instance) orelse return;
-    internal.stylesheet_tracker.markLoaded(id);
-}
-
-/// Mark a stylesheet as failed
-/// Call this when a stylesheet fails to load (network error, 404, etc.).
-/// Per spec, failed stylesheets should unblock scripts to prevent permanent hangs.
-pub fn markStylesheetFailed(instance: *runtime.Instance, id: []const u8) void {
-    const internal = getInternal(instance) orelse return;
-    internal.stylesheet_tracker.markFailed(id);
-}
-
-/// Remove a stylesheet from tracking
-/// Call this when a link element is removed from the document.
-pub fn removeBlockingStylesheet(instance: *runtime.Instance, id: []const u8) void {
-    const internal = getInternal(instance) orelse return;
-    internal.stylesheet_tracker.removeStylesheet(id);
-}
-
-/// Get the count of blocking stylesheets
-/// Useful for debugging and determining if scripts are being blocked.
-pub fn getBlockingStylesheetCount(instance: *runtime.Instance) usize {
-    const internal = getInternal(instance) orelse return 0;
-    return internal.stylesheet_tracker.getBlockingCount();
-}
-
-/// Set callback for when all blocking stylesheets are resolved
-/// This callback is invoked when the blocking count reaches zero.
-/// Can be used to resume deferred script execution.
-pub fn setStylesheetBlockingResolvedCallback(
-    instance: *runtime.Instance,
-    callback: StylesheetBlockingTracker.BlockingResolvedCallback,
-    context: ?*anyopaque,
-) void {
-    const internal = getInternal(instance) orelse return;
-    internal.stylesheet_tracker.setBlockingResolvedCallback(callback, context);
+    if (getInternal(container_document) == null) return false;
+    return @import("dom").style_sheet_owners.blocksScripts(container_document);
 }
 
 // =============================================================================

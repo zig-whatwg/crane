@@ -1,8 +1,9 @@
-//! Safari through safaridriver (W3C WebDriver): Safari has no headless mode
-//! and no way to open a page from its command line that leaves it
-//! automatable, so the runner starts safaridriver, makes a session, and sends
-//! the session to the page (WebDriver "New Session", "Navigate To", "Delete
-//! Session"). One session at a time - safaridriver allows no more.
+//! Browsers driven over W3C WebDriver: Safari (via safaridriver, one session
+//! at a time because Safari has no headless mode) and Ladybird Alpha (via its
+//! bundled `WebDriver --headless`). The runner starts the driver, creates a
+//! session matching the browser's name, navigates to the page, and deletes
+//! the session when the launch ends ("New Session", "Navigate To", "Delete
+//! Session").
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -25,6 +26,7 @@ pub fn request(gpa: Allocator, io: Io, port: u16, method: []const u8, path: []co
     var all: std.ArrayList(u8) = .empty;
     defer all.deinit(gpa);
     while (true) {
+        if (responseComplete(all.items)) break;
         reader.interface.fillMore() catch |err| switch (err) {
             error.EndOfStream => break,
             // A reset after the whole head arrived ends the response too: a
@@ -35,6 +37,43 @@ pub fn request(gpa: Allocator, io: Io, port: u16, method: []const u8, path: []co
         reader.interface.toss(reader.interface.buffered().len);
     }
     return parseResponse(gpa, all.items);
+}
+
+/// Whether `bytes` already holds the whole HTTP/1.1 response: Ladybird's
+/// WebDriver keeps HTTP/1.1 connections open even when `Connection: close`
+/// was sent, so waiting for EOF after `Content-Length` bytes arrived hangs
+/// forever.
+pub fn responseComplete(bytes: []const u8) bool {
+    const head_end = std.mem.indexOf(u8, bytes, "\r\n\r\n") orelse return false;
+    const head = bytes[0..head_end];
+    const rest = bytes[head_end + 4 ..];
+    var chunked = false;
+    var lines = std.mem.splitSequence(u8, head, "\r\n");
+    _ = lines.next();
+    while (lines.next()) |line| {
+        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        const name = line[0..colon];
+        const value = std.mem.trim(u8, line[colon + 1 ..], " \t");
+        if (std.ascii.eqlIgnoreCase(name, "content-length")) {
+            const n = std.fmt.parseInt(usize, value, 10) catch return false;
+            return rest.len >= n;
+        } else if (std.ascii.eqlIgnoreCase(name, "transfer-encoding") and std.ascii.eqlIgnoreCase(value, "chunked")) {
+            chunked = true;
+        }
+    }
+    if (!chunked) return false;
+    var at: usize = 0;
+    while (at < rest.len) {
+        const eol = std.mem.indexOfPos(u8, rest, at, "\r\n") orelse return false;
+        const size_text = rest[at..eol];
+        const semi = std.mem.indexOfScalar(u8, size_text, ';') orelse size_text.len;
+        const size = std.fmt.parseInt(usize, std.mem.trim(u8, size_text[0..semi], " "), 16) catch return false;
+        const start = eol + 2;
+        if (size == 0) return std.mem.indexOfPos(u8, rest, start, "\r\n") != null or (start + 2 <= rest.len and std.mem.eql(u8, rest[start .. start + 2], "\r\n"));
+        if (start + size + 2 > rest.len) return false;
+        at = start + size + 2;
+    }
+    return false;
 }
 
 pub const Response = struct {
@@ -92,17 +131,17 @@ pub fn sessionId(arena: Allocator, body: []const u8) ![]const u8 {
     return id.string;
 }
 
-/// A session on Safari through safaridriver on `port`.
+/// A WebDriver session on `port` (safaridriver for Safari, WebDriver for Ladybird).
 pub const Session = struct {
     gpa: Allocator,
     io: Io,
     port: u16,
     id: []const u8,
 
-    /// New Session, retried while safaridriver is still starting (up to
-    /// `wait_ms`).
-    pub fn create(arena: Allocator, io: Io, port: u16, wait_ms: u32) !Session {
-        const caps = "{\"capabilities\":{\"alwaysMatch\":{\"browserName\":\"safari\"}}}";
+    /// New Session for `browser_name` ("safari", "ladybird"), retried while
+    /// the driver is still starting (up to `wait_ms`).
+    pub fn create(arena: Allocator, io: Io, port: u16, browser_name: []const u8, wait_ms: u32) !Session {
+        const caps = try std.fmt.allocPrint(arena, "{{\"capabilities\":{{\"alwaysMatch\":{{\"browserName\":\"{s}\"}}}}}}", .{browser_name});
         var waited: u32 = 0;
         while (true) {
             const r = request(arena, io, port, "POST", "/session", caps) catch |err| {
@@ -160,11 +199,13 @@ test "a New Session response's id" {
 }
 
 /// A WebDriver stand-in: answers New Session, Navigate To and Delete Session,
-/// recording the paths it saw.
+/// recording the paths it saw and the New Session request body.
 const FakeDriver = struct {
     listener: Io.net.Server,
     seen: [3][64]u8 = undefined,
     seen_len: [3]usize = .{ 0, 0, 0 },
+    new_session_body: [256]u8 = undefined,
+    new_session_body_len: usize = 0,
     thread: std.Thread = undefined,
 
     fn serve(self: *FakeDriver) void {
@@ -182,6 +223,12 @@ const FakeDriver = struct {
             const n = @min(t.len, 64);
             @memcpy(self.seen[i][0..n], t[0..n]);
             self.seen_len[i] = n;
+            if (i == 0) {
+                var rbuf: [256]u8 = undefined;
+                const body_reader = req.readerExpectNone(&rbuf);
+                const got = body_reader.readSliceShort(&self.new_session_body) catch 0;
+                self.new_session_body_len = got;
+            }
             const body = if (i == 0) "{\"value\":{\"sessionId\":\"S1\",\"capabilities\":{}}}" else "{\"value\":null}";
             req.respond(body, .{ .keep_alive = false, .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }} }) catch return;
         }
@@ -192,16 +239,61 @@ test "a session against a WebDriver stand-in: new, navigate, delete" {
     const io = testing.io;
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
+    for ([_][]const u8{ "safari", "ladybird" }) |browser_name| {
+        const address: Io.net.IpAddress = .{ .ip4 = Io.net.Ip4Address.loopback(0) };
+        var fake: FakeDriver = .{ .listener = try address.listen(io, .{ .reuse_address = true }) };
+        defer fake.listener.deinit(io);
+        fake.thread = try std.Thread.spawn(.{}, FakeDriver.serve, .{&fake});
+        const session = try Session.create(arena.allocator(), io, fake.listener.socket.address.getPort(), browser_name, 1000);
+        try testing.expectEqualStrings("S1", session.id);
+        try session.navigate("http://127.0.0.1:1/x.html");
+        session.delete(testing.allocator);
+        fake.thread.join();
+        try testing.expectEqualStrings("/session", fake.seen[0][0..fake.seen_len[0]]);
+        try testing.expectEqualStrings("/session/S1/url", fake.seen[1][0..fake.seen_len[1]]);
+        try testing.expectEqualStrings("/session/S1", fake.seen[2][0..fake.seen_len[2]]);
+        const want_body = try std.fmt.allocPrint(arena.allocator(), "{{\"capabilities\":{{\"alwaysMatch\":{{\"browserName\":\"{s}\"}}}}}}", .{browser_name});
+        try testing.expectEqualStrings(want_body, fake.new_session_body[0..fake.new_session_body_len]);
+    }
+}
+
+test "responseComplete stops at Content-Length without waiting for EOF (keep-alive server)" {
+    try testing.expect(!responseComplete("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhel"));
+    try testing.expect(responseComplete("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"));
+    try testing.expect(!responseComplete("HTTP/1.1 200 OK\r\n\r\nhello"));
+    try testing.expect(!responseComplete("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n"));
+    try testing.expect(responseComplete("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\n\r\n"));
+
+    // A peer that sends Content-Length and keeps the socket open (as Ladybird's
+    // SerenityOS WebDriver does) must not hang `request`.
+    const io = testing.io;
     const address: Io.net.IpAddress = .{ .ip4 = Io.net.Ip4Address.loopback(0) };
-    var fake: FakeDriver = .{ .listener = try address.listen(io, .{ .reuse_address = true }) };
-    defer fake.listener.deinit(io);
-    fake.thread = try std.Thread.spawn(.{}, FakeDriver.serve, .{&fake});
-    const session = try Session.create(arena.allocator(), io, fake.listener.socket.address.getPort(), 1000);
-    try testing.expectEqualStrings("S1", session.id);
-    try session.navigate("http://127.0.0.1:1/x.html");
-    session.delete(testing.allocator);
-    fake.thread.join();
-    try testing.expectEqualStrings("/session", fake.seen[0][0..fake.seen_len[0]]);
-    try testing.expectEqualStrings("/session/S1/url", fake.seen[1][0..fake.seen_len[1]]);
-    try testing.expectEqualStrings("/session/S1", fake.seen[2][0..fake.seen_len[2]]);
+    var listener = try address.listen(io, .{ .reuse_address = true });
+    defer listener.deinit(io);
+    const KeepAlive = struct {
+        srv: *Io.net.Server,
+        done: std.atomic.Value(bool) = .init(false),
+        fn run(self: *@This()) void {
+            const stream = self.srv.accept(testing.io) catch return;
+            defer stream.close(testing.io);
+            var rbuf: [1024]u8 = undefined;
+            var reader = stream.reader(testing.io, &rbuf);
+            _ = reader.interface.peekGreedy(1) catch {};
+            var wbuf: [256]u8 = undefined;
+            var writer = stream.writer(testing.io, &wbuf);
+            writer.interface.writeAll("HTTP/1.1 200 OK\r\nContent-Length: 16\r\n\r\n{\"value\":\"done\"}") catch return;
+            writer.interface.flush() catch return;
+            while (!self.done.load(.acquire)) Io.sleep(testing.io, .fromMilliseconds(10), .awake) catch {};
+        }
+    };
+    var peer: KeepAlive = .{ .srv = &listener };
+    const t = try std.Thread.spawn(.{}, KeepAlive.run, .{&peer});
+    defer {
+        peer.done.store(true, .release);
+        t.join();
+    }
+    const r = try request(testing.allocator, io, listener.socket.address.getPort(), "GET", "/status", null);
+    defer testing.allocator.free(r.body);
+    try testing.expectEqual(@as(u16, 200), r.status);
+    try testing.expectEqualStrings("{\"value\":\"done\"}", r.body);
 }

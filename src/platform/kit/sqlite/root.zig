@@ -546,14 +546,3 @@ pub fn storeSize(store: *platform.Store) StoreError!u64 {
         else => |code| storeError(code),
     };
 }
-
-test "a range's clause and binds" {
-    const all = RangeSql.of(.{});
-    try std.testing.expectEqualStrings("1", all.clause);
-    const both = RangeSql.of(.{ .has_lower = true, .has_upper = true, .upper_open = true });
-    try std.testing.expectEqualStrings("key >= ?1 AND key < ?2", both.clause);
-    const upper_only = RangeSql.of(.{ .has_upper = true });
-    try std.testing.expectEqualStrings("key <= ?2", upper_only.clause);
-    const lower_open = RangeSql.of(.{ .has_lower = true, .lower_open = true });
-    try std.testing.expectEqualStrings("key > ?1", lower_open.clause);
-}

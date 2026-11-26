@@ -28,10 +28,6 @@ const WorkerType = workers.WorkerType;
 const same_object = @import("dom").same_object;
 const OriginRecord = @import("dom").origin_record.OriginRecord;
 
-// Import event loop for timer support
-const event_loop_mod = html_core.event_loop;
-const EventLoop = event_loop_mod.EventLoop;
-
 pub const State = WorkerGlobalScope.State;
 
 pub const ImplError = error{
@@ -113,10 +109,6 @@ pub const InternalState = struct {
         value: *runtime.Instance,
         edge: same_object.Traced = .{ .slot = .{ .name = "indexedDB" } },
     } = null,
-
-    /// Reference to the worker's event loop (for timer APIs)
-    /// This is set when the worker is fully initialized with an event loop.
-    event_loop: ?*EventLoop = null,
 
     /// Worker script URL
     url: []const u8 = "",
@@ -219,12 +211,6 @@ pub const InternalState = struct {
         if (self.internal_navigator) |nav| {
             nav.deinit();
         }
-        // Note: event_loop is not owned, so we don't deinit it
-    }
-
-    /// Set the event loop reference (called after worker initialization)
-    pub fn setEventLoop(self: *InternalState, loop: *EventLoop) void {
-        self.event_loop = loop;
     }
 
     /// Mark the worker as closing
@@ -579,25 +565,10 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Set the event loop reference for this WorkerGlobalScope.
-///
-/// Must be called after initialization to wire up timer APIs (setTimeout, setInterval).
-/// The WorkerAgent or WorkerContext should call this after creating the global scope.
-///
-/// Spec: HTML Standard § 10.1.4 Worker Event Loops
-/// "Each worker has an event loop that is responsible for executing tasks"
-pub fn setEventLoop(instance: *runtime.Instance, loop: *EventLoop) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.setEventLoop(loop);
-    }
-}
-
 /// Close the worker global scope.
 ///
-/// This marks the worker as closing and stops the event loop.
-/// After calling close(), the worker will not accept new tasks and
-/// will terminate once the current task completes.
+/// This marks the worker as closing. After calling close(), the worker will
+/// not accept new tasks and will terminate once the current task completes.
 ///
 /// Spec: HTML Standard § 10.1.5 "Terminating a worker"
 /// "Set worker global scope's closing flag to true."
@@ -605,10 +576,6 @@ pub fn close(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.setClosing(true);
-        // Stop the event loop if running
-        if (internal.event_loop) |loop| {
-            loop.stop();
-        }
     }
 }
 
@@ -624,18 +591,6 @@ pub fn isClosing(instance: *runtime.Instance) bool {
         return internal.isClosing();
     }
     return false;
-}
-
-/// Run the event loop (convenience method for testing).
-///
-/// Spins the event loop to process pending tasks.
-pub fn runEventLoop(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.event_loop) |loop| {
-            loop.run() catch {};
-        }
-    }
 }
 
 /// Getter for self

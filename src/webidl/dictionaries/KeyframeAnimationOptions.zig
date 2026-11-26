@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const typedefs = @import("typedefs");
 const KeyframeEffectOptions = @import("KeyframeEffectOptions.zig").KeyframeEffectOptions;
 
@@ -13,7 +14,7 @@ pub const KeyframeAnimationOptions = struct {
     base: KeyframeEffectOptions,
 
     id: ?runtime.DOMString = null,
-    timeline: ?*runtime.Instance = null,
+    timeline: webidl.Opt(?*runtime.Instance) = .notPassed(),
     rangeStart: ?typedefs.TimelineRangeOffsetOrCSSNumericValueOrCSSKeywordValueOrDOMString = null,
     rangeEnd: ?typedefs.TimelineRangeOffsetOrCSSNumericValueOrCSSKeywordValueOrDOMString = null,
     trigger: ?*runtime.Instance = null,

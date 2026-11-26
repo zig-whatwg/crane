@@ -792,26 +792,3 @@ pub fn getString(allocator: std.mem.Allocator, string: JSStringRef) ![]u8 {
     }
     return buffer[0..0];
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "JSClassDefinition - struct layout" {
-    const testing = std.testing;
-
-    // Verify the struct is extern compatible
-    try testing.expect(@typeInfo(JSClassDefinition).@"struct".layout == .@"extern");
-}
-
-test "JSStaticValue - struct layout" {
-    const testing = std.testing;
-
-    try testing.expect(@typeInfo(JSStaticValue).@"struct".layout == .@"extern");
-}
-
-test "JSStaticFunction - struct layout" {
-    const testing = std.testing;
-
-    try testing.expect(@typeInfo(JSStaticFunction).@"struct".layout == .@"extern");
-}

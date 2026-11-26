@@ -1,0 +1,4 @@
+# tools/src_test_reach.zig: src/ files with test blocks no test step runs, each with its
+# count of unrun blocks and why. Only goes down: `zig build check-src-tests -j2 -- --update`
+# after wiring or deleting some refuses a new file or a rise. A new line's reason is the
+# integrator's to review.

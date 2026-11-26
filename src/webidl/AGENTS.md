@@ -193,6 +193,24 @@ passed with `interfaces.X.initWith(.., .{ .name = value })`. An impl still
 defining `init`/`deinit` chains by hand, and the chain honours it
 ([lesson](../../docs/lessons/codegen-the-generated-interface-is-the-class.md)).
 
+**WebIDL constructors are owned by the generated interface.** An impl's
+`call_constructor` takes the object the generated constructor made —
+`pub fn call_constructor(instance: *runtime.Instance, ...) !void` (the **this
+form**, WebIDL 3.7.1 steps 1.8–1.9). The generated `interfaces.X.call_constructor`
+makes `instance` via `init(ctx.allocator, ctx)`, guards it with
+`errdefer runtime.gc.releaseFailedConstruction(instance)` (freeing destructor
+and storage when unwrapped, or leaving it to its wrapper if the steps wrapped
+it), runs the impl's steps, and returns it; the impl never allocates or releases
+`instance`. Only constructors that cannot create the object before their steps
+— nodes (refcounted, freed via `dom.node_creation.releaseIfUnwrapped`),
+`initWith`/`construction_args` types, and shared stream factories — stay in the
+**factory form** (`ctx: runtime.Context -> !*runtime.Instance`), and they must
+free every failure path whole, never with a bare destructor. `zig build
+lint-constructors` (part of `zig build test`, `tools/lint_constructors.zig`)
+enforces this: receiver double-frees are always an error, bare destructors are
+held at 0, and `tools/constructors_baseline.txt` ratchets the remaining
+factories ([lesson](../../docs/lessons/codegen-the-generated-constructor-owns-a-failed-construction.md)).
+
 **There is no reference left to convert.** The debt went to zero in lane
 impls8 (2026-11-16) and tools/impls_boundary_baseline.txt was deleted with it;
 lint-impls refuses that file if it comes back.

@@ -38,6 +38,7 @@ pub const isBeingRendered = engine.isBeingRendered;
 pub const reportMediaQueryChanges = engine.reportMediaQueryChanges;
 pub const scopeSheets = engine.scopeSheets;
 pub const slotAssignmentChanged = engine.slotAssignmentChanged;
+pub const dynamicStateChanged = engine.dynamicStateChanged;
 pub const inlineValue = inline_style.inlineValue;
 
 /// What a computed CSSStyleDeclaration is of (getComputedStyle's construction
@@ -115,4 +116,5 @@ test {
     _ = engine;
     _ = ua_sheet;
     _ = matched_properties_cache;
+    _ = css_attributes;
 }

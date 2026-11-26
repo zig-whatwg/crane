@@ -179,8 +179,20 @@ pub const TextDecoder = struct {
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
     pub fn call_constructor(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(TextDecoderOptions)) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try TextDecoderImpl.call_constructor(ctx, label, options);
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(TextDecoderImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try TextDecoderImpl.call_constructor(instance, label, options);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try TextDecoderImpl.call_constructor(ctx, label, options);
+        }
     }
 
     pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {

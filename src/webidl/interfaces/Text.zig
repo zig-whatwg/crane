@@ -24,12 +24,11 @@ const GeometryNode = @import("typedefs").GeometryNode;
 const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const WritableStream = @import("interfaces").WritableStream;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const Node = @import("interfaces").Node;
@@ -39,6 +38,7 @@ const DOMPoint = @import("interfaces").DOMPoint;
 const Event = @import("interfaces").Event;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const DOMString = @import("typedefs").DOMString;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 
 pub const Text = struct {
     pub const Meta = struct {
@@ -253,8 +253,20 @@ pub const Text = struct {
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
     pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try TextImpl.call_constructor(ctx, data);
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(TextImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try TextImpl.call_constructor(instance, data);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try TextImpl.call_constructor(ctx, data);
+        }
     }
 
     pub fn get_wholeText(instance: *runtime.Instance) anyerror!runtime.DOMString {

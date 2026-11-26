@@ -53,10 +53,11 @@ fn faceOf(instance: *runtime.Instance) !*fonts.Face {
 
 /// Font Loading 3 §2.1 steps 1–3. Invalid syntax rejects loaded rather
 /// than throwing from construction; allocation failures remain errors.
-pub fn call_constructor(ctx: runtime.Context, family: typedefs.CSSOMString, source: typedefs.CSSOMStringOrBufferSource, descriptors: webidl.Opt(dictionaries.FontFaceDescriptors)) !*runtime.Instance {
-    const instance = try FontFace.init(ctx.allocator, ctx);
-    errdefer runtime.Instance.deinit(instance);
-    if (!ctx.isWindow()) return instance;
+pub fn call_constructor(instance: *runtime.Instance, family: typedefs.CSSOMString, source: typedefs.CSSOMStringOrBufferSource, descriptors: webidl.Opt(dictionaries.FontFaceDescriptors)) !void {
+    // The generated constructor made `instance` (WebIDL 3.7.1 step 1.8)
+    // and frees it whole when a step fails (lane ctor1).
+    const ctx = instance.ctx;
+    if (!ctx.isWindow()) return;
     const face = try faceOf(instance);
     // §2.1 makes [[FontStatusPromise]] here and rejects it for a syntax
     // error; Chrome, Firefox and Safari make the promise object only when
@@ -159,13 +160,12 @@ pub fn call_constructor(ctx: runtime.Context, family: typedefs.CSSOMString, sour
             } else {
                 const bytes = buffer.asBytes() catch {
                     try face.reject(.syntax);
-                    return instance;
+                    return;
                 };
                 try face.startBuffer(bytes);
             }
         },
     }
-    return instance;
 }
 
 fn descriptor(instance: *runtime.Instance, comptime name: []const u8) !typedefs.CSSOMString {

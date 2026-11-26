@@ -43,9 +43,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#pagetransitionevent
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PageTransitionEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &PageTransitionEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PageTransitionEventInit)) !void {
+    const ctx = instance.ctx;
     const state = instance.getState(State);
     const init_dict = if (eventInitDict.was_passed) eventInitDict.value else dictionaries.PageTransitionEventInit{ .base = .{} };
     // What deinit reads, should anything below fail.
@@ -68,8 +67,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // The inherited Event internal state and its initialized flag: without
     // them dispatchEvent throws InvalidStateError.
     try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
-
-    return instance;
 }
 
 /// Getter for persisted

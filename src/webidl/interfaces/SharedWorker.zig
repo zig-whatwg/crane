@@ -12,17 +12,17 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AbstractWorker = @import("mixins").AbstractWorker;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const EventHandler = @import("typedefs").EventHandler;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const TrustedScriptURLOrUSVString = @import("typedefs").TrustedScriptURLOrUSVString;
+const DOMStringOrSharedWorkerOptions = @import("typedefs").DOMStringOrSharedWorkerOptions;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const SharedWorkerOptions = @import("dictionaries").SharedWorkerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
-const MessagePort = @import("interfaces").MessagePort;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const DOMString = @import("typedefs").DOMString;
-const EventHandler = @import("typedefs").EventHandler;
+const MessagePort = @import("interfaces").MessagePort;
 
 pub const SharedWorker = struct {
     pub const Meta = struct {
@@ -183,9 +183,21 @@ pub const SharedWorker = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, scriptURL: TrustedScriptURLOrUSVString, options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try SharedWorkerImpl.call_constructor(ctx, scriptURL, options);
+    pub fn call_constructor(ctx: runtime.Context, scriptURL: TrustedScriptURLOrUSVString, options: webidl.Opt(DOMStringOrSharedWorkerOptions)) !*runtime.Instance {
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(SharedWorkerImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try SharedWorkerImpl.call_constructor(instance, scriptURL, options);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try SharedWorkerImpl.call_constructor(ctx, scriptURL, options);
+        }
     }
 
     pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {

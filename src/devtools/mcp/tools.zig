@@ -82,10 +82,13 @@ const network_tools = @import("tools/network.zig");
 const input_tools = @import("tools/input.zig");
 const snapshot_tools = @import("tools/snapshot.zig");
 const emulation_tools = @import("tools/emulation.zig");
+const logpoint_tools = @import("tools/logpoints.zig");
+const memory_tools = @import("tools/memory.zig");
+const logpoints = @import("logpoints.zig");
 
 /// Every tool Crane offers (tools/list orders them as the copied
 /// definitions do).
-pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list ++ network_tools.list ++ input_tools.list ++ snapshot_tools.list ++ emulation_tools.list);
+pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list ++ network_tools.list ++ input_tools.list ++ snapshot_tools.list ++ emulation_tools.list ++ logpoint_tools.list ++ memory_tools.list);
 
 /// The tools/list JSON array for `all`, from the copied definitions.
 pub fn listJson(allocator: Allocator) ![]u8 {
@@ -158,6 +161,12 @@ pub fn disabled(name: []const u8) bool {
     return std.mem.indexOf(u8, copied, needle) != null;
 }
 
+// The tool files whose own tests src-devtools runs (lane core1): Zig
+// collects a file's test blocks only when something analyzes its import.
+test {
+    _ = script;
+}
+
 test "disabled: a copied tool off by default, not one offered by default or unknown" {
     try std.testing.expect(disabled("mock_network"));
     try std.testing.expect(disabled("install_extension"));
@@ -211,7 +220,10 @@ pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: 
             response.error_message = if (id != null) "No page found" else "No page selected";
             return try response.finish(session);
         };
+        // McpPage.init: focused-page emulation, then the DevTools universe.
         try pages.emulateFocus(&ctx, resolved);
+        try logpoints.initUniverse(session, resolved);
+        try logpoint_tools.syncSourceMaps(&ctx, resolved);
         if (tool.set_page) response.page = resolved;
         if (tool.blocked_by_dialog) if (resolved.dialog) |d| {
             response.error_message = try std.fmt.allocPrint(arena, "A dialog is open ({s}: {s}).", .{ d.type, d.message });
@@ -225,6 +237,9 @@ pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: 
         },
         error.OutOfMemory => return error.OutOfMemory,
         else => response.error_message = try std.fmt.allocPrint(arena, "{t}", .{err}),
+    };
+    if (page) |resolved| if (!resolved.closed) {
+        logpoint_tools.syncSourceMaps(&ctx, resolved) catch |err| if (err == error.OutOfMemory) return error.OutOfMemory;
     };
     try session.initPages();
     return try response.finish(session);

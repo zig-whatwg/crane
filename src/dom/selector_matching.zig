@@ -386,17 +386,19 @@ const parse_stack_bytes = 8192;
 // The style engine's matching (src/dom/style/)
 // ============================================================================
 
-/// What a style match read beyond the tree: whether any pseudo-class it
-/// evaluated answers from per-element state that can change with no DOM
-/// mutation - a control's checkedness or value, a custom element's
-/// definition or states, a dialog's or popover's open state, a media
-/// element's playback (tmp/plans/style-design.md section 5.3). A style that
-/// read such state is not reused. Blink records the same during matching
-/// (Element's "affected by" flags) to invalidate precisely; this records it
-/// to not cache at all. The document singletons (focus, hover, active,
-/// target) are not recorded: the style engine keys its cache on them.
+/// What a style match read beyond the DOM tree: document singleton states
+/// (focus, hover, active, target), matching Blink's Element AffectedBy*
+/// flags so moving focus/hover/active/target only invalidates elements whose
+/// matching actually consulted that singleton (or whose own focus flipped).
+/// Per-element dynamic states (form controls, dialog/popover, custom
+/// elements, media) invalidate via dom.style.dynamicStateChanged /
+/// observeTopLayer / observeFocusVisible rather than marking styles volatile.
 pub const StateReads = struct {
     @"volatile": bool = false,
+    any_focus: bool = false,
+    any_hover: bool = false,
+    any_active: bool = false,
+    any_target: bool = false,
 };
 
 /// Matching a style rule's selectors against one element (Selectors 4 17.3
@@ -674,39 +676,6 @@ fn rootOf(node: *NodeBase) *NodeBase {
     return root;
 }
 
-/// Section 5.3's table: whether `kind`, evaluated on an element with
-/// `data`, can change its answer with no tree mutation (for elements where
-/// it can matter at all, so that a universal UA rule such as `:autofill`
-/// does not make every style volatile).
-fn readsVolatileState(kind: PseudoClassKind, data: ElementData) bool {
-    const local = data.localName();
-    const html = namespaceIs(data, html_namespace);
-    const custom = std.mem.indexOfScalar(u8, local, '-') != null or data.findAttribute(null, "is") != null;
-    return switch (kind) {
-        // A control's checkedness, value, validity and autofill state; a
-        // form-associated custom element's validity.
-        .Checked, .Indeterminate, .Default, .Valid, .Invalid, .UserValid, .UserInvalid, .InRange, .OutOfRange, .PlaceholderShown, .Autofill, .ReadOnly, .ReadWrite => custom or (html and isFormish(local)),
-        .Defined, .State => custom,
-        // A details element's open state is its attribute (a mutation); a
-        // dialog's, a select's and an input's picker are not.
-        .Open => html and (std.mem.eql(u8, local, "dialog") or std.mem.eql(u8, local, "select") or std.mem.eql(u8, local, "input")),
-        .PopoverOpen => data.findAttribute(null, "popover") != null,
-        // A fullscreen element is :modal too (HTML 4.16.3); that answer
-        // changes with the top layer, as :fullscreen's does (below).
-        .Modal => html and std.mem.eql(u8, local, "dialog"),
-        // :fullscreen changes with the top layer, whose revision moves the
-        // style engine's generation (StyleEngine.observeTopLayer): every
-        // cached style is recomputed then, so no element's is volatile -
-        // and the universal UA rule `*|*:not(:root):fullscreen` would make
-        // every element's so.
-        .Fullscreen => false,
-        .Playing, .Paused, .Seeking, .Buffering, .Stalled, .Muted, .VolumeLocked => html and (std.mem.eql(u8, local, "audio") or std.mem.eql(u8, local, "video")),
-        // dir=auto on a text control reads its value.
-        .Dir => html and (std.mem.eql(u8, local, "input") or std.mem.eql(u8, local, "textarea")),
-        else => false,
-    };
-}
-
 /// HTML 4.10.7 / 15.5.16: an HTML select renders as a list box when it has
 /// the `multiple` attribute or a display size above 1, and as a drop-down
 /// box otherwise (Blink HTMLSelectElement::UsesMenuList). The display size
@@ -721,13 +690,6 @@ pub fn selectKindOf(data: ElementData) SelectKind {
         if (n > 1) return .list_box;
     }
     return .drop_down;
-}
-
-fn isFormish(local: []const u8) bool {
-    for ([_][]const u8{ "input", "select", "textarea", "button", "option", "optgroup", "fieldset", "form", "output", "object", "progress", "meter", "datalist" }) |name| {
-        if (std.mem.eql(u8, local, name)) return true;
-    }
-    return false;
 }
 
 /// Selectors 4 17.1 "parse a selector"; failure is DOM's SyntaxError.
@@ -1386,14 +1348,18 @@ const Matcher = struct {
     // Pseudo-classes
     // ========================================================================
 
-    /// matchesPseudoClass, recording for the style engine whether the
-    /// answer read state that can change without a tree mutation.
+    /// matchesPseudoClass, recording for the style engine which document
+    /// singletons were consulted so unaffected elements stay cached across
+    /// focus/hover/active/target moves (Blink's AffectedBy* flags).
     fn matchesPseudoClassRead(self: *const Matcher, node: *NodeBase, data: ElementData, kind: PseudoClassKind) bool {
         if (self.state_reads) |reads| {
-            // :focus-visible is not volatile: what it reads beyond the tree
-            // and the focused element moves a revision the style engine
-            // pulls (StyleEngine.observeFocusVisible).
-            if (!reads.@"volatile" and readsVolatileState(kind, data)) reads.@"volatile" = true;
+            switch (kind) {
+                .Focus, .FocusWithin, .FocusVisible => reads.any_focus = true,
+                .Hover => reads.any_hover = true,
+                .Active => reads.any_active = true,
+                .Target => reads.any_target = true,
+                else => {},
+            }
         }
         return self.matchesPseudoClass(node, data, kind);
     }

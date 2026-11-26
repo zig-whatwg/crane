@@ -13,17 +13,17 @@ const dictionaries = @import("dictionaries");
 const XMLHttpRequestEventTarget = @import("interfaces").XMLHttpRequestEventTarget;
 const Document = @import("interfaces").Document;
 const XMLHttpRequestResponseType = @import("enums").XMLHttpRequestResponseType;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const ByteString = @import("typedefs").ByteString;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const ByteString = @import("typedefs").ByteString;
 const XMLHttpRequestUpload = @import("interfaces").XMLHttpRequestUpload;
 const USVString = @import("typedefs").USVString;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
 const DocumentOrXMLHttpRequestBodyInit = @import("typedefs").DocumentOrXMLHttpRequestBodyInit;
 const PrivateToken = @import("dictionaries").PrivateToken;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -304,8 +304,20 @@ pub const XMLHttpRequest = struct {
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
     pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try XMLHttpRequestImpl.call_constructor(ctx);
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(XMLHttpRequestImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try XMLHttpRequestImpl.call_constructor(instance);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try XMLHttpRequestImpl.call_constructor(ctx);
+        }
     }
 
     const event_handlers = @import("dom").event_handlers;

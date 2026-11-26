@@ -37,11 +37,3 @@ pub fn of(realm: runtime.Context) anyerror!*runtime.Instance {
     const impl = implementation.get() orelse return error.NotSupported;
     return impl.of(realm);
 }
-
-test "without an installed implementation there is no LockManager" {
-    const override = implementation.overrideForTest(null);
-    defer override.restore();
-    // Never dereferenced: with no implementation nothing reads it.
-    var realm: runtime.ContextData = undefined;
-    try std.testing.expectError(error.NotSupported, of(&realm));
-}

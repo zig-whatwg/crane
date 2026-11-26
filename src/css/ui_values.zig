@@ -106,18 +106,23 @@ pub fn consumeCaretColor(options: properties.ParseOptions, stream: *Stream) Allo
 
 /// Q46/Q59: getComputedStyle exposes the resolved first color. An omitted
 /// second color is auto, and an explicit second auto is omitted here only.
-pub fn serializeCaretResolved(value: Value, context: values.Color.Context, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+/// In forced colors mode (`force`), non-system colors resolve to the forced
+/// current color (CSS Color Adjustment 1 §3.1).
+pub fn serializeCaretResolved(value: Value, context: values.Color.Context, force: bool, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
     if (value == .caret_pair) {
-        try serializeAutoColorResolved(value.caret_pair.first, context, out, allocator);
+        try serializeAutoColorResolved(value.caret_pair.first, context, force, out, allocator);
         if (!value.caret_pair.second.isKeyword(.auto)) {
             try out.append(allocator, ' ');
-            try serializeAutoColorResolved(value.caret_pair.second, context, out, allocator);
+            try serializeAutoColorResolved(value.caret_pair.second, context, force, out, allocator);
         }
-    } else try serializeAutoColorResolved(value, context, out, allocator);
+    } else try serializeAutoColorResolved(value, context, force, out, allocator);
 }
 
-fn serializeAutoColorResolved(value: Value, context: values.Color.Context, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
-    const color: values.Color = if (value == .color) value.color else .current;
+fn serializeAutoColorResolved(value: Value, context: values.Color.Context, force: bool, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+    const color: values.Color = if (value == .color) blk: {
+        if (force and !value.color.isSystemColor()) break :blk .current;
+        break :blk value.color;
+    } else .current;
     const resolved = try color.resolveComputed(allocator, context);
     defer resolved.release();
     try resolved.serializeComputed(out, allocator);

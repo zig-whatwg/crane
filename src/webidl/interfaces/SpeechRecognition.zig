@@ -11,17 +11,17 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const AvailabilityStatus = @import("enums").AvailabilityStatus;
 const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
 const SpeechRecognitionOptions = @import("dictionaries").SpeechRecognitionOptions;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const SpeechGrammarList = @import("interfaces").SpeechGrammarList;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
 const SpeechRecognitionPhrase = @import("interfaces").SpeechRecognitionPhrase;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -273,8 +273,20 @@ pub const SpeechRecognition = struct {
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
     pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try SpeechRecognitionImpl.call_constructor(ctx);
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(SpeechRecognitionImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try SpeechRecognitionImpl.call_constructor(instance);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try SpeechRecognitionImpl.call_constructor(ctx);
+        }
     }
 
     pub fn get_grammars(instance: *runtime.Instance) anyerror!*runtime.Instance {

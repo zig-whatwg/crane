@@ -864,3 +864,9 @@ pub const identity: platform.Identity = .{
         else => .memory,
     },
 };
+
+// The part's own tests, for kit_posix (build.zig; lane core1): Zig collects a
+// file's test blocks only when something analyzes its import.
+test {
+    _ = devtools_transport;
+}

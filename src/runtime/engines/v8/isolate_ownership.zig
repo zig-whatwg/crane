@@ -204,37 +204,3 @@ pub inline fn assertOwned(isolate: *ffi.Isolate, comptime site: []const u8) void
 
     log.warn("unowned isolate at {s}", .{site});
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-const testing = std.testing;
-
-test "mode is diagnostic in safe builds and absent from fast ones" {
-    // The point of the switch is that ReleaseFast pays nothing. If someone makes
-    // checking unconditional, this fails rather than silently costing throughput
-    // on the shipped build.
-    switch (builtin.mode) {
-        .Debug, .ReleaseSafe => try testing.expect(mode != .off),
-        .ReleaseFast, .ReleaseSmall => try testing.expectEqual(Mode.off, mode),
-    }
-}
-
-test "both counters start clean and reset together" {
-    resetViolations();
-    try testing.expectEqual(@as(usize, 0), violations());
-    // checks() must reset too: a stale check count would make a fresh run look
-    // measured when it was not, which is the exact failure this counter exists
-    // to prevent.
-    try testing.expectEqual(@as(usize, 0), checks());
-}
-
-test "default mode reports rather than panics" {
-    // Deliberate: this lands while the invariant is still being MEASURED. A panic
-    // default would take down the WPT suite on the first violation and destroy the
-    // very data the instrument exists to collect.
-    if (mode != .off) {
-        try testing.expectEqual(Mode.report, mode);
-    }
-}

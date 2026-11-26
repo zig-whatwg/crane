@@ -132,9 +132,10 @@ fn usability(instance: *runtime.Instance) dom.image_sources.Usability {
 }
 
 /// new OffscreenCanvas(width, height).
-pub fn call_constructor(ctx: runtime.Context, width: u64, height: u64) !*runtime.Instance {
-    const instance = try OffscreenCanvas.init(ctx.allocator, ctx);
-    errdefer OffscreenCanvas.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, width: u64, height: u64) !void {
+    // The generated constructor made `instance` (WebIDL 3.7.1 step 1.8)
+    // and frees it whole when a step fails (lane ctor1).
+    const ctx = instance.ctx;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // 1-3. A transparent black bitmap of width x height (nothing to store
     //      until a context draws), and the width and height.
@@ -144,14 +145,13 @@ pub fn call_constructor(ctx: runtime.Context, width: u64, height: u64) !*runtime
     // 6-7. A Window's document element gives its language and
     //      directionality instead.
     if (documentElementOf(ctx)) |element| {
-        const language = dom.selector_matching.languageOf(dom.instance_bridge.getNodeBase(element) orelse return instance);
+        const language = dom.selector_matching.languageOf(dom.instance_bridge.getNodeBase(element) orelse return);
         internal.language = try ctx.allocator.dupe(u8, language);
         internal.direction = switch (html.form_associated.directionality(element)) {
             .ltr => .ltr,
             .rtl => .rtl,
         };
     }
-    return instance;
 }
 
 /// The document element of the associated Document of `ctx`'s global, when

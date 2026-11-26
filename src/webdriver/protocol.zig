@@ -4,7 +4,7 @@
 //! Based on W3C WebDriver specification.
 
 const std = @import("std");
-const clock = @import("clock");
+const platform = @import("platform");
 const Allocator = std.mem.Allocator;
 
 /// WebDriver error codes per W3C spec
@@ -257,12 +257,15 @@ pub const SessionInfo = struct {
 /// Generate a random session ID (UUID v4 format)
 pub fn generateSessionId(allocator: Allocator) ![]const u8 {
     var buf: [36]u8 = undefined;
-    var prng = std.Random.DefaultPrng.init(@intCast(clock.wallMillis()));
-    const random = prng.random();
 
-    // Generate random bytes
+    // WebDriver 2 §8 "create a session" step 1, "generating a UUID": RFC
+    // 4122 §4.4, "Creating a UUID From Truly Random or Pseudo-Random
+    // Numbers" - 122 random bits from the platform's entropy, as WebCrypto's
+    // randomUUID takes them. A generator seeded from the wall clock in
+    // milliseconds gave every session made within one millisecond the same
+    // id (lane core1, B12).
     var bytes: [16]u8 = undefined;
-    random.bytes(&bytes);
+    platform.fillRandom(&bytes);
 
     // Set version (4) and variant (RFC 4122)
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
@@ -289,6 +292,30 @@ test "generateSessionId produces valid UUID" {
     try std.testing.expectEqual(@as(u8, '-'), id[13]);
     try std.testing.expectEqual(@as(u8, '-'), id[18]);
     try std.testing.expectEqual(@as(u8, '-'), id[23]);
+}
+
+test "sessions created back to back get distinct version-4 UUIDs" {
+    // WebDriver 2 §8 "create a session" step 1: "Let session id be the result
+    // of generating a UUID" - RFC 4122 "Creating a UUID From Truly Random or
+    // Pseudo-Random Numbers" (§2 Terminology). Seeded from the wall clock in
+    // milliseconds, every session made within one millisecond got the same id
+    // (lane core1, B12).
+    const allocator = std.testing.allocator;
+    var ids: [64][]const u8 = undefined;
+    var made: usize = 0;
+    defer for (ids[0..made]) |id| allocator.free(id);
+    while (made < ids.len) : (made += 1) ids[made] = try generateSessionId(allocator);
+    for (ids, 0..) |id, i| {
+        // 8-4-4-4-12 lowercase hex, version 4, variant 10xx (RFC 4122 4.4).
+        try std.testing.expectEqual(@as(usize, 36), id.len);
+        for (id, 0..) |c, at| switch (at) {
+            8, 13, 18, 23 => try std.testing.expectEqual(@as(u8, '-'), c),
+            else => try std.testing.expect(std.ascii.isDigit(c) or (c >= 'a' and c <= 'f')),
+        };
+        try std.testing.expectEqual(@as(u8, '4'), id[14]);
+        try std.testing.expect(std.mem.indexOfScalar(u8, "89ab", id[19]) != null);
+        for (ids[0..i]) |earlier| try std.testing.expect(!std.mem.eql(u8, earlier, id));
+    }
 }
 
 test "Response.success serializes correctly" {

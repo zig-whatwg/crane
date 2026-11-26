@@ -1,0 +1,2 @@
+window.inlineMapped = v => { const res = v + 10; return res; };
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInNyYy9pbmxpbmUudHMiXSwic291cmNlc0NvbnRlbnQiOlsiLy8gaDFcbi8vIGgyXG53aW5kb3cuaW5saW5lTWFwcGVkID0gKHY6IG51bWJlcikgPT4ge1xuICBjb25zdCByZXMgPSB2ICsgMTA7XG4gIHJldHVybiByZXM7XG59O1xuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBQUVBLDZCQUNFLG9CQUNBIn0=

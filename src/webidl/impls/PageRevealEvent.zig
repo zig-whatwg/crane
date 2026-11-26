@@ -61,9 +61,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor: DOM "inner event creation steps" for the Event part, then
 /// viewTransition from the dictionary.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PageRevealEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &PageRevealEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PageRevealEventInit)) !void {
+    const ctx = instance.ctx;
     const state = instance.getState(State);
     const init_dict = if (eventInitDict.was_passed) eventInitDict.value else dictionaries.PageRevealEventInit{ .base = .{} };
     // What deinit reads, should anything below fail.
@@ -91,8 +90,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // The inherited Event internal state and its initialized flag: without
     // them dispatchEvent throws InvalidStateError.
     try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
-
-    return instance;
 }
 
 /// "The viewTransition attribute must return the value it was initialized

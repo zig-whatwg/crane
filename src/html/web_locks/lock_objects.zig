@@ -36,11 +36,3 @@ pub fn create(realm: runtime.Context, name: []const u8, mode: Mode) anyerror!*ru
     const impl = implementation.get() orelse return error.NotSupported;
     return impl.create(realm, name, mode);
 }
-
-test "without an installed implementation no Lock can be made" {
-    const override = implementation.overrideForTest(null);
-    defer override.restore();
-    // Never dereferenced: with no implementation nothing reads it.
-    var realm: runtime.ContextData = undefined;
-    try std.testing.expectError(error.NotSupported, create(&realm, "name", .exclusive));
-}

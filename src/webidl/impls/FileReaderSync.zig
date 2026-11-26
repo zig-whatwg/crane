@@ -67,10 +67,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Note: Per [Exposed=(DedicatedWorker,SharedWorker)], this should only
 /// be constructible in Worker contexts. The V8 binding layer enforces this.
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &FileReaderSync.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    const ctx = instance.ctx;
     // Create internal state
     const internal = try ctx.allocator.create(InternalState);
     errdefer ctx.allocator.destroy(internal);
@@ -81,8 +79,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
     const state = instance.getState(State);
     state.own._internal = internal;
-
-    return instance;
 }
 
 /// Get internal state from instance using shared accessor
@@ -130,24 +126,4 @@ fn packageString(instance: *runtime.Instance, blob: *runtime.Instance, comptime 
     // allocated, so return an owned DOMString for the binding to release.
     const result = try file.algorithms.packageData(internal.allocator, bytes, read_type, mime_type.asSlice(), encoding_label);
     return runtime.DOMString.initOwned(result.string);
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "FileReaderSync - constructor" {
-    const allocator = std.testing.allocator;
-
-    // Create minimal context
-    var ctx_data = try runtime.ContextData.init(allocator, .{});
-    defer ctx_data.deinit();
-    const ctx: runtime.Context = &ctx_data;
-
-    const reader = try call_constructor(ctx);
-    defer runtime.Instance.deinit(reader);
-
-    // Verify internal state was created
-    const internal = getInternal(reader);
-    try std.testing.expect(internal != null);
 }

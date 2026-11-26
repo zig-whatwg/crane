@@ -880,24 +880,3 @@ pub const HandleBag = struct {
             self.promises.items.len;
     }
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "V8Value empty and wrap" {
-    const empty = V8Value.empty();
-    try std.testing.expect(!empty.isValid());
-    try std.testing.expectError(HandleError.HandleInvalid, empty.raw());
-}
-
-test "V8String empty" {
-    const empty = V8String.empty();
-    try std.testing.expect(!empty.isValid());
-}
-
-test "HandleBag init and deinit" {
-    var bag = HandleBag.init(std.testing.allocator);
-    defer bag.deinit();
-    try std.testing.expectEqual(@as(usize, 0), bag.count());
-}

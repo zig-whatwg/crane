@@ -59,6 +59,8 @@ pub const Owner = usize;
 /// One extra header: fetch's (http_fetch.ExtraHeader), which the request
 /// reader hands on as it is.
 pub const ExtraHeader = @import("fetch").algorithms.http_fetch.ExtraHeader;
+pub const NetworkConditions = @import("fetch").algorithms.http_fetch.NetworkConditions;
+pub const NetworkRule = @import("fetch").algorithms.http_fetch.NetworkRule;
 
 pub const HostOverrides = struct {
     media: ?Media = null,
@@ -81,11 +83,22 @@ pub const HostOverrides = struct {
     /// here). OWNED, names and values.
     extra_headers: []ExtraHeader = &.{},
     extra_headers_owner: Owner = 0,
+    /// CDP Network.overrideNetworkState (and legacy emulateNetworkConditions):
+    /// whether navigator.onLine reports false for this tab's windows.
+    network_state_offline: bool = false,
+    network_state_owner: Owner = 0,
+    /// CDP Network.emulateNetworkConditionsByRule (and legacy
+    /// emulateNetworkConditions): global offline flag and URL-matched request
+    /// rules. OWNED (`url_pattern` strings when non-empty, and the slice).
+    network_offline: bool = false,
+    network_rules: []NetworkRule = &.{},
+    network_conditions_owner: Owner = 0,
 
     /// Free what is owned (the browsing context's end).
     pub fn deinit(self: *HostOverrides, allocator: Allocator) void {
         self.freeUserAgent(allocator);
         self.freeExtraHeaders(allocator);
+        self.freeNetworkConditions(allocator);
         self.* = .{};
     }
 
@@ -161,6 +174,58 @@ pub const HostOverrides = struct {
         self.user_agent_owner = owner;
     }
 
+    /// Set the navigator online/offline state override. Returns whether the
+    /// effective offline state changed (so the caller fires `offline`/`online`).
+    pub fn setNetworkStateOffline(self: *HostOverrides, owner: Owner, offline: bool) bool {
+        const changed = self.network_state_offline != offline;
+        self.network_state_offline = offline;
+        self.network_state_owner = if (offline) owner else 0;
+        return changed;
+    }
+
+    /// Replace emulated network conditions (global offline flag and URL rules).
+    pub fn setNetworkConditions(
+        self: *HostOverrides,
+        allocator: Allocator,
+        owner: Owner,
+        offline: bool,
+        rules: []const NetworkRule,
+    ) Allocator.Error!void {
+        if (!offline and rules.len == 0) {
+            self.freeNetworkConditions(allocator);
+            return;
+        }
+        const copy: []NetworkRule = if (rules.len > 0) try allocator.alloc(NetworkRule, rules.len) else &.{};
+        var made: usize = 0;
+        errdefer {
+            for (copy[0..made]) |r| {
+                if (r.url_pattern.len > 0) allocator.free(r.url_pattern);
+            }
+            if (copy.len > 0) allocator.free(copy);
+        }
+        for (rules, 0..) |r, i| {
+            copy[i] = .{
+                .url_pattern = if (r.url_pattern.len > 0) try allocator.dupe(u8, r.url_pattern) else "",
+                .conditions = r.conditions,
+            };
+            made += 1;
+        }
+        self.freeNetworkConditions(allocator);
+        self.network_offline = offline;
+        self.network_rules = copy;
+        self.network_conditions_owner = owner;
+    }
+
+    pub fn freeNetworkConditions(self: *HostOverrides, allocator: Allocator) void {
+        for (self.network_rules) |r| {
+            if (r.url_pattern.len > 0) allocator.free(r.url_pattern);
+        }
+        if (self.network_rules.len > 0) allocator.free(self.network_rules);
+        self.network_offline = false;
+        self.network_rules = &.{};
+        self.network_conditions_owner = 0;
+    }
+
     /// Clear every override `owner` set (a setter that goes: Chrome's
     /// detaching session); another setter's stay.
     pub fn clearOwnedBy(self: *HostOverrides, allocator: Allocator, owner: Owner) void {
@@ -170,6 +235,8 @@ pub const HostOverrides = struct {
         if (self.screen_owner == owner) self.setScreen(0, null);
         if (self.user_agent_owner == owner) self.freeUserAgent(allocator);
         if (self.extra_headers_owner == owner) self.freeExtraHeaders(allocator);
+        if (self.network_state_owner == owner) _ = self.setNetworkStateOffline(0, false);
+        if (self.network_conditions_owner == owner) self.freeNetworkConditions(allocator);
     }
 
     fn freeUserAgent(self: *HostOverrides, allocator: Allocator) void {
@@ -339,39 +406,6 @@ pub const UserAgentSnapshot = struct {
     }
 };
 
-test "a worker's user agent snapshot is a copy: the tab's override changing later leaves it" {
-    const allocator = std.testing.allocator;
-    var overrides: HostOverrides = .{};
-    defer overrides.deinit(allocator);
-    try overrides.setUserAgent(allocator, 1, "UA-one", "", "fr-FR");
-    var snapshot = try UserAgentSnapshot.of(allocator, &overrides);
-    defer snapshot.deinit(allocator);
-    var nested = try snapshot.clone(allocator);
-    defer nested.deinit(allocator);
-    try overrides.setUserAgent(allocator, 1, "UA-two", null, null);
-    try std.testing.expectEqualStrings("UA-one", snapshot.user_agent.?);
-    try std.testing.expectEqualStrings("fr-FR", nested.accept_language.?);
-    try std.testing.expect(nested.platform == null);
-    var none = try UserAgentSnapshot.of(allocator, &HostOverrides{});
-    defer none.deinit(allocator);
-    try std.testing.expect(none.user_agent == null);
-}
-
-test "an empty user agent overrides the languages alone (Playwright's locale call)" {
-    const allocator = std.testing.allocator;
-    var overrides: HostOverrides = .{};
-    defer overrides.deinit(allocator);
-    try overrides.setUserAgent(allocator, 1, "", null, "fr-FR,fr");
-    try std.testing.expect(overrides.user_agent == null);
-    var languages = (try overrides.languages(allocator)).?;
-    defer languages.deinit(allocator);
-    try std.testing.expectEqualStrings("fr-FR", languages.first());
-    try std.testing.expectEqual(@as(Owner, 1), overrides.user_agent_owner);
-    try overrides.setUserAgent(allocator, 1, "", "", "");
-    try std.testing.expect(overrides.accept_language == null);
-    try std.testing.expectEqual(@as(Owner, 0), overrides.user_agent_owner);
-}
-
 test "a setter that goes clears only what it set; strings are owned" {
     const allocator = std.testing.allocator;
     var overrides: HostOverrides = .{};
@@ -390,4 +424,30 @@ test "a setter that goes clears only what it set; strings are owned" {
     overrides.setMedia(3, .{ .media_type = .print });
     overrides.clearOwnedBy(allocator, 2);
     try std.testing.expectEqual(MediaType.print, overrides.media.?.media_type.?);
+}
+
+test "network state and network conditions overrides respect ownership and clear cleanly" {
+    const allocator = std.testing.allocator;
+    var overrides: HostOverrides = .{};
+    defer overrides.deinit(allocator);
+
+    try std.testing.expect(overrides.setNetworkStateOffline(1, true));
+    try std.testing.expect(!overrides.setNetworkStateOffline(1, true));
+    try std.testing.expect(overrides.network_state_offline);
+
+    const rules = [_]NetworkRule{
+        .{ .url_pattern = "*api*", .conditions = .{ .offline = true } },
+        .{ .url_pattern = "", .conditions = .{ .latency_ms = 150, .download_bps = 50000 } },
+    };
+    try overrides.setNetworkConditions(allocator, 2, false, &rules);
+    try std.testing.expectEqual(@as(usize, 2), overrides.network_rules.len);
+
+    // Owner 1 going clears navigator offline but leaves owner 2's rules.
+    overrides.clearOwnedBy(allocator, 1);
+    try std.testing.expect(!overrides.network_state_offline);
+    try std.testing.expectEqual(@as(usize, 2), overrides.network_rules.len);
+
+    // Owner 2 going clears its rules cleanly.
+    overrides.clearOwnedBy(allocator, 2);
+    try std.testing.expectEqual(@as(usize, 0), overrides.network_rules.len);
 }

@@ -28,14 +28,12 @@ pub const InternalState = struct {};
 /// Constructor (6.3): a new DocumentTimeline associated with "the Document
 /// associated with the Window that is the current global object", with the
 /// origin time `options.originTime` (ms relative to its time origin).
-pub fn call_constructor(ctx: runtime.Context, options: webidl.Opt(dictionaries.DocumentTimelineOptions)) !*runtime.Instance {
-    const instance = try DocumentTimeline.init(ctx.allocator, ctx);
-    errdefer instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+pub fn call_constructor(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DocumentTimelineOptions)) !void {
+    const ctx = instance.ctx;
     const timeline = animations.hooks.timelineOf(instance) orelse return error.InvalidStateError;
     if (animations.registry.documentOfRealm(engine.currentRealm() orelse ctx)) |document| {
         timeline.document = animations.model.Link.to(document);
     }
     const given = options.getOrDefault(.{});
     timeline.origin_time = given.originTime orelse 0;
-    return instance;
 }

@@ -69,7 +69,7 @@ const W = *Io.Writer;
 const Error = Io.Writer.Error;
 const EngineName = journal.EngineName;
 
-pub const browsers = [_]EngineName{ .chrome, .firefox, .safari, .lightpanda };
+pub const browsers = [_]EngineName{ .chrome, .firefox, .safari, .lightpanda, .ladybird };
 
 /// One (round, engine, version, workload): every run's records, summarised.
 pub const Cell = struct {
@@ -1085,7 +1085,7 @@ pub const ElementTable = struct {
 };
 
 /// The order of the rows: Crane's builds first, then the browsers.
-const element_engines = [_]EngineName{ .crane, .crane_fast, .crane_base, .chrome, .firefox, .safari, .lightpanda };
+const element_engines = [_]EngineName{ .crane, .crane_fast, .crane_base, .chrome, .firefox, .safari, .lightpanda, .ladybird };
 
 /// `engine`'s retained cell for `workload` in `round`, at the engine's newest version there.
 fn retainedCell(m: *const Model, round: u32, engine: EngineName, workload: []const u8) ?*const Cell {
@@ -1293,7 +1293,7 @@ fn writeElementMethod(w: W, arena: Allocator, t: ElementTable) !void {
         switch (row.engine) {
             .crane, .crane_fast, .crane_base, .crane_control => try crane_builds.append(arena, row.engine.label()),
             .chrome => chrome_forced = true,
-            .firefox, .safari, .lightpanda => try none.append(arena, row.engine.label()),
+            .firefox, .safari, .lightpanda, .ladybird => try none.append(arena, row.engine.label()),
         }
     }
     const any_forced = crane_builds.items.len > 0 or chrome_forced;
@@ -1335,7 +1335,7 @@ fn writeElementMethod(w: W, arena: Allocator, t: ElementTable) !void {
     // style; Crane and Lightpanda draw nothing. Said wherever one of them has a row.
     var rendering: std.ArrayList([]const u8) = .empty;
     for (t.rows) |row| switch (row.engine) {
-        .chrome, .firefox, .safari => try rendering.append(arena, row.engine.label()),
+        .chrome, .firefox, .safari, .ladybird => try rendering.append(arena, row.engine.label()),
         else => {},
     };
     if (rendering.items.len > 0) {
@@ -1397,7 +1397,7 @@ fn writePage(w: W, arena: Allocator, m: *const Model, vs: []const Versus, o: Opt
     try writeSocial(w, m, vs, since, o, card_ref);
     try w.writeAll(style);
     try w.writeAll("</head>\n<body>\n<main class=\"doc perf\" id=\"main\">\n<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">Performance</span></h1>\n");
-    try w.print("<p class=\"subtitle\">Round {d}: Crane beside Chrome, Firefox, Safari and Lightpanda, the same pages in every engine, CPU and memory.", .{m.latest_round});
+    try w.print("<p class=\"subtitle\">Round {d}: Crane beside Chrome, Firefox, Safari, Lightpanda and Ladybird, the same pages in every engine, CPU and memory.", .{m.latest_round});
     if (hasEngine(m, m.latest_round, .crane_fast)) try w.writeAll(" Crane is its release build, ReleaseSafe; a ReleaseFast build runs beside it as a column of its own.");
     if (carriedFrom(m, m.latest_round)) |r| try w.print(" Only Crane ran in this round; the browsers&rsquo; rows are round {d}&rsquo;s (a browser runs again when it updates).", .{r});
     if (craneTarget(m, m.latest_round)) |t| {
@@ -1533,7 +1533,7 @@ fn writeSocial(w: W, m: *const Model, vs: []const Versus, since: ?Versus, o: Opt
     try w.writeAll("performance/");
     try html.text(w, card_ref);
     try w.writeAll("\">\n<meta property=\"og:image:type\" content=\"image/png\">\n<meta property=\"og:image:width\" content=\"1200\">\n<meta property=\"og:image:height\" content=\"630\">\n");
-    try w.writeAll("<meta property=\"og:image:alt\" content=\"Crane's time and memory as a percentage of Chrome's, Firefox's, Safari's and Lightpanda's.\">\n");
+    try w.writeAll("<meta property=\"og:image:alt\" content=\"Crane's time and memory as a percentage of Chrome's, Firefox's, Safari's, Lightpanda's and Ladybird's.\">\n");
     try w.print("<meta name=\"twitter:card\" content=\"summary_large_image\">\n<meta name=\"twitter:title\" content=\"Crane performance: round {d}\">\n<meta name=\"twitter:description\" content=\"", .{m.latest_round});
     try writeDescription(w, m, vs, since);
     try w.writeAll("\">\n<meta name=\"twitter:image\" content=\"");
@@ -2237,7 +2237,7 @@ fn writeHistory(w: W, arena: Allocator, m: *const Model) !void {
     var all: std.ArrayList([]const u8) = .empty;
     for (m.rounds) |r| for (try m.workloads(arena, r)) |wl| if (!containsStr(all.items, wl)) try all.append(arena, wl);
     for (all.items) |wl| {
-        for ([_]EngineName{ .crane, .crane_base, .crane_control, .crane_fast, .chrome, .firefox, .safari, .lightpanda }) |e| {
+        for ([_]EngineName{ .crane, .crane_base, .crane_control, .crane_fast, .chrome, .firefox, .safari, .lightpanda, .ladybird }) |e| {
             for (m.cells) |*c| {
                 if (c.engine != e or !std.mem.eql(u8, c.workload, wl) or c.kind == .gc_bench) continue;
                 try w.writeAll("<tr><th scope=\"row\"><code>");
@@ -3467,4 +3467,29 @@ test "a tip and its base are compared level against level, so a median that flip
     try testing.expectEqual(@as(usize, 1), since.memory_n);
     try testing.expectApproxEqAbs(mr.current(1, .crane, "dom.a").?.memoryFigure().? / mr.current(0, .crane, "dom.a").?.memoryFigure().?, since.memory_ratio.?, 1e-12);
     try testing.expect(since.memory_ratio.? > 1.12);
+}
+
+test "Ladybird joins the headline, round tables, history, memory per element and card" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const m = try build(a, &.{
+        try timed(a, 0, .crane, "c0", "dom.a", 0, 10, 50),
+        try timed(a, 0, .ladybird, "2026.47.8", "dom.a", 0, 20, 100),
+        try retainedRow(a, 0, .crane, "c0", element_control, 0, 1000, 1000, true, null),
+        try retainedRow(a, 0, .crane, "c0", "elements.detached-div", 0, 1000, 1000 + 25_000_000, true, null),
+        try retainedRow(a, 0, .ladybird, "2026.47.8", element_control, 0, 2000, 2000, false, null),
+        try retainedRow(a, 0, .ladybird, "2026.47.8", "elements.detached-div", 0, 2000, 2000 + 50_000_000, false, null),
+    });
+    const v = try versus(a, &m, 0, .ladybird);
+    try testing.expectApproxEqAbs(@as(f64, 0.5), v.time_ratio.?, 1e-9);
+    try testing.expectApproxEqAbs(@as(f64, 0.5), v.memory_ratio.?, 1e-9);
+    const out = try render(a, &m, .{});
+    try testing.expect(std.mem.indexOf(u8, out.index_html, "Chrome, Firefox, Safari, Lightpanda and Ladybird") != null);
+    try testing.expect(std.mem.indexOf(u8, out.index_html, "Chrome's, Firefox's, Safari's, Lightpanda's and Ladybird's.") != null);
+    try testing.expect(std.mem.indexOf(u8, out.index_html, "<th scope=\"row\">Ladybird</th><td>2026.47.8</td>") != null);
+    try testing.expect(std.mem.indexOf(u8, out.index_html, "<th scope=\"col\" class=\"n\">Ladybird</th><th scope=\"col\" class=\"n\">Crane / Ladybird</th>") != null);
+    try testing.expect(std.mem.indexOf(u8, out.index_html, "Ladybird let no page ask for a collection") != null);
+    try testing.expect(std.mem.indexOf(u8, out.index_html, "In the engines that render - Ladybird - a node in the document also gets a layout object") != null);
+    try testing.expect(out.card_png.len > 100);
 }

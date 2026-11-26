@@ -526,3 +526,9 @@ pub const protocol = struct {
     pub const devtoolsCloseListener = devtools_transport.devtoolsCloseListener;
     pub const devtoolsOpenInheritedPipe = devtools_transport.devtoolsOpenInheritedPipe;
 };
+
+// The adapter's own tests, for src-platform_adapter (build.zig; lane core1):
+// Zig collects a file's test blocks only when something analyzes its import.
+test {
+    _ = @import("seeded_random.zig");
+}

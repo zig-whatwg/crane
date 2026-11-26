@@ -195,8 +195,20 @@ pub const Path2D = struct {
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
     pub fn call_constructor(ctx: runtime.Context, path: webidl.Opt(Path2DOrDOMString)) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try Path2DImpl.call_constructor(ctx, path);
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(Path2DImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try Path2DImpl.call_constructor(instance, path);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try Path2DImpl.call_constructor(ctx, path);
+        }
     }
 
     pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {

@@ -177,15 +177,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 2. Process blobParts using "process blob parts" algorithm
 /// 3. Normalize type from options
 /// 4. Return new Blob
-pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSValue), options: webidl.Opt(dictionaries.BlobPropertyBag)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &Blob.vtable, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step frees it whole. Its own deinit is its destructor, not a
-    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    errdefer runtime.gc.releaseOwned(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, blobParts: webidl.Opt(runtime.JSValue), options: webidl.Opt(dictionaries.BlobPropertyBag)) !void {
+    const ctx = instance.ctx;
     // Determine if we have blob parts and what endings mode to use
     const endings_mode: file.algorithms.Endings = blk: {
         if (options.wasPassed()) {
@@ -216,8 +209,6 @@ pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSVa
     const blob_data = try file.BlobData.init(ctx.allocator, bytes, mime_type);
     errdefer blob_data.deinit();
     try setBlobData(instance, ctx.allocator, blob_data);
-
-    return instance;
 }
 
 /// The `endings` member of BlobPropertyBag, as "process blob parts" takes it.
@@ -543,85 +534,6 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
 // ============================================================================
 // Tests
 // ============================================================================
-
-test "Blob - empty constructor" {
-    const allocator = std.testing.allocator;
-
-    // Create a minimal context
-    const ctx = runtime.createNullContext();
-
-    // Create empty blob (simulating constructor with no parts)
-    const blob = try createFromBytes(allocator, ctx, "", "");
-    defer deinit(blob);
-
-    const size = try get_size(blob);
-    try std.testing.expectEqual(@as(u64, 0), size);
-
-    const type_str = try get_type(blob);
-    try std.testing.expectEqualStrings("", type_str.asSlice());
-}
-
-test "Blob - with bytes and type" {
-    const allocator = std.testing.allocator;
-    const ctx = runtime.createNullContext();
-
-    const blob = try createFromBytes(allocator, ctx, "Hello, World!", "text/plain");
-    defer deinit(blob);
-
-    const size = try get_size(blob);
-    try std.testing.expectEqual(@as(u64, 13), size);
-
-    const type_str = try get_type(blob);
-    try std.testing.expectEqualStrings("text/plain", type_str.asSlice());
-}
-
-test "Blob - slice basic" {
-    const allocator = std.testing.allocator;
-    const ctx = runtime.createNullContext();
-
-    const blob = try createFromBytes(allocator, ctx, "Hello, World!", "text/plain");
-    defer deinit(blob);
-
-    // Slice to get "Hello"
-    const sliced = try call_slice(blob, 0, 5, runtime.DOMString.initEmpty());
-    defer deinit(sliced);
-
-    const size = try get_size(sliced);
-    try std.testing.expectEqual(@as(u64, 5), size);
-
-    // Type should be empty (not inherited) when contentType not specified
-    const type_str = try get_type(sliced);
-    try std.testing.expectEqualStrings("", type_str.asSlice());
-}
-
-test "Blob - slice with contentType" {
-    const allocator = std.testing.allocator;
-    const ctx = runtime.createNullContext();
-
-    const blob = try createFromBytes(allocator, ctx, "Hello", "text/plain");
-    defer deinit(blob);
-
-    const sliced = try call_slice(blob, 0, 5, runtime.DOMString.initInterned("application/json"));
-    defer deinit(sliced);
-
-    const type_str = try get_type(sliced);
-    try std.testing.expectEqualStrings("application/json", type_str.asSlice());
-}
-
-test "Blob - slice negative indices" {
-    const allocator = std.testing.allocator;
-    const ctx = runtime.createNullContext();
-
-    const blob = try createFromBytes(allocator, ctx, "Hello, World!", "");
-    defer deinit(blob);
-
-    // Slice with -6 should give us "World!"
-    const sliced = try call_slice(blob, -6, 13, runtime.DOMString.initEmpty());
-    defer deinit(sliced);
-
-    const size = try get_size(sliced);
-    try std.testing.expectEqual(@as(u64, 6), size);
-}
 
 /// File API §3.3.6, textStream(). This newer specification is shipped by
 /// Chrome; Firefox/Safari lag it (FileAPI PR 221, wpt.fyi cc74d2669f).

@@ -346,8 +346,9 @@ fn abortOwner(context: *anyopaque) void {
     const self: *InternalState = @ptrCast(@alignCast(context));
     self.cancel();
 }
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    return init(ctx.allocator, State, &interfaces.HTMLTrackElement.vtable, ctx);
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    // The generated constructor made it (WebIDL 3.7.1 step 1.8): no steps.
+    _ = instance;
 }
 pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return ensureTrack(instance);
@@ -421,12 +422,17 @@ fn attributeChanged(instance: *runtime.Instance, name: []const u8, _: ?[]const u
     const self = data(instance);
     if (std.mem.eql(u8, name, "src")) {
         const url = if (value) |text| (if (text.len != 0) html.encoding_parse.encodingParseAndSerialize(instance, text) catch null else null) else null;
+        const unchanged = std.mem.eql(u8, self.url orelse "", url orelse "");
         if (self.url) |old| self.activity.allocator.free(old);
         self.url = url;
-        // "Whenever a track element has its src attribute set, changed, or
-        // removed, the user agent must immediately empty the element's text
-        // track's text track list of cues."
-        if (self.track) |track| hooks.clearTrackCues(track);
+        // All three browsers (Chrome, Firefox, Safari) keep existing cues when
+        // src is assigned the same URL (whatwg/html#2916;
+        // track-element-src-change.html). When the URL changes or is removed,
+        // immediately empty the text track's list of cues (HTML 4.8.11.11.3;
+        // Gecko AfterSetAttr).
+        if (!unchanged) {
+            if (self.track) |track| hooks.clearTrackCues(track);
+        }
         self.start() catch self.cancel();
     } else if (std.mem.eql(u8, name, "kind") or std.mem.eql(u8, name, "label") or std.mem.eql(u8, name, "srclang") or std.mem.eql(u8, name, "id")) updateAttributes(instance) catch {};
 }

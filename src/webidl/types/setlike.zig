@@ -38,13 +38,25 @@ pub fn SetEntries(comptime T: type) type {
         /// The sequence the next appended entry takes; 0 is "before every
         /// entry", where an iterator starts.
         next_sequence: u64 = 1,
+        /// Optional change observer notified when entries are added, removed,
+        /// or cleared (used by CustomStateSet for `:state()` style invalidation).
+        on_change: ?ChangeHook = null,
 
         const Self = @This();
+
+        pub const ChangeHook = struct {
+            context: *anyopaque,
+            callback: *const fn (*anyopaque) void,
+        };
 
         pub const Entry = struct {
             sequence: u64,
             value: T,
         };
+
+        fn notifyChanged(self: *Self) void {
+            if (self.on_change) |hook| hook.callback(hook.context);
+        }
 
         pub fn init(allocator: std.mem.Allocator) Self {
             return .{ .allocator = allocator };
@@ -88,6 +100,7 @@ pub fn SetEntries(comptime T: type) type {
             errdefer if (owns_strings) self.allocator.free(stored);
             try self.entries.append(self.allocator, .{ .sequence = self.next_sequence, .value = stored });
             self.next_sequence += 1;
+            self.notifyChanged();
         }
 
         /// Infra "remove" `value`; whether the set contained it.
@@ -95,16 +108,19 @@ pub fn SetEntries(comptime T: type) type {
             const index = self.indexOf(value) orelse return false;
             const entry = self.entries.orderedRemove(index);
             if (owns_strings) self.allocator.free(entry.value);
+            self.notifyChanged();
             return true;
         }
 
         /// Infra "empty": the set keeps its identity and its sequence, so an
         /// iterator suspended over it yields what is appended afterwards.
         pub fn empty(self: *Self) void {
+            const had_entries = self.entries.items.len != 0;
             if (owns_strings) {
                 for (self.entries.items) |entry| self.allocator.free(entry.value);
             }
             self.entries.clearRetainingCapacity();
+            if (had_entries) self.notifyChanged();
         }
 
         /// The first entry appended after the entry with sequence `sequence`

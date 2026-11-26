@@ -139,13 +139,10 @@ fn initializeMembers(instance: *runtime.Instance, init_dict: event_construction.
 
 /// Constructor: DOM "inner event creation steps", then UIEventInit's members.
 /// Spec: https://dom.spec.whatwg.org/#concept-event-constructor
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.UIEventInit)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &UIEvent.vtable, ctx);
-    errdefer deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.UIEventInit)) !void {
     const dict: dictionaries.UIEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{} };
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
     initializeMembers(instance, event_construction.uiEventInitFrom(dict));
-    return instance;
 }
 
 /// Getter for view: "the view attribute must return the value it was

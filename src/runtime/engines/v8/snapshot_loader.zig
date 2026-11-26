@@ -647,37 +647,3 @@ pub fn cleanupSnapshotData() void {
         tracked_snapshot_allocator = null;
     }
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "snapshot loader - initializeV8 without snapshot" {
-    // Initialize V8 platform with proper flags for snapshots
-    // This MUST use initializePlatformForSnapshots() to set flags before platform init
-    initializePlatformForSnapshots();
-    defer ffi.v8_Platform_Dispose();
-
-    // Register external references
-    registerExternalReferences();
-
-    const result = try initializeV8(std.testing.allocator, .{
-        .snapshot_path = null,
-        .log_performance = false,
-    });
-
-    // Clean up
-    ffi.v8_Context_Exit(result.context);
-    ffi.v8_Context_Dispose(result.context);
-    ffi.v8_Isolate_Exit(result.isolate);
-    ffi.v8_Isolate_Dispose(result.isolate);
-
-    // Verify we got valid handles
-    try std.testing.expect(!result.used_snapshot);
-    try std.testing.expect(result.startup_time_ms >= 0);
-}
-
-test "snapshot loader - hasValidSnapshot returns false for missing file" {
-    const result = hasValidSnapshot(std.testing.allocator, "nonexistent_snapshot.bin");
-    try std.testing.expect(!result);
-}

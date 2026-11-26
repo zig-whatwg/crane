@@ -62,12 +62,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 
 /// new ExtendableEvent(type, eventInitDict): DOM's inner event creation
 /// steps, then the constructor's own (ExtendableEventInit adds nothing).
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableEventInit)) !*runtime.Instance {
-    const instance = try ExtendableEvent.init(ctx.allocator, ctx);
-    errdefer ExtendableEvent.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableEventInit)) !void {
     const event_init = if (eventInitDict.was_passed) eventInitDict.value.base else dictionaries.EventInit{};
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(event_init));
-    return instance;
 }
 
 /// Operation: waitUntil (4.4.1) - "add lifetime promise f to this".

@@ -48,13 +48,14 @@ pub const EngineName = enum {
     firefox,
     safari,
     lightpanda,
+    ladybird,
 
     /// One of Crane's builds: launched as the console, with Crane's build
     /// identity (commit, modes, V8) in every row.
     pub fn isCrane(e: EngineName) bool {
         return switch (e) {
             .crane, .crane_fast, .crane_base, .crane_control => true,
-            .chrome, .firefox, .safari, .lightpanda => false,
+            .chrome, .firefox, .safari, .lightpanda, .ladybird => false,
         };
     }
 
@@ -68,6 +69,7 @@ pub const EngineName = enum {
             .firefox => "Firefox",
             .safari => "Safari",
             .lightpanda => "Lightpanda",
+            .ladybird => "Ladybird",
         };
     }
 };
@@ -752,4 +754,16 @@ test "names: workloads and times" {
     try testing.expect(isTime("2026-11-05T18:00:00.123Z"));
     try testing.expect(!isTime("2026-11-05T18:00:00.Z"));
     try testing.expect(!isTime("2026-11-05T18:00:00+00:00"));
+}
+
+test "Ladybird is a browser engine in the journal format" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const line =
+        \\{"format":"crane-perf/1","round":0,"time":"2026-11-25T18:00:00Z","host":{"name":"chat","os":"macOS 26.1 (25B78)","arch":"aarch64","cpu":"Apple M4 Pro","cores":14,"memory_bytes":68719476736},"engine":{"name":"ladybird","version":"2026.47.8","build":"Ladybird Alpha","binary":"/b/Ladybird","binary_sha256":"abababababababababababababababababababababababababababababababab","flags":["WebDriver","--headless","--listen-address","127.0.0.1","--port","<port>","--profile-path","<profile>"]},"page":"workloads/attributes.html","workload":"dom.getter-loop","kind":"timed","run":0,"status":"ok","ops":100000,"wall_ms":[12.5],"cpu_ms":25,"memory":{"footprint_start":1000,"footprint_end":1200,"footprint_peak":1300,"resident_end":5000,"processes":6},"series":[],"counters":[],"launch_ms":310.5}
+    ;
+    const r = try parseLine(a, line);
+    try testing.expectEqualStrings("Ladybird", r.engine.name.label());
+    try testing.expect(!r.engine.name.isCrane());
 }

@@ -10,13 +10,18 @@
 //!
 //! The page here keeps an idle callback waiting (each callback asks again),
 //! a 4 ms interval (whose last millisecond before each tick is the window the
-//! empty periods filled) and a fetch in flight to a socket that never answers
-//! (the loop's 1 ms slices). Every idle period that starts must run a
-//! callback: an empty one is the spin.
+//! empty periods filled) and a fetch in flight to a socket that never answers.
+//! It drives a virtual clock explicitly in 100 us sub-millisecond steps over
+//! 200 ms (50 interval ticks): because the fetch stays in flight, EventLoop's
+//! own auto-fast-forward stays off, so every interval tick leaves a 0.9 ms
+//! sub-millisecond remainder where nextTimerDueNs rounds down to 0 ms, while
+//! wall-clock OS preemption (which legitimately expires a real-time 1-3 ms
+//! idle period between startIdlePeriod and InvokeIdleCallbacks on a loaded
+//! host or under ThreadSanitizer) can never cause a spurious empty period.
 //!
 //! Each test runs on a thread of its own (a Browser per thread).
 const std = @import("std");
-const clock = @import("clock");
+const browser_mod = @import("browser");
 const helpers = @import("edges_node_holders_helpers.zig");
 
 fn idlePeriodsRunTheirCallbacks() !void {
@@ -27,8 +32,15 @@ fn idlePeriodsRunTheirCallbacks() !void {
     defer server.deinit(std.testing.io);
     const port = server.socket.address.getPort();
 
-    const page = try helpers.Page.open();
-    defer page.close();
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{
+        .snapshot_path = "",
+        .platform = .{ .virtual_clock = true },
+    });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });
+
     var script_buffer: [1024]u8 = undefined;
     const script = try std.fmt.bufPrint(&script_buffer,
         \\globalThis.idleRuns = 0;
@@ -37,19 +49,23 @@ fn idlePeriodsRunTheirCallbacks() !void {
         \\globalThis.ticker = setInterval(() => {{}}, 4);
         \\fetch('http://127.0.0.1:{d}/never').catch(() => {{}});
     , .{port});
-    try page.run(script);
+    try page.runScript(script);
 
-    const loop = page.browser.event_loop orelse return error.NoEventLoop;
+    const loop = browser.event_loop orelse return error.NoEventLoop;
     const periods_before = loop.idle_period_id;
+    const step_ns: i64 = 100 * std.time.ns_per_us;
+    var virtual_now: i64 = loop.nowNs();
     var turns: usize = 0;
-    const start = clock.monotonicMillis();
-    while (clock.monotonicMillis() - start < 300) : (turns += 1) {
-        _ = loop.runOnceBlocking(5);
+    for (0..2000) |_| {
+        virtual_now += step_ns;
+        _ = loop.browser_clock.maybeFastForwardToWakeUp(.{ .ns = @intCast(virtual_now) });
+        turns += 1;
+        _ = loop.runOnceBlocking(0);
     }
     const periods = loop.idle_period_id - periods_before;
-    try page.run("stopIdle = true; clearInterval(ticker);");
+    try page.runScript("stopIdle = true; clearInterval(ticker);");
 
-    const runs_text = try page.evaluate("String(idleRuns)");
+    const runs_text = try page.evaluateScriptToString("String(idleRuns)", std.testing.allocator);
     defer std.testing.allocator.free(runs_text);
     const runs = try std.fmt.parseInt(u64, runs_text, 10);
     // The callbacks ran: idle periods still start between the ticks.
@@ -57,7 +73,7 @@ fn idlePeriodsRunTheirCallbacks() !void {
     // One callback per period (each asks again, and runs in the next one);
     // the last period may still be waiting for its task.
     if (periods > runs + 1) {
-        std.debug.print("idle periods {d}, callbacks {d}, loop turns {d} in 300 ms: empty idle periods\n", .{ periods, runs, turns });
+        std.debug.print("idle periods {d}, callbacks {d}, loop turns {d} over 200 ms virtual time: empty idle periods\n", .{ periods, runs, turns });
         return error.EmptyIdlePeriods;
     }
 }

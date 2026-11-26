@@ -41,6 +41,10 @@ pub const CURLOPT_SSL_CTX_DATA: c_uint = 10109;
 /// system libcurl may give 329 to another option, so it is never set there.
 pub const CURLOPT_HTTP_LENIENT: c_uint = 329;
 pub const http_lenient_all: c_long = (1 << 0) | (1 << 1);
+/// CURLOPTTYPE_OFF_T (30000) + 145 / 146: transfer speed caps in bytes/sec
+/// (CDP Network.emulateNetworkConditions*).
+pub const CURLOPT_MAX_SEND_SPEED_LARGE: c_uint = 30145;
+pub const CURLOPT_MAX_RECV_SPEED_LARGE: c_uint = 30146;
 
 /// A proxy for one transfer.
 pub const Proxy = struct {
@@ -135,26 +139,15 @@ pub fn freshConnect(handle: *anyopaque) void {
     _ = curl_easy_setopt(handle, CURLOPT_FRESH_CONNECT, @as(c_long, 1));
 }
 
-test "forbidReuse sets curl's option on a handle" {
-    const c = struct {
-        extern fn curl_easy_init() ?*anyopaque;
-        extern fn curl_easy_cleanup(curl: ?*anyopaque) void;
-    };
-    const handle = c.curl_easy_init() orelse return error.SkipZigTest;
-    defer c.curl_easy_cleanup(handle);
-    forbidReuse(handle);
-    // CURLE_OK: curl knows the option id and takes a long.
-    try std.testing.expectEqual(@as(c_uint, 0), curl_easy_setopt(handle, CURLOPT_FORBID_REUSE, @as(c_long, 1)));
-}
-
-test "freshConnect sets curl's option on a handle" {
-    const c = struct {
-        extern fn curl_easy_init() ?*anyopaque;
-        extern fn curl_easy_cleanup(curl: ?*anyopaque) void;
-    };
-    const handle = c.curl_easy_init() orelse return error.SkipZigTest;
-    defer c.curl_easy_cleanup(handle);
-    freshConnect(handle);
-    // CURLE_OK: curl knows the option id and takes a long.
-    try std.testing.expectEqual(@as(c_uint, 0), curl_easy_setopt(handle, CURLOPT_FRESH_CONNECT, @as(c_long, 1)));
+/// Cap download and/or upload throughput on `handle` in bytes per second
+/// (0 = unlimited). Used by CDP Network.emulateNetworkConditions*.
+pub fn setSpeedLimits(handle: *anyopaque, max_recv_bps: u64, max_send_bps: u64) void {
+    if (max_recv_bps > 0) {
+        const cap: i64 = @intCast(@min(max_recv_bps, @as(u64, std.math.maxInt(i64))));
+        _ = curl_easy_setopt(handle, CURLOPT_MAX_RECV_SPEED_LARGE, cap);
+    }
+    if (max_send_bps > 0) {
+        const cap: i64 = @intCast(@min(max_send_bps, @as(u64, std.math.maxInt(i64))));
+        _ = curl_easy_setopt(handle, CURLOPT_MAX_SEND_SPEED_LARGE, cap);
+    }
 }

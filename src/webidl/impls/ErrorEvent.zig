@@ -118,11 +118,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// The ErrorEvent(type, eventInitDict) constructor steps are:
 /// 1. Set the Event-related attributes (type, bubbles, cancelable, composed)
 /// 2. Set the ErrorEvent-specific attributes from eventInitDict
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ErrorEventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &ErrorEvent.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ErrorEventInit)) !void {
+    const ctx = instance.ctx;
     // Get state
     const state = instance.getState(State);
 
@@ -184,8 +181,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // Without it dispatchEvent throws InvalidStateError, so the event can be
     // constructed but never dispatched. Same thing MouseEvent does by hand.
     try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
-
-    return instance;
 }
 
 /// Getter for message

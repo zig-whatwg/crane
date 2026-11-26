@@ -81,17 +81,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Note: ProgressEvent inherits from Event. We must initialize both inherited
 /// Event fields AND ProgressEvent's own fields.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ProgressEventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &ProgressEvent.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ProgressEventInit)) !void {
+    const ctx = instance.ctx;
     // Get state
     const state = instance.getState(State);
 
     // Create internal state for ProgressEvent-specific properties
+    // Published below with no step between that can fail: from there the
+    // destructor frees it (a destroy on the failure path too freed it twice).
     const internal = try ctx.allocator.create(InternalState);
-    errdefer ctx.allocator.destroy(internal);
 
     // Get values from eventInitDict if passed
     const length_computable = if (eventInitDict.wasPassed()) eventInitDict.value.lengthComputable orelse false else false;
@@ -136,8 +134,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // Without it dispatchEvent throws InvalidStateError, so the event can be
     // constructed but never dispatched. Same thing MouseEvent does by hand.
     try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
-
-    return instance;
 }
 
 /// Getter for lengthComputable
@@ -181,102 +177,4 @@ pub fn get_total(instance: *runtime.Instance) anyerror!f64 {
         return state.own.total;
     };
     return internal.total;
-}
-
-// ============================================================================
-// Helper functions for creating ProgressEvents
-// ============================================================================
-
-/// Create a ProgressEvent with the given parameters
-///
-/// This is a convenience function for internal use (e.g., FileReader)
-/// that creates a fully initialized ProgressEvent.
-pub fn create(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    event_type: []const u8,
-    length_computable: bool,
-    loaded: u64,
-    total: u64,
-) !*runtime.Instance {
-    return call_constructor(
-        allocator,
-        ctx,
-        runtime.DOMString.initInterned(event_type),
-        .{
-            .base = .{
-                .bubbles = false, // ProgressEvents don't bubble
-                .cancelable = false, // ProgressEvents are not cancelable
-                .composed = false,
-            },
-            .lengthComputable = length_computable,
-            .loaded = @floatFromInt(loaded),
-            .total = @floatFromInt(total),
-        },
-    );
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "ProgressEvent - constructor with defaults" {
-    const allocator = std.testing.allocator;
-
-    var ctx_data = try runtime.ContextData.init(allocator, .{});
-    defer ctx_data.deinit();
-    const ctx: runtime.Context = &ctx_data;
-
-    const event = try call_constructor(
-        allocator,
-        ctx,
-        runtime.DOMString.initInterned("progress"),
-        .{ .base = .{} },
-    );
-    defer deinit(event);
-
-    // Check defaults
-    try std.testing.expectEqual(false, try get_lengthComputable(event));
-    try std.testing.expectEqual(@as(f64, 0), try get_loaded(event));
-    try std.testing.expectEqual(@as(f64, 0), try get_total(event));
-}
-
-test "ProgressEvent - constructor with values" {
-    const allocator = std.testing.allocator;
-
-    var ctx_data = try runtime.ContextData.init(allocator, .{});
-    defer ctx_data.deinit();
-    const ctx: runtime.Context = &ctx_data;
-
-    const event = try call_constructor(
-        allocator,
-        ctx,
-        runtime.DOMString.initInterned("load"),
-        .{
-            .base = .{ .bubbles = false, .cancelable = false },
-            .lengthComputable = true,
-            .loaded = 500,
-            .total = 1000,
-        },
-    );
-    defer deinit(event);
-
-    try std.testing.expectEqual(true, try get_lengthComputable(event));
-    try std.testing.expectEqual(@as(f64, 500), try get_loaded(event));
-    try std.testing.expectEqual(@as(f64, 1000), try get_total(event));
-}
-
-test "ProgressEvent - create helper" {
-    const allocator = std.testing.allocator;
-
-    var ctx_data = try runtime.ContextData.init(allocator, .{});
-    defer ctx_data.deinit();
-    const ctx: runtime.Context = &ctx_data;
-
-    const event = try create(allocator, ctx, "loadend", true, 1024, 2048);
-    defer deinit(event);
-
-    try std.testing.expectEqual(true, try get_lengthComputable(event));
-    try std.testing.expectEqual(@as(f64, 1024), try get_loaded(event));
-    try std.testing.expectEqual(@as(f64, 2048), try get_total(event));
 }

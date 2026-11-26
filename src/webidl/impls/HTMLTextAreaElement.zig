@@ -126,7 +126,10 @@ fn userValidity(instance: *runtime.Instance) bool {
 fn setUserValidity(instance: *runtime.Instance, value: bool) !void {
     // A reset of an untouched control creates no sparse entry.
     const internal = if (value) try StateMap.getOrPut(instance) else StateMap.get(instance) orelse return;
-    internal.user_validity = value;
+    if (internal.user_validity != value) {
+        internal.user_validity = value;
+        dom.style.dynamicStateChanged(instance);
+    }
 }
 
 /// dom.form_controls: "The reset algorithm for textarea elements is to set
@@ -139,6 +142,7 @@ fn resetAlgorithm(instance: *runtime.Instance) void {
     if (internal.raw_value) |value| if (internal.allocator) |allocator| allocator.free(value);
     internal.raw_value = null;
     internal.last_user_edit = false;
+    dom.style.dynamicStateChanged(instance);
     dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
     if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
 }
@@ -243,6 +247,7 @@ fn editorText(instance: *runtime.Instance) !runtime.DOMString {
 fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void {
     const internal = try StateMap.getOrPut(instance);
     try internal.setRawValue(instance.ctx.allocator, edit.text);
+    dom.style.dynamicStateChanged(instance);
     dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
     if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
     // HTML 4.10.19.3–4: script value/setRangeText writes clear this marker.
@@ -361,14 +366,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &HTMLTextAreaElement.vtable, ctx);
-    errdefer deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 // ---------------------------------------------------------------------------
@@ -628,6 +628,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     if (!std.mem.eql(u8, old, now)) {
         const end = form_associated.utf16Length(now);
         internal.selection = .{ .start = end, .end = end, .direction = .none };
+        dom.style.dynamicStateChanged(instance);
         dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
         if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
     }
@@ -680,6 +681,7 @@ fn setRangeText(instance: *runtime.Instance, replacement: []const u8, range: ?[2
     // 2. Set the dirty value flag; 9-10 the relevant value changed.
     const internal = try StateMap.getOrPut(instance);
     try internal.setRawValue(allocator, result.value);
+    dom.style.dynamicStateChanged(instance);
     dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
     if (dom.inspector_probes.active()) dom.inspector_probes.controlValueChanged(instance);
     // 14. Set the selection range with selection start and selection end.
@@ -711,6 +713,7 @@ pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
 pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
     // HTML setCustomValidity steps 1–2: normalize newlines, then replace.
     try (try validationState(instance)).setCustomError(instance.ctx.allocator, @"error".asSlice());
+    dom.style.dynamicStateChanged(instance);
 }
 
 /// The SelectionMode argument of setRangeText(replacement, start, end,

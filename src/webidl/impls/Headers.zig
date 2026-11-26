@@ -158,15 +158,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 }
 
 /// Constructor
-pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(typedefs.HeadersInit)) !*runtime.Instance {
-    const instance = try Headers.init(ctx.allocator, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step (fill's TypeErrors) frees it whole. Its own deinit is its
-    // destructor, not a free, and left its slot and State until the Browser
-    // ended (tests/v8/constructor_error_receiver_test.zig;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    errdefer runtime.gc.releaseOwned(instance);
-
+pub fn call_constructor(instance: *runtime.Instance, init_data: webidl.Opt(typedefs.HeadersInit)) !void {
     // Handle init_data based on its variant
     if (init_data.wasPassed()) {
         const headers_init = init_data.getValue();
@@ -184,8 +176,6 @@ pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(typedefs.Hea
             },
         }
     }
-
-    return instance;
 }
 
 /// append(name, value): Fetch "append" under this object's guard.

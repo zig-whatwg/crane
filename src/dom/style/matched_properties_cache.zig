@@ -130,6 +130,7 @@ pub const Inputs = struct {
     viewport_height: f64 = 768,
     page_color_scheme: css.color_scheme.Scheme = .light,
     preferred_color_scheme: css.color_scheme.Scheme = .light,
+    forced_colors: bool = false,
     registered: ?*const css.registered_properties.Snapshot = null,
 
     pub fn of(ctx: css.cascade.Context) Inputs {
@@ -142,6 +143,7 @@ pub const Inputs = struct {
             .viewport_height = ctx.viewport_height,
             .page_color_scheme = ctx.page_color_scheme,
             .preferred_color_scheme = ctx.preferred_color_scheme,
+            .forced_colors = if (ctx.media_values) |mv| mv.forced_colors else false,
             .registered = ctx.registered,
         };
     }
@@ -157,7 +159,7 @@ pub const Inputs = struct {
         if (a.root_line_height) |x| if (bits(x) != bits(b.root_line_height.?)) return false;
         return a.root_vertical == b.root_vertical and a.root_upright == b.root_upright and
             a.page_color_scheme == b.page_color_scheme and a.preferred_color_scheme == b.preferred_color_scheme and
-            a.registered == b.registered;
+            a.forced_colors == b.forced_colors and a.registered == b.registered;
     }
 };
 
@@ -557,9 +559,13 @@ fn parentCorresponds(hit: *MatchedPropertiesCache.Correspondence, parent: *const
     // CSS Variables 1: var() and inherited registered properties read the
     // parent's record (WebKit find: the same inheritedCustomProperties).
     if (cached.custom != parent.custom) return false;
-    // adjust() and the base-appearance bit (Blink IsCacheCompatible, WebKit
-    // inBaseAppearanceSubtree).
-    if (cached.flags.in_base_appearance != parent.flags.in_base_appearance or cached.box_context != parent.box_context) return false;
+    // adjust() and the base-appearance / forced-colors bits (Blink
+    // IsCacheCompatible, WebKit inBaseAppearanceSubtree).
+    if (cached.flags.in_base_appearance != parent.flags.in_base_appearance or
+        cached.flags.forced_colors_active != parent.flags.forced_colors_active or
+        cached.flags.in_forced_colors_mode != parent.flags.in_forced_colors_mode or
+        cached.flags.forced_color != parent.flags.forced_color or
+        cached.box_context != parent.box_context) return false;
     if (css.cascade.blockifiesChildren(cached) != css.cascade.blockifiesChildren(parent)) return false;
     // Align 3 7.1: every element's justify-items `legacy` reads its parent's
     // (Blink IsCacheCompatible: the parent's JustifyItems).
@@ -606,6 +612,8 @@ pub fn differenceFromCascade(ctx: css.cascade.Context, matched: []const Matched,
     if (try style.firstObservableDifference(fresh, ctx.allocator)) |l| return .{ .longhand = l };
     if (style.used_color_scheme != fresh.used_color_scheme or style.box_context != fresh.box_context or
         style.flags.subgrid_ineligible != fresh.flags.subgrid_ineligible or style.flags.in_base_appearance != fresh.flags.in_base_appearance or
+        style.flags.forced_colors_active != fresh.flags.forced_colors_active or style.flags.in_forced_colors_mode != fresh.flags.in_forced_colors_mode or
+        style.flags.forced_color != fresh.flags.forced_color or
         style.registered != fresh.registered) return .flags;
     const names = try style.customNames(ctx.allocator);
     defer ctx.allocator.free(names);

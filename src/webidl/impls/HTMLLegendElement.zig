@@ -23,14 +23,9 @@ pub const InternalState = struct {};
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try HTMLLegendElement.init(ctx.allocator, ctx);
-    errdefer HTMLLegendElement.deinit(instance);
-
+pub fn call_constructor(instance: *runtime.Instance) !void {
+    _ = instance;
     // TODO: Implement constructor logic with parameters
-
-    return instance;
 }
 
 /// Getter for form

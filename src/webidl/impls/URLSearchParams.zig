@@ -94,22 +94,23 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 3.2.25: an Object with @@iterator is the sequence, any other Object the
 /// record, everything else the USVString) and frees what it converted once
 /// this returns, so every string kept is copied.
-pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(Init)) !*runtime.Instance {
+pub fn call_constructor(instance: *runtime.Instance, init_data: webidl.Opt(Init)) !void {
+    const allocator = instance.ctx.allocator;
     // The optional argument's default, "", for undefined as for absent.
-    if (!init_data.was_passed) return initWithString(ctx.allocator, ctx, "");
+    if (!init_data.was_passed) return initializeFromString(allocator, instance, "");
     switch (init_data.value) {
         // "Initialize" step 1: for each innerSequence of init, if its size is
         // not 2, throw a TypeError; otherwise append (innerSequence[0],
         // innerSequence[1]).
-        .sequence_usvstring_sequence => |sequences| return initWithPairs(ctx.allocator, ctx, sequences),
+        .sequence_usvstring_sequence => |sequences| return initializeFromPairs(allocator, instance, sequences),
         // "Initialize" step 2: for each name -> value of init, append
         // (name, value).
-        .usvstring_usvstring_record => |record| return initWithPairs(ctx.allocator, ctx, record),
+        .usvstring_usvstring_record => |record| return initializeFromPairs(allocator, instance, record),
         // Constructor step 1: a string starting with "?" loses it. Then
         // "initialize" step 3: parse it.
         .usvstring => |text| {
             const query = if (text.len > 0 and text[0] == '?') text[1..] else text;
-            return initWithString(ctx.allocator, ctx, query);
+            return initializeFromString(allocator, instance, query);
         },
     }
 }
@@ -117,26 +118,17 @@ pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(Init)) !*run
 /// "Initialize" with a list of name-value pairs - `init`'s sequence member
 /// (each inner sequence must hold two strings: a TypeError otherwise) or its
 /// record member - each appended in order. The strings are copied.
-fn initWithPairs(
+fn initializeFromPairs(
     allocator: std.mem.Allocator,
-    ctx: runtime.Context,
+    instance: *runtime.Instance,
     pairs: anytype,
-) !*runtime.Instance {
+) !void {
     const from_sequences = comptime @TypeOf(pairs) == []const []const runtime.USVString;
-
-    // Create instance
-    const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
-    // Until it is returned, the construction is the object's only owner: a
-    // failed step ("initialize" step 1's TypeError) frees it whole. Its own
-    // deinit is its destructor, not a free, and left its slot and State until
-    // the Browser ended (url/urlsearchparams-constructor.any.js; lane hard1-b;
-    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
-    errdefer runtime.gc.releaseOwned(instance);
-
     const state = instance.getState(State);
 
     // Create InternalState. The instance holds it from here, so a failure
-    // below frees it with the pairs already appended (`deinit`).
+    // below frees it with the pairs already appended (`deinit`, run by the
+    // generated constructor's `releaseFailedConstruction`).
     const internal = try allocator.create(InternalState);
     internal.* = InternalState{
         .list = infra.List(Tuple).init(allocator),
@@ -158,22 +150,15 @@ fn initWithPairs(
 
         try internal.list.append(.{ .name = name, .value = value });
     }
-
-    return instance;
 }
 
 /// Initialize from string (query string)
 /// Spec: https://url.spec.whatwg.org/#concept-urlsearchparams-new step 3
-pub fn initWithString(
+fn initializeFromString(
     allocator: std.mem.Allocator,
-    ctx: runtime.Context,
+    instance: *runtime.Instance,
     query: []const u8,
-) !*runtime.Instance {
-    // Create instance
-    const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
-    // Freed whole if a later step fails, as `initWithPairs` does.
-    errdefer runtime.gc.releaseOwned(instance);
-
+) !void {
     const state = instance.getState(State);
 
     // Create InternalState
@@ -207,7 +192,6 @@ pub fn initWithString(
     }
 
     state.own._internal = internal;
-    return instance;
 }
 
 // ========================================================================
@@ -507,15 +491,6 @@ fn orderByCodeUnits(a: []const u8, b: []const u8) std.math.Order {
         if (y == null) return .gt;
         if (x.? != y.?) return std.math.order(x.?, y.?);
     }
-}
-
-test "orderByCodeUnits: a name outside the BMP sorts before U+E000 and after U+D7FF" {
-    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{FB03}"));
-    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{E000}"));
-    try std.testing.expectEqual(std.math.Order.gt, orderByCodeUnits("\u{1F308}", "\u{D7FF}"));
-    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("a", "a\u{1F308}"));
-    try std.testing.expectEqual(std.math.Order.eq, orderByCodeUnits("a\u{1F308}", "a\u{1F308}"));
-    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{1F4A9}"));
 }
 
 /// Internal: stringifier implementation

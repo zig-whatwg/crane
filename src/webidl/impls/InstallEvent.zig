@@ -25,17 +25,14 @@ pub const ImplError = error{
 pub const InternalState = struct {};
 
 /// new InstallEvent(type, eventInitDict): DOM's inner event creation steps.
-pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableEventInit)) !*runtime.Instance {
-    const instance = try InstallEvent.init(ctx.allocator, ctx);
-    errdefer InstallEvent.deinit(instance);
+pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableEventInit)) !void {
     const event_construction = @import("dom").event_construction;
     const event_init = if (eventInitDict.was_passed) eventInitDict.value.base else dictionaries.EventInit{};
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(event_init));
-    return instance;
 }
 
 /// Operation: addRoutes (4.5.1): the static router's rules for this service
 /// worker (service_worker.add_routes).
-pub fn call_addRoutes(instance: *runtime.Instance, rules: runtime.JSValue) anyerror!runtime.JSValue {
+pub fn call_addRoutes(instance: *runtime.Instance, rules: typedefs.RouterRuleOrSequenceOfRouterRule) anyerror!runtime.JSValue {
     return @import("service_worker").add_routes.addRoutes(instance, rules);
 }

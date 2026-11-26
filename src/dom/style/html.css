@@ -9,6 +9,7 @@
 
 /* 15.3.1 Hidden elements */
 @namespace "http://www.w3.org/1999/xhtml";
+@namespace svg "http://www.w3.org/2000/svg";
 
 area, base, basefont, datalist, head, link, meta, noembed,
 noframes, param, rp, script, style, template, title {
@@ -161,7 +162,10 @@ rt { display: ruby-text; }
 
 :focus-visible { outline: auto; }
 
-mark { background: yellow; color: black; } /* this color is just a suggestion and can be changed based on implementation feedback */
+/* CSS Color Adjustment 1 §3.1 / §5.2: Mark and MarkText resolve to yellow and
+   black in both schemes and are preserved in forced colors mode (WPT
+   forced-colors-mode-03.html). */
+mark { background: Mark; color: MarkText; }
 
 abbr[title], acronym[title] { text-decoration: dotted underline; }
 ins, u { text-decoration: underline; }
@@ -687,4 +691,13 @@ select:-internal-list-box {
  animation-iteration-count: inherit;
  animation-direction: inherit;
  animation-play-state: inherit;
+}
+
+/* CSS Color Adjustment 1 §3.2: SVG elements default to preserving parent color
+ * in forced colors mode, while foreignObject re-enables forced color adjustment. */
+svg|svg {
+ forced-color-adjust: preserve-parent-color;
+}
+svg|foreignObject {
+ forced-color-adjust: auto;
 }

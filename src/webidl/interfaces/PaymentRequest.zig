@@ -12,7 +12,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const EventHandler = @import("typedefs").EventHandler;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const PaymentMethodData = @import("dictionaries").PaymentMethodData;
 const PaymentShippingType = @import("enums").PaymentShippingType;
@@ -21,11 +20,12 @@ const PaymentOptions = @import("dictionaries").PaymentOptions;
 const Observable = @import("interfaces").Observable;
 const SecurePaymentConfirmationCapabilities = @import("typedefs").SecurePaymentConfirmationCapabilities;
 const Event = @import("interfaces").Event;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const PaymentDetailsInit = @import("dictionaries").PaymentDetailsInit;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const EventListener = @import("interfaces").EventListener;
 const PaymentResponse = @import("interfaces").PaymentResponse;
 const ContactAddress = @import("interfaces").ContactAddress;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const DOMString = @import("typedefs").DOMString;
 const PaymentDetailsUpdate = @import("dictionaries").PaymentDetailsUpdate;
 
@@ -225,8 +225,20 @@ pub const PaymentRequest = struct {
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
     pub fn call_constructor(ctx: runtime.Context, methodData: runtime.JSValue, details: PaymentDetailsInit, options: webidl.Opt(PaymentOptions)) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try PaymentRequestImpl.call_constructor(ctx, methodData, details, options);
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(PaymentRequestImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try PaymentRequestImpl.call_constructor(instance, methodData, details, options);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try PaymentRequestImpl.call_constructor(ctx, methodData, details, options);
+        }
     }
 
     pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {

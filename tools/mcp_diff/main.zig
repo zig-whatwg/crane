@@ -213,10 +213,57 @@ fn filesListing(arena: Allocator, io: Io, dir_path: []const u8) ![]const u8 {
     var out: Io.Writer.Allocating = .init(arena);
     for (names.items) |name| {
         const st = try dir.statFile(io, name, .{});
+        const mode = st.permissions.toMode() & 0o777;
+        if (std.mem.endsWith(u8, name, ".heapsnapshot")) {
+            const bytes = try dir.readFileAlloc(io, name, arena, .limited(64 << 20));
+            const summary = summarizeHeapSnapshot(arena, bytes) catch "invalid heapsnapshot";
+            try out.writer.print("{s} {o}\n{s}\n", .{ name, mode, summary });
+            continue;
+        }
         const bytes = try dir.readFileAlloc(io, name, arena, .limited(1 << 20));
-        try out.writer.print("{s} {o}\n{s}\n", .{ name, st.permissions.toMode() & 0o777, bytes });
+        try out.writer.print("{s} {o}\n{s}\n", .{ name, mode, bytes });
     }
     return out.written();
+}
+
+/// Validate a V8 `.heapsnapshot` file's JSON structure and summarise its
+/// invariants deterministically (live heap addresses and sizes differ across
+/// Chrome and Crane).
+fn summarizeHeapSnapshot(arena: Allocator, bytes: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena, bytes, .{});
+    if (parsed != .object) return error.InvalidSnapshot;
+    const root = parsed.object;
+    const snap = (root.get("snapshot") orelse return error.InvalidSnapshot);
+    if (snap != .object) return error.InvalidSnapshot;
+    const meta = (snap.object.get("meta") orelse return error.InvalidSnapshot);
+    if (meta != .object) return error.InvalidSnapshot;
+    const node_fields = (meta.object.get("node_fields") orelse return error.InvalidSnapshot);
+    const node_types = (meta.object.get("node_types") orelse return error.InvalidSnapshot);
+    const edge_fields = (meta.object.get("edge_fields") orelse return error.InvalidSnapshot);
+    const edge_types = (meta.object.get("edge_types") orelse return error.InvalidSnapshot);
+    if (node_fields != .array or node_types != .array or edge_fields != .array or edge_types != .array) return error.InvalidSnapshot;
+    if (node_fields.array.items.len == 0 or edge_fields.array.items.len == 0) return error.InvalidSnapshot;
+    const node_count_val = (snap.object.get("node_count") orelse return error.InvalidSnapshot);
+    const edge_count_val = (snap.object.get("edge_count") orelse return error.InvalidSnapshot);
+    if (node_count_val != .integer or edge_count_val != .integer) return error.InvalidSnapshot;
+    if (node_count_val.integer <= 0 or edge_count_val.integer <= 0) return error.InvalidSnapshot;
+    const node_count: usize = @intCast(node_count_val.integer);
+    const edge_count: usize = @intCast(edge_count_val.integer);
+    const nodes = (root.get("nodes") orelse return error.InvalidSnapshot);
+    const edges = (root.get("edges") orelse return error.InvalidSnapshot);
+    const strings = (root.get("strings") orelse return error.InvalidSnapshot);
+    if (nodes != .array or edges != .array or strings != .array) return error.InvalidSnapshot;
+    if (nodes.array.items.len != node_count * node_fields.array.items.len) return error.InvalidSnapshot;
+    if (edges.array.items.len != edge_count * edge_fields.array.items.len) return error.InvalidSnapshot;
+    if (strings.array.items.len == 0) return error.InvalidSnapshot;
+    var has_class = false;
+    var has_marker = false;
+    for (strings.array.items) |item| {
+        if (item != .string) return error.InvalidSnapshot;
+        if (std.mem.eql(u8, item.string, "CraneHeapMarkerObject")) has_class = true;
+        if (std.mem.eql(u8, item.string, "CRANE_HEAP_MARKER_7F3A")) has_marker = true;
+    }
+    return std.fmt.allocPrint(arena, "valid v8 heapsnapshot (has_class={}, has_marker={})", .{ has_class, has_marker });
 }
 
 /// A fresh directory for one side of a case, the fixtures' files/ copied in;

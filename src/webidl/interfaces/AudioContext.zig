@@ -11,12 +11,12 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
-const DOMString = @import("typedefs").DOMString;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 const MediaStreamAudioDestinationNode = @import("interfaces").MediaStreamAudioDestinationNode;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const OscillatorNode = @import("interfaces").OscillatorNode;
 const ScriptProcessorNode = @import("interfaces").ScriptProcessorNode;
-const DynamicsCompressorNode = @import("interfaces").DynamicsCompressorNode;
+const DOMString = @import("typedefs").DOMString;
 const DelayNode = @import("interfaces").DelayNode;
 const MediaStreamAudioSourceNode = @import("interfaces").MediaStreamAudioSourceNode;
 const DecodeErrorCallback = @import("callbacks").DecodeErrorCallback;
@@ -25,11 +25,12 @@ const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const ConvolverNode = @import("interfaces").ConvolverNode;
 const MediaElementAudioSourceNode = @import("interfaces").MediaElementAudioSourceNode;
 const AudioContextState = @import("enums").AudioContextState;
+const DynamicsCompressorNode = @import("interfaces").DynamicsCompressorNode;
 const AudioPlaybackStats = @import("interfaces").AudioPlaybackStats;
 const MediaStream = @import("interfaces").MediaStream;
 const PannerNode = @import("interfaces").PannerNode;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const AudioBufferSourceNode = @import("interfaces").AudioBufferSourceNode;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const WaveShaperNode = @import("interfaces").WaveShaperNode;
 const EventListener = @import("interfaces").EventListener;
 const IIRFilterNode = @import("interfaces").IIRFilterNode;
@@ -37,7 +38,6 @@ const AudioBuffer = @import("interfaces").AudioBuffer;
 const EventHandler = @import("typedefs").EventHandler;
 const MediaStreamTrackAudioSourceNode = @import("interfaces").MediaStreamTrackAudioSourceNode;
 const AudioListener = @import("interfaces").AudioListener;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const DecodeSuccessCallback = @import("callbacks").DecodeSuccessCallback;
 const AnalyserNode = @import("interfaces").AnalyserNode;
 const StereoPannerNode = @import("interfaces").StereoPannerNode;
@@ -51,9 +51,9 @@ const ChannelMergerNode = @import("interfaces").ChannelMergerNode;
 const HTMLMediaElement = @import("interfaces").HTMLMediaElement;
 const PeriodicWave = @import("interfaces").PeriodicWave;
 const DOMStringOrAudioSinkOptions = @import("typedefs").DOMStringOrAudioSinkOptions;
+const PeriodicWaveConstraints = @import("dictionaries").PeriodicWaveConstraints;
 const AudioWorklet = @import("interfaces").AudioWorklet;
 const BiquadFilterNode = @import("interfaces").BiquadFilterNode;
-const PeriodicWaveConstraints = @import("dictionaries").PeriodicWaveConstraints;
 const DOMStringOrAudioSinkInfo = @import("typedefs").DOMStringOrAudioSinkInfo;
 const AudioTimestamp = @import("dictionaries").AudioTimestamp;
 
@@ -293,8 +293,20 @@ pub const AudioContext = struct {
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
     pub fn call_constructor(ctx: runtime.Context, contextOptions: webidl.Opt(AudioContextOptions)) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try AudioContextImpl.call_constructor(ctx, contextOptions);
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(AudioContextImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try AudioContextImpl.call_constructor(instance, contextOptions);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try AudioContextImpl.call_constructor(ctx, contextOptions);
+        }
     }
 
     pub fn get_baseLatency(instance: *runtime.Instance) anyerror!f64 {

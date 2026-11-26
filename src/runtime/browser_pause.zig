@@ -148,6 +148,7 @@ test "a dialog pause leaves session messages queued; a debugger pause runs them 
     var pause = BrowserPause.init(testing.allocator);
     defer pause.deinit();
     const Log = struct {
+        const Self = @This();
         ran: std.ArrayListUnmanaged(u8) = .empty,
         quit_after: u8 = 0,
         fn run(data: ?*anyopaque) void {
@@ -165,7 +166,8 @@ test "a dialog pause leaves session messages queued; a debugger pause runs them 
             const flag: *bool = @ptrCast(@alignCast(context));
             return flag.*;
         }
-        const Entry = struct { log: *@This(), tag: u8 };
+        // Inside Entry, @This() is Entry: the log is the enclosing Log.
+        const Entry = struct { log: *Self, tag: u8 };
     };
     var log: Log = .{ .quit_after = 2 };
     defer log.ran.deinit(testing.allocator);

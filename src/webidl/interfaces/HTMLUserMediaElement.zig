@@ -23,8 +23,8 @@ const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
-const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
+const EventListenerOptionsOrBoolean = @import("typedefs").EventListenerOptionsOrBoolean;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const BooleanOrUnrestrictedDoubleOrDOMString = @import("typedefs").BooleanOrUnrestrictedDoubleOrDOMString;
@@ -42,7 +42,7 @@ const FocusOptions = @import("dictionaries").FocusOptions;
 const TogglePopoverOptionsOrBoolean = @import("typedefs").TogglePopoverOptionsOrBoolean;
 const TrustedTypeOrDOMString = @import("typedefs").TrustedTypeOrDOMString;
 const DOMString = @import("typedefs").DOMString;
-const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
+const DOMRectList = @import("interfaces").DOMRectList;
 const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
@@ -52,7 +52,6 @@ const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
 const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
-const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const EditContext = @import("interfaces").EditContext;
@@ -65,7 +64,7 @@ const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigation
 const EventHandler = @import("typedefs").EventHandler;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const UnrestrictedDoubleOrKeyframeAnimationOptions = @import("typedefs").UnrestrictedDoubleOrKeyframeAnimationOptions;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
 const StylePropertyMap = @import("interfaces").StylePropertyMap;
 const ShadowRoot = @import("interfaces").ShadowRoot;
@@ -81,6 +80,7 @@ const BooleanOrScrollIntoViewOptions = @import("typedefs").BooleanOrScrollIntoVi
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const ShadowRootInit = @import("dictionaries").ShadowRootInit;
+const AddEventListenerOptionsOrBoolean = @import("typedefs").AddEventListenerOptionsOrBoolean;
 
 pub const HTMLUserMediaElement = struct {
     pub const Meta = struct {
@@ -374,8 +374,20 @@ pub const HTMLUserMediaElement = struct {
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
     pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try HTMLUserMediaElementImpl.call_constructor(ctx);
+        if (comptime @FieldType(std.meta.ArgsTuple(@TypeOf(HTMLUserMediaElementImpl.call_constructor)), "0") == *runtime.Instance) {
+            // WebIDL 3.7.1 step 1.8: internally create a new object implementing
+            // the interface. Until it is returned, the construction is its only
+            // owner: a failed step frees it whole.
+            const instance = try init(ctx.allocator, ctx);
+            errdefer runtime.gc.releaseFailedConstruction(instance);
+            // Step 1.9: perform the constructor steps with object as this.
+            try HTMLUserMediaElementImpl.call_constructor(instance);
+            return instance;
+        } else {
+            // A factory: the impl makes the object, and frees it whole when a
+            // step fails (tools/lint_constructors.zig).
+            return try HTMLUserMediaElementImpl.call_constructor(ctx);
+        }
     }
 
     pub fn get_stream(instance: *runtime.Instance) anyerror!?*runtime.Instance {
