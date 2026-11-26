@@ -1592,12 +1592,14 @@ const ClassicScriptRecord = struct {
     script: module_script.ClassicScript,
     /// Its place in its agent's `ClassicScripts`.
     live: ClassicScripts.Link = .{},
+    allocator: std.mem.Allocator,
 
     fn destroy(self: *ClassicScriptRecord) void {
+        const alloc = self.allocator;
         ClassicScripts.remove(&self.live);
-        std.heap.c_allocator.free(self.script.base_url);
-        if (self.script.nonce.len > 0) std.heap.c_allocator.free(self.script.nonce);
-        std.heap.c_allocator.destroy(self);
+        alloc.free(self.script.base_url);
+        if (self.script.nonce.len > 0) alloc.free(self.script.nonce);
+        alloc.destroy(self);
     }
 };
 
@@ -1620,7 +1622,7 @@ const classic_script_key_prefix = "classic:";
 /// document's base URL with the default options.
 fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8, element: *runtime.Instance, credentials_mode: fetch.internal.CredentialsMode) ?*ClassicScriptRecord {
     const records = classicScriptsOf(document.ctx) orelse return null;
-    const allocator = std.heap.c_allocator;
+    const allocator = runtime.allocatorOf(document);
     const options = scriptFetchOptions(element, credentials_mode);
     const map = documentModuleMap(document);
     // Include every retained option: otherwise equal-URL classics can share
@@ -1643,7 +1645,7 @@ fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8, elemen
         allocator.destroy(record);
         return null;
     }) else "";
-    record.* = .{ .script = .{ .base_url = owned_base_url, .nonce = owned_nonce, .referrer_policy = options.referrer_policy, .credentials_mode = options.credentials_mode, .render_blocking = options.render_blocking } };
+    record.* = .{ .script = .{ .base_url = owned_base_url, .nonce = owned_nonce, .referrer_policy = options.referrer_policy, .credentials_mode = options.credentials_mode, .render_blocking = options.render_blocking }, .allocator = allocator };
     records.add(&record.live);
     if (!map.putFn(map.context, key, record)) {
         record.destroy();
@@ -1952,30 +1954,34 @@ const QueuedSvgScript = struct {
     /// task is done or dropped, skipped for a document that is gone.
     delayed_document: ?*runtime.Instance = null,
     delayed_document_generation: u64 = 0,
+    allocator: std.mem.Allocator,
 
     fn destroy(self: *QueuedSvgScript) void {
+        const alloc = self.allocator;
         if (self.delayed_document) |document| {
             self.delayed_document = null;
             if (runtime.SlabAllocator.generationOf(document) == self.delayed_document_generation) dom.document_lifecycle.undelayLoadEvent(document);
         }
         const root = self.element_root;
         self.element_ref.release(self.element);
-        if (self.source) |b| std.heap.c_allocator.free(b);
-        std.heap.c_allocator.free(self.url);
-        std.heap.c_allocator.destroy(self);
+        if (self.source) |b| alloc.free(b);
+        alloc.free(self.url);
+        alloc.destroy(self);
         if (root) |value| value.release();
     }
 };
 
 fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const u8, muted: bool, credentials_mode: fetch.internal.CredentialsMode) void {
     const loop = element.ctx.getOptionalEventLoop() orelse return;
-    const task = std.heap.c_allocator.create(QueuedSvgScript) catch return;
+    const alloc = runtime.allocatorOf(element);
+    const task = alloc.create(QueuedSvgScript) catch return;
     task.* = .{
+        .allocator = alloc,
         .element = element,
         .generation = runtime.SlabAllocator.generationOf(element),
-        .source = if (body) |b| std.heap.c_allocator.dupe(u8, b) catch null else null,
-        .url = std.heap.c_allocator.dupe(u8, url) catch {
-            std.heap.c_allocator.destroy(task);
+        .source = if (body) |b| alloc.dupe(u8, b) catch null else null,
+        .url = alloc.dupe(u8, url) catch {
+            alloc.destroy(task);
             return;
         },
         .muted = muted,
@@ -2176,21 +2182,23 @@ const ShadowRealmModuleMap = struct {
         return .{ .context = self, .getFn = &get, .putFn = &put };
     }
 
-    fn realmKey(self: *const ShadowRealmModuleMap, key: []const u8) ?[]u8 {
-        return std.fmt.allocPrint(std.heap.c_allocator, "shadowrealm:{x}:{s}", .{ @intFromPtr(self.realm), key }) catch null;
+    fn realmKey(self: *const ShadowRealmModuleMap, alloc: std.mem.Allocator, key: []const u8) ?[]u8 {
+        return std.fmt.allocPrint(alloc, "shadowrealm:{x}:{s}", .{ @intFromPtr(self.realm), key }) catch null;
     }
 
     fn get(context: *anyopaque, key: []const u8) ?*anyopaque {
         const self: *ShadowRealmModuleMap = @ptrCast(@alignCast(context));
-        const realm_key = self.realmKey(key) orelse return null;
-        defer std.heap.c_allocator.free(realm_key);
+        const alloc = runtime.allocatorOf(self.document);
+        const realm_key = self.realmKey(alloc, key) orelse return null;
+        defer alloc.free(realm_key);
         return documentModuleMapGet(self.document, realm_key);
     }
 
     fn put(context: *anyopaque, key: []const u8, value: *anyopaque) bool {
         const self: *ShadowRealmModuleMap = @ptrCast(@alignCast(context));
-        const realm_key = self.realmKey(key) orelse return false;
-        defer std.heap.c_allocator.free(realm_key);
+        const alloc = runtime.allocatorOf(self.document);
+        const realm_key = self.realmKey(alloc, key) orelse return false;
+        defer alloc.free(realm_key);
         return documentModuleMapPut(self.document, realm_key, value);
     }
 };
@@ -2415,9 +2423,10 @@ const DynamicImportTask = struct {
     /// document it is on (refcount step 5d).
     document_ref: dom.node_holds.CountedRef = .{},
     document: ?*runtime.Instance = null,
+    allocator: std.mem.Allocator,
 
     fn create(realm: runtime.Context, window: *runtime.Instance, url: []const u8, module_type: module_script.ModuleType, options: module_script.FetchOptions, request: *engine.ImportRequest, referrer: []const u8) !*DynamicImportTask {
-        const allocator = std.heap.c_allocator;
+        const allocator = runtime.allocatorOf(window);
         const task = try allocator.create(DynamicImportTask);
         errdefer allocator.destroy(task);
         const owned_url = try allocator.dupe(u8, url);
@@ -2427,6 +2436,7 @@ const DynamicImportTask = struct {
         const owned_referrer: []const u8 = if (referrer.len > 0) try allocator.dupe(u8, referrer) else "";
         errdefer if (owned_referrer.len > 0) allocator.free(owned_referrer);
         task.* = .{
+            .allocator = allocator,
             .realm = realm,
             .window = window,
             .generation = runtime.SlabAllocator.generationOf(window),
@@ -2442,12 +2452,13 @@ const DynamicImportTask = struct {
     }
 
     fn destroy(self: *DynamicImportTask) void {
+        const alloc = self.allocator;
         const root = self.document_root;
         if (self.document) |document| self.document_ref.release(document);
-        std.heap.c_allocator.free(self.url);
-        if (self.nonce.len > 0) std.heap.c_allocator.free(self.nonce);
-        if (self.referrer.len > 0) std.heap.c_allocator.free(self.referrer);
-        std.heap.c_allocator.destroy(self);
+        alloc.free(self.url);
+        if (self.nonce.len > 0) alloc.free(self.nonce);
+        if (self.referrer.len > 0) alloc.free(self.referrer);
+        alloc.destroy(self);
         if (root) |value| value.release();
     }
 };
@@ -2720,13 +2731,14 @@ fn startModuleElementGraph(loader: *module_script.AsyncModuleLoader, element: *r
         element_root.release();
         return false;
     };
-    const owner = std.heap.c_allocator.create(ModuleElementGraph) catch {
+    const graph_alloc = runtime.allocatorOf(element);
+    const owner = graph_alloc.create(ModuleElementGraph) catch {
         element_root.release();
         document_root.release();
         return false;
     };
     owner.* = .{
-        .allocator = std.heap.c_allocator,
+        .allocator = graph_alloc,
         .element = element,
         .element_generation = runtime.SlabAllocator.generationOf(element),
         .document = document,
@@ -2813,6 +2825,7 @@ fn runModuleScript(script_element: *runtime.Instance, document: *runtime.Instanc
 /// as (address, slab generation): the reaction runs whenever the promise
 /// settles, and the slab reuses a freed Window's slot.
 const PendingModuleEvaluation = struct {
+    allocator: std.mem.Allocator,
     realm: runtime.Context,
     global: *runtime.Instance,
     generation: u64,
@@ -2830,12 +2843,14 @@ const PendingModuleEvaluation = struct {
     /// Fulfilled, or ended without a step (the realm ended first): freed.
     fn dropped(data: ?*anyopaque) void {
         const pending: *PendingModuleEvaluation = @ptrCast(@alignCast(data orelse return));
-        std.heap.c_allocator.destroy(pending);
+        const alloc = pending.allocator;
+        alloc.destroy(pending);
     }
 
     fn rejected(data: ?*anyopaque, reason: runtime.JSValue) void {
         const pending: *PendingModuleEvaluation = @ptrCast(@alignCast(data orelse return));
-        defer std.heap.c_allocator.destroy(pending);
+        const alloc = pending.allocator;
+        defer alloc.destroy(pending);
         if (runtime.SlabAllocator.generationOf(pending.global) != pending.generation) return;
         reportModuleException(pending.realm, reason);
     }
@@ -2843,10 +2858,11 @@ const PendingModuleEvaluation = struct {
 
 fn reportModuleRejectionLater(realm: runtime.Context, promise: runtime.JSValue) void {
     const global = windowOfRealm(realm) orelse return;
-    const pending = std.heap.c_allocator.create(PendingModuleEvaluation) catch return;
-    pending.* = .{ .realm = realm, .global = global, .generation = runtime.SlabAllocator.generationOf(global) };
+    const alloc = runtime.allocatorOf(global);
+    const pending = alloc.create(PendingModuleEvaluation) catch return;
+    pending.* = .{ .allocator = alloc, .realm = realm, .global = global, .generation = runtime.SlabAllocator.generationOf(global) };
     engine.reactToPromise(realm, promise, &PendingModuleEvaluation.steps, pending) catch {
-        std.heap.c_allocator.destroy(pending);
+        alloc.destroy(pending);
     };
 }
 

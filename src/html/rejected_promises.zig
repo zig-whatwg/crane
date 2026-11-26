@@ -28,7 +28,6 @@ const dictionaries = @import("dictionaries");
 const engine = @import("engine");
 
 const log = std.log.scoped(.rejected_promises);
-const allocator = std.heap.c_allocator;
 
 /// How many outstanding rejected promises a global keeps before dropping the
 /// oldest (see the module doc).
@@ -85,6 +84,8 @@ const Rejected = struct {
 
 /// One global's rejection bookkeeping.
 const Tracked = struct {
+    /// The agent's allocator (`AgentHost`'s, from the Browser's heap).
+    allocator: std.mem.Allocator,
     /// The global, held as (address, slab generation): the slab reuses a freed
     /// Window's slot, and a stale entry must not be mistaken for the new one.
     global: *runtime.Instance,
@@ -99,12 +100,18 @@ const Tracked = struct {
     }
 
     fn destroy(self: *Tracked) void {
+        const alloc = self.allocator;
         releaseAll(self.about_to_be_notified.items);
         releaseAll(self.outstanding.items);
-        self.about_to_be_notified.deinit(allocator);
-        self.outstanding.deinit(allocator);
-        allocator.destroy(self);
+        self.about_to_be_notified.deinit(alloc);
+        self.outstanding.deinit(alloc);
+        alloc.destroy(self);
     }
+};
+
+const HostList = struct {
+    list: *std.ArrayListUnmanaged(*anyopaque),
+    allocator: std.mem.Allocator,
 };
 
 /// The bookkeeping of every global of `agent`'s realms: a list on the
@@ -116,17 +123,17 @@ const Tracked = struct {
 /// Browser's end released every Browser's entries - another Browser's
 /// handles, into another isolate.) Null for an agent with no host (a unit
 /// test's bare agent): nothing is tracked.
-fn listOf(agent: ?*engine.Agent) ?*std.ArrayListUnmanaged(*anyopaque) {
+fn listOf(agent: ?*engine.Agent) ?HostList {
     const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofAgent(agent orelse return null) orelse return null;
-    return &host.rejections;
+    return .{ .list = &host.rejections, .allocator = host.deferred_teardown.allocator };
 }
 
 /// `listOf` for `realm`'s agent, from the host state cached on the realm
 /// (dom.agent_hosts.ofOwnAgent): one load, no registry lookup - what every
 /// rejection's bookkeeping asks (lane tpc).
-fn listOfRealm(realm: runtime.Context) ?*std.ArrayListUnmanaged(*anyopaque) {
+fn listOfRealm(realm: runtime.Context) ?HostList {
     const host: *@import("html_core").agent_host.AgentHost = @import("dom").agent_hosts.ofOwnAgent(realm) orelse return null;
-    return &host.rejections;
+    return .{ .list = &host.rejections, .allocator = host.deferred_teardown.allocator };
 }
 
 fn trackedAt(list: *std.ArrayListUnmanaged(*anyopaque), i: usize) *Tracked {
@@ -140,14 +147,14 @@ fn releaseAll(list: []const Rejected) void {
 /// Release every promise `agent`'s globals hold, before the agent is
 /// destroyed: the Browser's end for its window agent, a worker's for its.
 pub fn releaseAgent(agent: *engine.Agent) void {
-    const list = listOf(agent) orelse return;
-    var taken = list.*;
-    list.* = .empty;
+    const hl = listOf(agent) orelse return;
+    var taken = hl.list.*;
+    hl.list.* = .empty;
     for (taken.items) |entry| {
         const t: *Tracked = @ptrCast(@alignCast(entry));
         t.destroy();
     }
-    taken.deinit(allocator);
+    taken.deinit(hl.allocator);
 }
 
 /// Release what is held for `global` - its lists - while its agent still
@@ -159,7 +166,8 @@ pub fn releaseAgent(agent: *engine.Agent) void {
 /// find everything the process keeps for it
 /// (docs/lessons/architecture-before-disposing-an-isolate-find-everything-the.md).
 pub fn forgetGlobal(global: *runtime.Instance) void {
-    const list = listOfRealm(global.ctx) orelse return;
+    const hl = listOfRealm(global.ctx) orelse return;
+    const list = hl.list;
     for (list.items, 0..) |_, i| {
         const t = trackedAt(list, i);
         if (t.global != global) continue;
@@ -167,13 +175,15 @@ pub fn forgetGlobal(global: *runtime.Instance) void {
         t.destroy();
         break;
     }
-    if (list.items.len == 0) list.clearAndFree(allocator);
+    if (list.items.len == 0) list.clearAndFree(hl.allocator);
 }
 
 /// The bookkeeping for `global`, created on first use. Entries of the agent
 /// whose global has gone are released on the way.
 fn trackedFor(global: *runtime.Instance, create: bool) ?*Tracked {
-    const list = listOfRealm(global.ctx) orelse return null;
+    const hl = listOfRealm(global.ctx) orelse return null;
+    const list = hl.list;
+    const alloc = hl.allocator;
     var i: usize = 0;
     var found: ?*Tracked = null;
     while (i < list.items.len) {
@@ -188,10 +198,10 @@ fn trackedFor(global: *runtime.Instance, create: bool) ?*Tracked {
     }
     if (found != null or !create) return found;
 
-    const t = allocator.create(Tracked) catch return null;
-    t.* = .{ .global = global, .generation = runtime.SlabAllocator.generationOf(global) };
-    list.append(allocator, t) catch {
-        allocator.destroy(t);
+    const t = alloc.create(Tracked) catch return null;
+    t.* = .{ .allocator = alloc, .global = global, .generation = runtime.SlabAllocator.generationOf(global) };
+    list.append(alloc, t) catch {
+        alloc.destroy(t);
         return null;
     };
     return t;
@@ -236,7 +246,7 @@ fn promiseRejectionTracker(host: ?*anyopaque, realm: runtime.Context, promise: e
         // about-to-be-notified rejected promises list.
         .reject => {
             const t = trackedFor(global, true) orelse return rejected.release();
-            t.about_to_be_notified.append(allocator, rejected) catch rejected.release();
+            t.about_to_be_notified.append(t.allocator, rejected) catch rejected.release();
         },
         // Step 7: operation "handle".
         .handle => {
@@ -267,11 +277,12 @@ pub fn afterMicrotaskCheckpoint(host: ?*anyopaque, agent: *engine.Agent) void {
     // way) - no registry lookup at every checkpoint.
     const agent_host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(host orelse return));
     const list = &agent_host.rejections;
+    const alloc = agent_host.deferred_teardown.allocator;
     // This agent's live entries, taken first: notifying queues tasks, and
     // the list must not move under the walk. Gone globals' entries are
     // released on the way.
     var mine: std.ArrayListUnmanaged(*Tracked) = .empty;
-    defer mine.deinit(allocator);
+    defer mine.deinit(alloc);
     var i: usize = 0;
     while (i < list.items.len) {
         const t = trackedAt(list, i);
@@ -281,14 +292,14 @@ pub fn afterMicrotaskCheckpoint(host: ?*anyopaque, agent: *engine.Agent) void {
             continue;
         }
         i += 1;
-        mine.append(allocator, t) catch continue;
+        mine.append(alloc, t) catch continue;
     }
     for (mine.items) |t| {
         // Steps 1-3: take the list, leaving it empty; nothing to do when it
         // is empty.
         if (t.about_to_be_notified.items.len == 0) continue;
-        const taken = t.about_to_be_notified.toOwnedSlice(allocator) catch continue;
-        defer allocator.free(taken);
+        const taken = t.about_to_be_notified.toOwnedSlice(t.allocator) catch continue;
+        defer t.allocator.free(taken);
         // Step 4: queue a global task.
         queueNotification(t.global, .unhandled_rejection, taken);
     }
@@ -297,6 +308,7 @@ pub fn afterMicrotaskCheckpoint(host: ?*anyopaque, agent: *engine.Agent) void {
 const Kind = enum { unhandled_rejection, rejection_handled };
 
 const Notification = struct {
+    allocator: std.mem.Allocator,
     global: *runtime.Instance,
     generation: u64,
     kind: Kind,
@@ -305,9 +317,10 @@ const Notification = struct {
 
     /// The task will not run: release what it carries.
     fn discard(self: *Notification) void {
+        const alloc = self.allocator;
         releaseAll(self.promises);
-        allocator.free(self.promises);
-        allocator.destroy(self);
+        alloc.free(self.promises);
+        alloc.destroy(self);
     }
 };
 
@@ -321,12 +334,14 @@ const Notification = struct {
 /// nothing.
 fn queueNotification(global: *runtime.Instance, kind: Kind, promises: []const Rejected) void {
     const loop = global.ctx.getOptionalEventLoop() orelse return releaseAll(promises);
-    const task = allocator.create(Notification) catch return releaseAll(promises);
-    const copy = allocator.dupe(Rejected, promises) catch {
-        allocator.destroy(task);
+    const alloc = runtime.allocatorOf(global);
+    const task = alloc.create(Notification) catch return releaseAll(promises);
+    const copy = alloc.dupe(Rejected, promises) catch {
+        alloc.destroy(task);
         return releaseAll(promises);
     };
     task.* = .{
+        .allocator = alloc,
         .global = global,
         .generation = runtime.SlabAllocator.generationOf(global),
         .kind = kind,
@@ -339,9 +354,10 @@ fn queueNotification(global: *runtime.Instance, kind: Kind, promises: []const Re
 /// for a worker's, ended the worker's way.
 fn runNotification(data: ?*anyopaque) void {
     const task: *Notification = @ptrCast(@alignCast(data orelse return));
+    const alloc = task.allocator;
     defer {
-        allocator.free(task.promises);
-        allocator.destroy(task);
+        alloc.free(task.promises);
+        alloc.destroy(task);
     }
     if (runtime.SlabAllocator.generationOf(task.global) != task.generation) return releaseAll(task.promises);
     engine.runTaskInRealm(task.global.ctx, notificationSteps, task) catch releaseAll(task.promises);
@@ -408,7 +424,7 @@ fn notifyOne(global: *runtime.Instance, rejected: Rejected) void {
     if (isHandled(realm, outstanding.promise.value)) return outstanding.release();
     const t = trackedFor(global, true) orelse return outstanding.release();
     if (t.outstanding.items.len >= max_outstanding) t.outstanding.orderedRemove(0).release();
-    t.outstanding.append(allocator, outstanding) catch outstanding.release();
+    t.outstanding.append(t.allocator, outstanding) catch outstanding.release();
 }
 
 /// The realm the inspector is told a rejection happened in: its world's
@@ -448,16 +464,17 @@ fn revokeAtInspector(realm: runtime.Context, rejected: Rejected) void {
 fn reportToDeveloperConsole(realm: runtime.Context, rejected: Rejected) bool {
     const developer_console = @import("dom").developer_console;
     if (!developer_console.isAttached(realm)) return false;
+    const alloc = realm.allocator;
     const reason = rejected.reasonValue() orelse runtime.JSValue.jsUndefined;
-    const info = engine.extractErrorInformation(realm, reason, allocator) catch return false;
-    defer allocator.free(info.message);
-    defer allocator.free(info.filename);
+    const info = engine.extractErrorInformation(realm, reason, alloc) catch return false;
+    defer alloc.free(info.message);
+    defer alloc.free(info.filename);
     // V8 words the message of a thrown value "Uncaught <value>"; DevTools
     // says where it was not caught.
     const uncaught = "Uncaught ";
     const rest = if (std.mem.startsWith(u8, info.message, uncaught)) info.message[uncaught.len..] else info.message;
-    const text = std.mem.concat(allocator, u8, &.{ "Uncaught (in promise) ", rest }) catch return false;
-    defer allocator.free(text);
+    const text = std.mem.concat(alloc, u8, &.{ "Uncaught (in promise) ", rest }) catch return false;
+    defer alloc.free(text);
     return developer_console.report(&.{
         .realm = realm,
         .kind = .rejection,

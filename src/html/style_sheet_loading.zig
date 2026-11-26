@@ -605,18 +605,19 @@ pub fn startModulePreload(element: *runtime.Instance, options: LinkOptions, dest
         .credentials_mode = if (options.cors == .use_credentials) .include else .same_origin,
         .fetch_priority = options.fetch_priority,
     };
-    const preload = std.heap.c_allocator.create(ModulePreload) catch {
+    const preload_allocator = runtime.allocatorOf(element);
+    const preload = preload_allocator.create(ModulePreload) catch {
         load.failed = true;
         complete(load);
         return id;
     };
-    preload.* = .{ .load_id = id, .realm = element.ctx };
+    preload.* = .{ .allocator = preload_allocator, .load_id = id, .realm = element.ctx };
     // The fetch counts as in flight from here: its client can run at once
     // (a task dropped by an ending loop).
     load.module_in_flight = true;
     load.in_flight += 1;
     if (!script_execution.fetchModulePreload(load.document, element, url, destination, module_options, preload.client())) {
-        std.heap.c_allocator.destroy(preload);
+        preload_allocator.destroy(preload);
         load.module_in_flight = false;
         load.in_flight -= 1;
         load.failed = true;
@@ -631,6 +632,7 @@ pub fn startModulePreload(element: *runtime.Instance, options: LinkOptions, dest
 /// still takes, ends with no event (WebKit's ScriptModuleLoader clears a
 /// loader's client the same way; Blink's ModuleMap keeps the fetch).
 const ModulePreload = struct {
+    allocator: std.mem.Allocator,
     load_id: u64,
     /// The load's realm, whose list it is on (`Load.realm`): it outlives
     /// the load's element, which may be gone by the time the fetch ends.
@@ -643,9 +645,10 @@ const ModulePreload = struct {
     /// The load still waiting on this fetch, freeing `self`.
     fn take(context: *anyopaque) ?*Load {
         const self: *ModulePreload = @ptrCast(@alignCast(context));
+        const alloc = self.allocator;
         const id = self.load_id;
         const realm = self.realm;
-        std.heap.c_allocator.destroy(self);
+        alloc.destroy(self);
         const load = find(realm, id) orelse return null;
         if (!load.module_in_flight) return null;
         load.module_in_flight = false;

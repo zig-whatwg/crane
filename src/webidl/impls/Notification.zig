@@ -319,13 +319,15 @@ fn createNotification(
 /// not "granted" (the module comment), so a task fires `error` on the
 /// object - which they hold until then.
 const ErrorTask = struct {
+    allocator: std.mem.Allocator,
     notification: *runtime.Instance,
     generation: u64,
 
     fn queue(notification: *runtime.Instance) void {
         const loop = notification.ctx.getOptionalEventLoop() orelse return release(notification);
-        const self = std.heap.c_allocator.create(ErrorTask) catch return release(notification);
-        self.* = .{ .notification = notification, .generation = runtime.SlabAllocator.generationOf(notification) };
+        const alloc = runtime.allocatorOf(notification);
+        const self = alloc.create(ErrorTask) catch return release(notification);
+        self.* = .{ .allocator = alloc, .notification = notification, .generation = runtime.SlabAllocator.generationOf(notification) };
         var task: runtime.EventLoopTask = .{ .callback = &run, .context = self, .drop = &drop };
         if (relevantGlobal(notification.ctx)) |global| if (global.stateAs(interfaces.Window.State) != null) {
             task.document = global;
@@ -341,7 +343,8 @@ const ErrorTask = struct {
 
     fn run(data: ?*anyopaque) void {
         const self: *ErrorTask = @ptrCast(@alignCast(data orelse return));
-        defer std.heap.c_allocator.destroy(self);
+        const alloc = self.allocator;
+        defer alloc.destroy(self);
         const notification = self.live() orelse return;
         engine.runTaskInRealm(notification.ctx, steps, self) catch {};
         // The object went with its realm while the task ran; otherwise the
@@ -359,7 +362,8 @@ const ErrorTask = struct {
     /// Never run: its document or loop ended. No script.
     fn drop(data: ?*anyopaque) void {
         const self: *ErrorTask = @ptrCast(@alignCast(data orelse return));
-        defer std.heap.c_allocator.destroy(self);
+        const alloc = self.allocator;
+        defer alloc.destroy(self);
         if (self.live()) |notification| release(notification);
     }
 
