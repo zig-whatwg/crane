@@ -19,7 +19,7 @@ test "Blob URL resolution excludes fragments while revocation keeps them" {
         defer allocator.free(decorated);
         const resolved = store.resolve(decorated, .{ .environment = origin }) orelse return error.TestExpectedEntry;
         defer resolved.deinit();
-        try std.testing.expectEqualStrings("kept", resolved.bytes);
+        try std.testing.expectEqualStrings("kept", resolved.memoryBytes().?);
         store.revokeObjectURL(decorated, origin);
         const still_live = store.resolve(url, .{ .environment = origin }) orelse return error.TestExpectedEntry;
         still_live.deinit();

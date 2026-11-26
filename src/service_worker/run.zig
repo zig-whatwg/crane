@@ -600,7 +600,7 @@ fn fireMessage(manager: *Manager, realm: runtime.Context, global_scope: *runtime
         defer port_message.allocator.free(holders);
         if (dom.transferables.receiveAll(realm, holders, manager.allocator)) |made| {
             received = made;
-            data_hold = engine.structuredDeserializeWithOptions(realm, port_message.serialized, .{ .array_buffers = port_message.array_buffers, .transferred = made.values, .shared_memory = port_message.shared_memory }) catch null;
+            data_hold = engine.structuredDeserializeWithOptions(realm, port_message.serialized, .{ .array_buffers = port_message.array_buffers, .transferred = made.values, .shared_memory = port_message.shared_memory, .attachments = port_message.attachments }) catch null;
         } else |_| {}
         // "If this throws an exception, let e be ... messageerror" - a
         // transfer-receiving step's throw included.

@@ -58,8 +58,15 @@ const std = @import("std");
 // ============================================================================
 
 /// Internal data storage for Blob objects.
-/// Represents an immutable sequence of bytes with an optional MIME type.
+/// Represents an immutable sequence of bytes (in-memory or file-backed parts)
+/// with an optional MIME type.
 pub const BlobData = @import("blob_internals.zig").BlobData;
+pub const FileBacking = @import("blob_internals.zig").FileBacking;
+pub const FileSourceOps = @import("blob_internals.zig").FileSourceOps;
+pub const FileReadError = @import("blob_internals.zig").FileReadError;
+pub const FileSlice = @import("blob_internals.zig").FileSlice;
+pub const Part = @import("blob_internals.zig").Part;
+pub const MaterializedBytes = @import("blob_internals.zig").MaterializedBytes;
 
 /// Internal data storage for File objects.
 /// Extends BlobData with name and lastModified attributes.
@@ -91,6 +98,9 @@ pub const algorithms = struct {
     /// Process blob parts algorithm per W3C File API spec §3.1.
     /// Converts BlobPart sequence to a single byte sequence.
     pub const processBlobParts = @import("algorithms/process_blob_parts.zig").processBlobParts;
+
+    /// Process blob parts into a BlobData, retaining file-backed parts lazily.
+    pub const processBlobPartsToData = @import("algorithms/process_blob_parts.zig").processBlobPartsToData;
 
     /// BlobPart union type for process blob parts.
     pub const BlobPart = @import("algorithms/process_blob_parts.zig").BlobPart;

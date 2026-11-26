@@ -233,8 +233,11 @@ pub fn call_update(instance: *runtime.Instance, value: runtime.JSValue) anyerror
         defer if (store.transaction.state == .inactive) {
             store.transaction.state = .active;
         };
-        operation.bytes = try engine.structuredSerializeForStorage(instance.ctx, value, internal.allocator);
-        break :blk try engine.structuredDeserialize(instance.ctx, operation.bytes.?);
+        var staged = try engine.structuredSerializeForStorageWithAttachments(instance.ctx, value, internal.allocator);
+        operation.bytes = staged.bytes;
+        operation.attachments = staged.attachments;
+        staged = .{ .bytes = &.{} };
+        break :blk try engine.structuredDeserializeWithOptions(instance.ctx, operation.bytes.?, .{ .attachments = operation.attachments });
     };
     defer clone.release();
     // Step 9: an inline key must equal the cursor's saved effective key.

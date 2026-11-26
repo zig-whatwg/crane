@@ -210,7 +210,7 @@ pub const Responder = struct {
         // (a constructed response's) has its sizes now - the fetching side
         // reports its timing when the response is handed over, before a
         // body still arriving is known.
-        if (internal_body orelse inner.body) |b| if (b.pipe == null and (b.source != .none or b.data.items.len > 0)) {
+        if (internal_body orelse inner.body) |b| if (b.pipe == null and b.lazy == null and (b.source != .none or b.data.items.len > 0)) {
             copy.body_info.encoded_size = b.getBytes().len;
             copy.body_info.decoded_size = b.getBytes().len;
         };

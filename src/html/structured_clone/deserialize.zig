@@ -290,20 +290,52 @@ fn structuredDeserializeInternal(
 
         .blob => {
             const b = serialized.data.blob;
-            value.* = .{ .blob = .{
-                .data = try allocator.dupe(u8, b.data),
-                .content_type = try allocator.dupe(u8, b.content_type),
-            } };
+            const ct = if (b.content_type.len > 0) try allocator.dupe(u8, b.content_type) else "";
+            errdefer if (ct.len > 0) allocator.free(ct);
+            if (b.file_ref) |ref| {
+                value.* = .{ .blob = .{
+                    .data = "",
+                    .content_type = ct,
+                    .file_ref = ref.retain(),
+                } };
+            } else {
+                const copy = if (b.data.len > 0) try allocator.dupe(u8, b.data) else "";
+                value.* = .{ .blob = .{
+                    .data = copy,
+                    .content_type = ct,
+                    .file_ref = null,
+                } };
+            }
         },
 
         .file => {
             const f = serialized.data.file;
-            value.* = .{ .file = .{
-                .data = try allocator.dupe(u8, f.data),
-                .name = try allocator.dupe(u8, f.name),
-                .content_type = try allocator.dupe(u8, f.content_type),
-                .last_modified = f.last_modified,
-            } };
+            const name = if (f.name.len > 0) try allocator.dupe(u8, f.name) else "";
+            errdefer if (name.len > 0) allocator.free(name);
+            const ct = if (f.content_type.len > 0) try allocator.dupe(u8, f.content_type) else "";
+            errdefer if (ct.len > 0) allocator.free(ct);
+            const rel = if (f.webkit_relative_path.len > 0) try allocator.dupe(u8, f.webkit_relative_path) else "";
+            errdefer if (rel.len > 0) allocator.free(rel);
+            if (f.file_ref) |ref| {
+                value.* = .{ .file = .{
+                    .data = "",
+                    .name = name,
+                    .content_type = ct,
+                    .last_modified = f.last_modified,
+                    .webkit_relative_path = rel,
+                    .file_ref = ref.retain(),
+                } };
+            } else {
+                const copy = if (f.data.len > 0) try allocator.dupe(u8, f.data) else "";
+                value.* = .{ .file = .{
+                    .data = copy,
+                    .name = name,
+                    .content_type = ct,
+                    .last_modified = f.last_modified,
+                    .webkit_relative_path = rel,
+                    .file_ref = null,
+                } };
+            }
         },
 
         .image_data => {
@@ -423,13 +455,16 @@ pub fn freeJSValue(allocator: Allocator, value: *JSValue) void {
             allocator.free(o.properties);
         },
         .blob => |b| {
-            allocator.free(b.data);
-            allocator.free(b.content_type);
+            if (b.file_ref) |ref| ref.release();
+            if (b.data.len > 0) allocator.free(b.data);
+            if (b.content_type.len > 0) allocator.free(b.content_type);
         },
         .file => |f| {
-            allocator.free(f.data);
-            allocator.free(f.name);
-            allocator.free(f.content_type);
+            if (f.file_ref) |ref| ref.release();
+            if (f.data.len > 0) allocator.free(f.data);
+            if (f.name.len > 0) allocator.free(f.name);
+            if (f.content_type.len > 0) allocator.free(f.content_type);
+            if (f.webkit_relative_path.len > 0) allocator.free(f.webkit_relative_path);
         },
         .image_data => |id| {
             allocator.free(id.data);

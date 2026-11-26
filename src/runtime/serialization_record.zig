@@ -26,6 +26,78 @@ const Instance = @import("instance.zig").Instance;
 const JSValue = @import("js_value.zig").JSValue;
 const Context = @import("context.zig").Context;
 
+/// Thread-safe, reference-counted sidecar of engine-neutral attachments (such
+/// as file-backed `file.BlobData` handles) carried alongside a structured
+/// serialization so file-backed Blobs and Files preserve their snapshot and
+/// file token across `structuredClone`, `postMessage`, `BroadcastChannel`,
+/// Workers, and IndexedDB's synchronous clone step without reading from disk.
+///
+/// Each entry transfers one owned reference to `ptr` and supplies a
+/// thread-safe `release_fn` invoked when the last `SerializedAttachments`
+/// owner drops. `retain` and `release` use atomic refcounting and never touch
+/// engine/isolate state.
+pub const SerializedAttachments = struct {
+    /// Attachment tag for a retained `*file.BlobData`.
+    pub const blob_tag: u32 = 0x424C4F42;
+
+    pub const Entry = struct {
+        tag: u32,
+        ptr: *anyopaque,
+        release_fn: *const fn (*anyopaque) void,
+    };
+
+    allocator: std.mem.Allocator,
+    ref_count: std.atomic.Value(usize),
+    items: std.ArrayListUnmanaged(Entry) = .empty,
+
+    pub fn create(allocator: std.mem.Allocator) std.mem.Allocator.Error!*SerializedAttachments {
+        const self = try allocator.create(SerializedAttachments);
+        self.* = .{
+            .allocator = allocator,
+            .ref_count = std.atomic.Value(usize).init(1),
+            .items = .empty,
+        };
+        return self;
+    }
+
+    pub fn retain(self: *SerializedAttachments) *SerializedAttachments {
+        _ = self.ref_count.fetchAdd(1, .monotonic);
+        return self;
+    }
+
+    pub fn release(self: *SerializedAttachments) void {
+        if (self.ref_count.fetchSub(1, .acq_rel) == 1) {
+            for (self.items.items) |entry| entry.release_fn(entry.ptr);
+            self.items.deinit(self.allocator);
+            self.allocator.destroy(self);
+        }
+    }
+
+    /// Append an attachment (transfers one owned reference to `ptr` on
+    /// success; on OOM the caller still owns `ptr`). Returns its index.
+    pub fn append(self: *SerializedAttachments, tag: u32, ptr: *anyopaque, release_fn: *const fn (*anyopaque) void) std.mem.Allocator.Error!u32 {
+        const index: u32 = std.math.cast(u32, self.items.items.len) orelse return error.OutOfMemory;
+        try self.items.append(self.allocator, .{ .tag = tag, .ptr = ptr, .release_fn = release_fn });
+        return index;
+    }
+
+    /// Borrow attachment `index` if in bounds and its `tag` matches.
+    pub fn get(self: *const SerializedAttachments, index: u32, expected_tag: u32) ?*anyopaque {
+        if (index >= self.items.items.len) return null;
+        const entry = self.items.items[index];
+        if (entry.tag != expected_tag) return null;
+        return entry.ptr;
+    }
+};
+
+/// Lazy writer for a serialization's `SerializedAttachments` sidecar: creates
+/// the heap sidecar only when a platform object actually attaches a handle,
+/// keeping non-attachment serializations allocation-free.
+pub const AttachmentWriter = struct {
+    allocator: std.mem.Allocator,
+    slot: *?*SerializedAttachments,
+};
+
 /// The serialization steps' `serialized`, being filled. `for_storage` is the
 /// steps' forStorage argument: true only under StructuredSerializeForStorage
 /// (IndexedDB, history state); steps that must not be stored refuse with
@@ -42,6 +114,10 @@ pub const SerializationRecord = struct {
     /// state (a quad's points, an ImageData's data array), never a value the
     /// steps made and released.
     sub_values: std.ArrayListUnmanaged(JSValue) = .empty,
+    /// Optional attachment sidecar writer for callers that carry a
+    /// `SerializedAttachments` alongside the serialized bytes. Null for
+    /// persistent inline storage (`structuredSerializeForStorage`).
+    attachments: ?AttachmentWriter = null,
 
     pub const Error = error{OutOfMemory};
 
@@ -97,6 +173,24 @@ pub const SerializationRecord = struct {
     pub fn subSerialize(self: *SerializationRecord, value: JSValue) Error!void {
         try self.sub_values.append(self.allocator, value);
     }
+
+    /// Whether this serialization carries a sidecar attachment table.
+    pub fn supportsAttachments(self: *const SerializationRecord) bool {
+        return self.attachments != null;
+    }
+
+    /// Attach an owned handle (`ptr`, released by `release_fn`) to the
+    /// serialization's sidecar and return its index. On OOM the caller still
+    /// owns `ptr`.
+    pub fn addAttachment(self: *SerializationRecord, tag: u32, ptr: *anyopaque, release_fn: *const fn (*anyopaque) void) Error!u32 {
+        const writer = self.attachments orelse unreachable;
+        const list = writer.slot.* orelse blk: {
+            const created = try SerializedAttachments.create(writer.allocator);
+            writer.slot.* = created;
+            break :blk created;
+        };
+        return list.append(tag, ptr, release_fn);
+    }
 };
 
 /// The deserialization steps' `serialized`, being read in the order it was
@@ -110,6 +204,8 @@ pub const DeserializationRecord = struct {
     /// the deserialization steps return; a step that keeps one retains it.
     sub_values: []const JSValue = &.{},
     next_sub_value: usize = 0,
+    /// Optional sidecar attachment table (BORROWED for the call).
+    attachments: ?*const SerializedAttachments = null,
 
     pub const Error = error{DataCloneError};
 
@@ -162,6 +258,13 @@ pub const DeserializationRecord = struct {
         if (self.next_sub_value >= self.sub_values.len) return error.DataCloneError;
         defer self.next_sub_value += 1;
         return self.sub_values[self.next_sub_value];
+    }
+
+    /// Borrow an attachment written with `addAttachment`. Steps that retain
+    /// the handle must take their own reference before returning.
+    pub fn readAttachment(self: *const DeserializationRecord, index: u32, expected_tag: u32) Error!*anyopaque {
+        const list = self.attachments orelse return error.DataCloneError;
+        return list.get(index, expected_tag) orelse error.DataCloneError;
     }
 };
 

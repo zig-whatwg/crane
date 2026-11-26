@@ -127,15 +127,18 @@ pub const JSValue = union(enum) {
     };
 
     pub const BlobValue = struct {
-        data: []const u8,
-        content_type: []const u8,
+        data: []const u8 = "",
+        content_type: []const u8 = "",
+        file_ref: ?types.FileRef = null,
     };
 
     pub const FileValue = struct {
-        data: []const u8,
-        name: []const u8,
-        content_type: []const u8,
-        last_modified: i64,
+        data: []const u8 = "",
+        name: []const u8 = "",
+        content_type: []const u8 = "",
+        last_modified: i64 = 0,
+        webkit_relative_path: []const u8 = "",
+        file_ref: ?types.FileRef = null,
     };
 
     pub const ImageDataValue = struct {
@@ -494,20 +497,54 @@ pub fn structuredSerializeInternal(
         // Platform objects with [Serializable]
         .blob => |b| {
             serialized.type = .blob;
-            serialized.data = .{ .blob = .{
-                .data = try allocator.dupe(u8, b.data),
-                .content_type = try allocator.dupe(u8, b.content_type),
-            } };
+            const ct = if (b.content_type.len > 0) try allocator.dupe(u8, b.content_type) else "";
+            errdefer if (ct.len > 0) allocator.free(ct);
+            if (b.file_ref) |ref| {
+                // Keep file reference and snapshot without reading at clone time.
+                serialized.data = .{ .blob = .{
+                    .data = "",
+                    .content_type = ct,
+                    .file_ref = ref.retain(),
+                } };
+            } else {
+                const copy = if (b.data.len > 0) try allocator.dupe(u8, b.data) else "";
+                serialized.data = .{ .blob = .{
+                    .data = copy,
+                    .content_type = ct,
+                    .file_ref = null,
+                } };
+            }
         },
 
         .file => |f| {
             serialized.type = .file;
-            serialized.data = .{ .file = .{
-                .data = try allocator.dupe(u8, f.data),
-                .name = try allocator.dupe(u8, f.name),
-                .content_type = try allocator.dupe(u8, f.content_type),
-                .last_modified = f.last_modified,
-            } };
+            const name = if (f.name.len > 0) try allocator.dupe(u8, f.name) else "";
+            errdefer if (name.len > 0) allocator.free(name);
+            const ct = if (f.content_type.len > 0) try allocator.dupe(u8, f.content_type) else "";
+            errdefer if (ct.len > 0) allocator.free(ct);
+            const rel = if (f.webkit_relative_path.len > 0) try allocator.dupe(u8, f.webkit_relative_path) else "";
+            errdefer if (rel.len > 0) allocator.free(rel);
+            if (f.file_ref) |ref| {
+                // Keep file reference, snapshot, and webkitRelativePath; no read at clone time.
+                serialized.data = .{ .file = .{
+                    .data = "",
+                    .name = name,
+                    .content_type = ct,
+                    .last_modified = f.last_modified,
+                    .webkit_relative_path = rel,
+                    .file_ref = ref.retain(),
+                } };
+            } else {
+                const copy = if (f.data.len > 0) try allocator.dupe(u8, f.data) else "";
+                serialized.data = .{ .file = .{
+                    .data = copy,
+                    .name = name,
+                    .content_type = ct,
+                    .last_modified = f.last_modified,
+                    .webkit_relative_path = rel,
+                    .file_ref = null,
+                } };
+            }
         },
 
         .image_data => |id| {

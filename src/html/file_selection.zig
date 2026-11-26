@@ -5,10 +5,13 @@
 //! file_input_type.cc, Chrome 157.0.8103.78). Two halves:
 //!
 //! - The File for a chosen file: the platform's PickedFile (protocol 6.10.3
-//!   `userFile` / `userDirectory`), its bytes read through `readPickedFile`,
-//!   made by File's own constructor (an ArrayBuffer part, its name, its type
-//!   and lastModified), with its webkitRelativePath for a file of a chosen
-//!   directory (dom.blob_bytes.setRelativePath, File's step).
+//!   `userFile` / `userDirectory`), wrapped lazily in a file-backed
+//!   `file.BlobData` holding its `FileToken` + snapshot (`size` + `mtime`)
+//!   with ZERO eager reads at selection time. Reads happen lazily through
+//!   `readPickedFile`, failing with `NotFoundError` if deleted and
+//!   `NotReadableError` if modified since the snapshot; the `FileToken` is
+//!   released via `releasePickedFile` when the last reference to the backing
+//!   drops (thread-safe, from any thread).
 //! - The selection applied to the input: its files set (the `files`
 //!   setter's "update the selected files"), then trusted `input` and
 //!   `change` events - or `cancel` when the selection is the one it had.
@@ -18,15 +21,6 @@
 //! WITHOUT running the agent's tasks (protocol section 4, "Synchronous spec
 //! steps over asynchronous platforms"; the shape of execcommand/
 //! clipboard_platform.zig's ReadRequest).
-//!
-//! DEVIATIONS from Blink, until file-backed Blob sources exist (queued:
-//! tmp/plans/queue-0.1-audit.md, "From cdpd1", blobsrc1): Blink keeps the
-//! path and reads the file when script reads it, so a file gone fails the
-//! read with NotFoundError and one modified since its snapshot with
-//! NotReadableError. Here the bytes are read when the files are selected: a
-//! path that names no file gives a File of that name with no bytes (as
-//! Blink's File, whose size reads 0 and lastModified now), and a later change
-//! to the file is not seen.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -34,6 +28,7 @@ const platform = @import("platform");
 const interfaces = @import("interfaces");
 const engine = @import("engine");
 const dom = @import("dom");
+const blob_bytes = dom.blob_bytes;
 const platform_state = @import("platform_state.zig");
 const form_associated = @import("form_associated.zig");
 
@@ -281,17 +276,23 @@ fn freePickedList(allocator: std.mem.Allocator, kept: *[]Picked) void {
     allocator.free(kept.*);
 }
 
-fn copyBytes(allocator: std.mem.Allocator, value: *const platform.Bytes) error{OutOfMemory}![]u8 {
-    return allocator.dupe(u8, value.slice());
+const ReadAnswer = struct {
+    status: platform.PickedFileReadStatus,
+    bytes: []u8,
+};
+
+fn copyReadAnswer(allocator: std.mem.Allocator, value: *const platform.PickedFileRead) error{OutOfMemory}!ReadAnswer {
+    if (value.status != .ok) return .{ .status = value.status, .bytes = "" };
+    return .{ .status = .ok, .bytes = try allocator.dupe(u8, value.bytes.slice()) };
 }
 
-fn freeBytes(allocator: std.mem.Allocator, kept: *[]u8) void {
-    allocator.free(kept.*);
+fn freeReadAnswer(allocator: std.mem.Allocator, kept: *ReadAnswer) void {
+    if (kept.bytes.len > 0) allocator.free(kept.bytes);
 }
 
 const FileRequest = Request(platform.PickedFile, Picked, copyPicked, freePicked);
 const DirectoryRequest = Request(platform.PickedFiles, []Picked, copyPickedList, freePickedList);
-const ReadRequest = Request(platform.Bytes, []u8, copyBytes, freeBytes);
+const ReadRequest = Request(platform.PickedFileRead, ReadAnswer, copyReadAnswer, freeReadAnswer);
 
 fn userFile(allocator: std.mem.Allocator, browser: *platform.BrowserPlatform, path: []const u8) error{OutOfMemory}!?Picked {
     const request = try FileRequest.create(allocator);
@@ -307,69 +308,106 @@ fn userDirectory(allocator: std.mem.Allocator, browser: *platform.BrowserPlatfor
     return request.take();
 }
 
-/// How much one readPickedFile asks for.
-const read_chunk: u32 = 1 << 20;
+// ---------------------------------------------------------------------------
+// File-backed BlobData sources (Blink FileStreamReader / FileToken model)
+// ---------------------------------------------------------------------------
 
-/// A chosen file's bytes, OWNED, read whole; its token let go. Null when a
-/// read drops (the file gone or changed since it was chosen: see the
-/// deviations above).
-fn readWhole(allocator: std.mem.Allocator, browser: *platform.BrowserPlatform, picked: *const Picked) error{OutOfMemory}!?[]u8 {
-    defer platform.releasePickedFile(browser, picked.token);
-    var bytes: std.ArrayList(u8) = .empty;
-    errdefer bytes.deinit(allocator);
-    while (true) {
+/// Owns a platform `FileToken` until the last `file.FileBacking` reference
+/// drops (from any thread), releasing it via `platform.releasePickedFile`.
+const PlatformFileBacking = struct {
+    allocator: std.mem.Allocator,
+    browser: *platform.BrowserPlatform,
+    token: platform.FileToken,
+
+    const ops: blob_bytes.FileSourceOps = .{
+        .read = &read,
+        .release = &release,
+    };
+
+    fn read(ctx: *anyopaque, offset: u64, length: u32, allocator: std.mem.Allocator) blob_bytes.FileReadError![]u8 {
+        const self: *PlatformFileBacking = @ptrCast(@alignCast(ctx));
         const request = try ReadRequest.create(allocator);
         defer request.release();
-        platform.readPickedFile(browser, picked.token, bytes.items.len, read_chunk, request.reply());
-        var part = request.take() orelse {
-            bytes.deinit(allocator);
-            return null;
+        platform.readPickedFile(self.browser, self.token, offset, length, request.reply());
+        const answer = request.take() orelse return error.NotReadableError;
+        return switch (answer.status) {
+            .ok => if (answer.bytes.len == 0) try allocator.alloc(u8, 0) else answer.bytes,
+            .not_found => error.NotFoundError,
+            .not_readable => error.NotReadableError,
         };
-        defer freeBytes(allocator, &part);
-        try bytes.appendSlice(allocator, part);
-        if (part.len < read_chunk) break;
     }
-    return try bytes.toOwnedSlice(allocator);
+
+    fn release(ctx: *anyopaque) void {
+        const self: *PlatformFileBacking = @ptrCast(@alignCast(ctx));
+        platform.releasePickedFile(self.browser, self.token);
+        self.allocator.destroy(self);
+    }
+};
+
+/// Backing for a path that did not exist when passed to DOM.setFileInputFiles:
+/// size is 0 (matching Blink's File::CreateForUserProvidedFile), and any read
+/// fails with `NotFoundError`. Holds no `FileToken`.
+const missing_sentinel: u8 = 0;
+const missing_file_ops: blob_bytes.FileSourceOps = .{
+    .read = &readMissing,
+    .release = &releaseMissing,
+};
+
+fn readMissing(_: *anyopaque, _: u64, _: u32, _: std.mem.Allocator) blob_bytes.FileReadError![]u8 {
+    return error.NotFoundError;
 }
+
+fn releaseMissing(_: *anyopaque) void {}
 
 // ---------------------------------------------------------------------------
 // The Files
 // ---------------------------------------------------------------------------
 
-/// A new File of `realm` holding `bytes` (copied), unwrapped: File's
-/// constructor with one ArrayBuffer part, as script's `new File([buffer],
-/// name, {type, lastModified})` (null lastModified: now).
-fn makeFile(realm: runtime.Context, bytes: []const u8, name: []const u8, mime_type: []const u8, last_modified_ms: ?i64, relative_path: []const u8) !*runtime.Instance {
-    const buffer = try engine.createArrayBuffer(realm, bytes);
-    defer buffer.release();
-    const parts = try engine.createSequenceOfValues(realm, &.{buffer.value});
-    defer parts.release();
-    const file = try interfaces.File.call_constructor(realm, parts.value, name, .passed(.{
-        .base = .{ .type = runtime.DOMString.initInterned(mime_type) },
-        .lastModified = last_modified_ms,
-    }));
-    const generation = runtime.SlabAllocator.generationOf(file);
-    errdefer file.releaseIfUnwrapped(generation);
-    if (relative_path.len != 0) try dom.blob_bytes.setRelativePath(file, relative_path);
-    return file;
-}
-
-/// The File for `picked`: its bytes, its name, the platform's type or else
-/// the name's well-known one, its modification time in milliseconds.
+/// The lazy file-backed File for `picked`: takes ownership of `picked.token`
+/// (releasing it on any error before the File takes ownership, or when the
+/// File's last BlobData reference drops). Does NOT read bytes at selection.
 fn fileOfPicked(realm: runtime.Context, allocator: std.mem.Allocator, browser: *platform.BrowserPlatform, picked: *const Picked) !*runtime.Instance {
-    const bytes = try readWhole(allocator, browser, picked);
-    defer if (bytes) |b| allocator.free(b);
+    var token_owned = true;
+    errdefer if (token_owned) platform.releasePickedFile(browser, picked.token);
+
+    const backing_ctx = try allocator.create(PlatformFileBacking);
+    backing_ctx.* = .{
+        .allocator = allocator,
+        .browser = browser,
+        .token = picked.token,
+    };
+    const backing = blob_bytes.FileBacking.init(allocator, backing_ctx, &PlatformFileBacking.ops, picked.size, picked.modified_ns) catch |err| {
+        allocator.destroy(backing_ctx);
+        return err;
+    };
+    // `backing` now owns `backing_ctx` and `picked.token`.
+    token_owned = false;
+    defer backing.release();
+
     const mime_type = if (picked.mime_type.len != 0) picked.mime_type else wellKnownTypeForName(picked.name);
-    if (bytes == null) return makeFile(realm, "", picked.name, mime_type, null, picked.relative_path);
-    return makeFile(realm, bytes.?, picked.name, mime_type, @divFloor(picked.modified_ns, std.time.ns_per_ms), picked.relative_path);
+    const blob_data = try blob_bytes.BlobData.initFile(allocator, backing, mime_type);
+    errdefer blob_data.deinit();
+
+    return blob_bytes.createFileFromData(
+        realm,
+        blob_data,
+        picked.name,
+        @divFloor(picked.modified_ns, std.time.ns_per_ms),
+        picked.relative_path,
+    );
 }
 
-/// The File for the host's `path`: the platform's file, or - a path that
-/// names none - a File of that name with no bytes (see the deviations).
+/// The File for the host's `path`: a lazy file-backed File for the platform's
+/// picked file, or - a path that names none - a 0-byte File whose read fails
+/// with `NotFoundError` (Blink's File::CreateForUserProvidedFile).
 fn fileOfPath(realm: runtime.Context, allocator: std.mem.Allocator, browser: *platform.BrowserPlatform, path: []const u8) !*runtime.Instance {
     var picked = (try userFile(allocator, browser, path)) orelse {
         const name = std.fs.path.basename(path);
-        return makeFile(realm, "", name, wellKnownTypeForName(name), null, "");
+        const backing = try blob_bytes.FileBacking.init(allocator, @constCast(&missing_sentinel), &missing_file_ops, 0, 0);
+        defer backing.release();
+        const blob_data = try blob_bytes.BlobData.initFile(allocator, backing, wellKnownTypeForName(name));
+        errdefer blob_data.deinit();
+        return blob_bytes.createFileFromData(realm, blob_data, name, null, "");
     };
     defer picked.deinit(allocator);
     return fileOfPicked(realm, allocator, browser, &picked);
@@ -401,7 +439,13 @@ pub fn setFilesFromPaths(input: *runtime.Instance, paths: []const []const u8) !v
         if (try userDirectory(allocator, browser, paths[0])) |found| {
             var files = found;
             defer freePickedList(allocator, &files);
-            for (files) |*picked| try appendFile(list, try fileOfPicked(realm, allocator, browser, picked));
+            var consumed: usize = 0;
+            errdefer for (files[consumed..]) |*remaining| platform.releasePickedFile(browser, remaining.token);
+            for (files) |*picked| {
+                // `fileOfPicked` always consumes (takes or releases) `picked.token`.
+                consumed += 1;
+                try appendFile(list, try fileOfPicked(realm, allocator, browser, picked));
+            }
         }
     } else {
         const count = if (try hasAttribute(input, "multiple")) paths.len else 1;

@@ -145,31 +145,46 @@ pub const Table = struct {
     }
 
     /// `readPickedFile`: up to `length` bytes at `offset`, fewer at the end
-    /// of the file. Dropped for a token this table does not hold, a file gone
-    /// or changed since it was chosen, or a failed read.
-    pub fn read(self: *Table, file: platform.FileToken, offset: u64, length: u32, reply: platform.Reply(platform.Bytes)) void {
+    /// of the file. Delivers `.not_found` when the file is gone on disk, and
+    /// `.not_readable` when the token is unknown, the file's size or
+    /// modification time changed since its snapshot, or reading fails.
+    pub fn read(self: *Table, file: platform.FileToken, offset: u64, length: u32, reply: platform.Reply(platform.PickedFileRead)) void {
+        const fail_not_found: platform.PickedFileRead = .{ .status = .not_found };
+        const fail_not_readable: platform.PickedFileRead = .{ .status = .not_readable };
         var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
         var expected: Entry = undefined;
         {
             std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
-            const entry = self.entries.get(file.id) orelse return reply.drop(reply.context);
-            if (entry.path.len > path_buffer.len) return reply.drop(reply.context);
+            const entry = self.entries.get(file.id) orelse return reply.deliver(reply.context, &fail_not_readable);
+            if (entry.path.len > path_buffer.len) return reply.deliver(reply.context, &fail_not_readable);
             @memcpy(path_buffer[0..entry.path.len], entry.path);
             expected = .{ .path = path_buffer[0..entry.path.len], .size = entry.size, .modified_ns = entry.modified_ns };
         }
         const io = host.io();
-        const handle = std.Io.Dir.cwd().openFile(io, expected.path, .{}) catch return reply.drop(reply.context);
+        const handle = std.Io.Dir.cwd().openFile(io, expected.path, .{}) catch |err| {
+            return switch (err) {
+                error.FileNotFound => reply.deliver(reply.context, &fail_not_found),
+                else => reply.deliver(reply.context, &fail_not_readable),
+            };
+        };
         defer handle.close(io);
-        const stat = handle.stat(io) catch return reply.drop(reply.context);
+        const stat = handle.stat(io) catch return reply.deliver(reply.context, &fail_not_readable);
         // The snapshot check: the file the user chose, unchanged.
-        if (stat.kind != .file or stat.size != expected.size or @as(i64, @intCast(stat.mtime.nanoseconds)) != expected.modified_ns) return reply.drop(reply.context);
+        if (stat.kind != .file or stat.size != expected.size or @as(i64, @intCast(stat.mtime.nanoseconds)) != expected.modified_ns) {
+            return reply.deliver(reply.context, &fail_not_readable);
+        }
         const available = if (offset >= stat.size) 0 else stat.size - offset;
         const wanted: usize = @intCast(@min(available, length));
-        const buffer = self.allocator.alloc(u8, wanted) catch return reply.drop(reply.context);
+        if (wanted == 0) {
+            const empty: platform.PickedFileRead = .{ .status = .ok, .bytes = .{} };
+            return reply.deliver(reply.context, &empty);
+        }
+        const buffer = self.allocator.alloc(u8, wanted) catch return reply.deliver(reply.context, &fail_not_readable);
         defer self.allocator.free(buffer);
-        const got = handle.readPositionalAll(io, buffer, offset) catch return reply.drop(reply.context);
-        reply.deliver(reply.context, &platform.Bytes.from(buffer[0..got]));
+        const got = handle.readPositionalAll(io, buffer, offset) catch return reply.deliver(reply.context, &fail_not_readable);
+        const ok: platform.PickedFileRead = .{ .status = .ok, .bytes = platform.Bytes.from(buffer[0..got]) };
+        reply.deliver(reply.context, &ok);
     }
 
     /// `releasePickedFile`: a token let go; one not held is ignored.

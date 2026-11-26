@@ -111,6 +111,18 @@ pub const Host = struct {
     /// platform objects; deserializing, what their transfer-receiving steps
     /// made in the target realm - both in transfer-list order, BORROWED.
     transferred: []const *runtime.Instance = &.{},
+    /// Optional sidecar slot populated lazily when a [Serializable] platform
+    /// object attaches a handle (e.g. file-backed BlobData). Null for inline
+    /// persistent storage.
+    write_attachments: ?*?*runtime.SerializedAttachments = null,
+    /// Allocator for creating the sidecar if needed.
+    attachments_allocator: std.mem.Allocator = std.heap.c_allocator,
+    /// Optional sidecar read by deserialization steps (BORROWED for the call).
+    read_attachments: ?*const runtime.SerializedAttachments = null,
+    /// Set when a serialization step failed reading a file-backed Blob from
+    /// disk (`NotFoundError` / `NotReadableError`) so `structuredSerializeForStorage`
+    /// can report an I/O failure (`OperationFailed`) distinct from `DataCloneError`.
+    io_failed: bool = false,
     steps: ffi.HostObjectSteps = undefined,
 
     /// The delegates' view of this host. BORROWED: valid while `self` is.
@@ -188,8 +200,12 @@ fn write(data: ?*anyopaque, object: *ffi.Value, serializer: *ffi.ValueSerializer
     // Step 26.3: the serialization steps, given value, serialized and
     // forStorage.
     var serialized = runtime.SerializationRecord.init(host.allocator, host.for_storage);
+    if (host.write_attachments) |slot| {
+        serialized.attachments = .{ .allocator = host.attachments_allocator, .slot = slot };
+    }
     defer serialized.deinit();
     steps.serialize(instance, &serialized) catch |err| {
+        if (err == error.NotFoundError or err == error.NotReadableError) host.io_failed = true;
         throwStepFailure(err, "cloned", type_string);
         return false;
     };
@@ -290,7 +306,7 @@ fn read(data: ?*anyopaque, deserializer: *ffi.ValueDeserializer) callconv(.c) ?*
 
     // Steps 22.3 and 24.4: a new instance of the interface, created in
     // targetRealm, set up by its deserialization steps.
-    var serialized: runtime.DeserializationRecord = .{ .bytes = fields, .sub_values = sub_values };
+    var serialized: runtime.DeserializationRecord = .{ .bytes = fields, .sub_values = sub_values, .attachments = host.read_attachments };
     const instance = steps.deserialize(&serialized, host.realm) catch |err| {
         throwStepFailure(err, "deserialized", interface_name);
         return null;

@@ -651,7 +651,7 @@ fn deliver(port: *runtime.Instance, message: *PortMessage) void {
         return;
     };
     defer received.deinit();
-    const clone = engine.structuredDeserializeWithOptions(ctx, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = received.values, .shared_memory = message.shared_memory }) catch {
+    const clone = engine.structuredDeserializeWithOptions(ctx, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = received.values, .shared_memory = message.shared_memory, .attachments = message.attachments }) catch {
         // The worker was terminated while this task ran: its script was
         // aborted, and the deserialization with it.
         if (workerClosing(port)) return;

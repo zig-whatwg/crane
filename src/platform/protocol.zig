@@ -1856,8 +1856,20 @@ pub inline fn showFilePicker(browser: *BrowserPlatform, requester: *const Reques
     return impl.showFilePicker(browser, requester, options, reply);
 }
 
+/// Outcome of `readPickedFile`: File API distinguishes a file missing on disk
+/// (`NotFoundError`) from one modified since its snapshot or unreadable
+/// (`NotReadableError`).
+pub const PickedFileReadStatus = enum(u8) { ok, not_found, not_readable };
+
+/// One chunk from `readPickedFile`. `bytes` is BORROWED for `deliver` and empty
+/// when `status != .ok` or at EOF.
+pub const PickedFileRead = extern struct {
+    status: PickedFileReadStatus = .ok,
+    bytes: Bytes = .{},
+};
+
 /// A picked file's bytes; files stay where the OS keeps them.
-pub inline fn readPickedFile(browser: *BrowserPlatform, file: FileToken, offset: u64, length: u32, reply: Reply(Bytes)) void {
+pub inline fn readPickedFile(browser: *BrowserPlatform, file: FileToken, offset: u64, length: u32, reply: Reply(PickedFileRead)) void {
     comptime gate(.file_picker, "readPickedFile");
     return impl.readPickedFile(browser, file, offset, length, reply);
 }

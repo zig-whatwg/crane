@@ -279,6 +279,7 @@ fn blobFetchRequest(allocator: Allocator, request: *const InternalRequest) error
         }) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             error.WrongPartition => return .{ .network_error = "blob: wrong partition" },
+            error.ReadFailed => return .{ .network_error = "blob: read failed" },
         };
         break :captured .{ .bytes = data.bytes, .content_type = data.content_type };
     } else legacy: {

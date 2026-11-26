@@ -101,9 +101,9 @@ pub const FileData = struct {
         return self.blob_data.getType();
     }
 
-    /// Get the raw bytes (delegates to blob).
-    pub fn getBytes(self: *const FileData) []const u8 {
-        return self.blob_data.bytes;
+    /// Materialize the raw bytes (delegates to blob).
+    pub fn materialize(self: *const FileData, allocator: std.mem.Allocator) @import("blob_internals.zig").FileReadError![]u8 {
+        return self.blob_data.materialize(allocator);
     }
 
     /// Get current time in milliseconds since Unix epoch.

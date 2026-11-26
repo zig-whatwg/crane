@@ -180,6 +180,16 @@ pub const SerializedValue = struct {
                     }
                 }
             },
+            .blob => {
+                if (self.data.blob.type.len > 0) alloc.free(self.data.blob.type);
+                if (self.data.blob.bytes.len > 0) alloc.free(self.data.blob.bytes);
+            },
+            .file => {
+                if (self.data.file.name.len > 0) alloc.free(self.data.file.name);
+                if (self.data.file.type.len > 0) alloc.free(self.data.file.type);
+                if (self.data.file.webkit_relative_path.len > 0) alloc.free(self.data.file.webkit_relative_path);
+                if (self.data.file.bytes.len > 0) alloc.free(self.data.file.bytes);
+            },
             else => {},
         }
 
@@ -286,7 +296,7 @@ pub const ErrorData = struct {
 pub const BlobData = struct {
     type: []const u8,
     size: u64,
-    // In a real implementation, this would reference blob storage
+    bytes: []const u8 = "",
     blob_id: ?u64 = null,
 };
 
@@ -295,8 +305,17 @@ pub const FileData = struct {
     type: []const u8,
     size: u64,
     last_modified: i64,
-    // In a real implementation, this would reference file storage
+    webkit_relative_path: []const u8 = "",
+    bytes: []const u8 = "",
     file_id: ?u64 = null,
+};
+
+/// Fallible byte source for storing a file-backed Blob or File in IndexedDB.
+/// Any read failure (`NotFoundError` / `NotReadableError`) aborts the store
+/// operation with `UnknownError` (Blink's IndexedDB backing-store model).
+pub const FileByteReader = struct {
+    ctx: *anyopaque,
+    read_fn: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator) error{ NotFoundError, NotReadableError, OutOfMemory }![]u8,
 };
 
 /// Structured Clone Serializer
@@ -537,6 +556,60 @@ pub const Serializer = struct {
         };
     }
 
+    /// Serialize a Blob for IndexedDB storage, reading its bytes from `reader`.
+    /// Read failure returns `IDBError.UnknownError` so the put aborts cleanly.
+    pub fn serializeBlobFromReader(self: *Serializer, mime_type: []const u8, reader: FileByteReader) IDBError!SerializedValue {
+        const bytes = reader.read_fn(reader.ctx, self.allocator) catch |err| return switch (err) {
+            error.OutOfMemory => IDBError.OutOfMemory,
+            error.NotFoundError, error.NotReadableError => IDBError.UnknownError,
+        };
+        errdefer if (bytes.len > 0) self.allocator.free(bytes);
+        const owned_type = if (mime_type.len > 0) try self.allocator.dupe(u8, mime_type) else "";
+        return .{
+            .type_tag = .blob,
+            .data = .{ .blob = .{
+                .type = owned_type,
+                .size = bytes.len,
+                .bytes = bytes,
+            } },
+            .allocator = self.allocator,
+        };
+    }
+
+    /// Serialize a File for IndexedDB storage (including `webkitRelativePath`),
+    /// reading its bytes from `reader`. Read failure returns `IDBError.UnknownError`.
+    pub fn serializeFileFromReader(
+        self: *Serializer,
+        name: []const u8,
+        mime_type: []const u8,
+        last_modified: i64,
+        webkit_relative_path: []const u8,
+        reader: FileByteReader,
+    ) IDBError!SerializedValue {
+        const bytes = reader.read_fn(reader.ctx, self.allocator) catch |err| return switch (err) {
+            error.OutOfMemory => IDBError.OutOfMemory,
+            error.NotFoundError, error.NotReadableError => IDBError.UnknownError,
+        };
+        errdefer if (bytes.len > 0) self.allocator.free(bytes);
+        const owned_name = if (name.len > 0) try self.allocator.dupe(u8, name) else "";
+        errdefer if (owned_name.len > 0) self.allocator.free(owned_name);
+        const owned_type = if (mime_type.len > 0) try self.allocator.dupe(u8, mime_type) else "";
+        errdefer if (owned_type.len > 0) self.allocator.free(owned_type);
+        const owned_rel = if (webkit_relative_path.len > 0) try self.allocator.dupe(u8, webkit_relative_path) else "";
+        return .{
+            .type_tag = .file,
+            .data = .{ .file = .{
+                .name = owned_name,
+                .type = owned_type,
+                .size = bytes.len,
+                .last_modified = last_modified,
+                .webkit_relative_path = owned_rel,
+                .bytes = bytes,
+            } },
+            .allocator = self.allocator,
+        };
+    }
+
     /// Create a reference to an already-serialized object (for cycles)
     pub fn serializeReference(self: *Serializer, index: u32) SerializedValue {
         _ = self;
@@ -727,6 +800,25 @@ pub const BinaryFormat = struct {
             },
             .reference => {
                 try writeU32(allocator, buffer, value.data.reference_index);
+            },
+            .blob => {
+                const b = value.data.blob;
+                try writeLength(allocator, buffer, @intCast(b.type.len));
+                try buffer.appendSlice(allocator, b.type);
+                try writeLength(allocator, buffer, @intCast(b.bytes.len));
+                try buffer.appendSlice(allocator, b.bytes);
+            },
+            .file => {
+                const f = value.data.file;
+                try writeLength(allocator, buffer, @intCast(f.name.len));
+                try buffer.appendSlice(allocator, f.name);
+                try writeLength(allocator, buffer, @intCast(f.type.len));
+                try buffer.appendSlice(allocator, f.type);
+                try buffer.appendSlice(allocator, std.mem.asBytes(&f.last_modified));
+                try writeLength(allocator, buffer, @intCast(f.webkit_relative_path.len));
+                try buffer.appendSlice(allocator, f.webkit_relative_path);
+                try writeLength(allocator, buffer, @intCast(f.bytes.len));
+                try buffer.appendSlice(allocator, f.bytes);
             },
             else => {
                 // For unsupported types, write a placeholder
@@ -981,6 +1073,62 @@ pub const BinaryFormat = struct {
                 break :blk .{
                     .type_tag = .reference,
                     .data = .{ .reference_index = index },
+                };
+            },
+            .blob => blk: {
+                const type_len = try readLength(bytes, pos);
+                if (pos.* + type_len > bytes.len) return error.UnexpectedEof;
+                const mime = if (type_len > 0) try allocator.dupe(u8, bytes[pos.*..][0..type_len]) else "";
+                errdefer if (mime.len > 0) allocator.free(mime);
+                pos.* += type_len;
+                const data_len = try readLength(bytes, pos);
+                if (pos.* + data_len > bytes.len) return error.UnexpectedEof;
+                const data_copy = if (data_len > 0) try allocator.dupe(u8, bytes[pos.*..][0..data_len]) else "";
+                pos.* += data_len;
+                break :blk .{
+                    .type_tag = .blob,
+                    .data = .{ .blob = .{
+                        .type = mime,
+                        .size = data_copy.len,
+                        .bytes = data_copy,
+                    } },
+                    .allocator = allocator,
+                };
+            },
+            .file => blk: {
+                const name_len = try readLength(bytes, pos);
+                if (pos.* + name_len > bytes.len) return error.UnexpectedEof;
+                const name = if (name_len > 0) try allocator.dupe(u8, bytes[pos.*..][0..name_len]) else "";
+                errdefer if (name.len > 0) allocator.free(name);
+                pos.* += name_len;
+                const type_len = try readLength(bytes, pos);
+                if (pos.* + type_len > bytes.len) return error.UnexpectedEof;
+                const mime = if (type_len > 0) try allocator.dupe(u8, bytes[pos.*..][0..type_len]) else "";
+                errdefer if (mime.len > 0) allocator.free(mime);
+                pos.* += type_len;
+                if (pos.* + 8 > bytes.len) return error.UnexpectedEof;
+                const last_modified = std.mem.bytesToValue(i64, bytes[pos.*..][0..8]);
+                pos.* += 8;
+                const rel_len = try readLength(bytes, pos);
+                if (pos.* + rel_len > bytes.len) return error.UnexpectedEof;
+                const rel = if (rel_len > 0) try allocator.dupe(u8, bytes[pos.*..][0..rel_len]) else "";
+                errdefer if (rel.len > 0) allocator.free(rel);
+                pos.* += rel_len;
+                const data_len = try readLength(bytes, pos);
+                if (pos.* + data_len > bytes.len) return error.UnexpectedEof;
+                const data_copy = if (data_len > 0) try allocator.dupe(u8, bytes[pos.*..][0..data_len]) else "";
+                pos.* += data_len;
+                break :blk .{
+                    .type_tag = .file,
+                    .data = .{ .file = .{
+                        .name = name,
+                        .type = mime,
+                        .size = data_copy.len,
+                        .last_modified = last_modified,
+                        .webkit_relative_path = rel,
+                        .bytes = data_copy,
+                    } },
+                    .allocator = allocator,
                 };
             },
             else => .{

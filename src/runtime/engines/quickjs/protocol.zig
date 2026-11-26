@@ -680,6 +680,9 @@ pub fn getViewedArrayBuffer(_: Context, _: JSValue) Error!Owned {
 pub fn structuredSerializeForStorage(_: Context, _: JSValue, _: Allocator) Error![]u8 {
     return error.NotSupported;
 }
+pub fn structuredSerializeForStorageWithAttachments(_: Context, _: JSValue, _: Allocator) Error!engine.SerializedForStorage {
+    return error.NotSupported;
+}
 pub fn structuredDeserialize(_: Context, _: []const u8) Error!Owned {
     return error.NotSupported;
 }

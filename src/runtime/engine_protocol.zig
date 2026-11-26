@@ -505,6 +505,7 @@ pub const StringConversion = runtime.StringConversion;
 pub const StringRecordEntry = runtime.StringRecordEntry;
 pub const DictionaryMember = runtime.DictionaryMember;
 pub const SerializedWithTransfer = runtime.SerializedWithTransfer;
+pub const SerializedForStorage = runtime.SerializedForStorage;
 pub const SharedMemory = runtime.SharedMemory;
 /// HTML 2.7.1 serializable objects: the engine-neutral records a
 /// [Serializable] interface's serialization steps fill and its
@@ -513,6 +514,7 @@ pub const SharedMemory = runtime.SharedMemory;
 pub const SerializationRecord = runtime.SerializationRecord;
 pub const DeserializationRecord = runtime.DeserializationRecord;
 pub const SerializableSteps = runtime.SerializableSteps;
+pub const SerializedAttachments = runtime.SerializedAttachments;
 pub const TransferableState = runtime.TransferableState;
 pub const TransferableCheck = runtime.TransferableCheck;
 pub const WindowOperations = runtime.WindowOperations;
@@ -3215,6 +3217,13 @@ pub inline fn structuredSerializeForStorage(realm: Context, value: JSValue, allo
     return impl.structuredSerializeForStorage(realm, value, allocator);
 }
 
+/// StructuredSerializeForStorage carrying file-backed Blob handles lazily in
+/// `SerializedForStorage.attachments` (still enforcing `forStorage = true` so
+/// SharedArrayBuffer and WebAssembly.Module throw DataCloneError synchronously).
+pub inline fn structuredSerializeForStorageWithAttachments(realm: Context, value: JSValue, allocator: std.mem.Allocator) Error!SerializedForStorage {
+    return impl.structuredSerializeForStorageWithAttachments(realm, value, allocator);
+}
+
 /// StructuredDeserialize of what StructuredSerializeForStorage made, into
 /// `realm` (targetRealm): its platform objects are made there. OWNED.
 pub inline fn structuredDeserialize(realm: Context, bytes: []const u8) Error!Owned {
@@ -3248,6 +3257,7 @@ pub const StructuredDeserializeOptions = struct {
     array_buffers: []const []const u8 = &.{},
     transferred: []const *Instance = &.{},
     shared_memory: ?*SharedMemory = null,
+    attachments: ?*const SerializedAttachments = null,
 };
 
 /// HTML StructuredDeserialize with shared backing memory. The target must have

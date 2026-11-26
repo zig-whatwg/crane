@@ -1051,8 +1051,18 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?typedefs.Documen
     // Steps 1-3 precede Document serialization. GET/HEAD discard it.
     if (xhr_state.ready_state != .OPENED or xhr_state.send_flag) return error.InvalidStateError;
     const method = xhr_state.request_method orelse "";
-    if (!std.mem.eql(u8, method, "GET") and !std.mem.eql(u8, method, "HEAD"))
-        if (send_body) |*b| try b.serializeDocument();
+    var body_read_failed = false;
+    if (!std.mem.eql(u8, method, "GET") and !std.mem.eql(u8, method, "HEAD")) {
+        if (send_body) |*b| {
+            try b.serializeDocument();
+            b.materializeLazy() catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.NotFoundError, error.NotReadableError => {
+                    body_read_failed = true;
+                },
+            };
+        }
+    }
 
     installEventSink(instance);
     // The request's client is this's relevant settings object: its origin
@@ -1065,7 +1075,8 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?typedefs.Documen
     const owned_body: ?[]u8 = if (send_body) |*b| b.takeBytes() else null;
     var body_taken = false;
     defer if (!body_taken) if (owned_body) |b| allocator.free(b);
-    const effective_body = try send_algo.sendPrologue(xhr_state, owned_body);
+    const prologue_body: ?[]const u8 = if (body_read_failed) &.{} else owned_body;
+    const effective_body = try send_algo.sendPrologue(xhr_state, prologue_body);
 
     // Step 4: the request body's Content-Type, in this's author request
     // headers.
@@ -1074,6 +1085,39 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?typedefs.Documen
     // Step 5: If one or more event listeners are registered on this's upload
     // object, then set this's upload listener flag.
     xhr_state.upload_listener_flag = uploadHasListeners(instance);
+
+    if (body_read_failed) {
+        if (xhr_state.synchronous_flag) {
+            xhr_state.setResponseToNetworkError();
+            var processor = xhr.response.ResponseProcessor.init(xhr_state);
+            processor.handleNetworkError();
+            return error.NetworkError;
+        }
+        if (!send_algo.sendStart(xhr_state, &.{})) return;
+        if (instance.ctx.getOptionalEventLoop() == null) {
+            xhr_state.setResponseToNetworkError();
+            var processor = xhr.response.ResponseProcessor.init(xhr_state);
+            processor.handleNetworkError();
+            return;
+        }
+        internal.cancelFetch();
+        const pending = try allocator.create(PendingFetch);
+        pending.* = .{
+            .allocator = allocator,
+            .instance = instance,
+            .context = instance.ctx,
+            .instance_generation = runtime.SlabAllocator.generationOf(instance),
+            .document = if (relevantDocument(instance)) |document| same_object.Link.to(document) else null,
+            .fetch_holds = false,
+            .outcome = error.NetworkError,
+            .started_ms = 0,
+        };
+        internal.pending_fetch = pending;
+        pending.keep_alive.hold(instance);
+        pending.context.addObject(.xhr_fetches, pending) catch {};
+        pending.queueTask();
+        return;
+    }
 
     // Step 12: a sync request blocks here, which is what sync MEANS.
     if (xhr_state.synchronous_flag) {
@@ -1819,12 +1863,22 @@ const SendBody = struct {
 
     /// Borrowed only within call_send; serialized before any event dispatch.
     document: ?*runtime.Instance = null,
+    /// Lazy file-backed Blob/FormData source; materialized after GET/HEAD check.
+    lazy: ?fetch_mod.internal.Body.LazySource = null,
 
     const Kind = enum { usvstring, document, urlsearchparams, other };
 
     fn deinit(self: *SendBody) void {
         if (self.bytes) |b| self.allocator.free(b);
         if (self.content_type) |t| self.allocator.free(t);
+        if (self.lazy) |lazy| lazy.release();
+    }
+
+    fn materializeLazy(self: *SendBody) fetch_mod.internal.Body.LazySource.ReadError!void {
+        const lazy = self.lazy orelse return;
+        self.lazy = null;
+        defer lazy.release();
+        self.bytes = try lazy.read(self.allocator);
     }
 
     /// The request body, which is the caller's from here.
@@ -1897,7 +1951,14 @@ const SendBody = struct {
         };
         defer result.deinit();
         const body = result.body orelse return error.TypeError;
-        var self: SendBody = .{ .allocator = allocator, .kind = if (object == .urlsearch_params) .urlsearchparams else .other, .bytes = try allocator.dupe(u8, body.getBytes()) };
+        var self: SendBody = if (body.lazy) |lazy| blk: {
+            body.lazy = null;
+            break :blk .{ .allocator = allocator, .kind = if (object == .urlsearch_params) .urlsearchparams else .other, .bytes = null, .lazy = lazy };
+        } else .{
+            .allocator = allocator,
+            .kind = if (object == .urlsearch_params) .urlsearchparams else .other,
+            .bytes = try allocator.dupe(u8, body.getBytes()),
+        };
         self.content_type = result.content_type;
         result.content_type = null;
         return self;
