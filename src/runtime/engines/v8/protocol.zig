@@ -877,8 +877,9 @@ pub fn createSequenceOfValues(realm: Context, values: []const JSValue) Error!Own
 }
 
 pub fn createSequenceOfPlatformObjects(realm: Context, instances: []const *Instance) Error!Owned {
-    const values = std.heap.c_allocator.alloc(JSValue, instances.len) catch return error.OutOfMemory;
-    defer std.heap.c_allocator.free(values);
+    const alloc = realm.allocator;
+    const values = alloc.alloc(JSValue, instances.len) catch return error.OutOfMemory;
+    defer alloc.free(values);
     for (instances, values) |instance, *value| value.* = .{ .instance = instance };
     return createSequenceOfValues(realm, values);
 }
@@ -894,13 +895,14 @@ pub fn createLocationObject(realm: Context, ordinary_target: JSValue) Error!Owne
 pub fn createDictionaryObject(realm: Context, members: []const engine.DictionaryMember) Error!Owned {
     const entered = try enter(realm);
     defer entered.leave();
-    const values = std.heap.c_allocator.alloc(JSValue, members.len) catch return error.OutOfMemory;
-    defer std.heap.c_allocator.free(values);
+    const alloc = realm.allocator;
+    const values = alloc.alloc(JSValue, members.len) catch return error.OutOfMemory;
+    defer alloc.free(values);
     for (members, values) |member, *value| value.* = member.value;
     const relevant = try support.RelevantList.of(entered.isolate, values);
     defer relevant.release();
-    const relevant_members = std.heap.c_allocator.alloc(engine.DictionaryMember, members.len) catch return error.OutOfMemory;
-    defer std.heap.c_allocator.free(relevant_members);
+    const relevant_members = alloc.alloc(engine.DictionaryMember, members.len) catch return error.OutOfMemory;
+    defer alloc.free(relevant_members);
     for (members, relevant.values, relevant_members) |member, value, *out| out.* = .{ .name = member.name, .value = value };
     return owned(value_construction.createDictionaryObject(realm, relevant_members) catch |err| return protocolError(err));
 }
@@ -949,13 +951,10 @@ pub fn createDOMException(realm: Context, exception_name: []const u8, message: [
 // 4.9 Promises
 // ============================================================================
 
-/// The adapter's promise handles are allocated here, and freed with the same.
-const promise_allocator = std.heap.c_allocator;
-
 pub fn createPromise(realm: Context) Error!engine.PromiseCapability {
     const entered = try enter(realm);
     defer entered.leave();
-    const state = v8_engine.v8CreatePromise(@ptrCast(entered.context()), promise_allocator) catch |err| return protocolError(err);
+    const state = v8_engine.v8CreatePromise(@ptrCast(entered.context()), protocol_agents.allocatorOf(entered.isolate)) catch |err| return protocolError(err);
     return .{
         // The capability owns the promise's Global; this is its view.
         .promise = .{ .handle = .{ .ptr = v8_engine.v8GetPromiseObject(state) } },
@@ -1010,7 +1009,8 @@ pub fn rejectPromise(capability: *engine.PromiseCapability, reason: JSValue) Err
 pub fn releasePromiseCapability(capability: *engine.PromiseCapability) void {
     // v8_Global_Dispose drops the realm tag createPromise put on it.
     if (handleOf(capability.promise)) |promise| ffi.v8_Global_Dispose(promise);
-    v8_engine.v8DestroyPromiseHandle(capability.state, promise_allocator);
+    const handle: *v8_engine.V8PromiseHandle = @ptrCast(@alignCast(capability.state));
+    v8_engine.v8DestroyPromiseHandle(capability.state, handle.allocator);
 }
 
 pub fn createResolvedPromise(realm: Context, value: JSValue) Error!Owned {

@@ -103,7 +103,7 @@ test "item 1: V8 agent record, wrapper-cache chunks & peers, and realm records l
 
     // 2. The WrapperCache, its Cell chunk pool, AgentRecord (via `peers`), and
     //    `AgentRecord.caches` backing array all live in `.objects`.
-    const raw_cache = realm.getV8WrapperCache() orelse return error.NoWrapperCache;
+    const raw_cache = realm.getV8WrapperCacheStorage() orelse return error.NoWrapperCache;
     const cache: *v8.WrapperCache = @ptrCast(@alignCast(raw_cache));
     try testing.expectEqual(Range.objects, rangeOf(heap, cache));
     const chunk = cache.chunks orelse return error.NoChunk;

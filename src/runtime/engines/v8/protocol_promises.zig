@@ -38,6 +38,7 @@ const JSValue = engine.JSValue;
 const Error = engine.Error;
 
 const Reaction = struct {
+    allocator: std.mem.Allocator,
     steps: *const engine.PromiseReactionSteps,
     data: ?*anyopaque,
     /// The reaction functions' holder, WEAK: empty once the collector took
@@ -46,17 +47,16 @@ const Reaction = struct {
     /// On its realm's list until it ends.
     node: realm_finalizers.Node = .{ .drop = droppedByRealm },
 
-    const allocator = std.heap.c_allocator;
-
     /// Release what the record holds - its place on the realm's list, its
     /// holder handle (disposing it cancels a finalizer still to come) -
     /// and free it. Returns what the host's step needs.
     fn end(self: *Reaction) struct { steps: *const engine.PromiseReactionSteps, data: ?*anyopaque } {
+        const alloc = self.allocator;
         const steps = self.steps;
         const data = self.data;
         self.node.unlink();
         if (self.holder) |holder| ffi.v8_Global_Dispose(holder);
-        allocator.destroy(self);
+        alloc.destroy(self);
         return .{ .steps = steps, .data = data };
     }
 
@@ -141,8 +141,9 @@ pub fn reactToPromise(realm: Context, promise: JSValue, steps: *const engine.Pro
     const list = realm_finalizers.listOf(realm);
     if (list) |l| if (l.ended) return error.OperationFailed;
 
-    const reaction = Reaction.allocator.create(Reaction) catch return error.OutOfMemory;
-    reaction.* = .{ .steps = steps, .data = data };
+    const alloc = @import("protocol_agents.zig").allocatorOf(entered.isolate);
+    const reaction = alloc.create(Reaction) catch return error.OutOfMemory;
+    reaction.* = .{ .allocator = alloc, .steps = steps, .data = data };
     // 1-4. onFulfilled and onRejected: CreateBuiltinFunction over the steps.
     // 5-6. Let newCapability be ? NewPromiseCapability(%Promise% of the
     //      promise's realm) - V8's derived promise.
@@ -150,7 +151,7 @@ pub fn reactToPromise(realm: Context, promise: JSValue, steps: *const engine.Pro
     //    onRejected, newCapability).
     var holder: ?*ffi.Value = null;
     if (!ffi.v8_Promise_React(entered.context(), target, Reaction.settled, reaction, &holder)) {
-        Reaction.allocator.destroy(reaction);
+        alloc.destroy(reaction);
         return error.OperationFailed;
     }
     reaction.holder = holder;

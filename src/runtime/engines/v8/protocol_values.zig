@@ -460,7 +460,7 @@ pub fn matchesPatternAttribute(realm: Context, pattern: []const u8, value: []con
     defer entered.leave();
     // WTF-8 to UTF-16: never more code units than bytes.
     var fallback_buffer: [1024]u8 = undefined;
-    var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+    var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, realm.allocator);
     const allocator = fallback.allocator();
     const units = try allocator.alloc(u16, pattern.len + value.len);
     defer allocator.free(units);
@@ -510,7 +510,7 @@ pub fn regExpCreateCheck(realm: Context, pattern: []const u8, ignore_case: bool)
     defer agent.leave();
     // WTF-8 to UTF-16: never more code units than bytes.
     var fallback_buffer: [1024]u8 = undefined;
-    var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+    var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, realm.allocator);
     const allocator = fallback.allocator();
     const units = try allocator.alloc(u16, pattern.len);
     defer allocator.free(units);
@@ -538,7 +538,7 @@ pub fn regExpBuiltinExecCaptures(realm: Context, pattern: []const u8, ignore_cas
         const agent = try RegExpAgent.enter(realm);
         defer agent.leave();
         var fallback_buffer: [2048]u8 = undefined;
-        var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+        var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, realm.allocator);
         const scratch = fallback.allocator();
         // WTF-8 to UTF-16: never more code units than bytes.
         const units = try scratch.alloc(u16, pattern.len + input.len);

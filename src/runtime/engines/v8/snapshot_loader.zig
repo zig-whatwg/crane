@@ -201,6 +201,7 @@ pub const LocaleTag = [64:0]u8;
 /// (v8_wrapper.cpp setIcuDefaultLocale): never the host process's LANG.
 pub fn icuDefaultLocale(tag: *LocaleTag) [*:0]const u8 {
     const fallback = "en-US";
+    // direct-allocator: process-wide ICU default locale read at V8 platform start before any Browser exists
     const allocator = std.heap.c_allocator;
     const list = platform.preferredLanguages(allocator) catch return fallback;
     defer allocator.free(list);

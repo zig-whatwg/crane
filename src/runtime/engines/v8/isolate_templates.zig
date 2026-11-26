@@ -176,8 +176,7 @@ pub fn getOrCreateTemplateStorage(
 /// memory. On the isolate's own thread.
 pub fn storageFor(isolate: *v8.Isolate) ?*IsolateTemplates {
     if (getTemplateStorage(isolate)) |existing| return existing;
-    const isolate_alloc = @import("isolate_allocator.zig");
-    const allocator = isolate_alloc.getIsolateAllocator(isolate) orelse std.heap.c_allocator;
+    const allocator = @import("protocol_agents.zig").allocatorOf(isolate);
     return getOrCreateTemplateStorage(isolate, allocator) catch null;
 }
 

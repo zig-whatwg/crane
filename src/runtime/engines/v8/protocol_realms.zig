@@ -128,6 +128,7 @@ pub fn windowRealmFacts(realm: Context) ?WindowRealmFacts {
 /// collection, and the task that callback queues, hold it after the realm's
 /// state may be gone.
 const Detached = struct {
+    allocator: std.mem.Allocator,
     realm: Context,
     /// The realm's context handle (`realm.engine_ctx` until the collection),
     /// weak since the detach, empty once collected. Disposed at the end.
@@ -142,7 +143,8 @@ const Detached = struct {
     ended: bool = false,
 
     fn destroy(self: *Detached) void {
-        std.heap.c_allocator.destroy(self);
+        const alloc = self.allocator;
+        alloc.destroy(self);
     }
 };
 
@@ -474,16 +476,16 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .cross_origin_isolated = options.agent_cluster_cross_origin_isolated,
         .from_snapshot = options.from_snapshot,
     };
-    errdefer state.children.deinit(std.heap.c_allocator);
+    errdefer state.children.deinit(state.allocator);
     // Room for a parentless predecessor (E1 below), taken before the realm is
     // recorded: nothing fails once it is.
     if (predecessor) |old_state| {
-        if (old_state.parent == null and !old_state.auxiliary) state.children.ensureTotalCapacity(std.heap.c_allocator, 1) catch return error.OutOfMemory;
+        if (old_state.parent == null and !old_state.auxiliary) state.children.ensureTotalCapacity(state.allocator, 1) catch return error.OutOfMemory;
     }
     const parent_state: ?*WindowRealmState = if (tree_parent) |parent| realms.get(parent) else null;
     if (parent_state) |ps| appendChild(ps, realm) catch return error.OutOfMemory;
     errdefer if (parent_state) |ps| removeChild(ps, realm);
-    realms.put(std.heap.c_allocator, realm, state) catch return error.OutOfMemory;
+    realms.put(@import("protocol_agents.zig").allocatorOf(isolate), realm, state) catch return error.OutOfMemory;
 
     if (predecessor) |old_state| {
         // E1: a top-level predecessor's page is this realm now: detached by
@@ -579,7 +581,7 @@ fn removeChild(state: *WindowRealmState, child: Context) void {
 
 /// Add `child` to `state`'s children.
 fn appendChild(state: *WindowRealmState, child: Context) error{OutOfMemory}!void {
-    try state.children.append(std.heap.c_allocator, child);
+    try state.children.append(state.allocator, child);
 }
 
 /// The agent's Window interface template, made and registered - EventTarget
@@ -896,12 +898,12 @@ fn detach(realm: Context, state: *WindowRealmState) void {
         return endRealm(realm, end_now);
     };
     defer ffi.v8_Global_Dispose(global);
-    const record = std.heap.c_allocator.create(Detached) catch {
+    const record = state.allocator.create(Detached) catch {
         // No record to end it by later: end it now, as before.
         if (stack) |top| top.* = ending.next;
         return endRealm(realm, end_now);
     };
-    record.* = .{ .realm = realm, .context = context, .key = key };
+    record.* = .{ .allocator = state.allocator, .realm = realm, .context = context, .key = key };
 
     // 1. Script activity stops: the window operations (timers, animation
     // frames) - the window's own, through which a realm with a parent (a
@@ -1008,7 +1010,7 @@ fn passChildrenToParent(realm: Context) void {
     const state = realms.get(realm) orelse return;
     const parent = state.parent orelse return;
     const parent_state = realms.get(parent) orelse return;
-    parent_state.children.ensureUnusedCapacity(std.heap.c_allocator, state.children.items.len) catch return;
+    parent_state.children.ensureUnusedCapacity(parent_state.allocator, state.children.items.len) catch return;
     for (state.children.items) |child| {
         parent_state.children.appendAssumeCapacity(child);
         if (realms.get(child)) |child_state| child_state.parent = parent;
@@ -1116,7 +1118,7 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
     const realms = realmsOf(realm);
     if (stateOf(realm)) |s| {
         while (s.children.pop()) |child| endRealm(child, how);
-        s.children.deinit(std.heap.c_allocator);
+        s.children.deinit(s.allocator);
     }
     const state = if (realms) |r| (if (r.fetchRemove(realm)) |kv| kv.value else null) else null;
     const detached: ?*Detached = if (state) |s| s.detached else null;
@@ -1360,7 +1362,7 @@ fn builtinFunctionSteps(info: *const ffi.FunctionCallbackInfo) callconv(.c) void
     const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer ffi.v8_Context_Dispose(context);
 
-    const allocator = std.heap.c_allocator;
+    const allocator = @import("protocol_agents.zig").allocatorOf(isolate);
     const argc: usize = @intCast(@max(info.length(), 0));
     var handles_buf: [4]*ffi.Value = undefined;
     var values_buf: [4]JSValue = undefined;

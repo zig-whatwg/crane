@@ -455,6 +455,29 @@ pub fn fastRecordOf(isolate: *ffi.Isolate) ?*AgentRecord {
     return @ptrCast(@alignCast(record));
 }
 
+/// The agent's allocator (its Browser's heap general allocator), available
+/// through the agent's end; falls back to the isolate's allocator or libc for
+/// raw V8 test isolates not created by `createAgent`.
+pub fn allocatorOf(isolate: *ffi.Isolate) std.mem.Allocator {
+    if (fastRecordOf(isolate)) |r| return r.allocator;
+    {
+        std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+        defer std.Io.Threaded.mutexUnlock(&agents_lock);
+        if (agents.get(isolate)) |r| return r.allocator;
+    }
+    if (isolate_allocator.getIsolateAllocator(isolate)) |a| return a;
+    // direct-allocator: fallback for raw V8 test isolates not created by createAgent
+    return std.heap.c_allocator;
+}
+
+/// The current isolate's agent allocator, or libc fallback when no isolate is
+/// entered.
+pub fn currentAllocator() std.mem.Allocator {
+    if (ffi.v8_Isolate_GetCurrent()) |iso| return allocatorOf(iso);
+    // direct-allocator: fallback when no V8 isolate is entered (raw unit tests)
+    return std.heap.c_allocator;
+}
+
 /// The stack of the agent's Window realms whose end is under way
 /// (`AgentRecord.ending_window_realms`), until the agent's record goes -
 /// through its end too; null for an isolate createAgent did not make. Called
@@ -727,12 +750,27 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
     };
     errdefer if (own_queue) |queue| options.allocator.destroy(queue);
     const deferred_teardown = options.deferred_teardown orelse own_queue;
-    const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
-    errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .entered_for_life = entered_for_life, .hooks = options.hooks, .host = options.host, .host_state = options.host_state, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
+    const record = options.allocator.create(AgentRecord) catch return error.OutOfMemory;
+    errdefer options.allocator.destroy(record);
+    record.* = .{
+        .isolate = isolate,
+        .entered_for_life = entered_for_life,
+        .hooks = options.hooks,
+        .host = options.host,
+        .host_state = options.host_state,
+        .allocator = options.allocator,
+        .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate),
+        .deferred_teardown = deferred_teardown,
+        .own_deferred_teardown = own_queue,
+        .worlds = .{ .allocator = options.allocator },
+        .teardown_holds = .{ .allocator = options.allocator },
+        .realms = .{ .allocator = options.allocator },
+        .webassembly_compilations = .{ .allocator = options.allocator },
+    };
     {
         std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
+        // direct-allocator: process-wide isolate -> *AgentRecord registry shared across all Browsers
         agents.put(std.heap.c_allocator, isolate, record) catch return error.OutOfMemory;
     }
     // The queue the "DOM algorithm active" depth is counted on, one load
@@ -840,7 +878,7 @@ pub fn endAgent(agent: *Agent) void {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
     ffi.v8_Isolate_CloseForegroundTasks(isolate);
     const record = recordOf(isolate);
-    const allocator = if (record) |r| r.allocator else std.heap.c_allocator;
+    const allocator = if (record) |r| r.allocator else allocatorOf(isolate);
     const shadow_realms = if (record) |r| r.shadow_realms else null;
     const pattern_matcher = if (record) |r| r.pattern_matcher else null;
     const window_properties = if (record) |r| r.window_properties_template else null;
@@ -1003,6 +1041,7 @@ pub fn performMicrotaskCheckpoint(agent: *Agent) void {
 
 /// A queued microtask's steps and their data, until the microtask runs.
 const QueuedMicrotask = struct {
+    allocator: std.mem.Allocator,
     steps: engine.RealmSteps,
     data: ?*anyopaque,
 };
@@ -1010,9 +1049,10 @@ const QueuedMicrotask = struct {
 /// V8 runs a callback microtask as `void (*)(void*)`.
 fn runQueuedMicrotask(raw: ?*anyopaque) callconv(.c) void {
     const queued: *QueuedMicrotask = @ptrCast(@alignCast(raw orelse return));
+    const alloc = queued.allocator;
     const steps = queued.steps;
     const data = queued.data;
-    std.heap.c_allocator.destroy(queued);
+    alloc.destroy(queued);
     steps(data);
 }
 
@@ -1021,8 +1061,10 @@ fn runQueuedMicrotask(raw: ?*anyopaque) callconv(.c) void {
 /// disposed, so a record still queued then is never freed - the declaration
 /// says the steps may not run.
 pub fn queueMicrotask(agent: *Agent, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
-    const queued = std.heap.c_allocator.create(QueuedMicrotask) catch return error.OutOfMemory;
-    queued.* = .{ .steps = steps, .data = data };
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    const alloc = allocatorOf(isolate);
+    const queued = alloc.create(QueuedMicrotask) catch return error.OutOfMemory;
+    queued.* = .{ .allocator = alloc, .steps = steps, .data = data };
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
     ffi.v8_Isolate_EnqueueMicrotask(entered.isolate, @ptrCast(&runQueuedMicrotask), queued);
@@ -1159,7 +1201,7 @@ pub fn forgetAgent(agent: *Agent) void {
     // Its Window realms' map: every one has ended, so only its storage is
     // left - which a thread-local map kept after its thread had gone.
     if (record.window_realms.count() != 0) log.err("the agent ended with {d} Window realm(s) still alive; the host must destroy them first", .{record.window_realms.count()});
-    record.window_realms.deinit(std.heap.c_allocator);
+    record.window_realms.deinit(record.allocator);
     // Its teardown holds: every walk ended (a hold is scoped to one), and
     // every entry it deferred was torn down by the last resume or by its
     // realm's end, which ran before.
@@ -1185,11 +1227,12 @@ fn removeAgent(isolate: *ffi.Isolate) void {
         break :blk kv.value;
     };
     std.debug.assert(record.ending);
+    const alloc = record.allocator;
     @import("protocol_worlds.zig").endAgent(isolate, &record.worlds);
-    protocol_modules.endAgent(&record.modules);
-    worker_realm.endAgent(&record.worker_realms);
-    @import("wrapper_cache.zig").endAgent(isolate, &record.caches);
-    std.heap.c_allocator.destroy(record);
+    protocol_modules.endAgent(&record.modules, alloc);
+    worker_realm.endAgent(&record.worker_realms, alloc);
+    @import("wrapper_cache.zig").endAgent(isolate, &record.caches, alloc);
+    alloc.destroy(record);
 }
 
 // ============================================================================
@@ -1316,8 +1359,8 @@ fn onCodeGenerationFromStrings(
     // An object: HostGetCodeForEval(argument). No code: eval returns it.
     const get_code = record.hooks.getCodeForEval orelse return allowed;
     const argument = object orelse return allowed;
-    const eval_code = get_code(record.host, realm, .{ .handle = .{ .ptr = argument } }, std.heap.c_allocator) orelse return allowed;
-    defer std.heap.c_allocator.free(eval_code);
+    const eval_code = get_code(record.host, realm, .{ .handle = .{ .ptr = argument } }, record.allocator) orelse return allowed;
+    defer record.allocator.free(eval_code);
     // PerformEval: HostEnsureCanCompileStrings with the code, the object as
     // bodyArg - a TrustedScript, so isTrusted.
     const compilation: engine.StringCompilation = .{ .compilation_type = .eval, .code_string = eval_code, .arguments_are_code_like = true };

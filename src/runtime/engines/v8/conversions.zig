@@ -3126,8 +3126,9 @@ pub fn byteStringToV8(comptime T: type, isolate: *v8.Isolate, value: T) Conversi
     var small: [256]u16 = undefined;
     // A longer one's code units on libc's heap: no allocator is in reach of
     // a return conversion, and std.heap.page_allocator mapped a page per call.
-    const units = if (value.len <= small.len) small[0..value.len] else try std.heap.c_allocator.alloc(u16, value.len);
-    defer if (value.len > small.len) std.heap.c_allocator.free(units);
+    const alloc = @import("protocol_agents.zig").allocatorOf(isolate);
+    const units = if (value.len <= small.len) small[0..value.len] else try alloc.alloc(u16, value.len);
+    defer if (value.len > small.len) alloc.free(units);
     for (value, units) |byte, *unit| unit.* = byte;
     return v8.v8_Value_StringFromTwoByte(isolate, units.ptr, @intCast(units.len)) orelse ConversionError.StringError;
 }

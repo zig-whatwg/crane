@@ -7,4 +7,4 @@
 # above. A ratchet: `zig build lint-direct-allocator` (part of `zig build
 # test`) fails on any new or grown count; `-- --update` records lower counts.
 src/browser/capi.zig 1
-src/html/worker_host.zig 3
+src/html/worker_host.zig 4

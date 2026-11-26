@@ -98,6 +98,7 @@ fn stepsOf(at: anytype, state: *ffi.Value) Error!*const engine.AsyncIteratorStep
 /// An iterator's record: what its end needs - the collector took it, or its
 /// realm ended first, whichever comes first.
 const Record = struct {
+    allocator: std.mem.Allocator,
     steps: *const engine.AsyncIteratorSteps,
     data: ?*anyopaque,
     /// The iterator's state array, WEAK: empty once collected. It lives
@@ -108,16 +109,15 @@ const Record = struct {
     /// On its realm's list until it ends.
     node: realm_finalizers.Node = .{ .drop = droppedByRealm },
 
-    const allocator = std.heap.c_allocator;
-
     /// Leave the realm's list, dispose the handle (cancelling a finalizer
     /// still to come) and free the record; what the host's finalize needs.
     fn end(self: *Record) struct { steps: *const engine.AsyncIteratorSteps, data: ?*anyopaque } {
+        const alloc = self.allocator;
         const steps = self.steps;
         const data = self.data;
         self.node.unlink();
         ffi.v8_Global_Dispose(self.state);
-        allocator.destroy(self);
+        alloc.destroy(self);
         return .{ .steps = steps, .data = data };
     }
 
@@ -212,11 +212,12 @@ pub fn createAsyncIterator(realm: Context, steps: *const engine.AsyncIteratorSte
     if (list) |l| if (l.ended) return error.OperationFailed;
     if (steps.finalize == null and list == null) return support.owned(object);
     const handle = ffi.v8_Global_Clone(state) orelse return error.OperationFailed;
-    const record = Record.allocator.create(Record) catch {
+    const alloc = @import("protocol_agents.zig").allocatorOf(isolate);
+    const record = alloc.create(Record) catch {
         ffi.v8_Global_Dispose(handle);
         return error.OutOfMemory;
     };
-    record.* = .{ .steps = steps, .data = data, .state = handle };
+    record.* = .{ .allocator = alloc, .steps = steps, .data = data, .state = handle };
     if (list) |l| l.add(&record.node) catch {
         _ = record.end();
         return error.OperationFailed;

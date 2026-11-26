@@ -844,14 +844,6 @@ fn deferredChildCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
 /// `threadlocal`, every agent's caches on the thread in one list.
 pub const Caches = std.ArrayListUnmanaged(*WrapperCache);
 
-/// What an agent's `Caches` list is allocated from: libc's heap. The list is
-/// the agent's (its record's), shared by its realms' caches, and no agent
-/// allocator is in reach where a cache joins or leaves it; it was
-/// std.heap.page_allocator, a page (and on Linux a mapping) for a few
-/// pointers (docs/lessons/architecture-std-heap-page-allocator-maps-a-page-
-/// per-allocation.md).
-const caches_allocator = std.heap.c_allocator;
-
 /// The current agent's live caches; null with no isolate current, or for an
 /// isolate createAgent did not make.
 fn currentCaches() ?*Caches {
@@ -913,14 +905,14 @@ pub fn liveDeferredEdgeCount() usize {
 /// collections ask the caches nothing from here (the list they were handed
 /// is the agent's record's). A cache still on it outlived its agent's
 /// realms; it is taken off, so that its own end touches no freed list.
-pub fn endAgent(isolate: *v8.Isolate, caches: *Caches) void {
+pub fn endAgent(isolate: *v8.Isolate, caches: *Caches, allocator: std.mem.Allocator) void {
     _ = v8.v8_Isolate_SetPlatformWrapperHooks(isolate, null, &noWeakProcessing, &nothingDropped, &nothingDropped);
     if (caches.items.len != 0) log.err("{d} wrapper cache(s) outlived their agent's realms", .{caches.items.len});
     for (caches.items) |cache| {
         cache.peers = null;
         cache.registered = false;
     }
-    caches.deinit(caches_allocator);
+    caches.deinit(allocator);
     caches.* = .empty;
 }
 
@@ -1078,15 +1070,20 @@ pub const TeardownHolds = struct {
     /// in Debug builds, the adapter refuses to run script
     /// (protocol.forbidScriptInHold).
     count: u32 = 0,
+    /// The agent's allocator (`AgentRecord.allocator`), from the Browser's heap.
+    allocator: ?std.mem.Allocator = null,
     /// The entries waiting, each still on its cache's pending list and
-    /// flagged `teardown_deferred`. OWNED storage (std.heap.c_allocator);
-    /// the entries are their caches'.
+    /// flagged `teardown_deferred`. OWNED storage; the entries are their caches'.
     deferred: std.ArrayListUnmanaged(*Cell) = .empty,
+
+    fn alloc(self: *const TeardownHolds) std.mem.Allocator {
+        return self.allocator orelse @import("protocol_agents.zig").currentAllocator();
+    }
 
     /// List `entry` to wait, and flag it; false - tear it down now - when
     /// there is no memory to list it.
     fn wait(self: *TeardownHolds, entry: *Cell) bool {
-        self.deferred.append(std.heap.c_allocator, entry) catch return false;
+        self.deferred.append(self.alloc(), entry) catch return false;
         entry.bits.teardown_deferred = true;
         return true;
     }
@@ -1105,7 +1102,7 @@ pub const TeardownHolds = struct {
     }
 
     pub fn deinit(self: *TeardownHolds) void {
-        self.deferred.deinit(std.heap.c_allocator);
+        self.deferred.deinit(self.alloc());
         self.deferred = .empty;
         self.count = 0;
     }
@@ -2502,8 +2499,9 @@ pub const WrapperCache = struct {
     fn register(self: *Self, isolate: *v8.Isolate) void {
         if (self.registered) return;
         self.isolate = isolate;
-        const caches = @import("protocol_agents.zig").cachesOf(isolate) orelse return;
-        caches.append(caches_allocator, self) catch return;
+        const protocol_agents = @import("protocol_agents.zig");
+        const caches = protocol_agents.cachesOf(isolate) orelse return;
+        caches.append(protocol_agents.allocatorOf(isolate), self) catch return;
         self.peers = caches;
         self.registered = true;
         // The anchors' registry, whose weak processing calls the caches',
@@ -2524,7 +2522,10 @@ pub const WrapperCache = struct {
         }
         // The list's memory goes with its last cache (and with its agent,
         // `endAgent`).
-        if (caches.items.len == 0) caches.clearAndFree(caches_allocator);
+        if (caches.items.len == 0) {
+            const alloc = if (self.isolate) |iso| @import("protocol_agents.zig").allocatorOf(iso) else self.allocator;
+            caches.clearAndFree(alloc);
+        }
         self.registered = false;
         self.peers = null;
     }

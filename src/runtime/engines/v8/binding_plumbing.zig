@@ -152,7 +152,7 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
 
     // Get or create isolate allocator (uses page_allocator as fallback)
     const isolate_alloc = @import("isolate_allocator.zig");
-    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
+    const allocator = isolate_alloc.getOrInitAllocator(isolate, @import("protocol_agents.zig").allocatorOf(isolate)) catch {
         conv.throwError(isolate, "Failed to get isolate allocator");
         return;
     };
@@ -725,7 +725,7 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
 
     // Get allocator
     const isolate_alloc = @import("isolate_allocator.zig");
-    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
+    const allocator = isolate_alloc.getOrInitAllocator(isolate, @import("protocol_agents.zig").allocatorOf(isolate)) catch {
         conv.throwError(isolate, "Failed to get isolate allocator");
         return;
     };

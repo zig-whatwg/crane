@@ -139,17 +139,17 @@ pub const RelevantList = struct {
     values: []const engine.JSValue,
     copy: ?[]Relevant = null,
     copied: ?[]engine.JSValue = null,
-
-    const allocator = std.heap.c_allocator;
+    allocator: ?std.mem.Allocator = null,
 
     pub fn of(isolate: *ffi.Isolate, values: []const engine.JSValue) Error!RelevantList {
         for (values) |value| {
             if (value == .instance) break;
         } else return .{ .values = values };
-        const copy = allocator.alloc(Relevant, values.len) catch return error.OutOfMemory;
-        errdefer allocator.free(copy);
-        const copied = allocator.alloc(engine.JSValue, values.len) catch return error.OutOfMemory;
-        errdefer allocator.free(copied);
+        const alloc = @import("protocol_agents.zig").allocatorOf(isolate);
+        const copy = alloc.alloc(Relevant, values.len) catch return error.OutOfMemory;
+        errdefer alloc.free(copy);
+        const copied = alloc.alloc(engine.JSValue, values.len) catch return error.OutOfMemory;
+        errdefer alloc.free(copied);
         var made: usize = 0;
         errdefer for (copy[0..made]) |relevant| relevant.release();
         for (values, copy, copied) |value, *slot, *out| {
@@ -157,14 +157,15 @@ pub const RelevantList = struct {
             out.* = slot.value;
             made += 1;
         }
-        return .{ .values = copied, .copy = copy, .copied = copied };
+        return .{ .values = copied, .copy = copy, .copied = copied, .allocator = alloc };
     }
 
     pub fn release(self: RelevantList) void {
         const copy = self.copy orelse return;
+        const alloc = self.allocator.?;
         for (copy) |relevant| relevant.release();
-        allocator.free(copy);
-        allocator.free(self.copied.?);
+        alloc.free(copy);
+        alloc.free(self.copied.?);
     }
 };
 
