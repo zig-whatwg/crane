@@ -417,6 +417,35 @@ test "Linux: the node cage takes no transparent huge pages, even where every ran
     try testing.expectEqual(@as(usize, 0), try linuxAnonHugeKb(range.base, range.base + range.size));
 }
 
+test "Linux: objects, bytes, and heap_metadata ranges also take no transparent huge pages (batch B2 item 7, oss R4)" {
+    try supported();
+    if (comptime !is_linux) return error.SkipZigTest;
+    var mode_buffer: [128]u8 = undefined;
+    const mode = blk: {
+        const fd = std.c.open("/sys/kernel/mm/transparent_hugepage/enabled", .{ .ACCMODE = .RDONLY, .CLOEXEC = true });
+        if (fd < 0) return error.SkipZigTest;
+        defer _ = std.c.close(fd);
+        const n = std.c.read(fd, &mode_buffer, mode_buffer.len);
+        if (n <= 0) return error.SkipZigTest;
+        break :blk std.mem.trimEnd(u8, mode_buffer[0..@intCast(n)], "\n");
+    };
+    if (std.mem.indexOf(u8, mode, "[never]") != null) return error.SkipZigTest;
+
+    const super = 2 * MiB;
+    const supers = 8;
+    inline for ([_]platform.AddressLabel{ .objects, .bytes, .heap_metadata }) |label| {
+        const range = try platform.reserveAddressSpace(supers * super, super, 0, .objects);
+        defer platform.releaseAddressSpace(range);
+        // Simulate a host with THP enabled=always by setting MADV_HUGEPAGE first,
+        // then re-labeling; linuxLabel must exclude every heap range via MADV_NOHUGEPAGE.
+        try testing.expectEqual(@as(c_int, 0), std.c.madvise(@ptrFromInt(range.base), range.size, std.os.linux.MADV.HUGEPAGE));
+        platform.labelAddressSpace(range, 0, range.size, label);
+        try platform.commitPages(range, 0, range.size);
+        for (0..supers) |s| touch(range, s * super, 16 * 1024, 1);
+        try testing.expectEqual(@as(usize, 0), try linuxAnonHugeKb(range.base, range.base + range.size));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Out of address space
 // ---------------------------------------------------------------------------
