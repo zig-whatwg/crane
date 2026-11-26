@@ -251,7 +251,7 @@ pub const Realms = struct {
     is_tearing_down: bool = false,
 
     fn alloc(self: *const Realms) std.mem.Allocator {
-        return self.allocator orelse std.heap.c_allocator;
+        return self.allocator orelse @import("protocol_agents.zig").currentAllocator();
     }
 };
 
@@ -1069,8 +1069,9 @@ fn documentTreeChildAt(window: *runtime.Instance, index: u32) ?*@import("dom").b
     // focused cost window, 2026-11-18).
     if (index >= navigable.children.items.len) return null;
     const document = (interfaces.Window.get_document(window) catch null) orelse return null;
-    var children = dom.navigables.documentTreeChildNavigables(navigable, document, std.heap.c_allocator);
-    defer children.deinit(std.heap.c_allocator);
+    const nav_alloc = runtime.allocatorOf(window);
+    var children = dom.navigables.documentTreeChildNavigables(navigable, document, nav_alloc);
+    defer children.deinit(nav_alloc);
     if (index >= children.items.len) return null;
     return children.items[index].browsing_context;
 }

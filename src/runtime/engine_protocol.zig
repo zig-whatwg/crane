@@ -570,6 +570,7 @@ pub const AgentOptions = struct {
     host_state: ?*HostState = null,
     /// What the engine allocates for the agent itself (its caches, what
     /// destroyAgent frees), BORROWED for the agent's life.
+    // direct-allocator: default field value for standalone createAgent(.{}) tests without a Browser
     allocator: std.mem.Allocator = std.heap.c_allocator,
     /// The host's queue of native objects whose last owner went away
     /// (runtime.gc.DeferredTeardown), BORROWED past the agent's end: the

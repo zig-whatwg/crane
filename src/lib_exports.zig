@@ -151,6 +151,7 @@ pub const WhatwgBrowser = browser.Browser;
 ///
 /// @return Pointer to browser instance, or null on failure
 pub export fn whatwg_browser_create() callconv(.c) ?*WhatwgBrowser {
+    // direct-allocator: C ABI entry point has no Zig host allocator
     return createBrowser(std.heap.c_allocator);
 }
 
@@ -214,8 +215,10 @@ pub export fn whatwg_browser_evaluate(
         const ctx = ptr.current_context orelse return -1;
         // The completion value, ToString'd; what the script throws fails the
         // call.
-        const result = ctx.evaluateScriptToString(code_slice, std.heap.c_allocator) catch return -99;
-        defer std.heap.c_allocator.free(result);
+        // direct-allocator: C ABI string copy scratch buffer
+        const result_alloc = std.heap.c_allocator;
+        const result = ctx.evaluateScriptToString(code_slice, result_alloc) catch return -99;
+        defer result_alloc.free(result);
         const copy_len = @min(result.len, result_buf_len);
         @memcpy(result_buf[0..copy_len], result[0..copy_len]);
         return @intCast(copy_len);

@@ -115,8 +115,8 @@ pub const Host = struct {
     /// object attaches a handle (e.g. file-backed BlobData). Null for inline
     /// persistent storage.
     write_attachments: ?*?*runtime.SerializedAttachments = null,
-    /// Allocator for creating the sidecar if needed.
-    attachments_allocator: std.mem.Allocator = std.heap.c_allocator,
+    /// Allocator for creating the sidecar if needed; defaults to `allocator`.
+    attachments_allocator: ?std.mem.Allocator = null,
     /// Optional sidecar read by deserialization steps (BORROWED for the call).
     read_attachments: ?*const runtime.SerializedAttachments = null,
     /// Set when a serialization step failed reading a file-backed Blob from
@@ -201,7 +201,7 @@ fn write(data: ?*anyopaque, object: *ffi.Value, serializer: *ffi.ValueSerializer
     // forStorage.
     var serialized = runtime.SerializationRecord.init(host.allocator, host.for_storage);
     if (host.write_attachments) |slot| {
-        serialized.attachments = .{ .allocator = host.attachments_allocator, .slot = slot };
+        serialized.attachments = .{ .allocator = host.attachments_allocator orelse host.allocator, .slot = slot };
     }
     defer serialized.deinit();
     steps.serialize(instance, &serialized) catch |err| {

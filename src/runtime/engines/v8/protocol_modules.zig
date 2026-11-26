@@ -36,6 +36,7 @@ const Allocator = std.mem.Allocator;
 
 /// The adapter's Module Record: the host's `*engine.ModuleRecord`.
 const Record = struct {
+    allocator: std.mem.Allocator,
     /// The module, OWNED.
     module: *ffi.Module,
     /// The realm it was parsed in: its [[Realm]].
@@ -59,14 +60,13 @@ fn recordOf(record: *engine.ModuleRecord) *Record {
 /// (`endAgent`).
 // tombstones: freed (clearAndFree) with its last record, which each page's end brings (its module map releases every record), and with its agent
 pub const Records = std.AutoHashMapUnmanaged(c_int, std.ArrayListUnmanaged(*Record));
-const registry_allocator = std.heap.c_allocator;
 
 fn register(record: *Record) Error!void {
     // Every record is parsed in a realm, and every realm is an agent's.
     const records = protocol_agents.modulesOf(record.isolate) orelse return error.OperationFailed;
-    const entry = records.getOrPut(registry_allocator, record.identity_hash) catch return error.OutOfMemory;
+    const entry = records.getOrPut(record.allocator, record.identity_hash) catch return error.OutOfMemory;
     if (!entry.found_existing) entry.value_ptr.* = .empty;
-    entry.value_ptr.append(registry_allocator, record) catch return error.OutOfMemory;
+    entry.value_ptr.append(record.allocator, record) catch return error.OutOfMemory;
 }
 
 fn unregister(record: *Record) void {
@@ -79,19 +79,19 @@ fn unregister(record: *Record) void {
         }
     }
     if (list.items.len == 0) {
-        list.deinit(registry_allocator);
+        list.deinit(record.allocator);
         _ = records.remove(record.identity_hash);
     }
     // The map's own memory goes with its last record.
-    if (records.count() == 0) records.clearAndFree(registry_allocator);
+    if (records.count() == 0) records.clearAndFree(record.allocator);
 }
 
 /// The agent's end, once its realms have ended (protocol_agents.removeAgent):
 /// the map's storage goes. A record still on it is the host's to release.
-pub fn endAgent(records: *Records) void {
+pub fn endAgent(records: *Records, allocator: std.mem.Allocator) void {
     var lists = records.valueIterator();
-    while (lists.next()) |list| list.deinit(registry_allocator);
-    records.deinit(registry_allocator);
+    while (lists.next()) |list| list.deinit(allocator);
+    records.deinit(allocator);
     records.* = .empty;
 }
 
@@ -107,9 +107,11 @@ fn find(isolate: *ffi.Isolate, module: *ffi.Module, identity_hash: c_int) ?*Reco
 }
 
 fn newRecord(isolate: *ffi.Isolate, module: *ffi.Module, realm: Context, host_defined: ?*anyopaque) Error!*engine.ModuleRecord {
-    const record = registry_allocator.create(Record) catch return error.OutOfMemory;
-    errdefer registry_allocator.destroy(record);
+    const alloc = protocol_agents.allocatorOf(isolate);
+    const record = alloc.create(Record) catch return error.OutOfMemory;
+    errdefer alloc.destroy(record);
     record.* = .{
+        .allocator = alloc,
         .module = module,
         .realm = realm,
         .host_defined = host_defined,
@@ -323,9 +325,10 @@ const EvaluateCall = struct {
 /// needs it (another module's import of it, a namespace object).
 pub fn releaseModuleRecord(record: *engine.ModuleRecord) void {
     const r = recordOf(record);
+    const alloc = r.allocator;
     unregister(r);
     ffi.v8_Module_Dispose(r.module);
-    registry_allocator.destroy(r);
+    alloc.destroy(r);
 }
 
 // ============================================================================
@@ -334,6 +337,7 @@ pub fn releaseModuleRecord(record: *engine.ModuleRecord) void {
 
 /// An import() in flight: the host's `*engine.ImportRequest`.
 const ImportRequest = struct {
+    allocator: std.mem.Allocator,
     /// The context import() was called in, and the promise's resolver: V8
     /// handles, consumed when the import is finished.
     context: *ffi.Context,
@@ -365,8 +369,8 @@ pub fn onDynamicImport(
     const load = agent.hooks.loadImportedModule orelse return fail.with(context, resolver, "import() is not supported here");
     const realm = context_manager.get(context) orelse return fail.with(context, resolver, "import() from a realm that has ended");
 
-    const request = registry_allocator.create(ImportRequest) catch return fail.with(context, resolver, "out of memory");
-    request.* = .{ .context = context, .resolver = resolver, .realm = realm };
+    const request = agent.allocator.create(ImportRequest) catch return fail.with(context, resolver, "out of memory");
+    request.* = .{ .allocator = agent.allocator, .context = context, .resolver = resolver, .realm = realm };
     const import_referrer: engine.ImportReferrer = switch (referrer_kind) {
         0 => if (referrer) |p| .{ .script = p } else .realm,
         1 => if (referrer) |p| .{ .module = p } else .realm,
@@ -390,7 +394,8 @@ pub fn onDynamicImport(
 /// Ends the host's hold on `request`.
 pub fn finishDynamicImport(request: *engine.ImportRequest, outcome: engine.DynamicImportOutcome) void {
     const pending: *ImportRequest = @ptrCast(@alignCast(request));
-    defer registry_allocator.destroy(pending);
+    const alloc = pending.allocator;
+    defer alloc.destroy(pending);
     const entered = support.enter(pending.realm) catch {
         // The realm has ended: nothing can observe the promise any more.
         ffi.v8_DynamicImport_Reject(pending.context, pending.resolver, "", 0);
@@ -447,8 +452,8 @@ pub fn onImportMetaResolve(
     const agent = protocol_agents.callbackRecordOf(isolate) orelse return null;
     const resolve = agent.hooks.importMetaResolve orelse return null;
     const realm = context_manager.get(context) orelse return null;
-    const url = resolve(agent.host, realm, base_url[0..base_url_len], specifier[0..specifier_len], std.heap.c_allocator) orelse return null;
-    defer std.heap.c_allocator.free(url);
+    const url = resolve(agent.host, realm, base_url[0..base_url_len], specifier[0..specifier_len], agent.allocator) orelse return null;
+    defer agent.allocator.free(url);
     const out: [*]u8 = @ptrCast(std.c.malloc(@max(url.len, 1)) orelse return null);
     @memcpy(out[0..url.len], url);
     len.* = url.len;

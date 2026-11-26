@@ -136,20 +136,55 @@ pub const Relevant = struct {
 /// A list of values as `Relevant` does one: the list itself when it holds no
 /// platform object, else a copy with each replaced. `release` ends both.
 pub const RelevantList = struct {
-    values: []const engine.JSValue,
+    const inline_cap = 8;
+
+    borrowed: []const engine.JSValue = &.{},
+    len: usize = 0,
+    is_inline: bool = false,
+    inline_copy: [inline_cap]Relevant = undefined,
+    inline_copied: [inline_cap]engine.JSValue = undefined,
     copy: ?[]Relevant = null,
     copied: ?[]engine.JSValue = null,
+    allocator: ?std.mem.Allocator = null,
 
-    const allocator = std.heap.c_allocator;
-
-    pub fn of(isolate: *ffi.Isolate, values: []const engine.JSValue) Error!RelevantList {
+    pub fn init(self: *RelevantList, isolate: *ffi.Isolate, values: []const engine.JSValue) Error!void {
         for (values) |value| {
             if (value == .instance) break;
-        } else return .{ .values = values };
-        const copy = allocator.alloc(Relevant, values.len) catch return error.OutOfMemory;
-        errdefer allocator.free(copy);
-        const copied = allocator.alloc(engine.JSValue, values.len) catch return error.OutOfMemory;
-        errdefer allocator.free(copied);
+        } else {
+            self.borrowed = values;
+            self.len = 0;
+            self.is_inline = false;
+            self.copy = null;
+            self.copied = null;
+            self.allocator = null;
+            return;
+        }
+        if (values.len <= inline_cap) {
+            self.borrowed = &.{};
+            self.len = values.len;
+            self.is_inline = true;
+            self.copy = null;
+            self.copied = null;
+            self.allocator = null;
+            var made: usize = 0;
+            errdefer for (self.inline_copy[0..made]) |relevant| relevant.release();
+            for (values, 0..) |value, i| {
+                self.inline_copy[i] = try Relevant.of(isolate, value);
+                self.inline_copied[i] = self.inline_copy[i].value;
+                made += 1;
+            }
+            return;
+        }
+        return self.initHeap(isolate, values);
+    }
+
+    fn initHeap(self: *RelevantList, isolate: *ffi.Isolate, values: []const engine.JSValue) Error!void {
+        @branchHint(.cold);
+        const alloc = @import("protocol_agents.zig").allocatorOf(isolate);
+        const copy = alloc.alloc(Relevant, values.len) catch return error.OutOfMemory;
+        errdefer alloc.free(copy);
+        const copied = alloc.alloc(engine.JSValue, values.len) catch return error.OutOfMemory;
+        errdefer alloc.free(copied);
         var made: usize = 0;
         errdefer for (copy[0..made]) |relevant| relevant.release();
         for (values, copy, copied) |value, *slot, *out| {
@@ -157,14 +192,30 @@ pub const RelevantList = struct {
             out.* = slot.value;
             made += 1;
         }
-        return .{ .values = copied, .copy = copy, .copied = copied };
+        self.borrowed = &.{};
+        self.len = values.len;
+        self.is_inline = false;
+        self.copy = copy;
+        self.copied = copied;
+        self.allocator = alloc;
     }
 
-    pub fn release(self: RelevantList) void {
+    pub inline fn slice(self: *const RelevantList) []const engine.JSValue {
+        if (self.is_inline) return self.inline_copied[0..self.len];
+        if (self.copied) |c| return c;
+        return self.borrowed;
+    }
+
+    pub fn release(self: *const RelevantList) void {
+        if (self.is_inline) {
+            for (self.inline_copy[0..self.len]) |relevant| relevant.release();
+            return;
+        }
         const copy = self.copy orelse return;
+        const alloc = self.allocator.?;
         for (copy) |relevant| relevant.release();
-        allocator.free(copy);
-        allocator.free(self.copied.?);
+        alloc.free(copy);
+        alloc.free(self.copied.?);
     }
 };
 

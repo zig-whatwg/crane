@@ -50,6 +50,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const runtime_options = @import("runtime_options");
 const platform = @import("platform");
 const browser_heap = @import("../browser_heap.zig");
 pub const classes = @import("classes.zig");
@@ -57,6 +58,18 @@ pub const classes = @import("classes.zig");
 pub const general = @import("general.zig");
 /// The satellite allocator over the cage's satellite partition (batch B2).
 pub const satellite = @import("satellite.zig");
+
+/// Whether allocation/free observer callouts (for tooling / Darwin
+/// `malloc_logger`, `[V2] D8`, Batch C item 5) are compiled in. False in
+/// production release builds so the hot path pays zero instructions.
+pub const alloc_log_compiled: bool = builtin.mode == .debug or runtime_options.heap_alloc_log;
+
+/// Allocation/free observer hook for tooling builds (`[V2] D8`, Batch C item 5).
+pub const AllocObserver = struct {
+    context: ?*anyopaque = null,
+    on_alloc: *const fn (context: ?*anyopaque, partition: PartitionId, size: usize, address: usize) void,
+    on_free: *const fn (context: ?*anyopaque, partition: PartitionId, address: usize) void,
+};
 
 const BrowserHeap = browser_heap.BrowserHeap;
 const Classes = classes.Classes;
@@ -904,6 +917,23 @@ pub const Engine = struct {
     /// those detached for reuse. Under the objects partition's lock.
     caches: ?*AgentCache = null,
     free_caches: ?*AgentCache = null,
+    /// Allocation/free observer (Batch C item 5, `[V2] D8`), only invoked when
+    /// `alloc_log_compiled` is true (Debug or `-Dheap-alloc-log=true`).
+    alloc_observer: ?AllocObserver = null,
+
+    pub fn setAllocObserver(self: *Engine, observer: ?AllocObserver) void {
+        self.alloc_observer = observer;
+    }
+
+    inline fn noteAlloc(self: *const Engine, pid: PartitionId, size: usize, address: usize) void {
+        if (comptime !alloc_log_compiled) return;
+        if (self.alloc_observer) |obs| obs.on_alloc(obs.context, pid, size, address);
+    }
+
+    inline fn noteFree(self: *const Engine, pid: PartitionId, address: usize) void {
+        if (comptime !alloc_log_compiled) return;
+        if (self.alloc_observer) |obs| obs.on_free(obs.context, pid, address);
+    }
 
     pub const magic_value: u64 = 0x4352_414e_4553_4e31; // "CRANESN1"
 
@@ -1617,6 +1647,7 @@ pub const Engine = struct {
             const sites: [*]usize = @ptrFromInt(self.heap.window_base + self.meta_pool_base + (@as(usize, e.sites) - 1) * @sizeOf(Chunk));
             sites[slot] = if (site) |s| @intFromPtr(s) else return_address | site_return_tag;
         }
+        self.noteAlloc(p.id, size, address);
         return block;
     }
 
@@ -2021,6 +2052,7 @@ pub const Engine = struct {
                 sites[slot] = return_address | site_return_tag | site_general_tag;
             }
         }
+        self.noteAlloc(pid, size, @intFromPtr(block));
         return block;
     }
 
@@ -2097,6 +2129,7 @@ pub const Engine = struct {
                 cache.held_bytes_local[0] += div.block_bytes;
                 cache.held_bytes[0].store(cache.held_bytes_local[0], .monotonic);
                 self.hold(address | (class + 1), div.block_bytes, false);
+                self.noteFree(expected, address);
                 return;
             }
             std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
@@ -2106,6 +2139,7 @@ pub const Engine = struct {
             b.requested -|= size;
             e.quarantined += 1;
             self.hold(address, div.block_bytes, true);
+            self.noteFree(expected, address);
             return;
         }
         if (!slotSwap(map, slot, .allocated, .cached)) {
@@ -2130,6 +2164,7 @@ pub const Engine = struct {
         cache.held[pi].store(cache.held_local[pi], .monotonic);
         cache.held_bytes_local[pi] += div.block_bytes;
         cache.held_bytes[pi].store(cache.held_bytes_local[pi], .monotonic);
+        self.noteFree(expected, address);
     }
 
     fn spillCacheLocked(self: *Engine, cache: *AgentCache, pid: PartitionId, want: u16, class: usize, already_locked: bool) void {
@@ -2551,6 +2586,7 @@ pub const Engine = struct {
         if (self.config.fill == .poison and from_committed_free) {
             self.verifyFreed(block[0..req_size], false);
         }
+        self.noteAlloc(p.id, req_size, @intFromPtr(block));
         return block;
     }
 
@@ -2561,6 +2597,7 @@ pub const Engine = struct {
         if (offset % span_bytes != 0 or e.state == .run_tail or e.state == .unopened) return self.violation(.invalid_free, address);
         if (e.state != .active) return self.violation(.double_free, address);
         if (bytes <= GeneralClasses.max_size or runOf(bytes) != e.run) return self.violation(.wrong_size, address);
+        self.noteFree(p.id, address);
         const run: u16 = e.run;
         const run_bytes = @as(usize, run) * span_bytes;
         if (self.config.fill == .poison) @memset(@as([*]u8, @ptrFromInt(address))[0..run_bytes], poison_byte);
@@ -2707,7 +2744,9 @@ pub const Engine = struct {
         p.stats.huge_blocks += 1;
         p.stats.huge_bytes += need * span_bytes;
         p.stats.committed_span_bytes += need * span_bytes;
-        return @ptrFromInt(self.spanAddress(index));
+        const address = self.spanAddress(index);
+        self.noteAlloc(p.id, need * span_bytes, address);
+        return @ptrFromInt(address);
     }
 
     /// Free a huge block at `offset` (its entry names `huge_bucket`), of
@@ -2723,6 +2762,7 @@ pub const Engine = struct {
         const r = for (regions[0..p.huge_count]) |*r| {
             if (r.first == index) break r;
         } else return self.violation(.invalid_free, address);
+        self.noteFree(p.id, address);
         const committed: usize = r.committed;
         // Released and made inaccessible: a read through a pointer kept past
         // the free faults, where a decommitted page would read zero.
@@ -2867,6 +2907,7 @@ pub const Engine = struct {
         const slot = within / b.block_bytes;
         const map = self.slotMap(index);
         if (slotGet(map, slot) != .allocated) return self.violation(.double_free, address);
+        self.noteFree(p.id, address);
 
         const block: [*]u8 = @ptrFromInt(address);
         // The page's bytes are neither zeroed nor held (design 1.2: the
@@ -2976,6 +3017,7 @@ pub const Engine = struct {
             const sites: [*]usize = @ptrFromInt(self.heap.window_base + self.meta_pool_base + (@as(usize, e.sites) - 1) * @sizeOf(Chunk));
             sites[slot] = if (site) |s| @intFromPtr(s) else return_address | site_return_tag;
         }
+        self.noteAlloc(p.id, size, @intFromPtr(block));
         return block;
     }
 

@@ -56,16 +56,49 @@ generation check is only a teardown net. Collected trees are freed in slices fro
 
 ## Memory
 
-Three families, three tools:
+Four families, four tools:
 
 | Family | Measure with |
 |--------|--------------|
-| Zig pools (arena, slab, gpa) | `std.testing.allocator`, `gc_bench` columns |
+| Browser heap (`.node`, `.satellite`, `.objects`, `.bytes`) | `std.testing.allocator`, `gc_bench` columns, `--memory-map`, test runner `standalone_heap_*` |
+| Host / process-wide Zig pools | `std.testing.allocator`, `gc_bench` `zig-side MB` |
 | C++ `Global<T>` handles | `leaks --atExit`, live-handle counters |
 | V8's own heap | `v8_Isolate_GetHeapUsage` |
 
-**A leak invisible to (1) is usually (2).** This migration fixed 635,764 leaked
+**A leak invisible to (1) is usually (3).** This migration fixed 635,764 leaked
 handles while the suite was green throughout.
+
+### Browser heap partitions — a family's partition is decided by what it holds
+
+Every Browser owns a reserved 4-partition heap (`src/runtime/browser_heap.zig`,
+`src/runtime/heap/`). **A family's partition is decided by what it holds**
+(allocator-hardening design §§1.2, 3.1):
+
+| Partition | Holds | Properties |
+|-----------|-------|------------|
+| `.node` | Node `State` blocks (in the lower half of the cage, keyed by size class, node kind, and per-Browser random bucket) | Window agent only (lock-free, owner-checked), full zero/verify, task-scoped quarantine |
+| `.satellite` | Node-linked satellites (rare data, node event listener lists, attribute entry blocks, observer registrations, slot state, `ElementStyle`; upper half of the cage) | Window agent only (lock-free, owner-checked), full zero/verify, task-scoped quarantine, 200 ms idle decommit |
+| `.objects` | Non-node `State` blocks, `Instance` slots, and pointer-bearing general blocks (including V8 per-Browser/per-agent Zig records) | Multi-agent (per-agent lock-free cache + shared mutex), zero/verify (up to 1 KiB in production), task-scoped quarantine |
+| `.bytes` | Page-controlled pointer-free bytes (`u8`/`u16`/`u32` buffers, strings, Brotli/zlib codec callbacks, typed arrays) | Multi-agent (per-agent lock-free cache + coalescing large-run pool), no quarantine, no production zeroing |
+
+- **Alignment decides `.bytes` vs `.objects` in the general allocator**
+  (`src/runtime/heap/general.zig`): requests with alignment `< @alignOf(usize)`
+  route to `.bytes`; alignment `>= @alignOf(usize)` routes to `.objects`.
+- **Never declare a pointer-bearing field with `align(1)`, `align(2)`, or `align(4)`**:
+  lowering a pointer-bearing struct's alignment below `@alignOf(usize)` would misroute
+  it into `.bytes` (no zeroing, no quarantine). Enforced at 0 by
+  `zig build lint-pointer-align` (part of `zig build test`).
+- **Never call `std.heap.c_allocator`, `std.heap.smp_allocator`, or `std.heap.page_allocator`
+  directly in `src/` outside `src/platform/`**: thread the Browser's / agent's / realm's
+  allocator instead. Genuine process-wide or C-ABI boundary sites carry a reviewed
+  `// direct-allocator: <why>` (or `// page-allocator: <why>`) comment directly above
+  the line. Enforced by `zig build lint-direct-allocator` and `zig build lint-page-allocator`
+  (part of `zig build test`).
+- **Observability:** `--memory-map` (`repl` and `gc_bench`; `src/browser/memory_map.zig`)
+  prints the per-interface byte table (count, state, slot, satellite bytes) and the
+  4-partition heap summary; `gc_bench` prints per-partition MB and quarantine KB columns;
+  tooling builds (`Debug` / `-Dheap-alloc-log=true`) emit Darwin `malloc_logger` callouts
+  with synthetic per-partition zone tags (no `malloc_zone_t`).
 
 ### Zig side
 

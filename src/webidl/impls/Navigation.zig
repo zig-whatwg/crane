@@ -2005,8 +2005,10 @@ fn waitForAll(instance: *runtime.Instance, record: *EventRecord, phase: WaitPhas
         single[0] = resolved.?.value;
         list = &single;
     }
-    const wait = std.heap.c_allocator.create(Wait) catch return;
+    const wait_alloc = runtime.allocatorOf(instance);
+    const wait = wait_alloc.create(Wait) catch return;
     wait.* = .{
+        .allocator = wait_alloc,
         .navigation = instance,
         .generation = runtime.SlabAllocator.generationOf(instance),
         .record_id = record.id,
@@ -2044,6 +2046,7 @@ fn waitForAll(instance: *runtime.Instance, record: *EventRecord, phase: WaitPhas
 /// the navigation's promises afterwards (ordering-and-transition/:
 /// navigatesuccess before "committed fulfilled").
 const Wait = struct {
+    allocator: std.mem.Allocator,
     navigation: *runtime.Instance,
     generation: u64,
     record_id: u64,
@@ -2094,8 +2097,9 @@ const Wait = struct {
     fn release(self: *Wait) void {
         self.live -= 1;
         if (self.live > 0) return;
+        const alloc = self.allocator;
         if (self.reason) |r| r.release();
-        std.heap.c_allocator.destroy(self);
+        alloc.destroy(self);
     }
 
     /// The outcome, to the navigation - when it and the record are still
@@ -2737,15 +2741,16 @@ fn listsEntry(entries: []const *joint_history.Entry, id: u64) bool {
 /// process asks of each frame whose entries a navigation removed.
 fn entriesRemovedHook(top_ptr: *anyopaque) void {
     const top: *html_core.window.BrowsingContext = @ptrCast(@alignCast(top_ptr));
-    // Taken before any event is fired: dispose handlers run script, which
-    // can make and free navigation objects.
-    const Other = struct { instance: *runtime.Instance, generation: u64 };
-    var others: std.ArrayListUnmanaged(Other) = .empty;
-    defer others.deinit(std.heap.c_allocator);
     // The traversable's Browser's Navigation objects, found from its active
     // Window's address: a traversable with no Window has no frame whose
     // Navigation could hear of it.
     const top_window: *runtime.Instance = @ptrCast(@alignCast(top.getActiveWindow() orelse return));
+    const alloc = runtime.allocatorOf(top_window);
+    // Taken before any event is fired: dispose handlers run script, which
+    // can make and free navigation objects.
+    const Other = struct { instance: *runtime.Instance, generation: u64 };
+    var others: std.ArrayListUnmanaged(Other) = .empty;
+    defer others.deinit(alloc);
     const live = browser_object_lists.existing(top_window, .navigations) orelse return;
     for (live.slice()) |navigation| {
         const internal = getInternal(navigation) orelse continue;
@@ -2757,7 +2762,7 @@ fn entriesRemovedHook(top_ptr: *anyopaque) void {
         // fire after pageshow - HTMLIFrameElement's restore reactivates each
         // frame's navigation API), never while it is cached.
         if (dom.bfcache.holds(@ptrCast(s.window))) continue;
-        others.append(std.heap.c_allocator, .{ .instance = navigation, .generation = runtime.SlabAllocator.generationOf(navigation) }) catch return;
+        others.append(alloc, .{ .instance = navigation, .generation = runtime.SlabAllocator.generationOf(navigation) }) catch return;
     }
     for (others.items) |other| {
         if (runtime.SlabAllocator.generationOf(other.instance) != other.generation) continue;

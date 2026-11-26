@@ -602,6 +602,7 @@ pub fn parseFloatingPoint(input: []const u8) ?f64 {
     // std.heap.page_allocator mapped a page per call (docs/lessons/
     // architecture-std-heap-page-allocator-maps-a-page-per-allocation.md).
     var fallback_buffer: [256]u8 = undefined;
+    // direct-allocator: leaf attribute number parser (>256-byte overflow fallback over stack buffer; no Browser in reach)
     var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
     const allocator = fallback.allocator();
     const text = std.fmt.allocPrint(allocator, "{s}{s}.{s}e{d}", .{

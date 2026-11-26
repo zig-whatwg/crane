@@ -4331,7 +4331,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
             defer v8.v8_Context_Dispose(context);
             const isolate_alloc = @import("isolate_allocator.zig");
-            const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch return;
+            const allocator = isolate_alloc.getOrInitAgentAllocator(isolate) catch return;
             inline for (set, 0..) |overload, k| {
                 if (k == prefix.entry) {
                     // The generated delegate: (instance, arguments...).
@@ -5248,7 +5248,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // and nothing converted below keeps it.
             defer v8.v8_Context_Dispose(v8_context);
             const isolate_alloc = @import("isolate_allocator.zig");
-            const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
+            const allocator = isolate_alloc.getOrInitAgentAllocator(isolate) catch {
                 conv.throwError(isolate, "Out of memory");
                 return;
             };
@@ -6025,6 +6025,7 @@ pub fn V8Interface(comptime Interface: type) type {
         const PropertyName = struct {
             stack: [256]u8 = undefined,
             heap: ?[]u8 = null,
+            heap_allocator: ?std.mem.Allocator = null,
 
             /// `property`'s text, or null for a Symbol (or no memory).
             fn read(self: *PropertyName, property: *v8.Name) ?[]const u8 {
@@ -6033,8 +6034,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 const length: usize = @intCast(@max(v8.v8_String_Utf8Length_Raw(str), 0));
                 // Room for WriteUtf8's terminating NUL.
                 const buffer: []u8 = if (length < self.stack.len) self.stack[0 .. length + 1] else blk: {
-                    const bytes = std.heap.c_allocator.alloc(u8, length + 1) catch return null;
+                    const alloc = @import("protocol_agents.zig").currentAllocator();
+                    const bytes = alloc.alloc(u8, length + 1) catch return null;
                     self.heap = bytes;
+                    self.heap_allocator = alloc;
                     break :blk bytes;
                 };
                 const written = v8.v8_String_WriteUtf8_Raw(str, buffer.ptr, @intCast(buffer.len));
@@ -6043,8 +6046,9 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             fn deinit(self: *PropertyName) void {
-                if (self.heap) |bytes| std.heap.c_allocator.free(bytes);
+                if (self.heap) |bytes| self.heap_allocator.?.free(bytes);
                 self.heap = null;
+                self.heap_allocator = null;
             }
         };
 
@@ -6116,7 +6120,7 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         fn supportedByListIn(fallback_buffer: *[8192]u8, instance: *runtime.Instance, key: []const u8) bool {
-            var fallback: std.heap.BufferFirstAllocator = .init(fallback_buffer, std.heap.c_allocator);
+            var fallback: std.heap.BufferFirstAllocator = .init(fallback_buffer, runtime.allocatorOf(instance));
             var arena = std.heap.ArenaAllocator.init(fallback.allocator());
             defer arena.deinit();
             const names = Interface.getSupportedPropertyNames(instance, arena.allocator()) catch return false;
@@ -6176,16 +6180,20 @@ pub fn V8Interface(comptime Interface: type) type {
             /// buffer, keeps every check.
             fn of(info: *const anyopaque, key: []const u8) NameState {
                 @setRuntimeSafety(false);
-                var fallback_buffer: [1024]u8 = undefined;
+                var fallback_buffer: [512]u16 = undefined;
                 return ofIn(&fallback_buffer, info, key);
             }
 
-            fn ofIn(fallback_buffer: *[1024]u8, info: *const anyopaque, key: []const u8) NameState {
+            fn ofIn(fallback_buffer: *[512]u16, info: *const anyopaque, key: []const u8) NameState {
                 // The name's code units: a lone surrogate stays itself.
-                var fallback: std.heap.BufferFirstAllocator = .init(fallback_buffer, std.heap.c_allocator);
-                const allocator = fallback.allocator();
-                const units = allocator.alloc(u16, key.len) catch return .{ .own = false, .in_prototype_chain = false };
-                defer allocator.free(units);
+                // Stay on the stack buffer for short names without looking up
+                // the current isolate's allocator.
+                const heap_units: ?[]u16 = if (key.len <= fallback_buffer.len) null else blk: {
+                    @branchHint(.cold);
+                    break :blk @import("protocol_agents.zig").currentAllocator().alloc(u16, key.len) catch return .{ .own = false, .in_prototype_chain = false };
+                };
+                defer if (heap_units) |h| @import("protocol_agents.zig").currentAllocator().free(h);
+                const units = heap_units orelse fallback_buffer[0..key.len];
                 const count = value_operations.wtf8ToUtf16(key, units);
                 const bits = v8.v8_LegacyPlatformObject_NamedPropertyState(info, units.ptr, @intCast(count));
                 return .{ .own = bits & 1 != 0, .in_prototype_chain = bits & 2 != 0 };
@@ -6624,21 +6632,22 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             };
 
-            const names = Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch {
+            const alloc = runtime.allocatorOf(instance);
+            const names = Interface.getSupportedPropertyNames(instance, alloc) catch {
                 const empty_arr = v8.v8_Array_New(isolate, 0);
                 defer v8.v8_Array_Dispose(empty_arr);
                 info.setReturnValue(@ptrCast(empty_arr));
                 return;
             };
             defer {
-                for (names) |*prop_name| prop_name.deinit(std.heap.c_allocator);
-                if (names.len > 0) std.heap.c_allocator.free(names);
+                for (names) |*prop_name| prop_name.deinit(alloc);
+                if (names.len > 0) alloc.free(names);
             }
 
             var keys: std.ArrayListUnmanaged(*v8.Value) = .empty;
             defer {
                 for (keys.items) |key| v8.v8_Value_Dispose(key);
-                keys.deinit(std.heap.c_allocator);
+                keys.deinit(alloc);
             }
 
             // The visible supported property names, in order.
@@ -6648,7 +6657,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (state.own) continue;
                 if (!named_properties_mask and state.in_prototype_chain) continue;
                 const v8_str = conv.newStringFromWtf8(isolate, text) orelse continue;
-                keys.append(std.heap.c_allocator, v8_str) catch v8.v8_Value_Dispose(v8_str);
+                keys.append(alloc, v8_str) catch v8.v8_Value_Dispose(v8_str);
             }
 
             const result_arr = v8.v8_Array_New(isolate, @intCast(keys.items.len));
@@ -9197,7 +9206,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get allocator
                     const isolate_alloc = @import("isolate_allocator.zig");
-                    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
+                    const allocator = isolate_alloc.getOrInitAgentAllocator(isolate) catch {
                         conv.throwError(isolate, "Failed to get isolate allocator");
                         return;
                     };

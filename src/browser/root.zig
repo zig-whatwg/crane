@@ -60,6 +60,10 @@ pub const Process = process.Process;
 /// the process's hold-off between releases.
 pub const memory_release = @import("memory_release.zig");
 
+/// Per-type byte table and 4-partition Browser heap summary (`--memory-map`,
+/// `[ARCH] 7.3`, allocator-hardening batch C item 5).
+pub const memory_map = @import("memory_map.zig");
+
 /// A Browser's receiver for platform events (the platform protocol's
 /// EventSink): a critical memory-pressure event becomes tasks.
 pub const platform_events = @import("platform_events.zig");
@@ -85,5 +89,6 @@ test {
     _ = @import("rendering.zig");
     _ = @import("viewport.zig");
     _ = @import("memory_release.zig");
+    _ = @import("memory_map.zig");
     _ = @import("isolated_worlds.zig");
 }

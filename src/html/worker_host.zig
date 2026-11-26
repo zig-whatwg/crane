@@ -1661,11 +1661,14 @@ pub const WorkerHost = struct {
     /// Step 8: react to the evaluation promise, and report the reason if it
     /// rejects - while this host, held by address, is still a live one.
     fn reportRejectionLater(self: *Self, realm: runtime.Context, promise: runtime.JSValue) void {
-        // c_allocator: the reaction can outlive this host.
-        const pending = std.heap.c_allocator.create(PendingModuleEvaluation) catch return;
-        pending.* = .{ .host = self, .realm = realm };
+        // Allocated from the realm's Browser-heap allocator (which outlives both
+        // the realm and this host; the engine drops pending reactions when the
+        // realm/agent ends before the BrowserScope tears down its heap).
+        const alloc = realm.allocator;
+        const pending = alloc.create(PendingModuleEvaluation) catch return;
+        pending.* = .{ .allocator = alloc, .host = self, .realm = realm };
         engine.reactToPromise(realm, promise, &PendingModuleEvaluation.steps, pending) catch {
-            std.heap.c_allocator.destroy(pending);
+            alloc.destroy(pending);
         };
     }
 
@@ -3134,6 +3137,7 @@ const worker_hooks: engine.HostHooks = .{
 /// read only while it still runs the realm (`forScope`): its reactions run in
 /// the realm, which its host outlives.
 const PendingModuleEvaluation = struct {
+    allocator: std.mem.Allocator,
     host: *WorkerHost,
     realm: runtime.Context,
 
@@ -3155,12 +3159,12 @@ const PendingModuleEvaluation = struct {
     /// Fulfilled, or ended without a step (the realm ended first): freed.
     fn dropped(data: ?*anyopaque) void {
         const self: *PendingModuleEvaluation = @ptrCast(@alignCast(data orelse return));
-        std.heap.c_allocator.destroy(self);
+        self.allocator.destroy(self);
     }
 
     fn rejected(data: ?*anyopaque, reason: runtime.JSValue) void {
         const self: *PendingModuleEvaluation = @ptrCast(@alignCast(data orelse return));
-        defer std.heap.c_allocator.destroy(self);
+        defer self.allocator.destroy(self);
         const host = self.liveHost() orelse return;
         host.reportValue(self.realm, reason);
     }

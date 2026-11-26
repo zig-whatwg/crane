@@ -103,6 +103,7 @@ const Definition = struct {
 
 /// A world realm the adapter made and that has not ended.
 const WorldRealm = struct {
+    allocator: std.mem.Allocator,
     realm: Context,
     /// The main-world realm whose Window the global wraps.
     main: Context,
@@ -144,6 +145,8 @@ const HandedProxy = struct {
 /// agent's end (`endAgent`). Storage: std.heap.c_allocator, as the agent's
 /// other per-realm maps (protocol_realms.WindowRealms).
 pub const AgentWorlds = struct {
+    /// The agent's allocator (`AgentRecord.allocator`), from the Browser's heap.
+    allocator: ?std.mem.Allocator = null,
     /// Every world realm, by realm.
     realms: std.AutoHashMapUnmanaged(Context, *WorldRealm) = .empty,
     /// The world realms of each main realm, in the order they were made.
@@ -165,6 +168,10 @@ pub const AgentWorlds = struct {
     /// The agent has made a world realm: conversions ask the world, and the
     /// walk visits world wrappers, from then on. Never cleared.
     active: bool = false,
+
+    fn alloc(self: *const AgentWorlds) std.mem.Allocator {
+        return self.allocator orelse protocol_agents.currentAllocator();
+    }
 };
 
 /// The worlds of `realm`'s agent; null for a realm of no agent createAgent
@@ -283,12 +290,13 @@ pub fn createWorldRealm(main_realm: Context, options: *const engine.WorldRealmOp
 /// The world's definition: the one recorded, or `options` recorded now.
 fn define(worlds: *AgentWorlds, options: *const engine.WorldRealmOptions) Error!Definition {
     if (worlds.definitions.get(options.world)) |known| return known;
-    const name = std.heap.c_allocator.dupe(u8, options.name) catch return error.OutOfMemory;
-    errdefer std.heap.c_allocator.free(name);
-    const policy: ?[]u8 = if (options.content_security_policy) |text| std.heap.c_allocator.dupe(u8, text) catch return error.OutOfMemory else null;
-    errdefer if (policy) |p| std.heap.c_allocator.free(p);
+    const alloc = worlds.alloc();
+    const name = alloc.dupe(u8, options.name) catch return error.OutOfMemory;
+    errdefer alloc.free(name);
+    const policy: ?[]u8 = if (options.content_security_policy) |text| alloc.dupe(u8, text) catch return error.OutOfMemory else null;
+    errdefer if (policy) |p| alloc.free(p);
     const definition: Definition = .{ .name = name, .universal_access = options.universal_access, .content_security_policy = policy };
-    worlds.definitions.put(std.heap.c_allocator, options.world, definition) catch return error.OutOfMemory;
+    worlds.definitions.put(alloc, options.world, definition) catch return error.OutOfMemory;
     return definition;
 }
 
@@ -383,9 +391,10 @@ fn stateOf(realm: Context) ?*WorldRealm {
 fn makeWorldRealm(worlds: *AgentWorlds, main: Context, facts: protocol_realms.WindowRealmFacts, world: WorldId) Error!Context {
     const isolate = facts.isolate;
     const allocator = facts.allocator;
+    const world_alloc = worlds.alloc();
     // The record first: nothing of the engine is made when there is no room.
-    const state = std.heap.c_allocator.create(WorldRealm) catch return error.OutOfMemory;
-    errdefer std.heap.c_allocator.destroy(state);
+    const state = world_alloc.create(WorldRealm) catch return error.OutOfMemory;
+    errdefer world_alloc.destroy(state);
 
     const entered_isolate = ffi.v8_Isolate_GetCurrent() != isolate;
     if (entered_isolate) ffi.v8_Isolate_Enter(isolate);
@@ -468,17 +477,17 @@ fn makeWorldRealm(worlds: *AgentWorlds, main: Context, facts: protocol_realms.Wi
     page_realm.defineOnFrame(isolate, context, realm, main);
 
     const key = context_manager.keyOf(context) orelse return error.OperationFailed;
-    state.* = .{ .realm = realm, .main = main, .world = world, .context = context, .key = key, .window = facts.window };
+    state.* = .{ .allocator = world_alloc, .realm = realm, .main = main, .world = world, .context = context, .key = key, .window = facts.window };
     worlds.realms_guard.beforeInsert(&worlds.realms);
-    worlds.realms.put(std.heap.c_allocator, realm, state) catch return error.OutOfMemory;
+    worlds.realms.put(world_alloc, realm, state) catch return error.OutOfMemory;
     errdefer {
         _ = worlds.realms.remove(realm);
         worlds.realms_guard.noteRemoval(&worlds.realms);
     }
     worlds.by_main_guard.beforeInsert(&worlds.by_main);
-    const by_main = worlds.by_main.getOrPut(std.heap.c_allocator, main) catch return error.OutOfMemory;
+    const by_main = worlds.by_main.getOrPut(world_alloc, main) catch return error.OutOfMemory;
     if (!by_main.found_existing) by_main.value_ptr.* = .empty;
-    by_main.value_ptr.append(std.heap.c_allocator, state) catch return error.OutOfMemory;
+    by_main.value_ptr.append(world_alloc, state) catch return error.OutOfMemory;
     noteActive(worlds, isolate, main);
     ffi.v8_Context_Exit(context);
 
@@ -519,12 +528,13 @@ pub fn handOnWorldProxies(old_main: Context, new_main: Context) void {
     if (!worlds.active) return;
     const list = worlds.by_main.get(old_main) orelse return;
     if (list.items.len == 0) return;
+    const alloc = worlds.alloc();
     worlds.handed_guard.beforeInsert(&worlds.handed);
-    const handed = worlds.handed.getOrPut(std.heap.c_allocator, new_main) catch return;
+    const handed = worlds.handed.getOrPut(alloc, new_main) catch return;
     if (!handed.found_existing) handed.value_ptr.* = .empty;
     for (list.items) |w| {
         if (w.window_proxy_handed_on) continue;
-        handed.value_ptr.ensureUnusedCapacity(std.heap.c_allocator, 1) catch return;
+        handed.value_ptr.ensureUnusedCapacity(alloc, 1) catch return;
         if (!isLive(w.context)) continue;
         const proxy = ffi.v8_Context_Global(w.context) orelse continue;
         realm_global.handOn(w.context);
@@ -550,10 +560,11 @@ pub fn destroyWorldRealms(main: Context) void {
 /// `destroyWorldRealms` on the agent's record: `main` leaves `by_main` and
 /// `handed` whatever its world realms' ends do.
 fn destroyWorldRealmsIn(worlds: *AgentWorlds, main: Context) void {
+    const alloc = worlds.alloc();
     while (true) {
         const list = worlds.by_main.getPtr(main) orelse break;
         const w = list.pop() orelse {
-            list.deinit(std.heap.c_allocator);
+            list.deinit(alloc);
             _ = worlds.by_main.remove(main);
             worlds.by_main_guard.noteRemoval(&worlds.by_main);
             break;
@@ -564,7 +575,7 @@ fn destroyWorldRealmsIn(worlds: *AgentWorlds, main: Context) void {
         worlds.handed_guard.noteRemoval(&worlds.handed);
         var proxies = kv.value;
         for (proxies.items) |handed| ffi.v8_Object_Dispose(handed.proxy);
-        proxies.deinit(std.heap.c_allocator);
+        proxies.deinit(alloc);
     }
 }
 
@@ -581,7 +592,8 @@ fn isLive(context: *ffi.Context) bool {
 /// the counted references its node wrappers held), V8 told, its handle
 /// released. `w` is off the main realm's list already.
 fn endWorldRealm(worlds: *AgentWorlds, w: *WorldRealm) void {
-    defer std.heap.c_allocator.destroy(w);
+    const alloc = w.allocator;
+    defer alloc.destroy(w);
     if (worlds.observer) |observer| observer.destroyed(worlds.observer_host, w.realm);
     if (worlds.realms.remove(w.realm)) worlds.realms_guard.noteRemoval(&worlds.realms);
     const realm = w.realm;
@@ -628,26 +640,27 @@ fn endWorldRealm(worlds: *AgentWorlds, w: *WorldRealm) void {
 /// the agent's realms, context_manager.endAgentRealms -> `endAllOfAgent`);
 /// what is left of the record goes.
 pub fn endAgent(isolate: *ffi.Isolate, worlds: *AgentWorlds) void {
+    const alloc = worlds.alloc();
     node_wrappers.noteWorlds(isolate, null);
     if (worlds.realms.count() != 0) log.err("the agent ended with {d} world realm(s) still alive", .{worlds.realms.count()});
     var lists = worlds.by_main.valueIterator();
-    while (lists.next()) |list| list.deinit(std.heap.c_allocator);
-    worlds.by_main.deinit(std.heap.c_allocator);
+    while (lists.next()) |list| list.deinit(alloc);
+    worlds.by_main.deinit(alloc);
     var proxies = worlds.handed.valueIterator();
     while (proxies.next()) |list| {
         for (list.items) |handed| ffi.v8_Object_Dispose(handed.proxy);
-        list.deinit(std.heap.c_allocator);
+        list.deinit(alloc);
     }
-    worlds.handed.deinit(std.heap.c_allocator);
+    worlds.handed.deinit(alloc);
     var definitions = worlds.definitions.valueIterator();
     while (definitions.next()) |definition| {
-        std.heap.c_allocator.free(definition.name);
-        if (definition.content_security_policy) |policy| std.heap.c_allocator.free(policy);
+        alloc.free(definition.name);
+        if (definition.content_security_policy) |policy| alloc.free(policy);
     }
-    worlds.definitions.deinit(std.heap.c_allocator);
+    worlds.definitions.deinit(alloc);
     var states = worlds.realms.valueIterator();
-    while (states.next()) |state| std.heap.c_allocator.destroy(state.*);
-    worlds.realms.deinit(std.heap.c_allocator);
+    while (states.next()) |state| state.*.allocator.destroy(state.*);
+    worlds.realms.deinit(alloc);
     worlds.* = .{};
 }
 
@@ -815,8 +828,9 @@ const Clone = struct {
     fn run(data: ?*anyopaque) callconv(.c) void {
         const self: *Clone = @ptrCast(@alignCast(data.?));
         const protocol = @import("protocol.zig");
-        const bytes = protocol.structuredSerializeForStorage(self.source_realm, .{ .handle = .{ .ptr = self.value } }, std.heap.c_allocator) catch return;
-        defer std.heap.c_allocator.free(bytes);
+        const alloc = self.source_realm.allocator;
+        const bytes = protocol.structuredSerializeForStorage(self.source_realm, .{ .handle = .{ .ptr = self.value } }, alloc) catch return;
+        defer alloc.free(bytes);
         const cloned = protocol.structuredDeserialize(self.target_realm, bytes) catch return;
         switch (cloned.value) {
             .handle => |h| self.result = @ptrCast(@alignCast(h.ptr)),
@@ -860,15 +874,16 @@ fn mirrorPromise(isolate: *ffi.Isolate, source: *ffi.Value, source_realm: Contex
         return jsNull(isolate);
     });
     ffi.v8_Promise_MarkAsHandled(promise);
-    const mirror = Mirror.allocator.create(Mirror) catch {
+    const mirror_alloc = protocol_agents.allocatorOf(isolate);
+    const mirror = mirror_alloc.create(Mirror) catch {
         ffi.v8_PromiseResolver_Dispose(resolver);
         ffi.v8_Global_Dispose(promise);
         return jsNull(isolate);
     };
-    mirror.* = .{ .resolver = resolver, .realm = target_realm };
+    mirror.* = .{ .allocator = mirror_alloc, .resolver = resolver, .realm = target_realm };
     // A world realm's: on its pending list, to be cut at its end. No room:
     // no mirror.
-    if (state) |w| w.pending.append(std.heap.c_allocator, mirror) catch {
+    if (state) |w| w.pending.append(w.allocator, mirror) catch {
         mirror.release();
         ffi.v8_Global_Dispose(promise);
         return jsNull(isolate);
@@ -902,7 +917,7 @@ fn mirrorKey(buffer: *[48]u8, w: *const WorldRealm) []const u8 {
 /// makes another).
 fn keepMirror(w: *WorldRealm, source: *ffi.Value, key: []const u8, kept: *ffi.Value) void {
     const weak = ffi.v8_Global_Clone(source) orelse return;
-    w.mirrored.append(std.heap.c_allocator, weak) catch {
+    w.mirrored.append(w.allocator, weak) catch {
         ffi.v8_Global_Dispose(weak);
         return;
     };
@@ -934,11 +949,11 @@ fn noteSourceCollected(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) v
 /// or drops it later with nothing to do.
 fn dropMirrors(w: *WorldRealm) void {
     for (w.pending.items) |mirror| mirror.cut();
-    w.pending.deinit(std.heap.c_allocator);
+    w.pending.deinit(w.allocator);
     w.pending = .empty;
     defer {
         for (w.mirrored.items) |weak| ffi.v8_Global_Dispose(weak);
-        w.mirrored.deinit(std.heap.c_allocator);
+        w.mirrored.deinit(w.allocator);
         w.mirrored = .empty;
     }
     if (w.mirrored.items.len == 0 or !isLive(w.context)) return;
@@ -965,6 +980,7 @@ fn madeIn(object: *ffi.Value, context: *ffi.Context) bool {
 /// (it settles, or is dropped); a world realm's is on the realm's `pending`
 /// list until then, or until the realm's end cuts it.
 const Mirror = struct {
+    allocator: std.mem.Allocator,
     /// The target realm's resolver, OWNED; null once the target realm ended
     /// (`cut`).
     resolver: ?*ffi.PromiseResolver,
@@ -974,7 +990,6 @@ const Mirror = struct {
     /// realm's mirror, which is on none.
     index: ?usize = null,
 
-    const allocator = std.heap.c_allocator;
     const steps: engine.PromiseReactionSteps = .{ .fulfilled = fulfilled, .rejected = rejected, .dropped = dropped };
 
     fn fulfilled(data: ?*anyopaque, value: engine.JSValue) void {
@@ -1028,7 +1043,8 @@ const Mirror = struct {
             };
             ffi.v8_PromiseResolver_Dispose(resolver);
         }
-        allocator.destroy(self);
+        const alloc = self.allocator;
+        alloc.destroy(self);
     }
 };
 

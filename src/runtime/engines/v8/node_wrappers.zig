@@ -201,6 +201,8 @@ const Keep = struct {
 /// agent's thread only.
 pub const Registry = struct {
     isolate: *ffi.Isolate,
+    /// The agent's allocator (its Browser's heap allocator).
+    allocator: std.mem.Allocator,
     /// Wrappers whose anchor holds their slot now.
     live: usize = 0,
     released: std.ArrayListUnmanaged(Released) = .empty,
@@ -346,8 +348,8 @@ pub const Registry = struct {
     /// The list a drain emptied keeps a small capacity, not its high water.
     fn shrinkReleased(self: *Registry) void {
         if (self.released.items.len != 0 or self.released.capacity <= released_floor) return;
-        self.released.clearAndFree(std.heap.c_allocator);
-        self.released.ensureTotalCapacityPrecise(std.heap.c_allocator, released_floor) catch {};
+        self.released.clearAndFree(self.allocator);
+        self.released.ensureTotalCapacityPrecise(self.allocator, released_floor) catch {};
     }
 
     /// Every node wrapper's reference goes, its anchor's slot cleared and the
@@ -369,10 +371,10 @@ pub const Registry = struct {
     }
 
     fn deinit(self: *Registry) void {
-        self.released.deinit(std.heap.c_allocator);
-        self.keeps.deinit(std.heap.c_allocator);
-        self.visited.deinit(std.heap.c_allocator);
-        self.traced.deinit(std.heap.c_allocator);
+        self.released.deinit(self.allocator);
+        self.keeps.deinit(self.allocator);
+        self.visited.deinit(self.allocator);
+        self.traced.deinit(self.allocator);
         self.* = undefined;
     }
 
@@ -421,9 +423,11 @@ pub fn registryOf(isolate: *ffi.Isolate) ?*Registry {
 /// registry on the agent's C++ heap) on first use.
 fn ensureRegistry(isolate: *ffi.Isolate) error{ OutOfMemory, NoIsolateRecord }!*Registry {
     if (registryOf(isolate)) |registry| return registry;
-    const registry = try std.heap.c_allocator.create(Registry);
-    errdefer std.heap.c_allocator.destroy(registry);
-    registry.* = .{ .isolate = isolate, .holds = @import("protocol_agents.zig").teardownHoldsOf(isolate) };
+    const protocol_agents = @import("protocol_agents.zig");
+    const alloc = protocol_agents.allocatorOf(isolate);
+    const registry = try alloc.create(Registry);
+    errdefer alloc.destroy(registry);
+    registry.* = .{ .isolate = isolate, .allocator = alloc, .holds = protocol_agents.teardownHoldsOf(isolate) };
     if (!ffi.v8_Isolate_SetNodeWrappers(isolate, registry, &collected, &drainCallback, &endCallback, &instanceOfSlotC)) return error.NoIsolateRecord;
     _ = ffi.v8_Isolate_SetNodeWrapperTracing(isolate, &traceAnchor, &traceKeeps, &markedCallback, if (wrapper_trace_check) &checkWalk else null, &traceHolder);
     return registry;
@@ -447,7 +451,7 @@ fn collected(raw_registry: ?*anyopaque, raw_slot: ?*anyopaque) callconv(.c) void
         // slab bit, no allocation): a teardown that runs before the drain
         // returns its storage itself, and a wrap meanwhile clears it.
         runtime.instance_lifecycle.markWrapperGone(instance);
-        registry.released.append(std.heap.c_allocator, .{
+        registry.released.append(registry.allocator, .{
             .target = target,
             .instance = instance,
             .generation = runtime.SlabAllocator.generationOf(instance),
@@ -478,10 +482,11 @@ fn drainCallback(raw_registry: ?*anyopaque) callconv(.c) void {
 /// The record unroots the anchors' registry after this.
 fn endCallback(raw_registry: ?*anyopaque) callconv(.c) void {
     const registry: *Registry = @ptrCast(@alignCast(raw_registry.?));
+    const alloc = registry.allocator;
     registry.ended = true;
     registry.releaseAll();
     registry.deinit();
-    std.heap.c_allocator.destroy(registry);
+    alloc.destroy(registry);
 }
 
 /// `isolate`'s drain, after a walk's last resume (engine.resumeTeardowns).
@@ -589,7 +594,7 @@ pub fn keep(instance: *runtime.Instance) void {
     const registry = ensureRegistry(isolate) catch return;
     const generation = runtime.SlabAllocator.generationOf(instance);
     registry.keeps_guard.beforeInsert(&registry.keeps);
-    const gop = registry.keeps.getOrPut(std.heap.c_allocator, instance) catch return;
+    const gop = registry.keeps.getOrPut(registry.allocator, instance) catch return;
     if (!gop.found_existing or gop.value_ptr.generation != generation) {
         // A keep a freed node left at a reissued address: its root goes.
         if (gop.found_existing) if (gop.value_ptr.root) |root| ffi.v8_NodeWrapper_Unroot(root);
@@ -636,13 +641,13 @@ pub fn detachRealm(cache_storage: *anyopaque, holder: *ffi.Value) void {
     // Collected first, then held: a retain allocates, and nothing below
     // may meet the table changing under its iterator.
     var kept: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
-    defer kept.deinit(std.heap.c_allocator);
+    defer kept.deinit(registry.allocator);
     var it = registry.keeps.iterator();
     while (it.next()) |kv| {
         const instance = kv.key_ptr.*;
         if (kv.value_ptr.generation != runtime.SlabAllocator.generationOf(instance) or kv.value_ptr.count == 0 or kv.value_ptr.retained) continue;
         if (instance.ctx.getV8WrapperCacheStorage() != cache_storage) continue;
-        kept.append(std.heap.c_allocator, instance) catch return;
+        kept.append(registry.allocator, instance) catch return;
     }
     for (kept.items) |instance| {
         const entry = registry.liveKeep(instance) orelse continue;
@@ -727,7 +732,7 @@ pub fn traceNodeWrapper(tracer: *Tracer, slot: *const NodeWrapperSlot) void {
     // whether or not the main world wrapped the node.
     if (tracer.registry.worlds) |worlds| traceWorldWrappersOfSlot(worlds, tracer, slot);
     if (slot.isEmpty()) return;
-    if (wrapper_trace_check) tracer.registry.traced.put(std.heap.c_allocator, @intFromPtr(slot), {}) catch {};
+    if (wrapper_trace_check) tracer.registry.traced.put(tracer.registry.allocator, @intFromPtr(slot), {}) catch {};
     ffi.v8_NodeTracer_TraceSlot(tracer.visitor, @ptrCast(@constCast(slot)));
 }
 
@@ -758,7 +763,7 @@ pub fn noteWorlds(isolate: *ffi.Isolate, worlds: ?*const @import("protocol_world
 pub fn traceVisitOnce(tracer: *Tracer, key: *const anyopaque) bool {
     const registry = tracer.registry;
     if (registry.last_visited == @intFromPtr(key)) return false;
-    const entry = registry.visited.getOrPut(std.heap.c_allocator, @intFromPtr(key)) catch return true;
+    const entry = registry.visited.getOrPut(registry.allocator, @intFromPtr(key)) catch return true;
     registry.last_visited = @intFromPtr(key);
     return !entry.found_existing;
 }
@@ -898,15 +903,15 @@ fn markedCallback(raw_registry: ?*anyopaque) callconv(.c) void {
         var tracer: Tracer = .{ .visitor = undefined, .registry = registry };
         @import("external_memory.zig").endOfMarking(registry.isolate, recorded[from..], &tracer);
     }
-    endSet(&registry.visited);
+    endSet(&registry.visited, registry.allocator);
     registry.last_visited = 0;
-    endSet(&registry.traced);
+    endSet(&registry.traced, registry.allocator);
     registry.walk_absent = false;
 }
 
-fn endSet(set: *std.AutoHashMapUnmanaged(usize, void)) void {
+fn endSet(set: *std.AutoHashMapUnmanaged(usize, void), alloc: std.mem.Allocator) void {
     if (set.capacity() > 4096 and set.count() * 4 < set.capacity()) {
-        set.clearAndFree(std.heap.c_allocator);
+        set.clearAndFree(alloc);
     } else set.clearRetainingCapacity();
 }
 
@@ -928,7 +933,7 @@ fn checkWalk(raw_registry: ?*anyopaque, raw_live: ?[*]const ?*anyopaque, live_le
     // A test's override removed the walk: nothing it should have kept.
     if (registry.walk_absent or runtime.lifetime.installedHooks().trace_tree == null) return;
     const dom = @import("dom");
-    const gpa = std.heap.c_allocator;
+    const gpa = registry.allocator;
     var dropped: std.AutoHashMapUnmanaged(usize, void) = .empty;
     defer dropped.deinit(gpa);
     for (dead) |slot| if (slot) |s| dropped.put(gpa, @intFromPtr(s), {}) catch return;
@@ -1010,7 +1015,7 @@ pub fn releaseNodeWrappers(isolate: *ffi.Isolate) void {
     const registry = registryOf(isolate) orelse return;
     registry.ended = true;
     registry.releaseAll();
-    registry.keeps.clearAndFree(std.heap.c_allocator);
+    registry.keeps.clearAndFree(registry.allocator);
     registry.keeps_guard.reset();
     // Its agent's record goes after this; the holds with it.
     registry.holds = null;

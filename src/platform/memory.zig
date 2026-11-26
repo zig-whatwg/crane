@@ -111,6 +111,57 @@ const MStats = extern struct {
 
 extern "c" fn mstats() MStats;
 
+/// Darwin `<malloc/malloc.h>` `malloc_logger_t` signature (`[V2] D8`, Batch C item 5):
+/// tooling builds (`Debug` / `-Dheap-alloc-log`) emit allocation/free callouts to
+/// `malloc_logger` when Instruments or `MallocStackLogging` has installed one,
+/// without registering a `malloc_zone_t` (which would expose Crane's heap to
+/// foreign libc walks and zone locks).
+pub const MallocLoggerFn = *const fn (
+    type_flags: u32,
+    arg1: usize,
+    arg2: usize,
+    arg3: usize,
+    result: usize,
+    num_hot_frames_to_skip: u32,
+) callconv(.c) void;
+
+/// Darwin `<malloc/malloc.h>` `malloc_logger` type flags.
+pub const malloc_log_type_allocate: u32 = 2;
+pub const malloc_log_type_deallocate: u32 = 4;
+pub const malloc_log_type_has_zone: u32 = 8;
+
+/// Synthetic zone tags passed as `arg1` to `malloc_logger` (one per Browser heap
+/// partition), so Instruments / `malloc_history` can separate `.node`,
+/// `.satellite`, `.objects`, and `.bytes` without registering any `malloc_zone_t`.
+pub const heap_zone_tag_base: usize = 0x4352_414E; // "CRAN"
+
+const darwin_malloc_logger = if (builtin.os.tag.isDarwin()) struct {
+    // Declared `extern "c" const` (read-only from Zig, mutated only by libSystem /
+    // Instruments at process start) so no mutable container-level global exists.
+    extern "c" const malloc_logger: ?MallocLoggerFn;
+} else struct {};
+
+/// Read the Darwin `malloc_logger` callback if one is installed; null elsewhere.
+pub inline fn activeMallocLogger() ?MallocLoggerFn {
+    if (comptime !builtin.os.tag.isDarwin()) return null;
+    const slot: *const volatile ?MallocLoggerFn = @ptrCast(&darwin_malloc_logger.malloc_logger);
+    return slot.*;
+}
+
+/// Emit a Darwin `malloc_logger` allocation callout for a Browser heap block,
+/// or no-op on non-Darwin platforms / when no logger is attached.
+pub inline fn logHeapAlloc(zone_id: usize, size: usize, address: usize) void {
+    const logger = activeMallocLogger() orelse return;
+    logger(malloc_log_type_allocate | malloc_log_type_has_zone, zone_id, size, 0, address, 0);
+}
+
+/// Emit a Darwin `malloc_logger` deallocation callout for a Browser heap block,
+/// or no-op on non-Darwin platforms / when no logger is attached.
+pub inline fn logHeapFree(zone_id: usize, address: usize) void {
+    const logger = activeMallocLogger() orelse return;
+    logger(malloc_log_type_deallocate | malloc_log_type_has_zone, zone_id, address, 0, 0, 0);
+}
+
 /// A before/after resident-memory reading.
 ///
 /// Holds both samples rather than only the delta so a caller can report "not

@@ -1002,9 +1002,10 @@ pub const AsyncModuleLoader = struct {
     };
 
     pub fn create(env: Environment, owner: *runtime.Instance) !*AsyncModuleLoader {
-        // Queued payloads can outlive the owner's allocator on silent
-        // destruction. Only module records use the owner's allocator.
-        const allocator = std.heap.c_allocator;
+        // The Browser's allocator outlives every realm and queued task until
+        // BrowserScope.deinit, so AsyncModuleLoader lives in the heap's
+        // `.objects` partition.
+        const allocator = runtime.allocatorOf(owner);
         const self = try allocator.create(AsyncModuleLoader);
         self.* = .{
             .allocator = allocator,

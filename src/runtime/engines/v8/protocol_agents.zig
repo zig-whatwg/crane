@@ -301,6 +301,28 @@ pub const AgentRecord = struct {
     /// the agent's own thread only. It was a `threadlocal`: one agent's open
     /// prepare made another agent on the thread skip its checkpoint.
     prepared_scripts: u32 = 0,
+    /// Queued callback microtasks still owned by V8's microtask queue (or
+    /// discarded when a checkpoint aborted on script termination). Unlinked
+    /// when `runQueuedMicrotask` runs; any still left after `endAgent`'s final
+    /// microtask checkpoints are freed before the isolate is disposed.
+    pending_microtasks: ?*QueuedMicrotask = null,
+    /// Small L1-hot freelist of `.objects`-allocated `QueuedMicrotask` nodes
+    /// (capped at `free_microtasks_cap`), avoiding per-microtask quarantine
+    /// churn on tight microtask chains (`observers.mutation-deliver`). Every
+    /// cached node is freed in `endAgent`.
+    free_microtasks: ?*QueuedMicrotask = null,
+    free_microtasks_count: u8 = 0,
+    /// Small L1-hot freelist of `.objects`-allocated `Reaction` nodes (capped
+    /// at `free_reactions_cap`), avoiding per-reaction quarantine churn in
+    /// tight async pipelines (`streams.pipe-through-decoder`,
+    /// `streams.transform-chain`). Freed in `endAgent`.
+    free_reactions: ?*@import("protocol_promises.zig").Reaction = null,
+    free_reactions_count: u8 = 0,
+    /// Small L1-hot freelist of `.objects`-allocated `V8PromiseHandle` nodes
+    /// (capped at `free_promise_handles_cap`), avoiding per-promise quarantine
+    /// churn in tight async pipelines. Freed in `endAgent`.
+    free_promise_handles: ?*@import("engine.zig").V8PromiseHandle = null,
+    free_promise_handles_count: u8 = 0,
     /// The agent is ending (`endAgent`): its hooks are forgotten, and
     /// `recordOf` no longer finds it - nothing reaches the host from here on,
     /// and nothing is made for the agent - while its realms end, which still
@@ -453,6 +475,36 @@ pub fn fastRecordOf(isolate: *ffi.Isolate) ?*AgentRecord {
     const storage = isolate_templates.getTemplateStorage(isolate) orelse return null;
     const record = storage.agent_record orelse return null;
     return @ptrCast(@alignCast(record));
+}
+
+/// The agent's allocator (its Browser's heap general allocator), available
+/// through the agent's end; falls back to the isolate's registry or libc for
+/// raw V8 test isolates not created by `createAgent`.
+/// Hot path reads V8 embedder data slot 0 (`isolate_allocator`) directly in one
+/// call with no `GetCurrent` or mutex.
+pub inline fn allocatorOf(isolate: *ffi.Isolate) std.mem.Allocator {
+    if (isolate_allocator.getIsolateAllocator(isolate)) |a| return a;
+    return allocatorOfSlow(isolate);
+}
+
+fn allocatorOfSlow(isolate: *ffi.Isolate) std.mem.Allocator {
+    @branchHint(.cold);
+    if (fastRecordOf(isolate)) |r| return r.allocator;
+    {
+        std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+        defer std.Io.Threaded.mutexUnlock(&agents_lock);
+        if (agents.get(isolate)) |r| return r.allocator;
+    }
+    // direct-allocator: fallback for raw V8 test isolates not created by createAgent
+    return std.heap.c_allocator;
+}
+
+/// The current isolate's agent allocator, or libc fallback when no isolate is
+/// entered.
+pub fn currentAllocator() std.mem.Allocator {
+    if (ffi.v8_Isolate_GetCurrent()) |iso| return allocatorOf(iso);
+    // direct-allocator: fallback when no V8 isolate is entered (raw unit tests)
+    return std.heap.c_allocator;
 }
 
 /// The stack of the agent's Window realms whose end is under way
@@ -727,12 +779,27 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
     };
     errdefer if (own_queue) |queue| options.allocator.destroy(queue);
     const deferred_teardown = options.deferred_teardown orelse own_queue;
-    const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
-    errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .entered_for_life = entered_for_life, .hooks = options.hooks, .host = options.host, .host_state = options.host_state, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
+    const record = options.allocator.create(AgentRecord) catch return error.OutOfMemory;
+    errdefer options.allocator.destroy(record);
+    record.* = .{
+        .isolate = isolate,
+        .entered_for_life = entered_for_life,
+        .hooks = options.hooks,
+        .host = options.host,
+        .host_state = options.host_state,
+        .allocator = options.allocator,
+        .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate),
+        .deferred_teardown = deferred_teardown,
+        .own_deferred_teardown = own_queue,
+        .worlds = .{ .allocator = options.allocator },
+        .teardown_holds = .{ .allocator = options.allocator },
+        .realms = .{ .allocator = options.allocator },
+        .webassembly_compilations = .{ .allocator = options.allocator },
+    };
     {
         std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
+        // direct-allocator: process-wide isolate -> *AgentRecord registry shared across all Browsers
         agents.put(std.heap.c_allocator, isolate, record) catch return error.OutOfMemory;
     }
     // The queue the "DOM algorithm active" depth is counted on, one load
@@ -840,7 +907,7 @@ pub fn endAgent(agent: *Agent) void {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
     ffi.v8_Isolate_CloseForegroundTasks(isolate);
     const record = recordOf(isolate);
-    const allocator = if (record) |r| r.allocator else std.heap.c_allocator;
+    const allocator = if (record) |r| r.allocator else allocatorOf(isolate);
     const shadow_realms = if (record) |r| r.shadow_realms else null;
     const pattern_matcher = if (record) |r| r.pattern_matcher else null;
     const window_properties = if (record) |r| r.window_properties_template else null;
@@ -929,11 +996,42 @@ pub fn endAgent(agent: *Agent) void {
         std.debug.assert(queue.isEmpty());
         queue.close();
     }
+    // Transfer any queued callback microtasks off `record` before `removeAgent`
+    // destroys it: clear `owner` so microtasks running in the final checkpoints
+    // below destroy themselves directly instead of touching freed `record`, and
+    // drain the small L1-hot `free_microtasks` freelist now.
+    var pending_microtasks: ?*QueuedMicrotask = if (record) |r| blk: {
+        while (r.free_microtasks) |cached| {
+            r.free_microtasks = cached.next;
+            cached.allocator.destroy(cached);
+        }
+        r.free_microtasks_count = 0;
+        while (r.free_reactions) |cached| {
+            r.free_reactions = cached.next_free;
+            cached.allocator.destroy(cached);
+        }
+        r.free_reactions_count = 0;
+        while (r.free_promise_handles) |cached| {
+            r.free_promise_handles = cached.next_free;
+            cached.allocator.destroy(cached);
+        }
+        r.free_promise_handles_count = 0;
+        const head = r.pending_microtasks;
+        r.pending_microtasks = null;
+        var cur = head;
+        while (cur) |node| : (cur = node.next) node.owner = null;
+        break :blk head;
+    } else null;
+    if (pending_microtasks) |first| first.prev_link = &pending_microtasks;
     removeAgent(isolate);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    while (pending_microtasks) |queued| {
+        queued.unlink();
+        queued.allocator.destroy(queued);
+    }
     // [repl_mode] Step 2 of the console session's end (above): the
     // inspector goes, with the isolate still entered and not yet disposed.
     if (repl) |session| session.destroy();
@@ -1001,31 +1099,160 @@ pub fn performMicrotaskCheckpoint(agent: *Agent) void {
     if (!in_algorithm) @import("external_memory.zig").reportIfMovedOn(entered.isolate);
 }
 
-/// A queued microtask's steps and their data, until the microtask runs.
+const free_microtasks_cap: u8 = 8;
+const free_reactions_cap: u8 = 32;
+const free_promise_handles_cap: u8 = 32;
+
+/// Acquire a `.objects`-allocated `Reaction` from the agent's L1-hot freelist
+/// (or allocate one from the agent's allocator on miss).
+pub inline fn acquireReaction(isolate: *ffi.Isolate) error{OutOfMemory}!*@import("protocol_promises.zig").Reaction {
+    const Reaction = @import("protocol_promises.zig").Reaction;
+    if (fastRecordOf(isolate)) |r| {
+        if (r.free_reactions) |cached| {
+            r.free_reactions = cached.next_free;
+            r.free_reactions_count -= 1;
+            cached.next_free = null;
+            return cached;
+        }
+        const made = r.allocator.create(Reaction) catch return error.OutOfMemory;
+        made.allocator = r.allocator;
+        return made;
+    }
+    const alloc = allocatorOf(isolate);
+    const made = alloc.create(Reaction) catch return error.OutOfMemory;
+    made.allocator = alloc;
+    return made;
+}
+
+/// Return a finished `Reaction` to the agent's L1-hot `.objects` freelist when
+/// running on its active isolate thread; otherwise destroy it directly.
+pub inline fn releaseReaction(reaction: *@import("protocol_promises.zig").Reaction) void {
+    if (fastRecordOf(reaction.isolate)) |r| {
+        if (r.free_reactions_count < free_reactions_cap) {
+            reaction.data = null;
+            reaction.holder = null;
+            reaction.next_free = r.free_reactions;
+            r.free_reactions = reaction;
+            r.free_reactions_count += 1;
+            return;
+        }
+    }
+    reaction.allocator.destroy(reaction);
+}
+
+/// Acquire a `.objects`-allocated `V8PromiseHandle` from the agent's L1-hot
+/// freelist (or allocate one from the agent's allocator on miss).
+pub inline fn acquirePromiseHandle(isolate: *ffi.Isolate, fallback: std.mem.Allocator) error{OutOfMemory}!*@import("engine.zig").V8PromiseHandle {
+    const V8PromiseHandle = @import("engine.zig").V8PromiseHandle;
+    if (fastRecordOf(isolate)) |r| {
+        if (r.free_promise_handles) |cached| {
+            r.free_promise_handles = cached.next_free;
+            r.free_promise_handles_count -= 1;
+            cached.next_free = null;
+            return cached;
+        }
+        const made = r.allocator.create(V8PromiseHandle) catch return error.OutOfMemory;
+        made.allocator = r.allocator;
+        return made;
+    }
+    const made = fallback.create(V8PromiseHandle) catch return error.OutOfMemory;
+    made.allocator = fallback;
+    return made;
+}
+
+/// Return a disposed `V8PromiseHandle` to the agent's L1-hot `.objects`
+/// freelist when running on its active isolate thread; otherwise destroy it.
+pub inline fn releasePromiseHandle(handle: *@import("engine.zig").V8PromiseHandle) void {
+    if (fastRecordOf(handle.isolate)) |r| {
+        if (r.free_promise_handles_count < free_promise_handles_cap) {
+            handle.next_free = r.free_promise_handles;
+            r.free_promise_handles = handle;
+            r.free_promise_handles_count += 1;
+            return;
+        }
+    }
+    handle.allocator.destroy(handle);
+}
+
+/// A queued microtask's steps and their data, until the microtask runs (or
+/// `endAgent` frees discarded records after the final microtask checkpoint).
 const QueuedMicrotask = struct {
+    allocator: std.mem.Allocator,
     steps: engine.RealmSteps,
     data: ?*anyopaque,
+    owner: ?*AgentRecord = null,
+    prev_link: ?*?*QueuedMicrotask = null,
+    next: ?*QueuedMicrotask = null,
+
+    fn unlink(self: *QueuedMicrotask) void {
+        const prev = self.prev_link orelse return;
+        prev.* = self.next;
+        if (self.next) |n| n.prev_link = prev;
+        self.prev_link = null;
+        self.next = null;
+    }
 };
 
 /// V8 runs a callback microtask as `void (*)(void*)`.
 fn runQueuedMicrotask(raw: ?*anyopaque) callconv(.c) void {
     const queued: *QueuedMicrotask = @ptrCast(@alignCast(raw orelse return));
+    queued.unlink();
     const steps = queued.steps;
     const data = queued.data;
-    std.heap.c_allocator.destroy(queued);
+    if (queued.owner) |r| {
+        if (r.free_microtasks_count < free_microtasks_cap) {
+            queued.data = null;
+            queued.next = r.free_microtasks;
+            r.free_microtasks = queued;
+            r.free_microtasks_count += 1;
+            steps(data);
+            return;
+        }
+    }
+    queued.allocator.destroy(queued);
     steps(data);
 }
 
+/// Shared callback microtask enqueue on an entered `isolate`: tracks the record
+/// on its `AgentRecord` so a discarded microtask (aborted checkpoint or isolate
+/// disposal) is freed at `endAgent` instead of leaking.
+pub fn enqueueMicrotask(isolate: *ffi.Isolate, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
+    const record = callbackRecordOf(isolate);
+    const queued: *QueuedMicrotask = if (record) |r| blk: {
+        if (r.free_microtasks) |cached| {
+            r.free_microtasks = cached.next;
+            r.free_microtasks_count -= 1;
+            cached.steps = steps;
+            cached.data = data;
+            cached.owner = r;
+            cached.prev_link = null;
+            cached.next = null;
+            break :blk cached;
+        }
+        const made = r.allocator.create(QueuedMicrotask) catch return error.OutOfMemory;
+        made.* = .{ .allocator = r.allocator, .steps = steps, .data = data, .owner = r };
+        break :blk made;
+    } else blk: {
+        const alloc = allocatorOf(isolate);
+        const made = alloc.create(QueuedMicrotask) catch return error.OutOfMemory;
+        made.* = .{ .allocator = alloc, .steps = steps, .data = data, .owner = null };
+        break :blk made;
+    };
+    if (record) |r| {
+        queued.prev_link = &r.pending_microtasks;
+        queued.next = r.pending_microtasks;
+        if (r.pending_microtasks) |first| first.prev_link = &queued.next;
+        r.pending_microtasks = queued;
+    }
+    ffi.v8_Isolate_EnqueueMicrotask(isolate, @ptrCast(&runQueuedMicrotask), queued);
+}
+
 /// HTML "queue a microtask" on the agent: V8's microtask queue is the
-/// isolate's. V8 drops a queued callback microtask when its isolate is
-/// disposed, so a record still queued then is never freed - the declaration
-/// says the steps may not run.
+/// isolate's.
 pub fn queueMicrotask(agent: *Agent, steps: engine.RealmSteps, data: ?*anyopaque) Error!void {
-    const queued = std.heap.c_allocator.create(QueuedMicrotask) catch return error.OutOfMemory;
-    queued.* = .{ .steps = steps, .data = data };
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
-    ffi.v8_Isolate_EnqueueMicrotask(entered.isolate, @ptrCast(&runQueuedMicrotask), queued);
+    return enqueueMicrotask(entered.isolate, steps, data);
 }
 
 /// notifyMemoryPressure: Isolate::MemoryPressureNotification at both levels,
@@ -1159,7 +1386,7 @@ pub fn forgetAgent(agent: *Agent) void {
     // Its Window realms' map: every one has ended, so only its storage is
     // left - which a thread-local map kept after its thread had gone.
     if (record.window_realms.count() != 0) log.err("the agent ended with {d} Window realm(s) still alive; the host must destroy them first", .{record.window_realms.count()});
-    record.window_realms.deinit(std.heap.c_allocator);
+    record.window_realms.deinit(record.allocator);
     // Its teardown holds: every walk ended (a hold is scoped to one), and
     // every entry it deferred was torn down by the last resume or by its
     // realm's end, which ran before.
@@ -1185,11 +1412,12 @@ fn removeAgent(isolate: *ffi.Isolate) void {
         break :blk kv.value;
     };
     std.debug.assert(record.ending);
+    const alloc = record.allocator;
     @import("protocol_worlds.zig").endAgent(isolate, &record.worlds);
-    protocol_modules.endAgent(&record.modules);
-    worker_realm.endAgent(&record.worker_realms);
-    @import("wrapper_cache.zig").endAgent(isolate, &record.caches);
-    std.heap.c_allocator.destroy(record);
+    protocol_modules.endAgent(&record.modules, alloc);
+    worker_realm.endAgent(&record.worker_realms, alloc);
+    @import("wrapper_cache.zig").endAgent(isolate, &record.caches, alloc);
+    alloc.destroy(record);
 }
 
 // ============================================================================
@@ -1316,8 +1544,8 @@ fn onCodeGenerationFromStrings(
     // An object: HostGetCodeForEval(argument). No code: eval returns it.
     const get_code = record.hooks.getCodeForEval orelse return allowed;
     const argument = object orelse return allowed;
-    const eval_code = get_code(record.host, realm, .{ .handle = .{ .ptr = argument } }, std.heap.c_allocator) orelse return allowed;
-    defer std.heap.c_allocator.free(eval_code);
+    const eval_code = get_code(record.host, realm, .{ .handle = .{ .ptr = argument } }, record.allocator) orelse return allowed;
+    defer record.allocator.free(eval_code);
     // PerformEval: HostEnsureCanCompileStrings with the code, the object as
     // bodyArg - a TrustedScript, so isTrusted.
     const compilation: engine.StringCompilation = .{ .compilation_type = .eval, .code_string = eval_code, .arguments_are_code_like = true };

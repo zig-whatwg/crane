@@ -80,12 +80,6 @@ pub const ImplError = error{
 /// socket's teardown (`detach`) when neither.
 const PollToken = websocket.pump_token.PumpToken(runtime.Instance, runtime.TimerInterface);
 
-/// Where tokens come from: a token is a few words, freed on its own schedule,
-/// so neither the arena (recycled blocks) nor page_allocator (a page each).
-fn tokenAllocator() std.mem.Allocator {
-    return std.heap.c_allocator;
-}
-
 /// Timer callback: one turn of the socket's pump, then the next one armed
 /// while the socket is live.
 fn pumpCallback(user_data: ?*anyopaque) void {
@@ -357,14 +351,16 @@ fn pageIsCached(socket: *runtime.Instance) bool {
 /// queued on the socket's document (a global task of its Window), so it runs
 /// once the page is restored, or is dropped when the page is evicted.
 const BfcacheClose = struct {
+    allocator: std.mem.Allocator,
     socket: *runtime.Instance,
     generation: u64,
 
     fn queue(socket: *runtime.Instance) void {
         const loop = socket.ctx.getOptionalEventLoop() orelse return dropHold(socket);
         const window = relevantGlobal(socket) orelse return dropHold(socket);
-        const self = std.heap.c_allocator.create(BfcacheClose) catch return dropHold(socket);
-        self.* = .{ .socket = socket, .generation = runtime.SlabAllocator.generationOf(socket) };
+        const alloc = runtime.allocatorOf(socket);
+        const self = alloc.create(BfcacheClose) catch return dropHold(socket);
+        self.* = .{ .allocator = alloc, .socket = socket, .generation = runtime.SlabAllocator.generationOf(socket) };
         loop.queueTask(.{
             .callback = &run,
             .context = self,
@@ -381,7 +377,8 @@ const BfcacheClose = struct {
 
     fn run(data: ?*anyopaque) void {
         const self: *BfcacheClose = @ptrCast(@alignCast(data orelse return));
-        defer std.heap.c_allocator.destroy(self);
+        const alloc = self.allocator;
+        defer alloc.destroy(self);
         const socket = self.live() orelse return;
         // Its document's task: it runs only once the page is restored.
         @import("dom").bfcache.assertNotCached(socket.ctx);
@@ -426,7 +423,8 @@ const BfcacheClose = struct {
     /// the socket's hold on its wrapper goes, if it is still there.
     fn drop(data: ?*anyopaque) void {
         const self: *BfcacheClose = @ptrCast(@alignCast(data orelse return));
-        defer std.heap.c_allocator.destroy(self);
+        const alloc = self.allocator;
+        defer alloc.destroy(self);
         const socket = self.live() orelse return;
         dropHold(socket);
     }
@@ -1107,7 +1105,7 @@ pub fn call_constructor(instance: *runtime.Instance, url: runtime.USVString, pro
         log.warn("no timer interface in this realm; WebSocket to {s} cannot be pumped", .{url});
         return;
     };
-    const token = try PollToken.create(tokenAllocator(), instance, timer);
+    const token = try PollToken.create(runtime.allocatorOf(instance), instance, timer);
     internal.poll = token;
     token.arm(POLL_INTERVAL_MS, pumpCallback);
 

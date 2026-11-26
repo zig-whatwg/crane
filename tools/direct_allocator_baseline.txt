@@ -1,0 +1,8 @@
+# Unmarked direct std.heap allocator uses (c_allocator, smp_allocator,
+# page_allocator, PageAllocator) in src/ outside src/platform/:
+# path count (tools/lint_direct_allocator.zig).
+# Every allocation a page can cause belongs in its Browser's hardened heap;
+# genuine process-wide / C-ABI / standalone-fallback sites take a
+# `// direct-allocator: <why>` (or `// page-allocator: <why>`) line directly
+# above. A ratchet: `zig build lint-direct-allocator` (part of `zig build
+# test`) fails on any new or grown count; `-- --update` records lower counts.

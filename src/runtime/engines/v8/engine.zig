@@ -29,10 +29,12 @@ const DebugAssertions = pointer_tag.DebugAssertions;
 
 /// Promise handle for tracking V8 promise state
 pub const V8PromiseHandle = struct {
+    allocator: std.mem.Allocator,
     resolver: *ffi.PromiseResolver,
     promise: *ffi.Promise,
     isolate: *ffi.Isolate,
     context: *ffi.Context,
+    next_free: ?*V8PromiseHandle = null,
 };
 
 /// Create a V8 Promise that can be resolved/rejected from Zig
@@ -53,8 +55,8 @@ pub fn v8CreatePromise(
     const promise = ffi.v8_PromiseResolver_GetPromise(resolver) orelse return EngineError.PromiseError;
     errdefer ffi.v8_Global_Dispose(@ptrCast(promise));
 
-    // Allocate handle to track the promise
-    const handle = allocator.create(V8PromiseHandle) catch
+    // Allocate or reuse L1-hot `.objects` handle from the agent's freelist.
+    const handle = @import("protocol_agents.zig").acquirePromiseHandle(isolate, allocator) catch
         return EngineError.OutOfMemory;
 
     // Both handles are tagged with the realm the promise is made in. If that
@@ -73,10 +75,12 @@ pub fn v8CreatePromise(
     }
 
     handle.* = .{
+        .allocator = handle.allocator,
         .resolver = resolver,
         .promise = promise,
         .isolate = isolate,
         .context = context,
+        .next_free = null,
     };
 
     return @ptrCast(handle);
@@ -125,7 +129,7 @@ pub fn v8GetPromiseObject(promise_handle: *anyopaque) *anyopaque {
 /// Destroy a V8 Promise handle after use
 /// The Promise object itself remains valid (managed by V8 GC), but the
 /// handle struct is freed.
-pub fn v8DestroyPromiseHandle(promise_handle: *anyopaque, allocator: std.mem.Allocator) void {
+pub fn v8DestroyPromiseHandle(promise_handle: *anyopaque, _: std.mem.Allocator) void {
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
     // The resolver is released here: nothing can settle the promise once its
     // handle is gone, and a Global to the resolver keeps the promise - and its
@@ -134,7 +138,7 @@ pub fn v8DestroyPromiseHandle(promise_handle: *anyopaque, allocator: std.mem.All
     // v8_Global_Dispose, not v8_PromiseResolver_Dispose: it also drops the
     // realm tag v8CreatePromise put on it.
     ffi.v8_Global_Dispose(@ptrCast(handle.resolver));
-    allocator.destroy(handle);
+    @import("protocol_agents.zig").releasePromiseHandle(handle);
 }
 
 // ============================================================================
@@ -287,7 +291,7 @@ pub fn v8StructuredDeserialize(realm: runtime.Context, bytes: []const u8) Engine
     var code: c_int = 0;
     // StructuredDeserialize(serialized, targetRealm = `realm`): a platform
     // object is made there by its interface's deserialization steps.
-    var host: serializable_objects.Host = .{ .realm = realm, .for_storage = false, .allocator = std.heap.c_allocator };
+    var host: serializable_objects.Host = .{ .realm = realm, .for_storage = false, .allocator = realm.allocator };
     // A forStorage record holds no WebAssembly.Module: no agent cluster to
     // compare.
     const value = ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(bytes.ptr, bytes.len, &no_buffers, 0, &code, host.hostObjectSteps(), 0) orelse

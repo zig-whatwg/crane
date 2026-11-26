@@ -196,7 +196,7 @@ pub fn structuredDeserializeWithOptions(realm: runtime.Context, serialized: []co
     var host: serializable_objects.Host = .{
         .realm = realm,
         .for_storage = false,
-        .allocator = std.heap.c_allocator,
+        .allocator = realm.allocator,
         .transferred = transferred,
         .read_attachments = options.attachments,
     };

@@ -626,9 +626,10 @@ pub fn createFrozenArray(realm: Context, values: []const JSValue) Error!Owned {
     // 1. Let array be the result of converting the sequence of values of
     //    type T to a JavaScript value - a platform object to its wrapper in
     //    its relevant realm.
-    const relevant = try support.RelevantList.of(entered.isolate, values);
+    var relevant: support.RelevantList = undefined;
+    try relevant.init(entered.isolate, values);
     defer relevant.release();
-    const array = webidl_conversions.createSequenceOfValues(realm, relevant.values) catch |err| return support.protocolError(err);
+    const array = webidl_conversions.createSequenceOfValues(realm, relevant.slice()) catch |err| return support.protocolError(err);
     const handle = support.handleOf(array) orelse return error.OperationFailed;
     errdefer ffi.v8_Global_Dispose(handle);
     // 2. Perform ! SetIntegrityLevel(array, "frozen").

@@ -80,7 +80,7 @@ const CallRealm = struct {
     /// What the operation's allocations come from.
     fn allocatorOf(isolate: *v8.Isolate, context: *v8.Context) std.mem.Allocator {
         if (context_manager.get(context)) |realm| return realm.getAllocator();
-        return isolate_allocator.getIsolateAllocator(isolate) orelse std.heap.c_allocator;
+        return @import("protocol_agents.zig").allocatorOf(isolate);
     }
 
     /// The realm of `context`, made for the call if it has none.
@@ -638,7 +638,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     // arena never outlives the call, and the realm's (the
                     // runner's DebugAllocator) made every console.log or
                     // CSS.escape half again as slow in gc_bench.
-                    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+                    var arena = std.heap.ArenaAllocator.init(@import("protocol_agents.zig").allocatorOf(isolate));
                     defer arena.deinit();
                     const allocator = arena.allocator();
 

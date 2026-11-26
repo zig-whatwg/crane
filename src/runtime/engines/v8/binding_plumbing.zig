@@ -150,9 +150,9 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     defer if (constructor_v8_context) |c| v8.v8_Context_Dispose(c);
     const constructor_context = constructor_v8_context orelse current_context;
 
-    // Get or create isolate allocator (uses page_allocator as fallback)
+    // Get or create isolate allocator (falls back to agent/Browser heap on cold init)
     const isolate_alloc = @import("isolate_allocator.zig");
-    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
+    const allocator = isolate_alloc.getOrInitAgentAllocator(isolate) catch {
         conv.throwError(isolate, "Failed to get isolate allocator");
         return;
     };
@@ -725,7 +725,7 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
 
     // Get allocator
     const isolate_alloc = @import("isolate_allocator.zig");
-    const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
+    const allocator = isolate_alloc.getOrInitAgentAllocator(isolate) catch {
         conv.throwError(isolate, "Failed to get isolate allocator");
         return;
     };

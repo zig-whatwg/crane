@@ -90,7 +90,7 @@ pub const snapshot_mode = false;
 /// thread: its template storage ends (isolate_templates.cleanupTemplateStorage).
 /// No other isolate's entry is touched.
 pub fn clearForIsolate(isolate: *v8.Isolate) void {
-    isolate_templates.cleanupTemplateStorage(isolate, std.heap.c_allocator);
+    isolate_templates.cleanupTemplateStorage(isolate, @import("protocol_agents.zig").allocatorOf(isolate));
 }
 
 /// clearForIsolate without disposing anything: for a test whose templates are

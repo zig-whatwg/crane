@@ -48,6 +48,7 @@ pub const Sheets = struct {
 };
 
 /// The process's allocator for the UA sheets (malloc: thread-safe).
+// direct-allocator: process-wide UA stylesheet built once at crane.Process.init before any Browser exists
 const allocator = std.heap.c_allocator;
 
 // process-wide: the UA style sheet's rule sets, built once at process start (crane.Process.init) before any Browser exists and never written after; every Browser and thread only reads them, and their text values are immortal
@@ -116,7 +117,7 @@ fn destroyContents(c: *Contents) void {
     // one once - a shorthand shares one value among its longhands - and
     // leave the declarations holding none.
     var seen: std.AutoHashMapUnmanaged(*css.style_values.SharedText, void) = .empty;
-    defer seen.deinit(std.heap.c_allocator);
+    defer seen.deinit(allocator);
     for (c.style_rules.items) |rule| {
         // Contents.style_rules contains declaration-bearing rules. Skip a
         // future unknown kind instead of dereferencing its absent block.
@@ -128,7 +129,7 @@ fn destroyContents(c: *Contents) void {
             .typed => |*d| switch (d.value) {
                 .value => |v| if (v.sharedText()) |t| {
                     d.value = .{ .value = css.style_values.Value.kw(.none) };
-                    const slot = seen.getOrPut(std.heap.c_allocator, t) catch continue;
+                    const slot = seen.getOrPut(allocator, t) catch continue;
                     if (!slot.found_existing) t.destroyImmortal();
                 },
                 .css_wide => {},

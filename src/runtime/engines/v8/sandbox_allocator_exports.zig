@@ -51,6 +51,7 @@ const SandboxPages = struct {
 const State = sandbox_allocator.Allocator(SandboxPages);
 
 /// The records' memory: libc's, outside the sandbox.
+// direct-allocator: process-wide CraneInSandboxAllocator chunk table outside V8 sandbox
 const meta = std.heap.c_allocator;
 
 /// The allocator's state over the reserved, inaccessible range `[base, base +

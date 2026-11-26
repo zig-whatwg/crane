@@ -60,6 +60,7 @@ pub const FetchClient = struct {
     blob_url_store: ?*anyopaque,
 
     pub fn create(scope: ?*runtime.BrowserScope, client: *const fetch.internal.RequestClient) Allocator.Error!*FetchClient {
+        // direct-allocator: fallback for standalone service-worker tests without a BrowserScope
         const allocator = if (scope) |s| s.allocator else std.heap.c_allocator;
         const self = try allocator.create(FetchClient);
         errdefer allocator.destroy(self);

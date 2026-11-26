@@ -230,9 +230,11 @@ fn standaloneKind(test_name: []const u8) Kind {
 }
 
 /// A field that is left out when its subject is not there - the standalone
-/// runtime's objects when it does not run - reads as 0 then.
+/// runtime's objects and heap partition counts when it does not run - reads
+/// as 0 then.
 fn absentMeansZero(name: []const u8) bool {
-    return std.mem.eql(u8, name, "runtime.standalone_objects");
+    return std.mem.eql(u8, name, "runtime.standalone_objects") or
+        std.mem.startsWith(u8, name, "runtime.standalone_heap_");
 }
 
 /// Take the digest of the process now. `test_name`: the test the digest is
@@ -253,6 +255,13 @@ pub fn take(d: *Digest, test_name: []const u8) void {
         d.put("runtime.standalone_runtime", standaloneKind(test_name), .{ .int = @intFromBool(standalone != null) });
         if (standalone) |scope| {
             d.put("runtime.standalone_objects", .held, .{ .int = @intCast(scope.slab.stats().currently_allocated) });
+            if (scope.existingHeapEngine()) |eng| {
+                const hs = eng.stats();
+                d.put("runtime.standalone_heap_node", .held, .{ .int = @intCast(hs.node.live_blocks) });
+                d.put("runtime.standalone_heap_satellite", .held, .{ .int = @intCast(hs.satellite.live_blocks) });
+                d.put("runtime.standalone_heap_objects", .held, .{ .int = @intCast(hs.objects.live_blocks + hs.general_objects.live_blocks) });
+                d.put("runtime.standalone_heap_bytes", .held, .{ .int = @intCast(hs.bytes.live_blocks) });
+            }
         }
     }
     if (suite.engine) |engine| takeEngine(engine, d);

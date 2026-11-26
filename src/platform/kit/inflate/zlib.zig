@@ -67,12 +67,23 @@ const raw_window_bits = -15;
 /// digit and sizeof(z_stream) against its own.
 const declared_version = "1.3.2";
 
-/// zlib's allocator callbacks over the caller's allocator. Its free callback
-/// has no size, so a 16-byte prefix records each allocation's (as
+/// zlib's allocator callbacks over the caller's allocator. Allocates with
+/// `.@"1"` so the Browser heap routes zlib's page-data buffers to `.bytes`
+/// (allocator-hardening batch C, item 3), while aligning forward to 16 bytes
+/// and storing `{ raw_len, offset }` directly before the returned pointer (as
 /// kit/brotli's Memory).
 const Memory = struct {
     allocator: std.mem.Allocator,
     failed: bool = false,
+
+    const Header = struct {
+        raw_len: usize,
+        offset: usize,
+    };
+
+    comptime {
+        std.debug.assert(@sizeOf(Header) == 16);
+    }
 
     fn alloc(raw: ?*anyopaque, items: c_uint, size: c_uint) callconv(.c) ?*anyopaque {
         const self: *Memory = @ptrCast(@alignCast(raw.?));
@@ -80,7 +91,7 @@ const Memory = struct {
             self.failed = true;
             return null;
         };
-        const total = std.math.add(usize, bytes_wanted, 16) catch {
+        const total = std.math.add(usize, bytes_wanted, 32) catch {
             self.failed = true;
             return null;
         };
@@ -95,25 +106,28 @@ const Memory = struct {
         // that fill under Memory.free (macOS sample, fetch.loopback-br's
         // body, chat.local). The allocator still sees every block, and a
         // leak check still counts it (the test in kit/inflate/zlib.zig).
-        // The length and alignment rawFree gets are these: the length is
-        // stored in the 16-byte header, the alignment is 16 on both sides.
-        const bytes = self.allocator.rawAlloc(total, .@"16", @returnAddress()) orelse {
+        // Alignment `.@"1"` routes the buffer to `.bytes`; the returned pointer
+        // is strictly 16-byte aligned.
+        const bytes = self.allocator.rawAlloc(total, .@"1", @returnAddress()) orelse {
             self.failed = true;
             return null;
         };
-        const header: *usize = @ptrCast(@alignCast(bytes));
-        header.* = total;
-        return bytes + 16;
+        const raw_addr = @intFromPtr(bytes);
+        const aligned_addr = std.mem.alignForward(usize, raw_addr + 16, 16);
+        const header: *Header = @ptrFromInt(aligned_addr - 16);
+        header.* = .{ .raw_len = total, .offset = aligned_addr - raw_addr };
+        return @ptrFromInt(aligned_addr);
     }
 
     fn free(raw: ?*anyopaque, address: ?*anyopaque) callconv(.c) void {
         const ptr = address orelse return;
         const self: *Memory = @ptrCast(@alignCast(raw.?));
-        const bytes: [*]align(16) u8 = @alignCast(@as([*]u8, @ptrCast(ptr)) - 16);
-        const header: *const usize = @ptrCast(bytes);
-        // rawFree, with rawAlloc's exact length (from the header) and
-        // alignment (16): see `alloc`.
-        self.allocator.rawFree(bytes[0..header.*], .@"16", @returnAddress());
+        const aligned_addr = @intFromPtr(ptr);
+        const header: *const Header = @ptrFromInt(aligned_addr - 16);
+        const raw_len = header.raw_len;
+        const bytes: [*]u8 = @ptrFromInt(aligned_addr - header.offset);
+        // rawFree, with rawAlloc's exact length and alignment (`.@"1"`).
+        self.allocator.rawFree(bytes[0..raw_len], .@"1", @returnAddress());
     }
 };
 
