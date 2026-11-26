@@ -312,6 +312,17 @@ pub const AgentRecord = struct {
     /// cached node is freed in `endAgent`.
     free_microtasks: ?*QueuedMicrotask = null,
     free_microtasks_count: u8 = 0,
+    /// Small L1-hot freelist of `.objects`-allocated `Reaction` nodes (capped
+    /// at `free_reactions_cap`), avoiding per-reaction quarantine churn in
+    /// tight async pipelines (`streams.pipe-through-decoder`,
+    /// `streams.transform-chain`). Freed in `endAgent`.
+    free_reactions: ?*@import("protocol_promises.zig").Reaction = null,
+    free_reactions_count: u8 = 0,
+    /// Small L1-hot freelist of `.objects`-allocated `V8PromiseHandle` nodes
+    /// (capped at `free_promise_handles_cap`), avoiding per-promise quarantine
+    /// churn in tight async pipelines. Freed in `endAgent`.
+    free_promise_handles: ?*@import("engine.zig").V8PromiseHandle = null,
+    free_promise_handles_count: u8 = 0,
     /// The agent is ending (`endAgent`): its hooks are forgotten, and
     /// `recordOf` no longer finds it - nothing reaches the host from here on,
     /// and nothing is made for the agent - while its realms end, which still
@@ -995,6 +1006,16 @@ pub fn endAgent(agent: *Agent) void {
             cached.allocator.destroy(cached);
         }
         r.free_microtasks_count = 0;
+        while (r.free_reactions) |cached| {
+            r.free_reactions = cached.next_free;
+            cached.allocator.destroy(cached);
+        }
+        r.free_reactions_count = 0;
+        while (r.free_promise_handles) |cached| {
+            r.free_promise_handles = cached.next_free;
+            cached.allocator.destroy(cached);
+        }
+        r.free_promise_handles_count = 0;
         const head = r.pending_microtasks;
         r.pending_microtasks = null;
         var cur = head;
@@ -1079,6 +1100,79 @@ pub fn performMicrotaskCheckpoint(agent: *Agent) void {
 }
 
 const free_microtasks_cap: u8 = 8;
+const free_reactions_cap: u8 = 32;
+const free_promise_handles_cap: u8 = 32;
+
+/// Acquire a `.objects`-allocated `Reaction` from the agent's L1-hot freelist
+/// (or allocate one from the agent's allocator on miss).
+pub inline fn acquireReaction(isolate: *ffi.Isolate) error{OutOfMemory}!*@import("protocol_promises.zig").Reaction {
+    const Reaction = @import("protocol_promises.zig").Reaction;
+    if (fastRecordOf(isolate)) |r| {
+        if (r.free_reactions) |cached| {
+            r.free_reactions = cached.next_free;
+            r.free_reactions_count -= 1;
+            cached.next_free = null;
+            return cached;
+        }
+        const made = r.allocator.create(Reaction) catch return error.OutOfMemory;
+        made.allocator = r.allocator;
+        return made;
+    }
+    const alloc = allocatorOf(isolate);
+    const made = alloc.create(Reaction) catch return error.OutOfMemory;
+    made.allocator = alloc;
+    return made;
+}
+
+/// Return a finished `Reaction` to the agent's L1-hot `.objects` freelist when
+/// running on its active isolate thread; otherwise destroy it directly.
+pub inline fn releaseReaction(reaction: *@import("protocol_promises.zig").Reaction) void {
+    if (fastRecordOf(reaction.isolate)) |r| {
+        if (r.free_reactions_count < free_reactions_cap) {
+            reaction.data = null;
+            reaction.holder = null;
+            reaction.next_free = r.free_reactions;
+            r.free_reactions = reaction;
+            r.free_reactions_count += 1;
+            return;
+        }
+    }
+    reaction.allocator.destroy(reaction);
+}
+
+/// Acquire a `.objects`-allocated `V8PromiseHandle` from the agent's L1-hot
+/// freelist (or allocate one from the agent's allocator on miss).
+pub inline fn acquirePromiseHandle(isolate: *ffi.Isolate, fallback: std.mem.Allocator) error{OutOfMemory}!*@import("engine.zig").V8PromiseHandle {
+    const V8PromiseHandle = @import("engine.zig").V8PromiseHandle;
+    if (fastRecordOf(isolate)) |r| {
+        if (r.free_promise_handles) |cached| {
+            r.free_promise_handles = cached.next_free;
+            r.free_promise_handles_count -= 1;
+            cached.next_free = null;
+            return cached;
+        }
+        const made = r.allocator.create(V8PromiseHandle) catch return error.OutOfMemory;
+        made.allocator = r.allocator;
+        return made;
+    }
+    const made = fallback.create(V8PromiseHandle) catch return error.OutOfMemory;
+    made.allocator = fallback;
+    return made;
+}
+
+/// Return a disposed `V8PromiseHandle` to the agent's L1-hot `.objects`
+/// freelist when running on its active isolate thread; otherwise destroy it.
+pub inline fn releasePromiseHandle(handle: *@import("engine.zig").V8PromiseHandle) void {
+    if (fastRecordOf(handle.isolate)) |r| {
+        if (r.free_promise_handles_count < free_promise_handles_cap) {
+            handle.next_free = r.free_promise_handles;
+            r.free_promise_handles = handle;
+            r.free_promise_handles_count += 1;
+            return;
+        }
+    }
+    handle.allocator.destroy(handle);
+}
 
 /// A queued microtask's steps and their data, until the microtask runs (or
 /// `endAgent` frees discarded records after the final microtask checkpoint).

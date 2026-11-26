@@ -33,12 +33,15 @@ const support = @import("protocol_support.zig");
 const realm_finalizers = @import("realm_finalizers.zig");
 const protocol_scripts = @import("protocol_scripts.zig");
 
+const protocol_agents = @import("protocol_agents.zig");
+
 const Context = engine.Context;
 const JSValue = engine.JSValue;
 const Error = engine.Error;
 
-const Reaction = struct {
+pub const Reaction = struct {
     allocator: std.mem.Allocator,
+    isolate: *ffi.Isolate,
     steps: *const engine.PromiseReactionSteps,
     data: ?*anyopaque,
     /// The reaction functions' holder, WEAK: empty once the collector took
@@ -46,17 +49,19 @@ const Reaction = struct {
     holder: ?*ffi.Value = null,
     /// On its realm's list until it ends.
     node: realm_finalizers.Node = .{ .drop = droppedByRealm },
+    /// Intrusive link while parked on `AgentRecord.free_reactions`.
+    next_free: ?*Reaction = null,
 
     /// Release what the record holds - its place on the realm's list, its
     /// holder handle (disposing it cancels a finalizer still to come) -
-    /// and free it. Returns what the host's step needs.
+    /// and return it to the agent's L1-hot freelist (or destroy it).
+    /// Returns what the host's step needs.
     fn end(self: *Reaction) struct { steps: *const engine.PromiseReactionSteps, data: ?*anyopaque } {
-        const alloc = self.allocator;
         const steps = self.steps;
         const data = self.data;
         self.node.unlink();
         if (self.holder) |holder| ffi.v8_Global_Dispose(holder);
-        alloc.destroy(self);
+        protocol_agents.releaseReaction(self);
         return .{ .steps = steps, .data = data };
     }
 
@@ -141,9 +146,13 @@ pub fn reactToPromise(realm: Context, promise: JSValue, steps: *const engine.Pro
     const list = realm_finalizers.listOf(realm);
     if (list) |l| if (l.ended) return error.OperationFailed;
 
-    const alloc = @import("protocol_agents.zig").allocatorOf(entered.isolate);
-    const reaction = alloc.create(Reaction) catch return error.OutOfMemory;
-    reaction.* = .{ .allocator = alloc, .steps = steps, .data = data };
+    const reaction = protocol_agents.acquireReaction(entered.isolate) catch return error.OutOfMemory;
+    reaction.* = .{
+        .allocator = reaction.allocator,
+        .isolate = entered.isolate,
+        .steps = steps,
+        .data = data,
+    };
     // 1-4. onFulfilled and onRejected: CreateBuiltinFunction over the steps.
     // 5-6. Let newCapability be ? NewPromiseCapability(%Promise% of the
     //      promise's realm) - V8's derived promise.
@@ -151,7 +160,7 @@ pub fn reactToPromise(realm: Context, promise: JSValue, steps: *const engine.Pro
     //    onRejected, newCapability).
     var holder: ?*ffi.Value = null;
     if (!ffi.v8_Promise_React(entered.context(), target, Reaction.settled, reaction, &holder)) {
-        alloc.destroy(reaction);
+        protocol_agents.releaseReaction(reaction);
         return error.OperationFailed;
     }
     reaction.holder = holder;

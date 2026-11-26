@@ -34,6 +34,7 @@ pub const V8PromiseHandle = struct {
     promise: *ffi.Promise,
     isolate: *ffi.Isolate,
     context: *ffi.Context,
+    next_free: ?*V8PromiseHandle = null,
 };
 
 /// Create a V8 Promise that can be resolved/rejected from Zig
@@ -54,8 +55,8 @@ pub fn v8CreatePromise(
     const promise = ffi.v8_PromiseResolver_GetPromise(resolver) orelse return EngineError.PromiseError;
     errdefer ffi.v8_Global_Dispose(@ptrCast(promise));
 
-    // Allocate handle to track the promise
-    const handle = allocator.create(V8PromiseHandle) catch
+    // Allocate or reuse L1-hot `.objects` handle from the agent's freelist.
+    const handle = @import("protocol_agents.zig").acquirePromiseHandle(isolate, allocator) catch
         return EngineError.OutOfMemory;
 
     // Both handles are tagged with the realm the promise is made in. If that
@@ -74,11 +75,12 @@ pub fn v8CreatePromise(
     }
 
     handle.* = .{
-        .allocator = allocator,
+        .allocator = handle.allocator,
         .resolver = resolver,
         .promise = promise,
         .isolate = isolate,
         .context = context,
+        .next_free = null,
     };
 
     return @ptrCast(handle);
@@ -129,7 +131,6 @@ pub fn v8GetPromiseObject(promise_handle: *anyopaque) *anyopaque {
 /// handle struct is freed.
 pub fn v8DestroyPromiseHandle(promise_handle: *anyopaque, _: std.mem.Allocator) void {
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
-    const alloc = handle.allocator;
     // The resolver is released here: nothing can settle the promise once its
     // handle is gone, and a Global to the resolver keeps the promise - and its
     // page - alive, whatever the GC would do otherwise. The promise's own
@@ -137,7 +138,7 @@ pub fn v8DestroyPromiseHandle(promise_handle: *anyopaque, _: std.mem.Allocator) 
     // v8_Global_Dispose, not v8_PromiseResolver_Dispose: it also drops the
     // realm tag v8CreatePromise put on it.
     ffi.v8_Global_Dispose(@ptrCast(handle.resolver));
-    alloc.destroy(handle);
+    @import("protocol_agents.zig").releasePromiseHandle(handle);
 }
 
 // ============================================================================
