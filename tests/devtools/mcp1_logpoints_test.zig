@@ -371,7 +371,14 @@ const Site = struct {
             .{ "", "text/plain" };
         var output: [1024]u8 = undefined;
         var writer = stream.writer(std.testing.io, &output);
-        const status = if (body.len == 0) "404 Not Found" else "200 OK";
+        // Match tools/fw_matrix/server.zig (used by mcp_diff against Chrome 157):
+        // return 204 for /favicon.ico so post-load favicon fetches do not log a 404.
+        const status = if (std.mem.eql(u8, path, "/favicon.ico"))
+            "204 No Content"
+        else if (body.len == 0)
+            "404 Not Found"
+        else
+            "200 OK";
         try writer.interface.print("HTTP/1.1 {s}\r\nContent-Type: {s}\r\nContent-Length: {d}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", .{ status, content_type, body.len });
         try writer.interface.writeAll(body);
         try writer.interface.flush();

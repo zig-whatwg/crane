@@ -33,7 +33,7 @@ const Page = struct {
     proxy_buf: [64]u8 = undefined,
 
     fn open(self: *Page, allocator: std.mem.Allocator) !void {
-        return self.openWith(allocator, "<!doctype html><body></body>");
+        return self.openWith(allocator, "<!doctype html><link rel=\"icon\" href=\"data:,\"><body></body>");
     }
 
     fn openWith(self: *Page, allocator: std.mem.Allocator, html: []const u8) !void {

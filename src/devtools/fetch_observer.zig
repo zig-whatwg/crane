@@ -505,6 +505,9 @@ fn loaderText(session: *const PageSession, loader: u64, buffer: *[32]u8) []const
 
 pub fn resourceTypeOf(request: *const InternalRequest) N.ResourceType {
     if (request.mode == .navigate) return .Document;
+    // Chrome 157 reports both <link rel="icon"> and default /favicon.ico as
+    // ResourceType "Other" (Blink RequestContextType::FAVICON -> InspectorPageAgent).
+    if (request.is_favicon) return .Other;
     if (request.initiator_type) |t| switch (t) {
         .xmlhttprequest => return .XHR,
         // fetch() of a data: URL is "Other" in Chrome 157, an XHR of one
@@ -663,7 +666,7 @@ fn willSendRequest(context: *anyopaque, request: *const InternalRequest) u64 {
             .request = n_request,
             .timestamp = monotonicSeconds(),
             .wallTime = wallSeconds(),
-            .initiator = .{ .type = if (request.mode == .navigate) .other else if (request.parser_metadata == .parser_inserted) .parser else .script },
+            .initiator = .{ .type = if (request.mode == .navigate or request.is_favicon) .other else if (request.parser_metadata == .parser_inserted) .parser else .script },
             .redirectHasExtraInfo = redirect_extra_info,
             .redirectResponse = if (redirect) |*r| r.toResponse(0) else null,
             .type = resourceTypeOf(request),

@@ -83,7 +83,7 @@ fn round() !void {
     defer browser.deinit();
     try browser.navigateWithOptions(base, .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;
-    try page.loadHTML("<!doctype html><body>", .{ .base_url = base });
+    try page.loadHTML("<!doctype html><link rel=\"icon\" href=\"data:,\"><body>", .{ .base_url = base });
     // The worker reads the first chunk and keeps its reader; it never reads
     // `performance`, so its global scope has made none when the Browser ends.
     const script = try std.fmt.allocPrint(testing.allocator,
