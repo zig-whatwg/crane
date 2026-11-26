@@ -1,10 +1,8 @@
 //! Lane mcp1, batch 4b item 2: emulate as chrome-devtools-mcp v1.13.0 does
 //! it (src/tools/emulation.ts, McpPage.emulate over Puppeteer's managers):
-//! every call applies every setting - the user agent, the media features,
-//! the viewport - and clears what it leaves out; the settings whose CDP
-//! Crane cannot apply yet (network conditions, CPU throttling above 1,
-//! geolocation) answer that the server does not support them; the CDP
-//! "off" values Puppeteer sends on every call are answered.
+//! every call applies every setting - network conditions, CPU throttling,
+//! geolocation, user agent, media features, extra headers, viewport - and
+//! clears what it leaves out.
 
 const std = @import("std");
 const testing = std.testing;
@@ -75,7 +73,7 @@ test "emulate: mobile and touch reload the page, as Puppeteer's setViewport does
     try expectResult(&h, "() => [window.marker === undefined, innerWidth, navigator.maxTouchPoints > 0]", "[true,390,true]");
 }
 
-test "emulate: the settings Crane cannot apply yet say so; an invalid viewport is the schema's error" {
+test "emulate: CPU throttling, geolocation, network conditions, and schema validation errors" {
     var h: Harness = .{};
     try h.start();
     defer h.stop();
@@ -83,8 +81,8 @@ test "emulate: the settings Crane cannot apply yet say so; an invalid viewport i
     try testing.expect(!r.is_error);
     try testing.expectEqualStrings("Emulation configured successfully\nEmulating CPU throttling: 4x slowdown", r.text);
     r = try h.tool("emulate", "{\"pageId\":1,\"geolocation\":\"52.5,13.4\"}");
-    try testing.expect(r.is_error);
-    try testing.expectEqualStrings("Emulating CPU throttling: 4x slowdown\nError: geolocation is not supported by Crane's MCP server yet.", r.text);
+    try testing.expect(!r.is_error);
+    try testing.expectEqualStrings("Emulation configured successfully\nEmulating geolocation: latitude=52.5, longitude=13.4", r.text);
     r = try h.tool("emulate", "{\"pageId\":1,\"networkConditions\":\"Slow 3G\"}");
     try testing.expect(!r.is_error);
     try testing.expectEqualStrings("Emulation configured successfully\nEmulating network conditions: Slow 3G\nDefault navigation timeout set to 100000 ms", r.text);
@@ -94,4 +92,7 @@ test "emulate: the settings Crane cannot apply yet say so; an invalid viewport i
     r = try h.tool("emulate", "{\"pageId\":1,\"viewport\":\"400x300,wide\"}");
     try testing.expect(r.is_error);
     try testing.expectEqualStrings("Input validation error: Invalid arguments for tool emulate: viewport: Invalid viewport option \"wide\". Expected \"mobile\", \"touch\", or \"landscape\" in '<width>x<height>x<devicePixelRatio>[,mobile][,touch][,landscape]'.", r.text);
+    r = try h.tool("emulate", "{\"pageId\":1,\"geolocation\":\"bad\"}");
+    try testing.expect(r.is_error);
+    try testing.expectEqualStrings("Input validation error: Invalid arguments for tool emulate: geolocation: Invalid geolocation \"bad\". Expected '<latitude>,<longitude>'.", r.text);
 }

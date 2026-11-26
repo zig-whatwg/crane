@@ -197,10 +197,11 @@ pub fn get_bluetooth(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return error.NotImplemented;
 }
 
-/// Getter for geolocation
+/// Getter for geolocation (W3C Geolocation §5): "[SameObject] readonly
+/// attribute Geolocation geolocation". Generated getter caches the instance
+/// (`cached_geolocation`) and ties its wrapper via `same_object_cache.made`.
 pub fn get_geolocation(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return interfaces.Geolocation.init(instance.ctx.allocator, instance.ctx);
 }
 
 /// Getter for login

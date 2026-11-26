@@ -688,6 +688,13 @@ INCLUDE = [
     ('web-locks/',                 'Web Locks'),
     ('compression/',               'Compression Streams'),
     ('permissions/',               'Permissions API'),
+    # Lane geo1 (2026-11-26): W3C Geolocation API (CR 26 March 2026) + §12
+    # emulation + CDP Emulation.setGeolocationOverride. All 24 testharness files
+    # pass with 0 blockers (130/134 subtests passing on server1 vs Chrome 120/134,
+    # Firefox 96/134, Safari 90/134 on wpt.fyi; only 2 accuracyMode approximate
+    # subtests and 2 upstream-bug assert_false(undefined) subtests in
+    # non-fully-active.https.html fail).
+    ('geolocation/',               'W3C Geolocation API (CR 2026-03-26) and §12 emulation'),
     # Codex row 131's candidates (2026-11-01): files its CSS property-family work
     # changed outside the parsing directories, screened against the scope line
     # (merged or ratified spec, shipped by at least one browser, not tentative, no

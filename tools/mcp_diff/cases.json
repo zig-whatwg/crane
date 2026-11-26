@@ -1178,7 +1178,7 @@
     },
     {
       "name": "emulate: user agent, media, viewport",
-      "about": "emulate applies every setting on every call and clears what a call leaves out, and a page tool's answer lists the page's emulation (McpResponse); the color scheme a clear leaves is the host's own (headless Chrome follows the OS appearance), compared with what the page saw before; CPU throttling and geolocation are not supported by Crane yet (expected).",
+      "about": "emulate applies every setting on every call and clears what a call leaves out, and a page tool's answer lists the page's emulation (McpResponse); the color scheme a clear leaves is the host's own (headless Chrome follows the OS appearance), compared with what the page saw before.",
       "calls": [
         {
           "tool": "navigate_page",
@@ -2428,6 +2428,83 @@
           }
         }
       ]
+    },
+    {
+      "name": "emulate: geolocation",
+      "about": "emulate geolocation: sets latitude/longitude override, prints McpResponse line in Chrome order, persists on page tools, clears on empty string or omission, and validates format and [-90..90] / [-180..180] bounds.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "geolocation": "37.7749,-122.4194"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "networkConditions": "Slow 3G",
+            "geolocation": "52.5,13.4",
+            "viewport": "400x300",
+            "userAgent": "Agent/3"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "geolocation": ""
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "geolocation": "-90,180"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "geolocation": "not-a-coord"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "geolocation": "95,10"
+          }
+        },
+        {
+          "tool": "emulate",
+          "args": {
+            "pageId": 1,
+            "geolocation": "10,-200"
+          }
+        }
+      ]
     }
   ],
   "expected": [
@@ -2465,11 +2542,6 @@
       "case": "history: back right after the first navigation",
       "call": 2,
       "reason": "Chrome navigates its startup URL (Puppeteer starts it with about:blank: an auto_toplevel entry), so its first navigation pushes and back reaches about:blank; Firefox 159 and Safari 27.2 keep the first tab's initial about:blank, which the first navigation replaces (WebDriver probe, chat.local 2026-11-24, tmp/probes/mcp1-startup/run.sh: history.length stays 1, back() stays), as Crane and HTML do: the browser majority (main's ruling, 2026-11-24)."
-    },
-    {
-      "case": "emulate: user agent, media, viewport",
-      "call": 11,
-      "reason": "Geolocation needs Crane's Geolocation API (a 0.1 spec item main queued, 2026-11-24); until then Crane's MCP server says it does not support geolocation yet."
     }
   ]
 }
