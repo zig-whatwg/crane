@@ -709,6 +709,7 @@ pub fn queueObserverTask(timeline: *Timeline) void {
             .drop = ObserverTask.drop,
             .document = if (global) |g| @ptrCast(g) else null,
             .document_generation = if (global) |g| runtime.SlabAllocator.generationOf(g) else 0,
+            .source = .performance_timeline,
         });
         return;
     }
@@ -1007,6 +1008,7 @@ const BufferFullTask = struct {
                             .drop = drop,
                             .document = global,
                             .document_generation = generation,
+                            .source = .performance_timeline,
                         });
                         // The one-shot was removed before this callback;
                         // the queue owns the task now, even if it dropped it

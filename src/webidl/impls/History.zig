@@ -804,7 +804,7 @@ fn initiatorOf(window: ?*runtime.Instance, bc: *BrowsingContext) ?apply_history_
 /// conditions 3 and its 2026-10-28 refinement). Never inline.
 fn queueApplyTask(navigables: *Navigables, navigable: *BrowsingContext, task: @import("dom").history_traversal.Task) bool {
     const loop = loopOfContext(navigable) orelse serviceLoopOf(navigables, navigable.getTop()) orelse return false;
-    loop.queueTask(.{ .callback = task.callback, .context = task.context, .drop = task.drop });
+    loop.queueTask(.{ .callback = task.callback, .context = task.context, .drop = task.drop, .source = .navigation_and_traversal });
     return true;
 }
 
@@ -989,7 +989,7 @@ fn queueHashChange(window: *runtime.Instance, old_url: []const u8, new_url: []co
     // A task, never run in the caller: a window no event loop runs gets no
     // hashchange (lane life1; it ran inline for test-built contexts).
     const loop = window.ctx.getOptionalEventLoop() orelse return task.destroy();
-    loop.queueTask(.{ .callback = &runHashChange, .context = task, .drop = &dropHashChange });
+    loop.queueTask(.{ .callback = &runHashChange, .context = task, .drop = &dropHashChange, .source = .history_traversal });
 }
 
 fn dropHashChange(context: ?*anyopaque) void {

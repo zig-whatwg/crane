@@ -367,6 +367,7 @@ const BfcacheClose = struct {
             .drop = &drop,
             .document = window,
             .document_generation = runtime.SlabAllocator.generationOf(window),
+            .source = .websocket,
         });
     }
 

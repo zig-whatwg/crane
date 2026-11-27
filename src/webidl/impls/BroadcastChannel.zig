@@ -525,7 +525,7 @@ fn queueDelivery(entry: Destination, serialized: []const u8, shared_memory: ?*ru
         .attachments = if (attachments) |a| a.retain() else null,
     };
     // A closed sink - its loop has ended - drops the task.
-    _ = entry.sink.post(.{ .run = Delivery.run, .drop = Delivery.drop, .data = task });
+    _ = entry.sink.post(.{ .run = Delivery.run, .drop = Delivery.drop, .data = task, .source = .broadcast_channel });
 }
 
 /// Fire a MessageEvent named `event_type` at `channel`, with `data` (null for

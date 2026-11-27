@@ -323,6 +323,7 @@ pub fn requestCloseFromHost(document: *Instance) bool {
         .drop = &Task.drop,
         .document = document,
         .document_generation = runtime.SlabAllocator.generationOf(document),
+        .source = .user_interaction,
     });
     return true;
 }

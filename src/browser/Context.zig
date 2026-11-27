@@ -1213,6 +1213,7 @@ fn queueTimerTask(wrapper: *WindowTimerCallback) bool {
         .drop = &dropQueuedTimer,
         .document = window,
         .document_generation = runtime.SlabAllocator.generationOf(window),
+        .source = .timer,
     });
     return true;
 }

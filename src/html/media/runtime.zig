@@ -47,7 +47,7 @@ pub fn hasBrowsingContext(instance: *runtime.Instance) bool {
 }
 pub fn queueTask(instance: *runtime.Instance, callback: *const fn (?*anyopaque) void, context: *anyopaque, drop: *const fn (?*anyopaque) void) !void {
     const loop = instance.ctx.getOptionalEventLoop() orelse return error.NotSupported;
-    var task: runtime.EventLoopTask = .{ .callback = callback, .context = context, .drop = drop };
+    var task: runtime.EventLoopTask = .{ .callback = callback, .context = context, .drop = drop, .source = .media_element };
     if (globalOf(instance.ctx)) |global| if (std.mem.eql(u8, global.vtable.name, "Window")) {
         task.document = global;
         task.document_generation = runtime.SlabAllocator.generationOf(global);

@@ -1271,7 +1271,7 @@ fn scheduleRevalidation(session: *PageSession, node: *runtime.Instance) void {
     const task = session.allocator.create(RevalidateTask) catch return;
     task.* = .{ .session = session, .allocator = session.allocator };
     s.revalidate = task;
-    loop.queueTask(.{ .callback = RevalidateTask.run, .context = task, .drop = RevalidateTask.drop });
+    loop.queueTask(.{ .callback = RevalidateTask.run, .context = task, .drop = RevalidateTask.drop, .source = .dom_manipulation });
 }
 
 /// DidModifyAdoptedStyleSheets: the tree scope joins the pending set (bound
