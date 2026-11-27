@@ -918,8 +918,9 @@ const Quarantine = struct {
     thread: std.atomic.Value(usize) = .init(0),
     /// The window agent's cache owning tagged (`entry & 0xf != 0`) entries
     /// (M8-1). Mutated on the window thread (or under `objects.mutex` on
-    /// `detachAgent`).
-    window_cache: ?*AgentCache = null,
+    /// `detachAgent`); atomic because worker threads check it on `detachAgent`
+    /// concurrently with the window thread's lock-free `cacheFree`.
+    window_cache: std.atomic.Value(?*AgentCache) = .init(null),
     count: usize = 0,
     held_bytes: usize = 0,
     /// Whether `layout.quarantine` has been committed (false while `count`
@@ -2058,7 +2059,7 @@ pub const Engine = struct {
     /// even mid-task without releasing quarantined blocks early (M8-1).
     /// Caller holds `self.objects.mutex`.
     fn migrateWindowCacheQuarantineLocked(self: *Engine, cache: *AgentCache) void {
-        if (self.quarantine.window_cache != cache) return;
+        if (self.quarantine.window_cache.load(.monotonic) != cache) return;
         const entries = self.quarantineEntries();
         for (entries[0..self.quarantine.count]) |*slot| {
             const raw = slot.*;
@@ -2081,7 +2082,7 @@ pub const Engine = struct {
         if (self.quarantine.next_slot < self.quarantine.count) {
             self.quarantine.next_entry = entries[self.quarantine.next_slot];
         }
-        self.quarantine.window_cache = null;
+        self.quarantine.window_cache.store(null, .monotonic);
     }
 
     /// The agent ended: every block its cache holds goes back to its span,
@@ -2298,10 +2299,11 @@ pub const Engine = struct {
             // On random eviction or `endTask` purge, a single arm64 `ldset`
             // moves `.quarantined -> .cached` straight into `cache.slots[0]`,
             // eliminating `objects.mutex` on the hot `.objects` alloc/free path!
+            const window_cache = self.quarantine.window_cache.load(.monotonic);
             if (!self.config.retire_freed_spans and
-                (self.quarantine.window_cache == null or self.quarantine.window_cache == cache))
+                (window_cache == null or window_cache == cache))
             {
-                self.quarantine.window_cache = cache;
+                if (window_cache == null) self.quarantine.window_cache.store(cache, .monotonic);
                 cache.held_local[0] += 1;
                 cache.held[0].store(cache.held_local[0], .monotonic);
                 cache.held_bytes_local[0] += div.block_bytes;
@@ -3482,7 +3484,7 @@ pub const Engine = struct {
     inline fn recycleCachedQuarantined(self: *Engine, raw: usize, objects_locked: bool) usize {
         const class = (raw & quarantine_tag_mask) - 1;
         const address = raw & ~quarantine_tag_mask;
-        const cache = self.quarantine.window_cache.?;
+        const cache = self.quarantine.window_cache.load(.monotonic).?;
         const offset = address - cache.window_base;
         const index = offset / span_bytes;
         const div = general_slot_div[class];
