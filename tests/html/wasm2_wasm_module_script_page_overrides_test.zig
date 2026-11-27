@@ -1,22 +1,23 @@
-//! Lane wasm2 step 1: a page cannot crash the engine through an
+//! Lane wasm2: a page cannot crash the engine, or be called, through an
 //! `application/wasm` module script.
 //!
-//! "Create a WebAssembly module script" (HTML 8.1.4.7; whatwg/html#10380)
-//! reads only the response's bytes: WebAssembly's module record is made by
-//! the engine, and nothing the page put on its global takes part. Crane's
-//! module_script.zig `createWasmModuleScript` (net-nav1, 3aa9141a9) instead
+//! Lane net-nav1's module_script.zig `createWasmModuleScript` (3aa9141a9)
 //! evaluated a classic script in the page's realm that called the page's
 //! `WebAssembly.Module`, `Uint8Array.fromBase64` and `JSON.stringify`, and
 //! read the string that came back with unchecked unwraps (`.object`,
 //! `.get("i").?`, `pair[0]`, `.string`). A page that replaced
 //! `JSON.stringify` with `() => '[]'` panicked the ReleaseSafe production
-//! build at its next wasm import (audit report D, finding C1).
+//! build at its next wasm import (audit report D, finding C1). Step 1 made
+//! those reads checked; step 3 removed the path (user ruling 2026-11-27,
+//! option (b)): an application/wasm module script is a fetch failure, as in
+//! every shipping browser, and nothing of the page's runs.
 //!
-//! Every case here tampers with one of the globals that path read, imports
-//! a wasm module, and requires only what any browser gives a page: the
-//! import settles (fulfilled or rejected) and the page runs script after
-//! it. A panic ends the test process, which the launcher reports as a
-//! failure.
+//! Every case here tampers with one of the globals that path read - with a
+//! function that counts its calls - imports a wasm module, and requires the
+//! answer of a page that tampered with nothing: the import rejects with a
+//! TypeError, none of the page's functions was called, and the page runs
+//! script after it. A panic ends the test process, which the launcher
+//! reports as a failure.
 
 const std = @import("std");
 const testing = std.testing;
@@ -98,6 +99,7 @@ const WasmSite = struct {
             body =
                 \\<!doctype html>
                 \\<script>
+                \\  window.calls = 0;
                 \\  // The page's own copies, to put back after each case.
                 \\  window.saved = {
                 \\    stringify: JSON.stringify,
@@ -121,7 +123,7 @@ const WasmSite = struct {
                 \\    window.outcome = undefined;
                 \\    import('/add.wasm?case=' + n).then(
                 \\      () => { window.outcome = 'fulfilled'; },
-                \\      (e) => { window.outcome = 'rejected'; });
+                \\      (e) => { window.outcome = 'rejected:' + e.name; });
                 \\  };
                 \\</script>
             ;
@@ -147,23 +149,24 @@ fn run(page: *browser_mod.Context, script: []const u8) !void {
 }
 
 /// Tamper with the page's globals by `tamper`, import a wasm module, wait
-/// for the event loop to finish the fetch and the import, and require that
-/// the import settled and that the page still runs script.
-fn expectSettles(browser: *browser_mod.Browser, page: *browser_mod.Context, n: usize, tamper: []const u8) !void {
+/// for the event loop to finish the fetch and the import, and require what a
+/// page that tampered with nothing gets: a TypeError, none of the page's
+/// replacements called, and a page that still runs script.
+fn expectUntouched(browser: *browser_mod.Browser, page: *browser_mod.Context, n: usize, tamper: []const u8) !void {
     var buf: [1024]u8 = undefined;
-    try run(page, try std.fmt.bufPrint(&buf, "{s}; attempt({d}); 'ok'", .{ tamper, n }));
+    try run(page, try std.fmt.bufPrint(&buf, "window.calls = 0; {s}; attempt({d}); 'ok'", .{ tamper, n }));
     try loop_settle.settle(browser);
     try run(page, "restore(); 'ok'");
 
-    const outcome = try page.evaluateScriptToString("String(window.outcome)", testing.allocator);
-    defer testing.allocator.free(outcome);
-    if (!std.mem.eql(u8, outcome, "fulfilled") and !std.mem.eql(u8, outcome, "rejected")) {
-        std.debug.print("case {d} ({s}): the import did not settle: {s}\n", .{ n, tamper, outcome });
-        return error.ImportDidNotSettle;
-    }
-    const alive = try page.evaluateScriptToString("String(6 * 7)", testing.allocator);
-    defer testing.allocator.free(alive);
-    try testing.expectEqualStrings("42", alive);
+    const result = try page.evaluateScriptToString("`${window.outcome} calls=${window.calls} alive=${6 * 7}`", testing.allocator);
+    defer testing.allocator.free(result);
+    var expected_buf: [1100]u8 = undefined;
+    var got_buf: [1100]u8 = undefined;
+    // The case is in both strings, so a failure names it.
+    try testing.expectEqualStrings(
+        try std.fmt.bufPrint(&expected_buf, "{s}: rejected:TypeError calls=0 alive=42", .{tamper}),
+        try std.fmt.bufPrint(&got_buf, "{s}: {s}", .{ tamper, result }),
+    );
 }
 
 fn openPage(site: *WasmSite, browser: *browser_mod.Browser) !*browser_mod.Context {
@@ -173,7 +176,7 @@ fn openPage(site: *WasmSite, browser: *browser_mod.Browser) !*browser_mod.Contex
     return browser.current_context orelse error.NoContext;
 }
 
-test "a page that replaces JSON.stringify cannot crash the engine through a wasm module import" {
+test "a page that replaces JSON.stringify cannot crash the engine, or be called, through a wasm module import" {
     const site = try WasmSite.start(testing.allocator);
     defer site.stop();
     const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
@@ -208,13 +211,13 @@ test "a page that replaces JSON.stringify cannot crash the engine through a wasm
     };
     var buf: [256]u8 = undefined;
     for (answers, 0..) |answer, n| {
-        try expectSettles(browser, page, n, try std.fmt.bufPrint(&buf, "JSON.stringify = () => {s}", .{answer}));
+        try expectUntouched(browser, page, n, try std.fmt.bufPrint(&buf, "JSON.stringify = () => (calls++, {s})", .{answer}));
     }
     // A JSON.stringify that throws.
-    try expectSettles(browser, page, answers.len, "JSON.stringify = () => { throw new Error('page'); }");
+    try expectUntouched(browser, page, answers.len, "JSON.stringify = () => { calls++; throw new Error('page'); }");
 }
 
-test "a page that replaces WebAssembly.Module, WebAssembly.Instance, Uint8Array.fromBase64 or Object.create cannot crash the engine through a wasm module import" {
+test "a page that replaces WebAssembly.Module, WebAssembly.Instance, Uint8Array.fromBase64 or Object.create cannot crash the engine, or be called, through a wasm module import" {
     const site = try WasmSite.start(testing.allocator);
     defer site.stop();
     const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
@@ -222,18 +225,18 @@ test "a page that replaces WebAssembly.Module, WebAssembly.Instance, Uint8Array.
     const page = try openPage(site, browser);
 
     const tampers = [_][]const u8{
-        "WebAssembly.Module = function () { return {}; }",
+        "WebAssembly.Module = function () { calls++; return {}; }",
         "WebAssembly.Module = undefined",
-        "WebAssembly.Module = function () { throw new Error('page'); }",
-        "WebAssembly.Module.imports = () => [{ module: 1, name: {} }]",
-        "WebAssembly.Module.exports = () => [{ name: [] }]",
-        "WebAssembly.Instance = function () { return { exports: null }; }",
-        "Uint8Array.fromBase64 = () => new Uint8Array(8)",
-        "Uint8Array.fromBase64 = () => { throw new Error('page'); }",
+        "WebAssembly.Module = function () { calls++; throw new Error('page'); }",
+        "WebAssembly.Module.imports = () => (calls++, [{ module: 1, name: {} }])",
+        "WebAssembly.Module.exports = () => (calls++, [{ name: [] }])",
+        "WebAssembly.Instance = function () { calls++; return { exports: null }; }",
+        "Uint8Array.fromBase64 = () => (calls++, new Uint8Array(8))",
+        "Uint8Array.fromBase64 = () => { calls++; throw new Error('page'); }",
         "Uint8Array.fromBase64 = undefined",
-        "Object.create = () => { throw new Error('page'); }",
+        "Object.create = () => { calls++; throw new Error('page'); }",
     };
     for (tampers, 0..) |tamper, n| {
-        try expectSettles(browser, page, 100 + n, tamper);
+        try expectUntouched(browser, page, 100 + n, tamper);
     }
 }
