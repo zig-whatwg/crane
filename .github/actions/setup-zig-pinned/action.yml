@@ -2,9 +2,9 @@ name: Pinned Zig
 description: >-
   The Zig that builds Crane - 0.17.1-dev+77c319a0f0, a build of the 0.17.x branch at 77c319a0f00a
   (AGENTS.md "The toolchain is Zig 0.17, pinned") - from this repository's toolchain release,
-  checked against the SHA-256 pinned below and put on PATH. setup-zig cannot fetch it: the pin is
-  not a ziglang.org build, and build.zig refuses 0.17.0 (tools/zig_toolchain.zig). Zig 0.16 was
-  retired on 2026-11-21 (roadmap zig-017).
+  verified by SHA-256 and put on PATH. setup-zig cannot fetch it: the pin is not a ziglang.org
+  build, and build.zig refuses 0.17.0 (tools/zig_toolchain.zig). Zig 0.16 was retired on
+  2026-11-21 (roadmap zig-017).
 
 runs:
   using: composite
@@ -20,28 +20,59 @@ runs:
         ZIG_VERSION: 0.17.1-dev+77c319a0f0
       run: |
         set -euo pipefail
-        # One asset per runner platform, each with its SHA-256 pinned here. A runner with no asset
-        # fails by name: the release has no Windows build (a Windows Zig is its own cross-build).
+        # One asset per supported runner platform. Linux-X64 and macOS-ARM64 keep their exact
+        # hardcoded SHA-256 pins; Linux-ARM64 and macOS-X64 verify against SHA256SUMS downloaded
+        # from the toolchain release so publishing those two tarballs via build-zig-toolchain.yml
+        # works without editing this action.
+        pinned_sha256=""
         case "${RUNNER_OS}-${RUNNER_ARCH}" in
           Linux-X64)
             asset=zig-x86_64-linux-0.17.1-dev.77c319a0f0
-            sha256=dcf70dae0e5610b68078be3d01b08cc2b616c34f976c2cfcb9e04a3a052594c8 ;;
+            pinned_sha256=dcf70dae0e5610b68078be3d01b08cc2b616c34f976c2cfcb9e04a3a052594c8 ;;
+          Linux-ARM64)
+            asset=zig-aarch64-linux-0.17.1-dev.77c319a0f0 ;;
           macOS-ARM64)
             asset=zig-aarch64-macos-0.17.1-dev.77c319a0f0
-            sha256=17597e3de81369810b1adfed3b43d5d5f66bd256b639754dbf149e7fe882eca3 ;;
+            pinned_sha256=17597e3de81369810b1adfed3b43d5d5f66bd256b639754dbf149e7fe882eca3 ;;
+          macOS-X64)
+            asset=zig-x86_64-macos-0.17.1-dev.77c319a0f0 ;;
           *)
-            echo "::error::no pinned Zig toolchain for ${RUNNER_OS} ${RUNNER_ARCH}: the toolchain release ${ZIG_RELEASE_TAG} has Linux x86_64 and macOS aarch64 only"
+            echo "::error::no pinned Zig toolchain for ${RUNNER_OS} ${RUNNER_ARCH}: the toolchain release ${ZIG_RELEASE_TAG} supports Linux x86_64/aarch64 and macOS arm64/x86_64"
             exit 1 ;;
         esac
+
+        if [ -n "$pinned_sha256" ]; then
+          sha256="$pinned_sha256"
+        else
+          gh release download "$ZIG_RELEASE_TAG" --repo "$ZIG_RELEASE_REPO" \
+            --pattern "SHA256SUMS" --dir "$RUNNER_TEMP" --clobber
+          sha256="$(awk -v f="${asset}.tar.xz" '
+            $2 == f || $2 == ("*" f) { print $1; exit }
+          ' "$RUNNER_TEMP/SHA256SUMS")"
+          rm -f "$RUNNER_TEMP/SHA256SUMS"
+          if ! [[ "$sha256" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "::error::no valid SHA-256 entry for ${asset}.tar.xz in ${ZIG_RELEASE_TAG} SHA256SUMS (run build-zig-toolchain.yml to publish ${RUNNER_OS}-${RUNNER_ARCH})"
+            exit 1
+          fi
+        fi
+
         gh release download "$ZIG_RELEASE_TAG" --repo "$ZIG_RELEASE_REPO" \
-          --pattern "$asset.tar.xz" --dir "$RUNNER_TEMP" --clobber
-        echo "$sha256  $RUNNER_TEMP/$asset.tar.xz" | shasum -a 256 -c -
-        tar -xJf "$RUNNER_TEMP/$asset.tar.xz" -C "$RUNNER_TEMP"
-        rm "$RUNNER_TEMP/$asset.tar.xz"
+          --pattern "${asset}.tar.xz" --dir "$RUNNER_TEMP" --clobber
+
+        if command -v sha256sum >/dev/null 2>&1; then
+          echo "$sha256  $RUNNER_TEMP/${asset}.tar.xz" | sha256sum -c -
+        else
+          echo "$sha256  $RUNNER_TEMP/${asset}.tar.xz" | shasum -a 256 -c -
+        fi
+
+        rm -rf "$RUNNER_TEMP/$asset"
+        tar -xJf "$RUNNER_TEMP/${asset}.tar.xz" -C "$RUNNER_TEMP"
+        rm -f "$RUNNER_TEMP/${asset}.tar.xz"
+
         got="$("$RUNNER_TEMP/$asset/bin/zig" version)"
         if [ "$got" != "$ZIG_VERSION" ]; then
           echo "::error::$asset reports zig version '$got', not the pinned $ZIG_VERSION"
           exit 1
         fi
         echo "$RUNNER_TEMP/$asset/bin" >> "$GITHUB_PATH"
-        echo "Zig $got from $ZIG_RELEASE_REPO $ZIG_RELEASE_TAG ($asset.tar.xz, sha256 $sha256)"
+        echo "Zig $got from $ZIG_RELEASE_REPO $ZIG_RELEASE_TAG (${asset}.tar.xz, sha256 $sha256)"

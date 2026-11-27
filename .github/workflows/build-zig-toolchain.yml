@@ -1,0 +1,485 @@
+name: Build Zig Toolchain
+
+# Builds the missing macos-x86_64 and linux-arm64 tarballs of Crane's pinned Zig
+# (0.17.1-dev+77c319a0f0, 0.17.x branch at commit 77c319a0f00a) and uploads them
+# to the toolchain-zig-0.17.1-dev.77c319a0f0 GitHub pre-release while preserving
+# the existing linux-x86_64 and macos-arm64 assets and updating SHA256SUMS.
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'Comma-separated targets to build: all, macos-x86_64, linux-arm64'
+        required: false
+        default: 'all'
+        type: string
+      dry_run:
+        description: 'Build, verify, and upload workflow artifacts only (do not upload to the GitHub release)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  ZIG_PIN: 77c319a0f00a
+  ZIG_VERSION: 0.17.1-dev+77c319a0f0
+  ZIG_RELEASE_TAG: toolchain-zig-0.17.1-dev.77c319a0f0
+
+jobs:
+  plan:
+    name: Plan Toolchain Matrix
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Build target matrix
+        id: set-matrix
+        shell: bash
+        env:
+          INPUT_TARGETS: ${{ inputs.targets }}
+        run: |
+          set -euo pipefail
+          matrix="$(python3 - <<'PY'
+          import json, os, sys
+
+          catalog = {
+              "macos-x86_64": {
+                  "target": "macos-x86_64",
+                  "os": "macos-15-intel",
+                  "asset": "zig-x86_64-macos-0.17.1-dev.77c319a0f0",
+                  "zig_target": "x86_64-macos.14.0-none",
+              },
+              "linux-arm64": {
+                  "target": "linux-arm64",
+                  "os": "ubuntu-24.04-arm",
+                  "asset": "zig-aarch64-linux-0.17.1-dev.77c319a0f0",
+                  "zig_target": "aarch64-linux-musl",
+              },
+          }
+
+          raw = os.environ.get("INPUT_TARGETS", "all").strip()
+          if not raw or raw == "all":
+              selected = ["macos-x86_64", "linux-arm64"]
+          else:
+              selected = [t.strip() for t in raw.split(",") if t.strip()]
+
+          unknown = [t for t in selected if t not in catalog]
+          if unknown:
+              print(f"::error::unknown target(s): {', '.join(unknown)} (allowed: all, macos-x86_64, linux-arm64)", file=sys.stderr)
+              sys.exit(1)
+
+          # Deduplicate while preserving order.
+          seen = set()
+          include = []
+          for t in selected:
+              if t not in seen:
+                  seen.add(t)
+                  include.append(catalog[t])
+
+          print(json.dumps({"include": include}))
+          PY
+          )"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Selected matrix: $matrix"
+
+  build:
+    name: Build Zig (${{ matrix.target }})
+    needs: plan
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+
+    steps:
+      - name: Build pinned Zig for linux-arm64 (aarch64-linux-musl)
+        if: matrix.target == 'linux-arm64'
+        shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+          ZIG_TARGET: ${{ matrix.zig_target }}
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/zig-build"
+          STAGE="$RUNNER_TEMP/stage"
+          OUT="$STAGE/$ASSET"
+          rm -rf "$WORK" "$STAGE"
+          mkdir -p "$WORK" "$STAGE"
+          cd "$WORK"
+
+          # Bootstrap with ZSF's 0.17.0 release and ZSF's prebuilt aarch64-linux-musl LLVM/Clang/LLD deps.
+          curl -fsSL "https://ziglang.org/download/0.17.0/zig-aarch64-linux-0.17.0.tar.xz" -o boot.tar.xz
+          tar -xJf boot.tar.xz
+          rm -f boot.tar.xz
+          BOOT="$WORK/zig-aarch64-linux-0.17.0/zig"
+          echo "Bootstrap Zig: $("$BOOT" version)"
+
+          DEPS="zig+llvm+lld+clang-aarch64-linux-musl-0.17.0-dev.203+073889523"
+          curl -fsSL "https://ziglang.org/deps/${DEPS}.tar.xz" -o deps.tar.xz
+          tar -xJf deps.tar.xz
+          rm -f deps.tar.xz
+
+          git clone -q --filter=blob:none --no-checkout --branch 0.17.x https://codeberg.org/ziglang/zig.git src
+          git -C src checkout -q "$ZIG_PIN"
+          COMMIT_FULL="$(git -C src rev-parse HEAD)"
+          echo "Zig source commit: $COMMIT_FULL"
+
+          t0="$(date +%s)"
+          ( cd src && ZIG_GLOBAL_CACHE_DIR="$WORK/gcache" "$BOOT" build \
+              --zig-lib="$WORK/src/lib" \
+              -p "$OUT" \
+              --cache-dir "$WORK/cache" \
+              -Dstatic-llvm \
+              --search-prefix "$WORK/$DEPS" \
+              -Doptimize=ReleaseFast \
+              -Dstrip \
+              -Duse-zig-libcxx \
+              -Dtarget="$ZIG_TARGET" \
+              -Dcpu=baseline \
+              -Dversion-string="$ZIG_VERSION" )
+          echo "Build took $(( $(date +%s) - t0 )) s"
+
+          got="$("$OUT/bin/zig" version)"
+          if [ "$got" != "$ZIG_VERSION" ]; then
+            echo "::error::built zig reported version '$got', expected '$ZIG_VERSION'"
+            exit 1
+          fi
+          file "$OUT/bin/zig"
+          if ! file "$OUT/bin/zig" | grep -qi "static"; then
+            echo "::error::expected statically linked ELF binary for $ZIG_TARGET"
+            exit 1
+          fi
+
+          cp "$WORK/src/LICENSE" "$OUT/LICENSE"
+          cat > "$OUT/BUILD-INFO.txt" <<INFO
+          Zig: $ZIG_VERSION
+          Source: https://codeberg.org/ziglang/zig (branch 0.17.x)
+          Commit: $COMMIT_FULL
+          Target: $ZIG_TARGET (cpu=baseline)
+          Deps: https://ziglang.org/deps/${DEPS}.tar.xz
+          Built: $(date -u +%Y-%m-%dT%H:%M:%SZ) on GitHub Actions (${RUNNER_OS} ${RUNNER_ARCH})
+          INFO
+
+          tar -cJf "$RUNNER_TEMP/${ASSET}.tar.xz" -C "$STAGE" "$ASSET"
+          ( cd "$RUNNER_TEMP" && sha256sum "${ASSET}.tar.xz" > "${ASSET}.tar.xz.sha256" )
+          cat "$RUNNER_TEMP/${ASSET}.tar.xz.sha256"
+          rm -rf "$WORK" "$STAGE"
+
+      - name: Install build tools (macOS x86_64)
+        if: matrix.target == 'macos-x86_64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ninja >/dev/null 2>&1; then
+            brew install ninja
+          fi
+          if ! command -v cmake >/dev/null 2>&1; then
+            brew install cmake
+          fi
+          cmake --version
+          ninja --version
+
+      - name: Build pinned Zig for macos-x86_64 (x86_64-macos.14.0-none)
+        if: matrix.target == 'macos-x86_64'
+        shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+          ZIG_TARGET: ${{ matrix.zig_target }}
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/zig-build"
+          STAGE="$RUNNER_TEMP/stage"
+          OUT="$STAGE/$ASSET"
+          PREFIX="$WORK/deps"
+          rm -rf "$WORK" "$STAGE"
+          mkdir -p "$WORK" "$STAGE" "$PREFIX"
+          cd "$WORK"
+
+          # Bootstrap compiler: ZSF 0.17.0 for macOS x86_64.
+          curl -fsSL "https://ziglang.org/download/0.17.0/zig-x86_64-macos-0.17.0.tar.xz" -o boot.tar.xz
+          tar -xJf boot.tar.xz
+          rm -f boot.tar.xz
+          BOOT="$WORK/zig-x86_64-macos-0.17.0/zig"
+          echo "Bootstrap Zig: $("$BOOT" version)"
+
+          # ZSF does not publish a prebuilt x86_64-macos LLVM 22 deps bundle for 0.17, so build
+          # zlib, zstd, and LLVM/Clang/LLD from zig-bootstrap's 0.17.x branch using zig cc
+          # targeting x86_64-macos.14.0-none (minimum macOS 14.0).
+          git clone -q --depth 1 --branch 0.17.x https://codeberg.org/ziglang/zig-bootstrap.git bootstrap
+          git clone -q --filter=blob:none --no-checkout --branch 0.17.x https://codeberg.org/ziglang/zig.git src
+          git -C src checkout -q "$ZIG_PIN"
+          COMMIT_FULL="$(git -C src rev-parse HEAD)"
+          echo "Zig source commit: $COMMIT_FULL"
+
+          export ZIG_GLOBAL_CACHE_DIR="$WORK/gcache"
+          export ZIG_LOCAL_CACHE_DIR="$WORK/lcache"
+
+          # 1. Host tablegen + archiver tools only (small subset of LLVM, ~2 min).
+          cmake -S "$WORK/bootstrap/llvm" -B "$WORK/build-llvm-host" -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_APPEND_VC_REV=OFF \
+            -DLLVM_ENABLE_BINDINGS=OFF \
+            -DLLVM_ENABLE_LIBEDIT=OFF \
+            -DLLVM_ENABLE_LIBPFM=OFF \
+            -DLLVM_ENABLE_LIBXML2=OFF \
+            -DLLVM_ENABLE_OCAMLDOC=OFF \
+            -DLLVM_ENABLE_PLUGINS=OFF \
+            -DLLVM_ENABLE_PROJECTS="lld;clang" \
+            -DLLVM_ENABLE_Z3_SOLVER=OFF \
+            -DLLVM_ENABLE_ZSTD=OFF \
+            -DLLVM_INCLUDE_UTILS=OFF \
+            -DLLVM_INCLUDE_TESTS=OFF \
+            -DLLVM_INCLUDE_EXAMPLES=OFF \
+            -DLLVM_INCLUDE_BENCHMARKS=OFF \
+            -DLLVM_INCLUDE_DOCS=OFF
+          ninja -C "$WORK/build-llvm-host" llvm-tblgen clang-tblgen llvm-ar llvm-ranlib
+
+          # 2. Static zlib for x86_64-macos.14.0-none.
+          cmake -S "$WORK/bootstrap/zlib" -B "$WORK/build-zlib" -GNinja \
+            -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+            -DCMAKE_PREFIX_PATH="$PREFIX" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CROSSCOMPILING=True \
+            -DCMAKE_SYSTEM_NAME=Darwin \
+            -DCMAKE_C_COMPILER="$BOOT;cc;-fno-sanitize=all;-s;-target;${ZIG_TARGET};-mcpu=baseline" \
+            -DCMAKE_CXX_COMPILER="$BOOT;c++;-fno-sanitize=all;-s;-target;${ZIG_TARGET};-mcpu=baseline" \
+            -DCMAKE_ASM_COMPILER="$BOOT;cc;-fno-sanitize=all;-s;-target;${ZIG_TARGET};-mcpu=baseline" \
+            -DCMAKE_LINK_DEPENDS_USE_LINKER=OFF \
+            -DCMAKE_AR="$WORK/build-llvm-host/bin/llvm-ar" \
+            -DCMAKE_RANLIB="$WORK/build-llvm-host/bin/llvm-ranlib"
+          ninja -C "$WORK/build-zlib" install
+          rm -rf "$WORK/build-zlib"
+
+          # 3. Static zstd for x86_64-macos.14.0-none (matching zig-bootstrap/0.17.x/build).
+          mkdir -p "$PREFIX/include" "$PREFIX/lib"
+          cp "$WORK/bootstrap/zstd/lib/zstd.h" "$PREFIX/include/zstd.h"
+          ( cd "$PREFIX/lib" && "$BOOT" build-lib \
+              --name zstd \
+              -target "$ZIG_TARGET" \
+              -mcpu=baseline \
+              -fno-sanitize-c -fstrip -OReleaseFast \
+              -lc \
+              "$WORK/bootstrap/zstd/lib/decompress/zstd_ddict.c" \
+              "$WORK/bootstrap/zstd/lib/decompress/zstd_decompress.c" \
+              "$WORK/bootstrap/zstd/lib/decompress/huf_decompress.c" \
+              "$WORK/bootstrap/zstd/lib/decompress/huf_decompress_amd64.S" \
+              "$WORK/bootstrap/zstd/lib/decompress/zstd_decompress_block.c" \
+              "$WORK/bootstrap/zstd/lib/compress/zstdmt_compress.c" \
+              "$WORK/bootstrap/zstd/lib/compress/zstd_opt.c" \
+              "$WORK/bootstrap/zstd/lib/compress/hist.c" \
+              "$WORK/bootstrap/zstd/lib/compress/zstd_ldm.c" \
+              "$WORK/bootstrap/zstd/lib/compress/zstd_fast.c" \
+              "$WORK/bootstrap/zstd/lib/compress/zstd_compress_literals.c" \
+              "$WORK/bootstrap/zstd/lib/compress/zstd_double_fast.c" \
+              "$WORK/bootstrap/zstd/lib/compress/huf_compress.c" \
+              "$WORK/bootstrap/zstd/lib/compress/fse_compress.c" \
+              "$WORK/bootstrap/zstd/lib/compress/zstd_lazy.c" \
+              "$WORK/bootstrap/zstd/lib/compress/zstd_compress.c" \
+              "$WORK/bootstrap/zstd/lib/compress/zstd_compress_sequences.c" \
+              "$WORK/bootstrap/zstd/lib/compress/zstd_compress_superblock.c" \
+              "$WORK/bootstrap/zstd/lib/deprecated/zbuff_compress.c" \
+              "$WORK/bootstrap/zstd/lib/deprecated/zbuff_decompress.c" \
+              "$WORK/bootstrap/zstd/lib/deprecated/zbuff_common.c" \
+              "$WORK/bootstrap/zstd/lib/common/entropy_common.c" \
+              "$WORK/bootstrap/zstd/lib/common/pool.c" \
+              "$WORK/bootstrap/zstd/lib/common/threading.c" \
+              "$WORK/bootstrap/zstd/lib/common/zstd_common.c" \
+              "$WORK/bootstrap/zstd/lib/common/xxhash.c" \
+              "$WORK/bootstrap/zstd/lib/common/debug.c" \
+              "$WORK/bootstrap/zstd/lib/common/fse_decompress.c" \
+              "$WORK/bootstrap/zstd/lib/common/error_private.c" \
+              "$WORK/bootstrap/zstd/lib/dictBuilder/zdict.c" \
+              "$WORK/bootstrap/zstd/lib/dictBuilder/divsufsort.c" \
+              "$WORK/bootstrap/zstd/lib/dictBuilder/fastcover.c" \
+              "$WORK/bootstrap/zstd/lib/dictBuilder/cover.c" )
+
+          # 4. Static LLVM + Clang + LLD for x86_64-macos.14.0-none.
+          cmake -S "$WORK/bootstrap/llvm" -B "$WORK/build-llvm" -GNinja \
+            -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+            -DCMAKE_PREFIX_PATH="$PREFIX" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CROSSCOMPILING=True \
+            -DCMAKE_SYSTEM_NAME=Darwin \
+            -DCMAKE_C_COMPILER="$BOOT;cc;-fno-sanitize=all;-s;-target;${ZIG_TARGET};-mcpu=baseline" \
+            -DCMAKE_CXX_COMPILER="$BOOT;c++;-fno-sanitize=all;-s;-target;${ZIG_TARGET};-mcpu=baseline" \
+            -DCMAKE_ASM_COMPILER="$BOOT;cc;-fno-sanitize=all;-s;-target;${ZIG_TARGET};-mcpu=baseline" \
+            -DCMAKE_LINK_DEPENDS_USE_LINKER=OFF \
+            -DCMAKE_AR="$WORK/build-llvm-host/bin/llvm-ar" \
+            -DCMAKE_RANLIB="$WORK/build-llvm-host/bin/llvm-ranlib" \
+            -DLLVM_APPEND_VC_REV=OFF \
+            -DLLVM_ENABLE_BACKTRACES=OFF \
+            -DLLVM_ENABLE_BINDINGS=OFF \
+            -DLLVM_ENABLE_CRASH_OVERRIDES=OFF \
+            -DLLVM_ENABLE_LIBEDIT=OFF \
+            -DLLVM_ENABLE_LIBPFM=OFF \
+            -DLLVM_ENABLE_LIBXML2=OFF \
+            -DLLVM_ENABLE_OCAMLDOC=OFF \
+            -DLLVM_ENABLE_PLUGINS=OFF \
+            -DLLVM_ENABLE_PROJECTS="lld;clang" \
+            -DLLVM_ENABLE_Z3_SOLVER=OFF \
+            -DLLVM_ENABLE_ZLIB=FORCE_ON \
+            -DLLVM_ENABLE_ZSTD=FORCE_ON \
+            -DLLVM_USE_STATIC_ZSTD=ON \
+            -DLLVM_TABLEGEN="$WORK/build-llvm-host/bin/llvm-tblgen" \
+            -DLLVM_BUILD_UTILS=OFF \
+            -DLLVM_BUILD_TOOLS=OFF \
+            -DLLVM_BUILD_STATIC=ON \
+            -DLLVM_INCLUDE_UTILS=OFF \
+            -DLLVM_INCLUDE_TESTS=OFF \
+            -DLLVM_INCLUDE_EXAMPLES=OFF \
+            -DLLVM_INCLUDE_BENCHMARKS=OFF \
+            -DLLVM_INCLUDE_DOCS=OFF \
+            -DLLVM_DEFAULT_TARGET_TRIPLE="$ZIG_TARGET" \
+            -DLLVM_TOOL_LLVM_LTO2_BUILD=OFF \
+            -DLLVM_TOOL_LLVM_LTO_BUILD=OFF \
+            -DLLVM_TOOL_LTO_BUILD=OFF \
+            -DLLVM_TOOL_REMARKS_SHLIB_BUILD=OFF \
+            -DCLANG_TABLEGEN="$WORK/build-llvm-host/bin/clang-tblgen" \
+            -DCLANG_BUILD_TOOLS=OFF \
+            -DCLANG_INCLUDE_DOCS=OFF \
+            -DCLANG_INCLUDE_TESTS=OFF \
+            -DCLANG_ENABLE_OBJC_REWRITER=ON \
+            -DCLANG_TOOL_CLANG_IMPORT_TEST_BUILD=OFF \
+            -DCLANG_TOOL_CLANG_LINKER_WRAPPER_BUILD=OFF \
+            -DCLANG_TOOL_C_INDEX_TEST_BUILD=OFF \
+            -DCLANG_TOOL_LIBCLANG_BUILD=OFF \
+            -DLLD_BUILD_TOOLS=OFF
+          ninja -C "$WORK/build-llvm" install
+          rm -rf "$WORK/build-llvm-host" "$WORK/build-llvm"
+
+          # 5. Stage 1 (native target, no -Dtarget): 0.17.0's linker cannot parse 77c319a0f00a's
+          #    lib/libc/darwin/SDKSettings.json on an explicit macOS cross-target
+          #    (docs/lessons/workflow-a-zig-built-for-the-native-macos-target-runs-only-on-that-macos.md).
+          ( cd "$WORK/src" && "$BOOT" build \
+              --zig-lib="$WORK/src/lib" \
+              -p "$WORK/stage1" \
+              --cache-dir "$WORK/cache-s1" \
+              -Dstatic-llvm \
+              --search-prefix "$PREFIX" \
+              -Doptimize=ReleaseFast \
+              -Dstrip \
+              -Duse-zig-libcxx \
+              -Dcpu=baseline \
+              -Dversion-string="$ZIG_VERSION" )
+
+          # 6. Stage 2 (explicit x86_64-macos.14.0-none): bootstrapped from Stage 1 (77c319a0f00a)
+          #    so the linker and bundled Darwin SDK metadata match and LC_BUILD_VERSION minos == 14.0.
+          ( cd "$WORK/src" && "$WORK/stage1/bin/zig" build \
+              --zig-lib="$WORK/src/lib" \
+              -p "$OUT" \
+              --cache-dir "$WORK/cache-s2" \
+              -Dstatic-llvm \
+              --search-prefix "$PREFIX" \
+              -Doptimize=ReleaseFast \
+              -Dstrip \
+              -Duse-zig-libcxx \
+              -Dtarget="$ZIG_TARGET" \
+              -Dcpu=baseline \
+              -Dversion-string="$ZIG_VERSION" )
+
+          got="$("$OUT/bin/zig" version)"
+          if [ "$got" != "$ZIG_VERSION" ]; then
+            echo "::error::built zig reported version '$got', expected '$ZIG_VERSION'"
+            exit 1
+          fi
+          otool -L "$OUT/bin/zig"
+          otool -l "$OUT/bin/zig" | grep -A4 LC_BUILD_VERSION
+          if ! otool -l "$OUT/bin/zig" | grep -A4 LC_BUILD_VERSION | grep -q "minos 14.0"; then
+            echo "::error::expected LC_BUILD_VERSION minos 14.0 in $OUT/bin/zig"
+            exit 1
+          fi
+
+          cp "$WORK/src/LICENSE" "$OUT/LICENSE"
+          cat > "$OUT/BUILD-INFO.txt" <<INFO
+          Zig: $ZIG_VERSION
+          Source: https://codeberg.org/ziglang/zig (branch 0.17.x)
+          Commit: $COMMIT_FULL
+          Target: $ZIG_TARGET (cpu=baseline, minos 14.0)
+          Deps: built from https://codeberg.org/ziglang/zig-bootstrap (branch 0.17.x)
+          Built: $(date -u +%Y-%m-%dT%H:%M:%SZ) on GitHub Actions (${RUNNER_OS} ${RUNNER_ARCH})
+          INFO
+
+          COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs -cJf "$RUNNER_TEMP/${ASSET}.tar.xz" -C "$STAGE" "$ASSET"
+          ( cd "$RUNNER_TEMP" && shasum -a 256 "${ASSET}.tar.xz" > "${ASSET}.tar.xz.sha256" )
+          cat "$RUNNER_TEMP/${ASSET}.tar.xz.sha256"
+          rm -rf "$WORK" "$STAGE"
+
+      - name: Upload built Zig toolchain artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zig-toolchain-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/${{ matrix.asset }}.tar.xz
+            ${{ runner.temp }}/${{ matrix.asset }}.tar.xz.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Update Toolchain Release
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download built toolchain artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: zig-toolchain-*
+          merge-multiple: true
+          path: dist
+
+      - name: Merge SHA256SUMS and upload to toolchain release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+
+          # Verify every downloaded tarball against its companion .sha256 before publishing.
+          ( cd dist && for s in *.tar.xz.sha256; do sha256sum -c "$s"; done )
+
+          # Start from the release's existing SHA256SUMS so untouched targets (linux-x86_64,
+          # macos-arm64) remain listed alongside the newly built tarballs.
+          mkdir -p existing
+          if gh release download "$ZIG_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "SHA256SUMS" --dir existing --clobber 2>/dev/null; then
+            echo "Loaded existing SHA256SUMS from $ZIG_RELEASE_TAG"
+          else
+            : > existing/SHA256SUMS
+          fi
+
+          python3 - <<'PY'
+          import glob, os
+
+          entries = {}
+          if os.path.exists("existing/SHA256SUMS"):
+              with open("existing/SHA256SUMS", "r", encoding="utf-8") as fh:
+                  for line in fh:
+                      parts = line.strip().split()
+                      if len(parts) >= 2:
+                          entries[parts[1].lstrip("*")] = parts[0]
+
+          for path in sorted(glob.glob("dist/*.tar.xz.sha256")):
+              with open(path, "r", encoding="utf-8") as fh:
+                  for line in fh:
+                      parts = line.strip().split()
+                      if len(parts) >= 2:
+                          entries[parts[1].lstrip("*")] = parts[0]
+
+          with open("dist/SHA256SUMS", "w", encoding="utf-8") as fh:
+              for name in sorted(entries):
+                  fh.write(f"{entries[name]}  {name}\n")
+          PY
+
+          echo "=== Merged SHA256SUMS ==="
+          cat dist/SHA256SUMS
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "dry_run=true: skipping upload to $ZIG_RELEASE_TAG"
+            exit 0
+          fi
+
+          gh release upload "$ZIG_RELEASE_TAG" dist/*.tar.xz dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Uploaded new Zig toolchain tarballs and updated SHA256SUMS on $ZIG_RELEASE_TAG"

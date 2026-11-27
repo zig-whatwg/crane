@@ -1,0 +1,150 @@
+name: Prebuilt V8
+description: >-
+  Fetch, verify and unpack Crane's prebuilt V8 15.7.112.43 (with ICU) tarball from the
+  v8-prebuilt-15.7.112.43 GitHub pre-release and export CRANE_V8_DIR for -Dv8-dir.
+
+inputs:
+  link:
+    description: 'Link mode: static (default) or dynamic'
+    required: false
+    default: 'static'
+  version:
+    description: 'V8 version string'
+    required: false
+    default: '15.7.112.43'
+  tag:
+    description: 'GitHub release tag holding the prebuilt V8 tarballs'
+    required: false
+    default: 'v8-prebuilt-15.7.112.43'
+  repo:
+    description: 'GitHub repository hosting the prebuilt V8 release'
+    required: false
+    default: 'zig-whatwg/crane'
+
+outputs:
+  v8-dir:
+    description: 'Path to the extracted V8 directory (also exported as CRANE_V8_DIR)'
+    value: ${{ steps.fetch.outputs.v8-dir }}
+  target:
+    description: 'Resolved <os>-<arch> target name'
+    value: ${{ steps.fetch.outputs.target }}
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch, verify and extract prebuilt V8
+      id: fetch
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        V8_LINK: ${{ inputs.link }}
+        V8_VERSION: ${{ inputs.version }}
+        V8_TAG: ${{ inputs.tag }}
+        V8_REPO: ${{ inputs.repo }}
+      run: |
+        set -euo pipefail
+
+        case "${V8_LINK}" in
+          static|dynamic) ;;
+          *)
+            echo "::error::invalid V8 link mode '${V8_LINK}' (expected 'static' or 'dynamic')"
+            exit 1 ;;
+        esac
+
+        case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          macOS-ARM64) target=macos-arm64 ;;
+          macOS-X64)   target=macos-x86_64 ;;
+          Linux-X64)   target=linux-x86_64 ;;
+          Linux-ARM64) target=linux-arm64 ;;
+          *)
+            echo "::error::no prebuilt V8 for ${RUNNER_OS} ${RUNNER_ARCH} (supported: macos-arm64, macos-x86_64, linux-x86_64, linux-arm64)"
+            exit 1 ;;
+        esac
+
+        asset="v8-${V8_VERSION}-${target}-${V8_LINK}.tar.gz"
+        dl_dir="$RUNNER_TEMP/crane-v8-dl-${target}-${V8_LINK}"
+        unpack_dir="$RUNNER_TEMP/crane-v8-${V8_VERSION}-${target}-${V8_LINK}"
+        rm -rf "$dl_dir" "$unpack_dir"
+        mkdir -p "$dl_dir" "$unpack_dir"
+
+        gh release download "$V8_TAG" --repo "$V8_REPO" \
+          --pattern "SHA256SUMS" --dir "$dl_dir" --clobber
+        sha256="$(awk -v f="$asset" '
+          $2 == f || $2 == ("*" f) { print $1; exit }
+        ' "$dl_dir/SHA256SUMS")"
+        if ! [[ "$sha256" =~ ^[0-9a-fA-F]{64}$ ]]; then
+          echo "::error::no valid SHA-256 entry for ${asset} in ${V8_TAG} SHA256SUMS (run build-v8.yml to publish ${target} ${V8_LINK})"
+          exit 1
+        fi
+
+        gh release download "$V8_TAG" --repo "$V8_REPO" \
+          --pattern "$asset" --dir "$dl_dir" --clobber
+
+        if command -v sha256sum >/dev/null 2>&1; then
+          SHA256_CMD=(sha256sum)
+        else
+          SHA256_CMD=(shasum -a 256)
+        fi
+        echo "$sha256  $dl_dir/$asset" | "${SHA256_CMD[@]}" -c -
+
+        tar -xzf "$dl_dir/$asset" -C "$unpack_dir"
+        rm -rf "$dl_dir"
+
+        # Support both a top-level wrapper directory (e.g. v8-15.7.112.43-<target>-<link>/)
+        # and a flat archive extracting include/ directly.
+        if [ -d "$unpack_dir/include" ]; then
+          v8_dir="$unpack_dir"
+        else
+          candidates=("$unpack_dir"/*/include)
+          if [ "${#candidates[@]}" -eq 1 ] && [ -d "${candidates[0]}" ]; then
+            v8_dir="$(dirname "${candidates[0]}")"
+          else
+            echo "::error::extracted ${asset} does not contain an include/ directory at root or single top-level dir"
+            ls -la "$unpack_dir"
+            exit 1
+          fi
+        fi
+
+        # Verify expected layout and internal SHA256SUMS.
+        for req in \
+          include/v8.h \
+          include/v8-gn.h \
+          libcxx/flags.txt \
+          icu/flags.txt \
+          system-libs.txt \
+          PROVENANCE \
+          SHA256SUMS
+        do
+          if [ ! -f "$v8_dir/$req" ]; then
+            echo "::error::missing $req in extracted prebuilt V8 ($v8_dir)"
+            exit 1
+          fi
+        done
+
+        if [ "$V8_LINK" = "static" ]; then
+          for archive in \
+            out/static/obj/libv8_monolith.a \
+            out/static/obj/libv8_libplatform_fat.a \
+            out/static/obj/libv8_libbase_fat.a \
+            out/static/obj/libc++_chromium.a \
+            out/static/obj/librust_v8.a
+          do
+            if [ ! -f "$v8_dir/$archive" ]; then
+              echo "::error::missing $archive in static prebuilt V8 ($v8_dir)"
+              exit 1
+            fi
+          done
+        else
+          if [ ! -d "$v8_dir/out/dynamic" ] || [ -z "$(ls -A "$v8_dir/out/dynamic")" ]; then
+            echo "::error::missing or empty out/dynamic/ in dynamic prebuilt V8 ($v8_dir)"
+            exit 1
+          fi
+        fi
+
+        ( cd "$v8_dir" && "${SHA256_CMD[@]}" -c SHA256SUMS >/dev/null )
+
+        echo "CRANE_V8_DIR=$v8_dir" >> "$GITHUB_ENV"
+        echo "v8-dir=$v8_dir" >> "$GITHUB_OUTPUT"
+        echo "target=$target" >> "$GITHUB_OUTPUT"
+        echo "V8 ${V8_VERSION} (${V8_LINK}) for ${target} ready at ${v8_dir} (tarball sha256 ${sha256})"
+        head -3 "$v8_dir/PROVENANCE"
