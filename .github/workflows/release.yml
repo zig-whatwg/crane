@@ -1,10 +1,7 @@
 name: Release
 
+# Manual-only fallback: releases and nightlies are built on local build server (server1).
 on:
-  push:
-    tags:
-      - 'v*'
-      - '!v8-prebuilt-*'
   workflow_dispatch:
     inputs:
       version:
@@ -209,7 +206,7 @@ jobs:
                   r"^(linux-vdso\.so(\.[0-9]+)?|ld-linux-[a-z0-9_-]+\.so\.[0-9]+|"
                   r"libc\.so\.[0-9]+|libm\.so\.[0-9]+|libpthread\.so\.[0-9]+|"
                   r"libdl\.so\.[0-9]+|librt\.so\.[0-9]+|libgcc_s\.so\.[0-9]+|"
-                  r"libresolv\.so\.[0-9]+)$"
+                  r"libresolv\.so\.[0-9]+|libsqlite3\.so\.[0-9]+)$"
               )
               bad = []
               for raw in out.splitlines():

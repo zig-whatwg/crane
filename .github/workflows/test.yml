@@ -1,10 +1,8 @@
 name: Test Suite
 
+# Manual-only: regular builds and tests run on local build server (server1),
+# not GitHub-hosted runners.
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:

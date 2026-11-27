@@ -1,12 +1,7 @@
 name: WPT Tests
 
+# Manual-only: WPT runs on local build server (server1), not GitHub-hosted runners.
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  schedule:
-    - cron: '0 0 * * 0'  # Weekly on Sunday
   workflow_dispatch:
     inputs:
       scope:
