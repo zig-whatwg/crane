@@ -479,7 +479,7 @@ fn queueTask(transition: *Transition, kind: TaskKind) !void {
     task.* = .{ .allocator = transition.allocator, .transition = Link.to(transition.owner), .kind = kind, .kept = true };
     engine.keepPlatformObjectAlive(transition.owner);
     const document = transition.documentInstance();
-    loop.queueTask(.{ .callback = Task.run, .drop = Task.drop, .context = task, .document = document, .document_generation = if (document) |doc| runtime.SlabAllocator.generationOf(doc) else 0 });
+    loop.queueTask(.{ .callback = Task.run, .drop = Task.drop, .context = task, .document = document, .document_generation = if (document) |doc| runtime.SlabAllocator.generationOf(doc) else 0, .source = .dom_manipulation });
 }
 
 /// The snapshot containing block's size: the viewport's (Crane's media

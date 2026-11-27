@@ -98,6 +98,7 @@ const vtable: inspector_probes.VTable = .{
     .top_layer_elements_changed = topLayerElementsChanged,
     .node_created = nodeCreated,
     .slot_assignment_changed = slotAssignmentChanged,
+    .flush_slot_distribution = flushSlotDistribution,
     .rendering_updated = renderingUpdated,
     .did_modify_adopted_style_sheets = didModifyAdoptedStyleSheets,
     .title_may_have_changed = titleMayHaveChanged,
@@ -195,6 +196,11 @@ fn slotAssignmentChanged(context: *anyopaque, slot: *runtime.Instance) void {
     var buffer: [max_agents]*PageSession = undefined;
     for (agentsOf(context, &buffer)) |session| dom_domain.slotAssignmentChanged(session, slot);
     for (axAgentsOf(context, &buffer)) |session| accessibility_domain.slotAssignmentChanged(session, slot);
+}
+
+fn flushSlotDistribution(context: *anyopaque, node: *runtime.Instance, flatten: bool) void {
+    var buffer: [max_agents]*PageSession = undefined;
+    for (agentsOf(context, &buffer)) |session| dom_domain.flushSlotDistribution(session, node, flatten);
 }
 
 fn renderingUpdated(context: *anyopaque, document: *runtime.Instance) void {

@@ -1271,7 +1271,7 @@ fn scheduleRevalidation(session: *PageSession, node: *runtime.Instance) void {
     const task = session.allocator.create(RevalidateTask) catch return;
     task.* = .{ .session = session, .allocator = session.allocator };
     s.revalidate = task;
-    loop.queueTask(.{ .callback = RevalidateTask.run, .context = task, .drop = RevalidateTask.drop });
+    loop.queueTask(.{ .callback = RevalidateTask.run, .context = task, .drop = RevalidateTask.drop, .source = .dom_manipulation });
 }
 
 /// DidModifyAdoptedStyleSheets: the tree scope joins the pending set (bound
@@ -1389,7 +1389,8 @@ pub fn didPushShadowRoot(session: *PageSession, host: *runtime.Instance, root: *
 }
 
 /// A bound slot's assigned nodes changed: kept for the next rendering
-/// update, which is asked for.
+/// update, which is asked for, or flushed sooner if script reads the slot's
+/// distribution (`flushSlotDistribution`, lane cdpd1 D4).
 pub fn slotAssignmentChanged(session: *PageSession, slot: *runtime.Instance) void {
     const s = &session.states.DOM;
     const map = s.map orelse return;
@@ -1397,6 +1398,92 @@ pub fn slotAssignmentChanged(session: *PageSession, slot: *runtime.Instance) voi
     for (s.pending_slots.items) |pending| if (pending.get() == slot) return;
     s.pending_slots.append(session.allocator, WeakNode.of(slot)) catch return;
     if (nodeDocumentOf(slot)) |document| dom.update_the_rendering.requestFrame(document);
+}
+
+/// Flush pending `DOM.distributedNodesUpdated` notifications synchronously on
+/// a script slot read (`HTMLSlotElement.assignedNodes()`, `assignedElements()`,
+/// or `Slottable.assignedSlot`; lane cdpd1 D4, matching Blink's lazy
+/// `SlotAssignment::RecalcAssignment` -> `probe::DidPerformSlotDistribution`).
+/// `node` is either an open `ShadowRoot` (from `Slottable.assignedSlot`) or an
+/// `HTMLSlotElement`.
+pub fn flushSlotDistribution(session: *PageSession, node: *runtime.Instance, flatten: bool) void {
+    const s = &session.states.DOM;
+    if (s.pending_slots.items.len == 0) return;
+    const map = s.map orelse return;
+    if (node.implements(interfaces.ShadowRoot.State)) {
+        sendDistributionsForRoot(session, map, node);
+        return;
+    }
+    var roots: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer roots.deinit(session.allocator);
+    collectFlushedShadowRoots(session.allocator, node, flatten, &roots);
+    for (roots.items) |root| sendDistributionsForRoot(session, map, root);
+}
+
+/// The `ShadowRoot` containing `node`, or null if `node` is not in a shadow tree.
+fn shadowRootOf(node: *runtime.Instance) ?*runtime.Instance {
+    var current = node;
+    while (interfaces.Node.get_parentNode(current) catch null) |parent| current = parent;
+    return if (current.implements(interfaces.ShadowRoot.State)) current else null;
+}
+
+/// Collect `slot`'s containing `ShadowRoot` (and, when `flatten` is true, any
+/// nested `<slot>`'s shadow root visited by finding flattened slottables) so
+/// `flushSlotDistribution` flushes only the affected shadow trees and leaves
+/// unrelated shadow hosts pending.
+fn collectFlushedShadowRoots(
+    allocator: Allocator,
+    slot: *runtime.Instance,
+    flatten: bool,
+    roots: *std.ArrayListUnmanaged(*runtime.Instance),
+) void {
+    const root = shadowRootOf(slot) orelse return;
+    for (roots.items) |seen| if (seen == root) return;
+    roots.append(allocator, root) catch return;
+    if (!flatten) return;
+    const base = dom.instance_bridge.getNodeBase(slot) orelse return;
+    const state = dom.slot_helpers.slotState(base) orelse return;
+    if (state.hasAssignedNodes()) {
+        for (state.assigned_nodes.items) |ref| {
+            const assigned = ref.get() orelse continue;
+            if (dom.slot_helpers.slotState(assigned) == null) continue;
+            const child_slot = assigned.registeredInstance() orelse continue;
+            collectFlushedShadowRoots(allocator, child_slot, true, roots);
+        }
+    } else {
+        var child = interfaces.Node.get_firstChild(slot) catch null;
+        while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
+            const child_base = dom.instance_bridge.getNodeBase(c) orelse continue;
+            if (dom.slot_helpers.slotState(child_base) == null) continue;
+            collectFlushedShadowRoots(allocator, c, true, roots);
+        }
+    }
+}
+
+/// Emit `DOM.distributedNodesUpdated` for every pending slot in `shadow_root`
+/// and remove it from `pending_slots` so the next rendering update does not
+/// emit a duplicate.
+fn sendDistributionsForRoot(session: *PageSession, map: *NodeMap, shadow_root: *runtime.Instance) void {
+    const s = &session.states.DOM;
+    if (s.pending_slots.items.len == 0) return;
+    var arena_state = std.heap.ArenaAllocator.init(session.allocator);
+    defer arena_state.deinit();
+    var i: usize = 0;
+    while (i < s.pending_slots.items.len) {
+        const slot = s.pending_slots.items[i].get() orelse {
+            _ = s.pending_slots.orderedRemove(i);
+            continue;
+        };
+        if (shadowRootOf(slot) != shadow_root) {
+            i += 1;
+            continue;
+        }
+        _ = s.pending_slots.orderedRemove(i);
+        const slot_id = map.boundId(slot);
+        if (slot_id == 0) continue;
+        const nodes = distributedNodesOf(session, arena_state.allocator(), slot) catch continue;
+        session.emit(D.distributedNodesUpdated, .{ .insertionPointId = slot_id, .distributedNodes = nodes });
+    }
 }
 
 /// The document's rendering update (Blink's lifecycle update): each pending

@@ -443,7 +443,7 @@ const Notify = struct {
             return;
         };
         task.* = self;
-        _ = sink.post(.{ .run = run, .drop = dropTask, .data = task });
+        _ = sink.post(.{ .run = run, .drop = dropTask, .data = task, .source = .port_message });
     }
 
     fn run(data: ?*anyopaque) void {

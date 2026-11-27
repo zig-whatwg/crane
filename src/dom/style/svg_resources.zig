@@ -470,15 +470,14 @@ pub const UseLoad = struct {
         const delivery = self.allocator.create(Delivery) catch return self.finish();
         self.retain();
         delivery.* = .{ .load = self, .generation = self.generation, .valid = valid };
-        // SVG resource completion: networking task source. The Browser's
-        // current task queue is one FIFO (liaison Q15); no task source is
-        // modelled yet.
+        // SVG resource completion: networking task source.
         loop.queueTask(.{
             .callback = Delivery.run,
             .context = delivery,
             .drop = Delivery.drop,
             .document = self.document,
             .document_generation = self.document_generation,
+            .source = .networking,
         });
     }
 

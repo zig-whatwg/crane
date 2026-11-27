@@ -1491,7 +1491,7 @@ const PendingFetch = struct {
         if (self.task_queued or self.cancelled) return;
         const loop = self.context.getOptionalEventLoop() orelse return;
         self.task_queued = true;
-        loop.queueTask(.{ .callback = run, .context = self, .drop = drop });
+        loop.queueTask(.{ .callback = run, .context = self, .drop = drop, .source = .networking });
     }
 
     /// The task: send() steps 11.9 onwards - the response's headers once,
@@ -1638,6 +1638,7 @@ const PendingFetch = struct {
                 .drop = dropDocumentAbort,
                 .document = document.instance,
                 .document_generation = document.generation,
+                .source = .networking,
             });
         } else if (self.context.getOptionalTimer()) |timer| {
             self.abort_timer = timer;
@@ -1724,6 +1725,7 @@ const PendingFetch = struct {
                 .drop = dropDocumentAbort,
                 .document = document.instance,
                 .document_generation = document.generation,
+                .source = .networking,
             });
         } else self.detach();
         self.running = was_running;

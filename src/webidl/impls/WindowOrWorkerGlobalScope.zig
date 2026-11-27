@@ -719,6 +719,7 @@ const FetchCall = struct {
                 .drop = drop,
                 .document = window,
                 .document_generation = if (window) |w| runtime.SlabAllocator.generationOf(w) else 0,
+                .source = .networking,
             });
             return;
         }

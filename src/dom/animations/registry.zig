@@ -406,6 +406,7 @@ const EventTask = struct {
             .drop = drop,
             .document = if (global) |g| @ptrCast(g) else null,
             .document_generation = if (global) |g| runtime.SlabAllocator.generationOf(g) else 0,
+            .source = .dom_manipulation,
         });
     }
 

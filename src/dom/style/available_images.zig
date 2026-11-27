@@ -461,16 +461,16 @@ pub const Loader = struct {
         };
         self.retain();
         delivery.* = .{ .loader = self, .generation = self.generation, .image = image };
-        // HTML image buttons: user interaction task source. SVG image
-        // completion: networking. The live Browser queue currently has one
-        // FIFO and no task source is modelled (liaison Q15, source-aware
-        // queue is an engine follow-up).
+        // HTML image buttons: user interaction task source; SVG image / video
+        // poster completion: networking task source.
+        const source: runtime.EventLoopTask.Source = if (self.element.implements(interfaces.HTMLInputElement.State)) .user_interaction else .networking;
         loop.queueTask(.{
             .callback = Delivery.run,
             .context = delivery,
             .drop = Delivery.drop,
             .document = self.document,
             .document_generation = self.document_generation,
+            .source = source,
         });
     }
 

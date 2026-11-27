@@ -585,7 +585,9 @@ pub fn agentCleanupList(realm: runtime.Context) ?*CleanupList {
 /// not touch an owned task after a successful call.
 pub fn queueDatabaseTask(realm: runtime.Context, task: runtime.EventLoopTask) !DatabaseTaskHandle {
     const loop = realm.getOptionalEventLoop() orelse return error.NoTaskQueue;
-    loop.queueTask(task);
+    var queued = task;
+    if (queued.source == .generic) queued.source = .database_access;
+    loop.queueTask(queued);
     return .{};
 }
 

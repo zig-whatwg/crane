@@ -2461,6 +2461,7 @@ fn windowPostMessageSteps(instance: *runtime.Instance, message: runtime.JSValue,
         .drop = &dropPostedMessage,
         .document = instance,
         .document_generation = runtime.SlabAllocator.generationOf(instance),
+        .source = .posted_message,
     });
 }
 

@@ -467,7 +467,7 @@ fn systemFocusMayHaveChanged(traversable: *dom.browser_state.BrowsingContext, ta
     // The user interaction task source, as the platform's focus change is
     // input (Blink's FocusController::SetFocused runs from the browser's
     // SetFocus IPC, a task of its own).
-    loop.queueTask(.{ .callback = SystemFocusTask.run, .context = task, .drop = SystemFocusTask.drop, .document = @ptrCast(document), .document_generation = task.generation });
+    loop.queueTask(.{ .callback = SystemFocusTask.run, .context = task, .drop = SystemFocusTask.drop, .document = @ptrCast(document), .document_generation = task.generation, .source = .user_interaction });
 }
 
 /// The task that tells a tab's pages its system focus changed: the browsers'

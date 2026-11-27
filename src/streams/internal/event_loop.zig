@@ -66,6 +66,103 @@ pub const Microtask = struct {
     context: ?*anyopaque,
 };
 
+/// HTML §8.1.7.2 "Task sources": every task comes from a specific task source,
+/// and for each event loop every task source is associated with a specific task
+/// queue so tasks from the same source execute in FIFO order.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#task-source
+///
+/// Inter-source scheduling priority (Golden Rule 2):
+/// - Blink (`third_party/blink/renderer/platform/scheduler/main_thread/
+///   frame_scheduler_impl.cc` & `base/task/sequence_manager/
+///   task_queue_selector.cc`): `TaskType::kUserInteraction` runs at
+///   `kHighPriority`, preempting normal-priority sources up to
+///   `kMaxStarvationTasks = 5` consecutive tasks when a lower-priority queue
+///   has runnable work; DOM manipulation, networking, navigation/history,
+///   posted/port/broadcast messages, immediate/low-nesting timers, media,
+///   WebSocket, IndexedDB, and performance timeline run at `kNormalPriority`
+///   and break ties by monotonic `EnqueueOrder` (FIFO across equal-priority
+///   queues).
+/// - Gecko (`xpcom/threads/TaskController.cpp`, `PrioritizedEventQueue`):
+///   `InputHigh`/`InputNormal` (user interaction) preempts `Normal` (DOM,
+///   network, timers, media, IPC/messages) with a consecutive-input cap
+///   (`mProcessHighPriorityQueue`) so normal queues never starve.
+/// - WebKit (`Source/WebCore/dom/EventLoop.cpp`, `Source/WebCore/dom/
+///   TaskSource.h`): per-source queues preserving FIFO per source; user
+///   interaction prioritized ahead of timers/normal work without starvation,
+///   and equal-priority sources serviced in enqueue order.
+pub const TaskSource = enum(u8) {
+    /// HTML §8.1.7.3 "The user interaction task source": keyboard, mouse,
+    /// focus, visibility, close watchers, HTML image buttons.
+    user_interaction,
+    /// HTML §8.1.7.3 "The DOM manipulation task source": non-blocking reactions
+    /// to DOM mutations, animations, view transitions, inspector revalidation.
+    dom_manipulation,
+    /// HTML §8.1.7.3 "The networking task source": fetch, XHR, EventSource,
+    /// subresource completion.
+    networking,
+    /// HTML §8.1.7.3 "The navigation and traversal task source": navigation
+    /// and session history application steps.
+    navigation_and_traversal,
+    /// History traversal events (`hashchange`, `popstate`, `history.back/go`).
+    history_traversal,
+    /// HTML "posted message task source" (`Window.postMessage`).
+    posted_message,
+    /// HTML "timer task source" (`setTimeout` / `setInterval`).
+    timer,
+    /// Performance Timeline task source (`PerformanceObserver`).
+    performance_timeline,
+    /// Fallback task source when a microtask defers to a task queue.
+    microtask_fallback,
+    /// HTML "media element event task source" (media playback / tracks).
+    media_element,
+    /// IndexedDB "database access task source".
+    database_access,
+    /// WebSockets "WebSocket task source".
+    websocket,
+    /// HTML "broadcast channel task source" (`BroadcastChannel.postMessage`).
+    broadcast_channel,
+    /// HTML "port message queue" (`MessagePort.postMessage`).
+    port_message,
+    /// Uncategorized / generic spec task source (default for unspecified callers).
+    generic,
+
+    /// Number of distinct HTML task sources (fits in a 32-bit ready bitmask).
+    pub const count: usize = std.meta.tags(TaskSource).len;
+
+    /// Scheduling priority tier across task queues (see module doc / Golden Rule 2).
+    pub const Priority = enum(u2) {
+        high = 0,
+        normal = 1,
+    };
+
+    /// Maximum consecutive high-priority tasks executed while a normal-priority
+    /// queue also has a runnable task waiting before servicing one normal task
+    /// (Chromium `TaskQueueSelector::kMaxStarvationTasks = 5`).
+    pub const max_starvation_tasks: u8 = 5;
+
+    /// Comptime bitmask of high-priority task sources.
+    pub const high_priority_mask: u32 = blk: {
+        var mask: u32 = 0;
+        for (std.meta.tags(TaskSource)) |src| {
+            if (src.priority() == .high) mask |= (@as(u32, 1) << @backingInt(src));
+        }
+        break :blk mask;
+    };
+
+    pub inline fn priority(self: TaskSource) Priority {
+        return switch (self) {
+            .user_interaction => .high,
+            else => .normal,
+        };
+    }
+};
+
+comptime {
+    // Per-source queue ready masks use u32 bitsets.
+    std.debug.assert(TaskSource.count <= 32);
+}
+
 /// Task - Normal-priority work (I/O callbacks, timers, etc.)
 ///
 /// KEEP: anyopaque required - Task callbacks need type erasure because the
@@ -77,6 +174,9 @@ pub const Microtask = struct {
 ///
 /// Spec: https://html.spec.whatwg.org/#concept-task
 pub const Task = struct {
+    /// Alias so callers with `runtime.EventLoopTask` can name `TaskSource`.
+    pub const Source = TaskSource;
+
     /// KEEP: anyopaque required - Callback with type-erased context
     callback: *const fn (context: ?*anyopaque) void,
 
@@ -115,6 +215,10 @@ pub const Task = struct {
     /// (runtime.SlabAllocator.generationOf): the document may be freed, and
     /// its slot reused, while the task waits.
     document_generation: u64 = 0,
+
+    /// HTML §8.1.7.2 task source for this task. Tasks from the same source
+    /// share a FIFO queue on their event loop; defaults to `.generic`.
+    source: TaskSource = .generic,
 };
 
 /// Event Loop Interface
