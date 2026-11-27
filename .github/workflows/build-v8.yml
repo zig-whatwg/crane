@@ -230,16 +230,18 @@ jobs:
           else
             if [ "${RUNNER_OS}" = "macOS" ]; then
               ext="dylib"
+              libcxx_lib="libc++_chrome.dylib"
             else
               ext="so"
+              libcxx_lib="libc++.so"
             fi
             for lib in \
               "libv8.${ext}" \
               "libv8_libplatform.${ext}" \
               "libv8_libbase.${ext}" \
-              "libc++.${ext}" \
+              "${libcxx_lib}" \
               "libicuuc.${ext}" \
-              "libicui18n.${ext}"
+              "libthird_party_icu_icui18n.${ext}"
             do
               if [ ! -f "$meta_root/$lib" ]; then
                 echo "::error::missing shared library $lib in $meta_root"

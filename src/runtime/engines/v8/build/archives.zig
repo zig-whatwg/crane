@@ -261,6 +261,7 @@ pub fn selectResolved(allocator: std.mem.Allocator, options: SelectOptions) (Sel
         },
         .dynamic => {
             const ext = sharedLibExt(options.os);
+            const libcxx_stem = if (options.os == .macos) "libc++_chrome" else "libc++";
             const dir = try joinPath(allocator, root, "out/dynamic");
             errdefer allocator.free(dir);
             const v8 = try std.fmt.allocPrint(allocator, "{s}/libv8.{s}", .{ dir, ext });
@@ -269,11 +270,11 @@ pub fn selectResolved(allocator: std.mem.Allocator, options: SelectOptions) (Sel
             errdefer allocator.free(libplatform);
             const libbase = try std.fmt.allocPrint(allocator, "{s}/libv8_libbase.{s}", .{ dir, ext });
             errdefer allocator.free(libbase);
-            const libcxx = try std.fmt.allocPrint(allocator, "{s}/libc++.{s}", .{ dir, ext });
+            const libcxx = try std.fmt.allocPrint(allocator, "{s}/{s}.{s}", .{ dir, libcxx_stem, ext });
             errdefer allocator.free(libcxx);
             const icuuc = try std.fmt.allocPrint(allocator, "{s}/libicuuc.{s}", .{ dir, ext });
             errdefer allocator.free(icuuc);
-            const icui18n = try std.fmt.allocPrint(allocator, "{s}/libicui18n.{s}", .{ dir, ext });
+            const icui18n = try std.fmt.allocPrint(allocator, "{s}/libthird_party_icu_icui18n.{s}", .{ dir, ext });
             errdefer allocator.free(icui18n);
             const include = try joinPath(allocator, dir, "include");
             errdefer allocator.free(include);
@@ -519,9 +520,9 @@ test "-Dv8-link=dynamic resolves shared V8 libraries on macOS (.dylib) and Linux
     try testing.expectEqualStrings("/opt/v8/out/dynamic/libv8.dylib", mac.link_inputs.dynamic.v8);
     try testing.expectEqualStrings("/opt/v8/out/dynamic/libv8_libplatform.dylib", mac.link_inputs.dynamic.libplatform);
     try testing.expectEqualStrings("/opt/v8/out/dynamic/libv8_libbase.dylib", mac.link_inputs.dynamic.libbase);
-    try testing.expectEqualStrings("/opt/v8/out/dynamic/libc++.dylib", mac.link_inputs.dynamic.libcxx);
+    try testing.expectEqualStrings("/opt/v8/out/dynamic/libc++_chrome.dylib", mac.link_inputs.dynamic.libcxx);
     try testing.expectEqualStrings("/opt/v8/out/dynamic/libicuuc.dylib", mac.link_inputs.dynamic.icuuc);
-    try testing.expectEqualStrings("/opt/v8/out/dynamic/libicui18n.dylib", mac.link_inputs.dynamic.icui18n);
+    try testing.expectEqualStrings("/opt/v8/out/dynamic/libthird_party_icu_icui18n.dylib", mac.link_inputs.dynamic.icui18n);
     try testing.expectEqualStrings("/opt/v8/out/dynamic/include", mac.include);
     try testing.expectEqualStrings("/opt/v8/out/dynamic/libcxx/flags.txt", mac.chromium.libcxx_flags);
     try testing.expectEqualStrings("/opt/v8/out/dynamic/icu/flags.txt", mac.icu.flags);
@@ -538,7 +539,7 @@ test "-Dv8-link=dynamic resolves shared V8 libraries on macOS (.dylib) and Linux
     try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/dynamic/libv8_libbase.so", lin.link_inputs.dynamic.libbase);
     try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/dynamic/libc++.so", lin.link_inputs.dynamic.libcxx);
     try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/dynamic/libicuuc.so", lin.link_inputs.dynamic.icuuc);
-    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/dynamic/libicui18n.so", lin.link_inputs.dynamic.icui18n);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43-icu/out/dynamic/libthird_party_icu_icui18n.so", lin.link_inputs.dynamic.icui18n);
 }
 
 test "-Dv8-link=dynamic rejects iOS and official builds" {

@@ -379,7 +379,16 @@ libcxx_targets() {
 }
 
 archives() { echo libv8_monolith.a libv8_libplatform_fat.a libv8_libbase_fat.a libc++_chromium.a librust_v8.a; }
-dynamic_libs() { echo "libv8.$SHARED_EXT" "libv8_libplatform.$SHARED_EXT" "libv8_libbase.$SHARED_EXT" "libc++.$SHARED_EXT" "libicuuc.$SHARED_EXT" "libicui18n.$SHARED_EXT"; }
+dynamic_libcxx_name() {
+  if [ "$HOST_OS" = mac ]; then
+    echo "libc++_chrome.$SHARED_EXT"
+  else
+    echo "libc++.$SHARED_EXT"
+  fi
+}
+dynamic_libs() {
+  echo "libv8.$SHARED_EXT" "libv8_libplatform.$SHARED_EXT" "libv8_libbase.$SHARED_EXT" "$(dynamic_libcxx_name)" "libicuuc.$SHARED_EXT" "libthird_party_icu_icui18n.$SHARED_EXT"
+}
 
 step_build() {
   check_stop build
@@ -506,12 +515,14 @@ step_verify() {
   if [ "$V8_LINK" = dynamic ]; then
     cd "$V8/$OUT"
     local nm="$LLVM/bin/llvm-nm" a std1 cr cxx11 gnu crel bad=0 crel_bad=0
+    local nm_flags=()
+    [ "$HOST_OS" != linux ] || nm_flags=(-D)
     for a in lib*."$SHARED_EXT"; do
       [ -f "$a" ] || continue
-      std1=$("$nm" -D "$a" 2>/dev/null | grep -c 'St3__1' || true)
-      cr=$("$nm" -D "$a" 2>/dev/null | grep -c 'St4__Cr' || true)
-      cxx11=$("$nm" -D "$a" 2>/dev/null | grep -c '_ZNSt7__cxx11\|_ZNKSt7__cxx11' || true)
-      gnu=$("$nm" -D "$a" 2>/dev/null | grep -c '__gnu_cxx' || true)
+      std1=$("$nm" ${nm_flags[@]+"${nm_flags[@]}"} "$a" 2>/dev/null | grep -c 'St3__1' || true)
+      cr=$("$nm" ${nm_flags[@]+"${nm_flags[@]}"} "$a" 2>/dev/null | grep -c 'St4__Cr' || true)
+      cxx11=$("$nm" ${nm_flags[@]+"${nm_flags[@]}"} "$a" 2>/dev/null | grep -c '_ZNSt7__cxx11\|_ZNKSt7__cxx11' || true)
+      gnu=$("$nm" ${nm_flags[@]+"${nm_flags[@]}"} "$a" 2>/dev/null | grep -c '__gnu_cxx' || true)
       echo "   $a: std::__Cr $cr | std::__1 $std1 | std::__cxx11 $cxx11 | __gnu_cxx $gnu"
       [ "$std1" = 0 ] && [ "$cxx11" = 0 ] && [ "$gnu" = 0 ] || bad=1
       if [ "$HOST_OS" = linux ]; then
@@ -695,13 +706,13 @@ PYIN
     run_target=("$qemu" -L "$V8/build/linux/debian_bullseye_arm64-sysroot")
   fi
   local rc=0
-  "${run_target[@]}" "$OUT/d8" -e "print(1 + 1, Temporal.PlainDate.from('2026-11-10').add({ days: 1 }).toString())" > "$OUT/d8-smoke.txt" 2>&1 || rc=$?
+  ${run_target[@]+"${run_target[@]}"} "$OUT/d8" -e "print(1 + 1, Temporal.PlainDate.from('2026-11-10').add({ days: 1 }).toString())" > "$OUT/d8-smoke.txt" 2>&1 || rc=$?
   log "d8: $(cat "$OUT/d8-smoke.txt") (rc $rc)"
   [ "$rc" = 0 ] && grep -q -x '2 2026-11-11' "$OUT/d8-smoke.txt" || die "d8's smoke test failed"
   # ICU, with no icudtl.dat beside d8 (the data is linked in): a Unicode property escape, NFD splitting
   # U+00E9, German collation (a, U+00E4, z) and a Tokyo wall time.
   rc=0
-  "${run_target[@]}" "$OUT/d8" -e 'print(/\p{L}/u.test("é"), "é".normalize("NFD").length, ["z", "ä", "a"].sort(new Intl.Collator("de").compare).map((c) => c.codePointAt(0)).join(","), new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", hour: "numeric", hourCycle: "h23" }).format(0))' \
+  ${run_target[@]+"${run_target[@]}"} "$OUT/d8" -e 'print(/\p{L}/u.test("é"), "é".normalize("NFD").length, ["z", "ä", "a"].sort(new Intl.Collator("de").compare).map((c) => c.codePointAt(0)).join(","), new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", hour: "numeric", hourCycle: "h23" }).format(0))' \
     > "$OUT/d8-icu-smoke.txt" 2>&1 || rc=$?
   log "d8 ICU: $(cat "$OUT/d8-icu-smoke.txt") (rc $rc)"
   [ "$rc" = 0 ] && grep -q -x 'true 2 97,228,122 09' "$OUT/d8-icu-smoke.txt" || die "d8's ICU smoke test failed"
@@ -870,7 +881,7 @@ step_smoke() {
   cr=$("$nm" "$t/smoke" 2>/dev/null | grep -c 'St4__Cr' || true)
   other=$("$nm" "$t/smoke" 2>/dev/null | grep -c -E 'St3__1|_ZNSt7__cxx11|__gnu_cxx' || true)
   rc=0
-  "${run_target[@]}" "$t/smoke" > "$V8/$OUT/smoke.txt" 2>&1 || rc=$?
+  ${run_target[@]+"${run_target[@]}"} "$t/smoke" > "$V8/$OUT/smoke.txt" 2>&1 || rc=$?
   echo "smoke binary: std::__Cr symbols $cr, std::__1/libstdc++ symbols $other" >> "$V8/$OUT/smoke.txt"
   cat "$V8/$OUT/smoke.txt"
   [ "$other" = 0 ] && [ "$cr" -gt 0 ] || die "the smoke binary holds another C++ library than Chromium's"
@@ -892,7 +903,7 @@ step_smoke() {
       ${zig_link_extra[@]+"${zig_link_extra[@]}"} ${zig_sys[@]+"${zig_sys[@]}"} -lc -O Debug ${zig_linker_flags[@]+"${zig_linker_flags[@]}"} --name smoke-zig ) > "$t/link-zig.txt" 2>&1 || rc=$?
   [ "$rc" = 0 ] || { head -40 "$t/link-zig.txt"; rm -rf "$t"; die "the Zig-linker smoke link failed (rc $rc)"; }
   rc=0
-  "${run_target[@]}" "$t/smoke-zig" > "$V8/$OUT/smoke-zig.txt" 2>&1 || rc=$?
+  ${run_target[@]+"${run_target[@]}"} "$t/smoke-zig" > "$V8/$OUT/smoke-zig.txt" 2>&1 || rc=$?
   echo "linked by Zig's own linker (-fno-lld, Debug): rc $rc" >> "$V8/$OUT/smoke-zig.txt"
   cat "$V8/$OUT/smoke-zig.txt"
   cat "$V8/$OUT/smoke-zig.txt" >> "$V8/$OUT/smoke.txt"
@@ -940,7 +951,7 @@ step_install() {
       echo "ICU: $(icu_major) (third_party/icu at this tag's DEPS, $(git -C third_party/icu rev-parse --short=12 HEAD 2> /dev/null || echo '?')); data linked in (icu_use_data_file = false)"
       echo "clang: $("$LLVM/bin/clang" --version | head -1)"
       echo "rustc: $("$V8/third_party/rust-toolchain/bin/rustc" --version)"
-      echo "libc++: Chromium's (third_party/libc++ at this tag's DEPS, std::__Cr, hardened); libc++.$SHARED_EXT"
+      echo "libc++: Chromium's (third_party/libc++ at this tag's DEPS, std::__Cr, hardened); $(dynamic_libcxx_name)"
       [ "$HOST_OS" != mac ] || echo "SDK: macOS $(xcrun --sdk macosx --show-sdk-version)"
       [ -z "${PROVENANCE_NOTE:-}" ] || echo "$PROVENANCE_NOTE"
     } > "$DYN_NEW/PROVENANCE"
