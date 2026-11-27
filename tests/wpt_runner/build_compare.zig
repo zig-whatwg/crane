@@ -393,9 +393,14 @@ pub const LogFindings = struct {
     /// refcount_teardown.agentEnded - never a gate failure here, so the
     /// heap does not report them twice (the integrator, 2026-11-23).
     heap_swept_nodes: usize = 0,
+    /// A Browser that fell off the full heap reservation rung (`cage_alone`,
+    /// `smaller_cage`, `unreserved`): general memory fell back to the host
+    /// allocator, so the bug-finding run did not exercise the hardened pools
+    /// (allocator-hardening design §10.2).
+    unexpected_rungs: usize = 0,
 
     pub fn total(self: LogFindings) usize {
-        return self.leaks + self.bad_frees + self.panics + self.poison_reads + self.refcount + self.heap_leaks;
+        return self.leaks + self.bad_frees + self.panics + self.poison_reads + self.refcount + self.heap_leaks + self.unexpected_rungs;
     }
 
     pub fn scan(self: *LogFindings, text: []const u8) void {
@@ -418,6 +423,13 @@ pub const LogFindings = struct {
             const rest = line[at + "heap swept: ".len ..];
             const digits = std.mem.indexOfNone(u8, rest, "0123456789") orelse rest.len;
             self.heap_swept_nodes += std.fmt.parseInt(usize, rest[0..digits], 10) catch 0;
+        }
+        // Design §10.2: Browser.init logs non-full heap reservation rungs
+        // ("the Browser's heap got the <rung> rung: ..."); any non-full rung
+        // fails the bug-finding gate.
+        if (std.mem.indexOf(u8, line, "the Browser's heap got the ")) |at| {
+            const rest = line[at + "the Browser's heap got the ".len ..];
+            if (!std.mem.startsWith(u8, rest, "full ")) self.unexpected_rungs += 1;
         }
     }
 };
@@ -473,7 +485,7 @@ pub const Report = struct {
         if (self.wrong_build > 0) try w.print("  WRONG BUILD: {d} journal record(s) are not the side they were given as (a production journal as --production, a bug-finding one as --bug-finding)\n", .{self.wrong_build});
         try w.print("bug-finding gate: {s} - crashes {d}, ownership violations {d}", .{ if (self.gatePassed()) "PASS" else "FAIL", self.crashes.len, self.ownership_violations });
         if (self.log) |l| {
-            try w.print(", leaks {d}, bad frees {d}, panics {d}, poison reads {d}, refcount {d}, heap leaks {d} (and {d} node(s) swept at Browser ends, not counted)\n", .{ l.leaks, l.bad_frees, l.panics, l.poison_reads, l.refcount, l.heap_leaks, l.heap_swept_nodes });
+            try w.print(", leaks {d}, bad frees {d}, panics {d}, poison reads {d}, refcount {d}, heap leaks {d}, unexpected rungs {d} (and {d} node(s) swept at Browser ends, not counted)\n", .{ l.leaks, l.bad_frees, l.panics, l.poison_reads, l.refcount, l.heap_leaks, l.unexpected_rungs, l.heap_swept_nodes });
         } else try w.writeAll(" (no log given: leaks, bad frees, panics and poison reads not read)\n");
         for (self.crashes) |path| try w.print("  CRASH {s}\n", .{path});
         try w.print("differences: {d} ({d} known, {d} NEW, {d} STALE)\n", .{ self.differences.len, self.verdict.known, self.verdict.new.len, self.verdict.stale.len });
@@ -913,4 +925,35 @@ test "the report passes only with the gate clean and the differences all known" 
     // The NEW line is ready for the known list once it has an owner and evidence.
     try testing.expect(std.mem.indexOf(u8, w.buffered(), "/a.html\tx\\ty\tPASS\tFAIL\t<owner>\t<evidence>\n") != null);
     try testing.expect(std.mem.indexOf(u8, w.buffered(), "build compare: FAIL") != null);
+}
+
+test "unexpected non-full heap rungs fail the bug-finding gate (§10.2)" {
+    var f: LogFindings = .{};
+    f.scan(
+        \\info(browser): the Browser's heap got the cage_alone rung: its objects partition is in the cage's upper half
+        \\info(browser): the Browser's heap got the smaller_cage rung: its objects partition is in the cage's upper half
+        \\info(browser): the Browser's heap got the unreserved rung: its objects partition is in the cage's upper half
+        \\info(browser): the Browser's heap got the full rung: all pools active
+    );
+    try testing.expectEqual(@as(usize, 3), f.unexpected_rungs);
+    try testing.expectEqual(@as(usize, 3), f.total());
+
+    var rung_fail: Report = .{
+        .production_files = 1,
+        .bug_finding_files = 1,
+        .differences = &.{},
+        .verdict = .{ .new = &.{}, .stale = &.{}, .known = 0 },
+        .crashes = &.{},
+        .ownership_violations = 0,
+        .log = f,
+        .wrong_build = 0,
+    };
+    try testing.expect(!rung_fail.gatePassed());
+    try testing.expect(!rung_fail.passed());
+
+    var buf: [2048]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try rung_fail.write(&w);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "unexpected rungs 3") != null);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "bug-finding gate: FAIL") != null);
 }

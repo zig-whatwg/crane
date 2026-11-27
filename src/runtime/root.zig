@@ -313,6 +313,14 @@ pub const BrowserScope = @import("browser_scope.zig").BrowserScope;
 /// The span engine every State block and Instance slot of a Browser lives in
 /// (src/runtime/heap/: allocator-hardening batch A).
 pub const heap = @import("heap/root.zig");
+/// Comptime-typed heap entry points routing pointer-bearing types to `.objects`
+/// and byte/scalar types to `.bytes` (allocator-hardening design §3.1, §4.1, §7 B.2).
+pub const heapCreate = heap.create;
+pub const heapDestroy = heap.destroy;
+pub const heapAlloc = heap.alloc;
+pub const heapAllocAligned = heap.allocAligned;
+pub const heapFree = heap.free;
+pub const heapFreeAligned = heap.freeAligned;
 /// A tab's state, reached through the realm (ContextData.tab_scope;
 /// docs/instances.md rule 2): made and closed by its top-level browsing
 /// context's record.

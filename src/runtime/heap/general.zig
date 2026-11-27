@@ -61,6 +61,13 @@ pub fn engineOf(allocator: std.mem.Allocator) ?*heap.Engine {
     return null;
 }
 
+/// The `AgentCache` behind `allocator`, when it is a per-agent general
+/// allocator (`agentAllocator`).
+pub fn agentCacheOf(allocator: std.mem.Allocator) ?*heap.AgentCache {
+    if (allocator.vtable == &agent_vtable) return @ptrCast(@alignCast(allocator.ptr));
+    return null;
+}
+
 fn agentAlloc(context: *anyopaque, len: usize, alignment: std.mem.Alignment, return_address: usize) ?[*]u8 {
     const cache: *heap.AgentCache = @ptrCast(@alignCast(context));
     if (cache.owner.load(.monotonic) == platform.currentThreadToken()) {

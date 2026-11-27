@@ -616,6 +616,23 @@ pub inline fn releaseFreeMemory(level: MemoryRelease) usize {
     return impl.releaseFreeMemory(level);
 }
 
+/// Synthetic zone tag base for Darwin `malloc_logger` heap callouts (`[V2] D8`,
+/// allocator-hardening Batch C item 5; no-op on non-Darwin platforms).
+pub const heap_zone_tag_base: usize = @import("memory").heap_zone_tag_base;
+
+/// Emit a Darwin `malloc_logger` allocation callout for a Browser heap block,
+/// or no-op on non-Darwin platforms / when no logger is attached. Facade helper
+/// (non-inline so adapters need not declare an operation for it).
+pub fn logHeapAlloc(zone_id: usize, size: usize, address: usize) void {
+    @import("memory").logHeapAlloc(zone_id, size, address);
+}
+
+/// Emit a Darwin `malloc_logger` deallocation callout for a Browser heap block,
+/// or no-op on non-Darwin platforms / when no logger is attached.
+pub fn logHeapFree(zone_id: usize, address: usize) void {
+    @import("memory").logHeapFree(zone_id, address);
+}
+
 // ============================================================================
 // 6.2 Clocks (HR-Time 2.1)
 // ============================================================================

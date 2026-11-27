@@ -64,6 +64,10 @@ pub const satellite = @import("satellite.zig");
 /// production release builds so the hot path pays zero instructions.
 pub const alloc_log_compiled: bool = builtin.mode == .debug or runtime_options.heap_alloc_log;
 
+/// Whether `-Dheap-alloc-log=true` was explicitly requested for this build
+/// (wires Darwin `malloc_logger` callouts automatically in `Browser.init`).
+pub const heap_alloc_log_enabled: bool = runtime_options.heap_alloc_log;
+
 /// Allocation/free observer hook for tooling builds (`[V2] D8`, Batch C item 5).
 pub const AllocObserver = struct {
     context: ?*anyopaque = null,
@@ -182,6 +186,18 @@ pub const poison_byte: u8 = 0xdd;
 pub const instance_fill_bytes: usize = 24;
 /// An Instance slot: the Instance and its stamp.
 pub const instance_slot_bytes: usize = 32;
+
+/// Leading bytes of a `.node` State block skipped by zero/poison-on-free and
+/// verify-on-issue (allocator-hardening design §4.4, N11/H3 preparation):
+/// 0 until N11 moves the Instance header/stamp inside the node block, leaving
+/// the stamp readable after free while filling and verifying the rest.
+pub const node_stamp_skip_bytes: usize = 0;
+
+/// Fill `[skip..fill_len]` of a freed block with `fill_byte`, leaving any
+/// leading stamp bytes (`[0..skip]`) untouched (design §4.4, N11/H3).
+pub inline fn fillFreedBytes(block: [*]u8, fill_len: usize, comptime skip: usize, fill_byte: u8) void {
+    if (fill_len > skip) @memset(block[skip..fill_len], fill_byte);
+}
 
 // ============================================================================
 // Configuration
@@ -607,6 +623,30 @@ pub const PartitionStats = struct {
     /// bytes. Counted in the live figures by `Engine.stats`.
     huge_blocks: usize = 0,
     huge_bytes: usize = 0,
+    /// Free slot bytes inside non-empty committed (`.active`, `used > 0`)
+    /// spans of this partition (active-span slack, design §5.1 & §7 A.1):
+    /// summed as `(slots - used) * block_bytes` per non-empty active span.
+    free_bytes_in_active_spans: usize = 0,
+};
+
+/// Per-class (per-bucket) statistics (allocator-hardening design §5.1 & §7 A.1):
+/// active, empty, decommitted, and retired span counts, VA assigned, live and
+/// quarantined blocks/bytes, and active-span slack (`free_bytes_in_active_spans`).
+pub const ClassStats = struct {
+    partition: PartitionId,
+    bucket: u16,
+    block_bytes: usize,
+    general: bool,
+    spans_active: usize = 0,
+    spans_empty: usize = 0,
+    spans_decommitted: usize = 0,
+    spans_retired: usize = 0,
+    va_assigned: usize = 0,
+    live_blocks: usize = 0,
+    live_bytes: usize = 0,
+    quarantined_blocks: usize = 0,
+    quarantined_bytes: usize = 0,
+    free_bytes_in_active_spans: usize = 0,
 };
 
 /// A free span run inside the `bytes` partition's coalescing large-run pool
@@ -768,6 +808,92 @@ pub const AgentCache = struct {
     pub fn allocator(self: *AgentCache) std.mem.Allocator {
         return general.agentAllocator(self);
     }
+
+    /// Comptime-routed single-object allocation through this agent's cache
+    /// (allocator-hardening design §3.1, §4.1, §7 B.2): pointer-bearing `T`
+    /// goes to `.objects`, pointer-free `T` goes to `.bytes`.
+    pub fn create(self: *AgentCache, comptime T: type) Error!*T {
+        const pid = comptime partitionForType(T);
+        if (@sizeOf(T) == 0) return zeroSizedPtr(T);
+        const align_val = comptime std.mem.Alignment.of(T);
+        const thread = platform.currentThreadToken();
+        const raw = if (self.owner.load(.monotonic) == thread)
+            try self.engine.cacheAlloc(self, pid, @sizeOf(T), align_val, @returnAddress())
+        else
+            try self.engine.allocGeneral(pid, @sizeOf(T), @alignOf(T), @returnAddress());
+        return @ptrCast(@alignCast(raw));
+    }
+
+    /// Comptime-routed single-object destruction through this agent's cache.
+    pub fn destroy(self: *AgentCache, ptr: anytype) void {
+        const info = @typeInfo(@TypeOf(ptr));
+        if (info != .pointer or info.pointer.size != .one)
+            @compileError("heap.destroy expects a single-item pointer");
+        const T = info.pointer.child;
+        const pid = comptime partitionForType(T);
+        if (@sizeOf(T) == 0) return;
+        const align_bytes = comptime ptrAlignment(@TypeOf(ptr));
+        const align_val = comptime std.mem.Alignment.fromByteUnits(align_bytes);
+        const raw: [*]u8 = @ptrCast(@constCast(ptr));
+        const thread = platform.currentThreadToken();
+        if (self.owner.load(.monotonic) == thread) {
+            self.engine.cacheFree(self, pid, raw, @sizeOf(T), align_val, thread);
+        } else {
+            self.engine.freeGeneral(raw, @sizeOf(T), align_bytes);
+        }
+    }
+
+    /// Comptime-routed slice allocation through this agent's cache.
+    pub fn alloc(self: *AgentCache, comptime T: type, n: usize) Error![]T {
+        return self.allocAligned(T, .of(T), n);
+    }
+
+    /// Comptime-routed aligned slice allocation through this agent's cache:
+    /// even when `alignment >= @alignOf(usize)`, a pointer-free `T` (such as
+    /// 16-byte-aligned raw `u8` buffers) still routes to `.bytes`.
+    pub fn allocAligned(self: *AgentCache, comptime T: type, comptime alignment: std.mem.Alignment, n: usize) Error![]align(alignment.toByteUnits()) T {
+        comptime {
+            if (alignment.toByteUnits() < @alignOf(T))
+                @compileError("heap.allocAligned alignment must be >= @alignOf(T)");
+        }
+        const pid = comptime partitionForType(T);
+        if (n == 0 or @sizeOf(T) == 0) return &.{};
+        const total = std.math.mul(usize, @sizeOf(T), n) catch return error.OutOfMemory;
+        const thread = platform.currentThreadToken();
+        const raw = if (self.owner.load(.monotonic) == thread)
+            try self.engine.cacheAlloc(self, pid, total, alignment, @returnAddress())
+        else
+            try self.engine.allocGeneral(pid, total, alignment.toByteUnits(), @returnAddress());
+        const typed: [*]align(alignment.toByteUnits()) T = @ptrCast(@alignCast(raw));
+        return typed[0..n];
+    }
+
+    /// Comptime-routed slice free through this agent's cache.
+    pub fn free(self: *AgentCache, memory: anytype) void {
+        const info = @typeInfo(@TypeOf(memory));
+        if (info != .pointer or info.pointer.size != .slice)
+            @compileError("heap.free expects a slice");
+        const align_val = comptime std.mem.Alignment.fromByteUnits(ptrAlignment(@TypeOf(memory)));
+        self.freeAligned(memory, align_val);
+    }
+
+    /// Comptime-routed aligned slice free through this agent's cache.
+    pub fn freeAligned(self: *AgentCache, memory: anytype, comptime alignment: std.mem.Alignment) void {
+        const info = @typeInfo(@TypeOf(memory));
+        if (info != .pointer or info.pointer.size != .slice)
+            @compileError("heap.freeAligned expects a slice");
+        const T = info.pointer.child;
+        const pid = comptime partitionForType(T);
+        if (memory.len == 0 or @sizeOf(T) == 0) return;
+        const total = @sizeOf(T) * memory.len;
+        const raw: [*]u8 = @ptrCast(@constCast(memory.ptr));
+        const thread = platform.currentThreadToken();
+        if (self.owner.load(.monotonic) == thread) {
+            self.engine.cacheFree(self, pid, raw, total, alignment, thread);
+        } else {
+            self.engine.freeGeneral(raw, total, alignment.toByteUnits());
+        }
+    }
 };
 
 // ============================================================================
@@ -792,8 +918,9 @@ const Quarantine = struct {
     thread: std.atomic.Value(usize) = .init(0),
     /// The window agent's cache owning tagged (`entry & 0xf != 0`) entries
     /// (M8-1). Mutated on the window thread (or under `objects.mutex` on
-    /// `detachAgent`).
-    window_cache: ?*AgentCache = null,
+    /// `detachAgent`); atomic because worker threads check it on `detachAgent`
+    /// concurrently with the window thread's lock-free `cacheFree`.
+    window_cache: std.atomic.Value(?*AgentCache) = .init(null),
     count: usize = 0,
     held_bytes: usize = 0,
     /// Whether `layout.quarantine` has been committed (false while `count`
@@ -1309,13 +1436,22 @@ pub const Engine = struct {
         // crosses a super page.
         if (at % super_page == 0) at += span_bytes;
         if (at % super_page + run * span_bytes > super_page) at = std.mem.alignForward(usize, at, super_page) + span_bytes;
+        // Design §4.4: permanently skip the cage super page containing
+        // 0xDDDDDDDD so a dereferenced bug-finding poisoned Link always faults.
+        if (browser_heap.overlapsPoisonSuperPage(at, run * span_bytes)) {
+            at = @as(usize, @intCast(browser_heap.poison_super_page_offset)) + super_page + span_bytes;
+        }
         const end = at + run * span_bytes;
         if (end > p.limit) return error.OutOfMemory;
         if (self.grow_hook) |hook| if (!hook.call(hook.context)) return error.OutOfMemory;
         // Data: whole super pages past their guard (Linux: one mprotect per
-        // super page, design 5.3).
+        // super page, design 5.3). Skip the uncommitted poison guard super page.
         while (p.data_hi < end) {
             const super_start = std.mem.alignBackward(usize, p.data_hi, super_page);
+            if (browser_heap.overlapsPoisonSuperPage(super_start, super_page)) {
+                p.data_hi = super_start + super_page;
+                continue;
+            }
             self.heap.commit(super_start + span_bytes, super_page - span_bytes) catch return error.OutOfMemory;
             p.data_hi = super_start + super_page;
         }
@@ -1639,6 +1775,8 @@ pub const Engine = struct {
                 const cap = @min(checked, general_objects_zero_cap);
                 self.verifyZeroSlice(block[0..cap]);
                 if (!fresh and checked > general_objects_zero_cap) @memset(block[general_objects_zero_cap..checked], 0);
+            } else if (p.id == .node) {
+                self.verifyAndZeroBlock(block, checked, node_stamp_skip_bytes, fresh);
             } else {
                 self.verifyFreed(block[0..checked], fresh);
             }
@@ -1667,6 +1805,14 @@ pub const Engine = struct {
             self.violation(.write_after_free, @intFromPtr(block.ptr));
             @memset(block, 0);
         }
+    }
+
+    /// Verify `[skip..checked]` of a block being issued against its expected
+    /// fill (zero or poison) and zero it on reissue, leaving any leading stamp
+    /// bytes (`[0..skip]`) intact (design §4.4, N11/H3 preparation).
+    pub fn verifyAndZeroBlock(self: *Engine, block: [*]u8, checked: usize, comptime skip: usize, fresh: bool) void {
+        if (checked <= skip) return;
+        self.verifyFreed(block[skip..checked], fresh);
     }
 
     fn verifyFreed(self: *Engine, block: []u8, fresh: bool) void {
@@ -1843,6 +1989,30 @@ pub const Engine = struct {
     // Agent caches (allocator-hardening batch B, design 3.7)
     // ------------------------------------------------------------------
 
+    /// Summary of currently attached `AgentCache`s (thread-safe snapshot under
+    /// `objects.mutex`, reading atomic `owner` and `held` counters).
+    pub const AttachedCacheSummary = struct {
+        total: usize = 0,
+        non_window: usize = 0,
+        non_window_held: usize = 0,
+    };
+
+    pub fn attachedCacheSummary(self: *Engine, window_thread: usize) AttachedCacheSummary {
+        std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+        var summary: AttachedCacheSummary = .{};
+        var at = self.caches;
+        while (at) |cache| : (at = cache.next) {
+            summary.total += 1;
+            const owner = cache.owner.load(.monotonic);
+            if (owner != 0 and owner != window_thread) {
+                summary.non_window += 1;
+                summary.non_window_held += cache.held[0].load(.monotonic) + cache.held[1].load(.monotonic);
+            }
+        }
+        return summary;
+    }
+
     /// A cache for the agent whose thread calls this (the window agent's,
     /// or a worker's): its allocator (AgentCache.allocator) takes and gives
     /// back general class blocks without a lock on that thread. Detach it
@@ -1850,25 +2020,34 @@ pub const Engine = struct {
     pub fn attachAgent(self: *Engine) Error!*AgentCache {
         std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+        const token = platform.currentThreadToken();
         const cache: *AgentCache = if (self.free_caches) |reused| reused: {
             self.free_caches = reused.next;
+            // Immutable geometry fields (`engine`, `window_base`, etc.) were
+            // written before this cache was ever published and must NOT be
+            // overwritten on reuse: another thread holding an `Allocator` from
+            // an ended agent reads `cache.owner` (atomic) and `cache.engine`
+            // (immutable) without locking (`detachAgent`'s contract).
+            reused.seen_frontier = .{ 0, 0 };
+            reused.owner.store(token, .monotonic);
             break :reused reused;
         } else made: {
             const id = try self.poolAlloc(&self.objects, @sizeOf(AgentCache));
-            break :made @ptrFromInt(self.heap.window_base + self.meta_pool_base + @as(usize, id) * @sizeOf(Chunk));
-        };
-        cache.* = .{
-            .engine = self,
-            .owner = .init(platform.currentThreadToken()),
-            .window_base = self.heap.window_base,
-            .reserved_base = self.heap.reserved.base,
-            .reserved_size = self.heap.reserved.size,
-            .bitmaps_base = self.heap.at(layout.bitmaps.offset),
-            .span_table_base = self.heap.at(layout.span_table.offset),
-            .part_lo = .{ self.objects.lo, self.bytes.lo },
-            .part_size = .{ self.objects.hi - self.objects.lo, self.bytes.hi - self.bytes.lo },
-            .poison = self.config.fill == .poison,
-            .record_sites = self.config.record_sites,
+            const fresh: *AgentCache = @ptrFromInt(self.heap.window_base + self.meta_pool_base + @as(usize, id) * @sizeOf(Chunk));
+            fresh.* = .{
+                .engine = self,
+                .owner = .init(token),
+                .window_base = self.heap.window_base,
+                .reserved_base = self.heap.reserved.base,
+                .reserved_size = self.heap.reserved.size,
+                .bitmaps_base = self.heap.at(layout.bitmaps.offset),
+                .span_table_base = self.heap.at(layout.span_table.offset),
+                .part_lo = .{ self.objects.lo, self.bytes.lo },
+                .part_size = .{ self.objects.hi - self.objects.lo, self.bytes.hi - self.bytes.lo },
+                .poison = self.config.fill == .poison,
+                .record_sites = self.config.record_sites,
+            };
+            break :made fresh;
         };
         cache.next = self.caches;
         self.caches = cache;
@@ -1880,7 +2059,7 @@ pub const Engine = struct {
     /// even mid-task without releasing quarantined blocks early (M8-1).
     /// Caller holds `self.objects.mutex`.
     fn migrateWindowCacheQuarantineLocked(self: *Engine, cache: *AgentCache) void {
-        if (self.quarantine.window_cache != cache) return;
+        if (self.quarantine.window_cache.load(.monotonic) != cache) return;
         const entries = self.quarantineEntries();
         for (entries[0..self.quarantine.count]) |*slot| {
             const raw = slot.*;
@@ -1903,7 +2082,7 @@ pub const Engine = struct {
         if (self.quarantine.next_slot < self.quarantine.count) {
             self.quarantine.next_entry = entries[self.quarantine.next_slot];
         }
-        self.quarantine.window_cache = null;
+        self.quarantine.window_cache.store(null, .monotonic);
     }
 
     /// The agent ended: every block its cache holds goes back to its span,
@@ -2120,10 +2299,11 @@ pub const Engine = struct {
             // On random eviction or `endTask` purge, a single arm64 `ldset`
             // moves `.quarantined -> .cached` straight into `cache.slots[0]`,
             // eliminating `objects.mutex` on the hot `.objects` alloc/free path!
+            const window_cache = self.quarantine.window_cache.load(.monotonic);
             if (!self.config.retire_freed_spans and
-                (self.quarantine.window_cache == null or self.quarantine.window_cache == cache))
+                (window_cache == null or window_cache == cache))
             {
-                self.quarantine.window_cache = cache;
+                if (window_cache == null) self.quarantine.window_cache.store(cache, .monotonic);
                 cache.held_local[0] += 1;
                 cache.held[0].store(cache.held_local[0], .monotonic);
                 cache.held_bytes_local[0] += div.block_bytes;
@@ -2721,8 +2901,11 @@ pub const Engine = struct {
             break :index r.first;
         } else index: {
             if (p.huge_count == huge_regions_max) return error.OutOfMemory;
-            const at = std.mem.alignForward(usize, p.frontier, super_page);
+            var at = std.mem.alignForward(usize, p.frontier, super_page);
             const supers = (span_bytes + need * span_bytes + super_page - 1) / super_page;
+            if (browser_heap.overlapsPoisonSuperPage(at, supers * super_page)) {
+                at = @as(usize, @intCast(browser_heap.poison_super_page_offset)) + super_page;
+            }
             const end = at + supers * super_page;
             if (end > p.limit) return error.OutOfMemory;
             if (self.grow_hook) |hook| if (!hook.call(hook.context)) return error.OutOfMemory;
@@ -2917,11 +3100,15 @@ pub const Engine = struct {
         // general objects zero up to the first 1 KiB on free (remainder zeroed
         // on reissue).
         if (self.fills(p)) {
-            const fill_len = if (b.general and p.id == .objects and self.config.fill == .zero)
-                @min(b.fill_bytes, general_objects_zero_cap)
-            else
-                b.fill_bytes;
-            @memset(block[0..fill_len], self.config.fillByte());
+            if (p.id == .node) {
+                fillFreedBytes(block, b.fill_bytes, node_stamp_skip_bytes, self.config.fillByte());
+            } else {
+                const fill_len = if (b.general and p.id == .objects and self.config.fill == .zero)
+                    @min(b.fill_bytes, general_objects_zero_cap)
+                else
+                    b.fill_bytes;
+                @memset(block[0..fill_len], self.config.fillByte());
+            }
         }
         b.live -= 1;
         b.requested -|= size;
@@ -3011,7 +3198,12 @@ pub const Engine = struct {
         b.requested_total += size;
         const block: [*]u8 = @ptrFromInt(self.heap.window_base + offset);
         const checked = if (b.kind == .instance) instance_fill_bytes else size;
-        if (self.fills(p)) self.verifyFreed(block[0..checked], false);
+        if (self.fills(p)) {
+            if (p.id == .node)
+                self.verifyAndZeroBlock(block, checked, node_stamp_skip_bytes, false)
+            else
+                self.verifyFreed(block[0..checked], false);
+        }
         const e = self.entry(index);
         if (e.sites != 0) {
             const sites: [*]usize = @ptrFromInt(self.heap.window_base + self.meta_pool_base + (@as(usize, e.sites) - 1) * @sizeOf(Chunk));
@@ -3292,7 +3484,7 @@ pub const Engine = struct {
     inline fn recycleCachedQuarantined(self: *Engine, raw: usize, objects_locked: bool) usize {
         const class = (raw & quarantine_tag_mask) - 1;
         const address = raw & ~quarantine_tag_mask;
-        const cache = self.quarantine.window_cache.?;
+        const cache = self.quarantine.window_cache.load(.monotonic).?;
         const offset = address - cache.window_base;
         const index = offset / span_bytes;
         const div = general_slot_div[class];
@@ -3531,11 +3723,11 @@ pub const Engine = struct {
             .quarantine_total_held = self.quarantine.total_held,
             .quarantine_total_evicted = self.quarantine.total_evicted,
         };
-        sumBuckets(&s.node, &self.node_buckets);
-        sumBuckets(&s.satellite, &self.satellite_buckets);
-        sumBuckets(&s.objects, self.objects_buckets[0..general_objects_base]);
-        sumBuckets(&s.general_objects, self.objects_buckets[general_objects_base..]);
-        sumBuckets(&s.bytes, &self.bytes_buckets);
+        self.sumBuckets(&self.node, &s.node, &self.node_buckets);
+        self.sumBuckets(&self.satellite, &s.satellite, &self.satellite_buckets);
+        self.sumBuckets(&self.objects, &s.objects, self.objects_buckets[0..general_objects_base]);
+        self.sumBuckets(&self.objects, &s.general_objects, self.objects_buckets[general_objects_base..]);
+        self.sumBuckets(&self.bytes, &s.bytes, &self.bytes_buckets);
         // `bytes` coalescing large runs (M8-3) track their live bytes on the partition.
         s.bytes.live_bytes += self.bytes.bytes_large_live_bytes;
         // Huge blocks are counted in their partition's live figures.
@@ -3572,7 +3764,7 @@ pub const Engine = struct {
         return s;
     }
 
-    fn sumBuckets(ps: *PartitionStats, bs: []const Bucket) void {
+    fn sumBuckets(self: *Engine, p: *const Partition, ps: *PartitionStats, bs: []const Bucket) void {
         for (bs) |*b| {
             ps.live_blocks += b.live;
             ps.live_bytes += @as(usize, b.live) * b.block_bytes;
@@ -3580,6 +3772,94 @@ pub const Engine = struct {
             ps.total_allocations += b.issued;
             ps.total_requested_bytes += b.requested_total;
             ps.total_reissued += b.issued - b.fresh;
+            if (b.spans != 0) ps.free_bytes_in_active_spans += self.bucketSlack(p, b);
+        }
+    }
+
+    fn bucketSlack(self: *Engine, p: *const Partition, b: *const Bucket) usize {
+        var slack: usize = 0;
+        var id = b.first;
+        while (id != no_chunk) : (id = self.chunk(p, id).next) {
+            const c = self.chunk(p, id);
+            for (c.spans[0..c.count]) |index| {
+                const e = self.entry(index);
+                if (e.state == .active and e.used > 0) {
+                    slack += (@as(usize, e.slots) - e.used) * b.block_bytes;
+                }
+            }
+        }
+        return slack;
+    }
+
+    /// Iterate per-class statistics for every active/allocated bucket in `pid`
+    /// (allocator-hardening design §5.1 & §7 A.1). Takes `p.mutex` for shared
+    /// partitions (`.objects`, `.bytes`).
+    pub fn classStats(self: *Engine, pid: PartitionId, context: anytype, comptime visit: fn (@TypeOf(context), ClassStats) void) void {
+        const p = self.partition(pid);
+        if (isSharedPartition(pid)) std.Io.Threaded.mutexLockUncancelable(&p.mutex);
+        defer if (isSharedPartition(pid)) std.Io.Threaded.mutexUnlock(&p.mutex);
+
+        for (self.buckets(pid), 0..) |*b, bi| {
+            if (pid == .bytes and bi == bytes_large_bucket) {
+                if (b.live == 0 and p.bytes_runs_len == 0) continue;
+                var cs: ClassStats = .{
+                    .partition = .bytes,
+                    .bucket = @intCast(bi),
+                    .block_bytes = if (b.live > 0) p.bytes_large_live_bytes / b.live else 0,
+                    .general = true,
+                    .live_blocks = b.live,
+                    .live_bytes = p.bytes_large_live_bytes,
+                };
+                const live_spans = p.bytes_large_live_bytes / span_bytes;
+                cs.spans_active = live_spans;
+                if (p.bytes_runs_len > 0) {
+                    const runs = self.bytesRunsPtr(p);
+                    for (0..p.bytes_runs_len) |i| {
+                        if (runs[i].committed) {
+                            cs.spans_active += runs[i].len;
+                            cs.spans_empty += runs[i].len;
+                        } else {
+                            cs.spans_decommitted += runs[i].len;
+                        }
+                    }
+                }
+                cs.va_assigned = (cs.spans_active + cs.spans_decommitted) * span_bytes;
+                visit(context, cs);
+                continue;
+            }
+            if (b.spans == 0) continue;
+            var cs: ClassStats = .{
+                .partition = pid,
+                .bucket = @intCast(bi),
+                .block_bytes = b.block_bytes,
+                .general = b.general,
+                .va_assigned = @as(usize, b.spans) * b.run * span_bytes,
+                .live_blocks = b.live,
+                .live_bytes = @as(usize, b.live) * b.block_bytes,
+            };
+            var id = b.first;
+            while (id != no_chunk) : (id = self.chunk(p, id).next) {
+                const c = self.chunk(p, id);
+                for (c.spans[0..c.count]) |index| {
+                    const e = self.entry(index);
+                    switch (e.state) {
+                        .active => {
+                            cs.spans_active += 1;
+                            if (e.used == 0) {
+                                cs.spans_empty += 1;
+                            } else {
+                                cs.free_bytes_in_active_spans += (@as(usize, e.slots) - e.used) * b.block_bytes;
+                            }
+                            cs.quarantined_blocks += e.quarantined;
+                            cs.quarantined_bytes += @as(usize, e.quarantined) * b.block_bytes;
+                        },
+                        .decommitted => cs.spans_decommitted += 1,
+                        .retired => cs.spans_retired += 1,
+                        else => {},
+                    }
+                }
+            }
+            visit(context, cs);
         }
     }
 
@@ -3650,6 +3930,83 @@ pub const Engine = struct {
 
     pub fn instanceSlots(self: *Engine) InstanceSlots {
         return .{ .engine = self, .chunk_id = self.objects_buckets[instance_bucket].first };
+    }
+
+    /// Iterator over every active non-empty span in the `.node` partition,
+    /// across all `(class, kind, random_bucket)` buckets and large-run buckets.
+    /// Window agent's thread only (or teardown when no other thread touches
+    /// `.node`); callers must not open new `.node` spans during the walk.
+    pub const NodeSpans = struct {
+        engine: *Engine,
+        bucket_idx: usize = 0,
+        chunk_id: u32 = no_chunk,
+        at: u32 = 0,
+
+        pub fn next(it: *NodeSpans) ?NodeSpan {
+            const e = it.engine;
+            const p = &e.node;
+            while (true) {
+                while (it.chunk_id != no_chunk) {
+                    const c = e.chunk(p, it.chunk_id);
+                    const bi = it.bucket_idx - 1;
+                    const b = &e.node_buckets[bi];
+                    while (it.at < c.count) {
+                        const index = c.spans[it.at];
+                        it.at += 1;
+                        const span = e.entry(index);
+                        if (span.state == .active and span.used != 0) {
+                            const is_large = b.kind == .large;
+                            const kind: ?NodeKind = if (is_large)
+                                null
+                            else
+                                @fromBackingInt(@intCast(bi / Classes.count / random_buckets));
+                            return .{
+                                .span_index = index,
+                                .address = e.spanAddress(index),
+                                .block_bytes = b.block_bytes,
+                                .slots = span.slots,
+                                .used = span.used,
+                                .kind = kind,
+                                .is_large = is_large,
+                            };
+                        }
+                    }
+                    it.chunk_id = c.next;
+                    it.at = 0;
+                }
+                if (it.bucket_idx >= node_bucket_count) return null;
+                it.chunk_id = e.node_buckets[it.bucket_idx].first;
+                it.bucket_idx += 1;
+                it.at = 0;
+            }
+        }
+    };
+
+    /// Iterate active non-empty `.node` partition spans (N11/H3 preparation).
+    pub fn nodeSpans(self: *Engine) NodeSpans {
+        return .{ .engine = self };
+    }
+
+    /// Visit every live (`.allocated`) node State block across all `.node`
+    /// partition spans, skipping `.free`, `.cached` (magazine), and
+    /// `.quarantined` slots (allocator-hardening design §4.4, N11/H3).
+    /// Returns the number of live node blocks visited.
+    pub fn forEachLiveNode(self: *Engine, context: anytype, comptime visit: fn (@TypeOf(context), LiveNode) void) usize {
+        var count: usize = 0;
+        var it = self.nodeSpans();
+        while (it.next()) |ns| {
+            const map = self.slotMap(ns.span_index);
+            for (0..ns.slots) |slot| {
+                if (slotGet(map, slot) != .allocated) continue;
+                visit(context, .{
+                    .ptr = @ptrFromInt(ns.address + slot * ns.block_bytes),
+                    .block_bytes = ns.block_bytes,
+                    .kind = ns.kind,
+                });
+                count += 1;
+            }
+        }
+        return count;
     }
 
     /// The leak report: every block alive now, by bucket - and by site,
@@ -3748,6 +4105,229 @@ pub const Engine = struct {
             @panic("heap.Engine.configureForTest: the heap has issued blocks already");
         self.config = config;
     }
+
+    /// Comptime-routed single-object allocation on the shared general path
+    /// (allocator-hardening design §3.1, §4.1, §7 B.2).
+    pub fn createTyped(self: *Engine, comptime T: type) Error!*T {
+        const pid = comptime partitionForType(T);
+        if (@sizeOf(T) == 0) return zeroSizedPtr(T);
+        const raw = try self.allocGeneral(pid, @sizeOf(T), @alignOf(T), @returnAddress());
+        return @ptrCast(@alignCast(raw));
+    }
+
+    /// Comptime-routed single-object destruction on the shared general path.
+    pub fn destroyTyped(self: *Engine, ptr: anytype) void {
+        const info = @typeInfo(@TypeOf(ptr));
+        if (info != .pointer or info.pointer.size != .one)
+            @compileError("heap.destroy expects a single-item pointer");
+        const T = info.pointer.child;
+        _ = comptime partitionForType(T);
+        if (@sizeOf(T) == 0) return;
+        const raw: [*]u8 = @ptrCast(@constCast(ptr));
+        self.freeGeneral(raw, @sizeOf(T), comptime ptrAlignment(@TypeOf(ptr)));
+    }
+
+    /// Comptime-routed slice allocation on the shared general path.
+    pub fn allocTyped(self: *Engine, comptime T: type, n: usize) Error![]T {
+        return self.allocAlignedTyped(T, .of(T), n);
+    }
+
+    /// Comptime-routed aligned slice allocation on the shared general path.
+    pub fn allocAlignedTyped(self: *Engine, comptime T: type, comptime alignment: std.mem.Alignment, n: usize) Error![]align(alignment.toByteUnits()) T {
+        comptime {
+            if (alignment.toByteUnits() < @alignOf(T))
+                @compileError("heap.allocAligned alignment must be >= @alignOf(T)");
+        }
+        const pid = comptime partitionForType(T);
+        if (n == 0 or @sizeOf(T) == 0) return &.{};
+        const total = std.math.mul(usize, @sizeOf(T), n) catch return error.OutOfMemory;
+        const raw = try self.allocGeneral(pid, total, alignment.toByteUnits(), @returnAddress());
+        const typed: [*]align(alignment.toByteUnits()) T = @ptrCast(@alignCast(raw));
+        return typed[0..n];
+    }
+
+    /// Comptime-routed slice free on the shared general path.
+    pub fn freeTyped(self: *Engine, memory: anytype) void {
+        const info = @typeInfo(@TypeOf(memory));
+        if (info != .pointer or info.pointer.size != .slice)
+            @compileError("heap.free expects a slice");
+        const align_val = comptime std.mem.Alignment.fromByteUnits(ptrAlignment(@TypeOf(memory)));
+        self.freeAlignedTyped(memory, align_val);
+    }
+
+    /// Comptime-routed aligned slice free on the shared general path.
+    pub fn freeAlignedTyped(self: *Engine, memory: anytype, comptime alignment: std.mem.Alignment) void {
+        const info = @typeInfo(@TypeOf(memory));
+        if (info != .pointer or info.pointer.size != .slice)
+            @compileError("heap.freeAligned expects a slice");
+        const T = info.pointer.child;
+        _ = comptime partitionForType(T);
+        if (memory.len == 0 or @sizeOf(T) == 0) return;
+        const raw: [*]u8 = @ptrCast(@constCast(memory.ptr));
+        self.freeGeneral(raw, @sizeOf(T) * memory.len, alignment.toByteUnits());
+    }
+};
+
+// ============================================================================
+// Comptime-typed routing entry points (design §3.1, §4.1, §7 B.2)
+// ============================================================================
+
+/// Whether `T` contains any runtime pointer field (recursively across structs,
+/// unions, optionals, error unions, arrays, and vectors).
+pub fn containsPointer(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .pointer, .@"fn", .@"opaque" => true,
+        .optional => |opt| containsPointer(opt.child),
+        .error_union => |eu| containsPointer(eu.payload),
+        .array => |arr| containsPointer(arr.child),
+        .vector => |vec| containsPointer(vec.child),
+        .@"struct" => |s| blk: {
+            for (s.field_types, s.field_attrs) |field_type, attr| {
+                if (attr.@"comptime") continue;
+                if (containsPointer(field_type)) break :blk true;
+            }
+            break :blk false;
+        },
+        .@"union" => |u| blk: {
+            for (u.field_types) |field_type| {
+                if (containsPointer(field_type)) break :blk true;
+            }
+            break :blk false;
+        },
+        else => false,
+    };
+}
+
+/// The general heap partition for type `T` (allocator-hardening design §3.1):
+/// pointer-bearing types route to `.objects` (comptime-asserting pointer
+/// alignment), while pointer-free byte/scalar types route to `.bytes`.
+pub fn partitionForType(comptime T: type) PartitionId {
+    if (comptime containsPointer(T)) {
+        if (@sizeOf(T) > 0 and @alignOf(T) < @alignOf(usize))
+            @compileError("heap.partitionForType: pointer-bearing type " ++ @typeName(T) ++ " has alignment below @alignOf(usize)");
+        return .objects;
+    }
+    return .bytes;
+}
+
+fn ptrAlignment(comptime Ptr: type) usize {
+    const info = @typeInfo(Ptr).pointer;
+    return info.attrs.@"align" orelse @alignOf(info.child);
+}
+
+inline fn zeroSizedPtr(comptime T: type) *T {
+    return @ptrFromInt(std.mem.alignBackward(usize, std.math.maxInt(usize), @alignOf(T)));
+}
+
+/// Allocate one `T` from `source` (`*Engine`, `*AgentCache`, or
+/// `std.mem.Allocator`), routing pointer-bearing `T` to `.objects` and
+/// pointer-free `T` to `.bytes` at comptime (falls back to `source.create(T)`
+/// when `source` is a host/test `std.mem.Allocator`).
+pub fn create(source: anytype, comptime T: type) Error!*T {
+    _ = comptime partitionForType(T);
+    const S = @TypeOf(source);
+    if (S == *Engine) return source.createTyped(T);
+    if (S == *AgentCache) return source.create(T);
+    if (S == std.mem.Allocator) {
+        if (general.agentCacheOf(source)) |cache| return cache.create(T);
+        if (general.engineOf(source)) |eng| return eng.createTyped(T);
+        return source.create(T);
+    }
+    @compileError("heap.create expects *heap.Engine, *heap.AgentCache, or std.mem.Allocator");
+}
+
+/// Free one pointer allocated by `heap.create`.
+pub fn destroy(source: anytype, ptr: anytype) void {
+    const info = @typeInfo(@TypeOf(ptr));
+    if (info != .pointer or info.pointer.size != .one)
+        @compileError("heap.destroy expects a single-item pointer");
+    _ = comptime partitionForType(info.pointer.child);
+    const S = @TypeOf(source);
+    if (S == *Engine) return source.destroyTyped(ptr);
+    if (S == *AgentCache) return source.destroy(ptr);
+    if (S == std.mem.Allocator) {
+        if (general.agentCacheOf(source)) |cache| return cache.destroy(ptr);
+        if (general.engineOf(source)) |eng| return eng.destroyTyped(ptr);
+        return source.destroy(ptr);
+    }
+    @compileError("heap.destroy expects *heap.Engine, *heap.AgentCache, or std.mem.Allocator");
+}
+
+/// Allocate a slice of `n` elements of `T` from `source`, routing
+/// pointer-bearing `T` to `.objects` and pointer-free `T` to `.bytes` at
+/// comptime.
+pub fn alloc(source: anytype, comptime T: type, n: usize) Error![]T {
+    return allocAligned(source, T, .of(T), n);
+}
+
+/// Allocate a slice of `n` elements of `T` with explicit `alignment` from
+/// `source`, routing by `partitionForType(T)` at comptime (so pointer-free
+/// aligned buffers still land in `.bytes`, never `.objects`).
+pub fn allocAligned(source: anytype, comptime T: type, comptime alignment: std.mem.Alignment, n: usize) Error![]align(alignment.toByteUnits()) T {
+    comptime {
+        if (alignment.toByteUnits() < @alignOf(T))
+            @compileError("heap.allocAligned alignment must be >= @alignOf(T)");
+    }
+    _ = comptime partitionForType(T);
+    const S = @TypeOf(source);
+    if (S == *Engine) return source.allocAlignedTyped(T, alignment, n);
+    if (S == *AgentCache) return source.allocAligned(T, alignment, n);
+    if (S == std.mem.Allocator) {
+        if (general.agentCacheOf(source)) |cache| return cache.allocAligned(T, alignment, n);
+        if (general.engineOf(source)) |eng| return eng.allocAlignedTyped(T, alignment, n);
+        return source.alignedAlloc(T, alignment, n);
+    }
+    @compileError("heap.allocAligned expects *heap.Engine, *heap.AgentCache, or std.mem.Allocator");
+}
+
+/// Free a slice allocated by `heap.alloc` (or `heap.allocAligned` when the
+/// slice's type carries its alignment).
+pub fn free(source: anytype, memory: anytype) void {
+    const info = @typeInfo(@TypeOf(memory));
+    if (info != .pointer or info.pointer.size != .slice)
+        @compileError("heap.free expects a slice");
+    const align_val = comptime std.mem.Alignment.fromByteUnits(ptrAlignment(@TypeOf(memory)));
+    freeAligned(source, memory, align_val);
+}
+
+/// Free a slice allocated with explicit `alignment` by `heap.allocAligned`.
+pub fn freeAligned(source: anytype, memory: anytype, comptime alignment: std.mem.Alignment) void {
+    const info = @typeInfo(@TypeOf(memory));
+    if (info != .pointer or info.pointer.size != .slice)
+        @compileError("heap.freeAligned expects a slice");
+    const T = info.pointer.child;
+    _ = comptime partitionForType(T);
+    const S = @TypeOf(source);
+    if (S == *Engine) return source.freeAlignedTyped(memory, alignment);
+    if (S == *AgentCache) return source.freeAligned(memory, alignment);
+    if (S == std.mem.Allocator) {
+        if (general.agentCacheOf(source)) |cache| return cache.freeAligned(memory, alignment);
+        if (general.engineOf(source)) |eng| return eng.freeAlignedTyped(memory, alignment);
+        if (memory.len == 0 or @sizeOf(T) == 0) return;
+        const aligned: []align(alignment.toByteUnits()) T = @alignCast(@constCast(memory));
+        return source.free(aligned);
+    }
+    @compileError("heap.freeAligned expects *heap.Engine, *heap.AgentCache, or std.mem.Allocator");
+}
+
+/// One active `.node` partition span yielded by `Engine.nodeSpans`
+/// (allocator-hardening design §4.4, N11/H3 preparation).
+pub const NodeSpan = struct {
+    span_index: u32,
+    address: usize,
+    block_bytes: usize,
+    slots: u16,
+    used: u16,
+    kind: ?NodeKind,
+    is_large: bool,
+};
+
+/// One live (`.allocated`) block yielded by `Engine.forEachLiveNode`
+/// (design §4.4, N11/H3 preparation).
+pub const LiveNode = struct {
+    ptr: [*]u8,
+    block_bytes: usize,
+    kind: ?NodeKind,
 };
 
 test {

@@ -118,6 +118,22 @@ pub const geometry: Geometry = geometryFor(profile);
 /// The commit unit and the unit of the layout: PartitionAlloc's super page.
 pub const super_page_bytes: u64 = 2 * MiB;
 
+/// The cage offset a bug-finding 0xdd-poisoned 32-bit `Link` (`0xDDDDDDDD`)
+/// decodes to, and the 2 MiB super page containing it (allocator-hardening
+/// design §4.4): permanently uncommitted, so dereferencing a poisoned link
+/// always faults on an uncommitted guard super page.
+pub const poison_link_offset: u64 = if (profile == .pointer32) 0 else @as(u64, 0xDDDD_DDDD) << geometry.cage_shift;
+pub const poison_super_page_offset: u64 = if (profile == .pointer32) 0 else std.mem.alignBackward(u64, poison_link_offset, super_page_bytes);
+
+/// Whether `[window_offset, window_offset + length)` intersects the cage's
+/// permanently uncommitted `0xDDDDDDDD` poison guard super page.
+pub inline fn overlapsPoisonSuperPage(window_offset: usize, length: usize) bool {
+    if (comptime profile == .pointer32 or poison_super_page_offset >= layout.cage.end()) return false;
+    const lo: usize = @intCast(poison_super_page_offset);
+    const hi: usize = lo + @as(usize, @intCast(super_page_bytes));
+    return window_offset < hi and window_offset +| length > lo;
+}
+
 /// The first span of every super page stays inaccessible (oss R19): its size
 /// is the largest span any build can have, max(16 KiB, the largest page this
 /// target may run with - 64 KiB on aarch64-linux, where the page size is a
@@ -769,6 +785,8 @@ pub const BrowserHeap = extern struct {
     /// Commit `[window_offset, window_offset + length)` of the window
     /// (platform.commitPages).
     pub fn commit(heap: *BrowserHeap, window_offset: usize, length: usize) PageError!void {
+        if (overlapsPoisonSuperPage(window_offset, length))
+            @panic("BrowserHeap.commit: cannot commit the 0xDDDDDDDD poison guard super page (allocator-hardening design 4.4)");
         try heap.platform.commit(heap.reserved, heap.rangeOffset(window_offset, length), length);
         _ = @atomicRmw(usize, &heap.committed_bytes, .Add, length, .monotonic);
     }
@@ -779,6 +797,8 @@ pub const BrowserHeap = extern struct {
     /// reuse) and `committed_bytes` does not count them twice - a retired
     /// part is counted again, a decommitted one never stopped counting.
     pub fn recommit(heap: *BrowserHeap, window_offset: usize, length: usize, was_retired: bool) PageError!void {
+        if (overlapsPoisonSuperPage(window_offset, length))
+            @panic("BrowserHeap.recommit: cannot commit the 0xDDDDDDDD poison guard super page (allocator-hardening design 4.4)");
         try heap.platform.commit(heap.reserved, heap.rangeOffset(window_offset, length), length);
         if (was_retired) _ = @atomicRmw(usize, &heap.committed_bytes, .Add, length, .monotonic);
     }

@@ -739,8 +739,15 @@ pub const WorkerHost = struct {
     task_sink: *runtime.TaskSink,
 
     /// Allocator. Thread-safe: a worker's messages are freed on the other
-    /// thread.
+    /// thread. When the Browser uses Crane's general heap pools (`scope.general`),
+    /// this is the worker thread's own `AgentCache.allocator()` so allocations
+    /// hit its lock-free cache instead of falling back to the locked path
+    /// (allocator-hardening design §3.7, §7 B.1, §10.2).
     allocator: Allocator,
+
+    /// This worker thread's attached `AgentCache`, detached at the end of
+    /// `WorkerHost.free` once the worker's realm, agent, and host state are gone.
+    agent_cache: ?*runtime.heap.AgentCache = null,
 
     /// The worker's own event loop (WorkerEventLoop.eventLoop), which its
     /// realm records for host algorithms that queue tasks.
@@ -911,6 +918,25 @@ pub const WorkerHost = struct {
     const startImport = WorkerModules.startImport;
     const destroyModuleLoader = WorkerModules.destroyModuleLoader;
 
+    /// Attach a per-worker `AgentCache` on this worker's thread when the
+    /// Browser uses Crane's general heap pools (allocator-hardening design
+    /// §3.7, §7 B.1, §10.2). Falls back to `fallback` when the Browser uses
+    /// the host allocator or in standalone/test scopes.
+    fn attachWorkerCache(fallback: Allocator, browser_scope: ?*runtime.BrowserScope) struct { allocator: Allocator, cache: ?*runtime.heap.AgentCache } {
+        const scope = browser_scope orelse return .{ .allocator = fallback, .cache = null };
+        if (!scope.general or !scope.isGeneralAllocator(fallback)) return .{ .allocator = fallback, .cache = null };
+        const eng = scope.existingHeapEngine() orelse return .{ .allocator = fallback, .cache = null };
+        const cache = eng.attachAgent() catch return .{ .allocator = fallback, .cache = null };
+        return .{ .allocator = cache.allocator(), .cache = cache };
+    }
+
+    fn detachWorkerCache(browser_scope: ?*runtime.BrowserScope, agent_cache: ?*runtime.heap.AgentCache) void {
+        const cache = agent_cache orelse return;
+        const scope = browser_scope orelse return;
+        const eng = scope.existingHeapEngine() orelse return;
+        eng.detachAgent(cache);
+    }
+
     /// A DEDICATED worker's host, made on the worker's own thread by its
     /// start step (`ThreadHost.start`): "run a worker" step 4, obtain a
     /// dedicated worker agent - [[CanBlock]] true - with this host's hooks.
@@ -921,9 +947,14 @@ pub const WorkerHost = struct {
     /// freed (`free`). `thread_host.host` is set before anything can fail,
     /// so a host half made is freed the same way. Whether the worker still
     /// runs: false when it was terminated before its agent existed.
-    fn initOnThread(allocator: Allocator, thread_host: *ThreadHost, thread: *WorkerThread) !bool {
+    fn initOnThread(fallback_allocator: Allocator, thread_host: *ThreadHost, thread: *WorkerThread) !bool {
         const start = &thread_host.start;
-        const self = try allocator.create(Self);
+        const attached = attachWorkerCache(fallback_allocator, start.browser_scope);
+        const allocator = attached.allocator;
+        const self = allocator.create(Self) catch |err| {
+            detachWorkerCache(start.browser_scope, attached.cache);
+            return err;
+        };
         self.* = .{
             .agent = undefined,
             .agent_host = html_core.agent_host.AgentHost.init(allocator),
@@ -936,6 +967,7 @@ pub const WorkerHost = struct {
             .browser_scope = start.browser_scope,
             .task_sink = thread.loop.sink,
             .allocator = allocator,
+            .agent_cache = attached.cache,
             .link = thread.link,
             .owner_worker = start.owner_worker,
             .cookie_jar = start.cookie_jar,
@@ -1006,9 +1038,14 @@ pub const WorkerHost = struct {
     /// false, in an agent cluster of its own - with this host's hooks,
     /// published through the link, destroyed by WorkerThread after the
     /// realm's end. Whether the worker still runs.
-    fn initServiceOnThread(allocator: Allocator, thread_host: *ServiceThreadHost, thread: *WorkerThread) !bool {
+    fn initServiceOnThread(fallback_allocator: Allocator, thread_host: *ServiceThreadHost, thread: *WorkerThread) !bool {
         const start = &thread_host.start;
-        const self = try allocator.create(Self);
+        const attached = attachWorkerCache(fallback_allocator, start.browser_scope);
+        const allocator = attached.allocator;
+        const self = allocator.create(Self) catch |err| {
+            detachWorkerCache(start.browser_scope, attached.cache);
+            return err;
+        };
         self.* = .{
             .agent = undefined,
             .agent_host = html_core.agent_host.AgentHost.init(allocator),
@@ -1020,6 +1057,7 @@ pub const WorkerHost = struct {
             .browser_scope = start.browser_scope,
             .task_sink = thread.loop.sink,
             .allocator = allocator,
+            .agent_cache = attached.cache,
             .link = thread.link,
             .cookie_jar = start.cookie_jar,
             .time_origin_ns = start.time_origin_ns,
@@ -1365,6 +1403,8 @@ pub const WorkerHost = struct {
     /// after its realm's end and its agent's - so nothing here may reach the
     /// engine: the realm's end left no timer, import or module behind.
     fn free(self: *Self) void {
+        const browser_scope = self.browser_scope;
+        const agent_cache = self.agent_cache;
         std.debug.assert(self.timers.count() == 0);
         self.timers.deinit(self.allocator);
         std.debug.assert(self.animation_frame_callbacks.items.len == 0);
@@ -1385,6 +1425,9 @@ pub const WorkerHost = struct {
         self.allocator.free(self.script_url);
         self.allocator.free(self.name);
         self.allocator.destroy(self);
+        // Flush and detach this worker's AgentCache after all worker-owned
+        // allocations (including `self`) have been freed on this thread.
+        detachWorkerCache(browser_scope, agent_cache);
     }
 
     /// Give the worker global scope `container` (taken), replacing its new
@@ -4376,12 +4419,12 @@ const ThreadHost = struct {
         errdefer allocator.free(source);
         const final_url = try allocator.dupe(u8, script.final_url);
         errdefer allocator.free(final_url);
-        const host_url = try allocator.dupe(u8, script.final_url);
+        const host_url = try worker_host.allocator.dupe(u8, script.final_url);
         allocator.free(self.start.source);
         self.start.source = source;
         self.start.request_url = self.start.script_url;
         self.start.script_url = final_url;
-        allocator.free(worker_host.script_url);
+        worker_host.allocator.free(worker_host.script_url);
         worker_host.script_url = host_url;
         if (script.takePolicyContainer()) |container| {
             var result = container;

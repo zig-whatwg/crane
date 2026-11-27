@@ -801,8 +801,10 @@ pub const SharedArrayBuffer = struct {
     ///
     /// The memory is aligned to 16 bytes to support atomic operations on all types.
     pub fn init(allocator: std.mem.Allocator, size: usize) !SharedArrayBuffer {
-        // Allocate with 16-byte alignment for atomic operations
-        const data = try allocator.alignedAlloc(u8, @fromBackingInt(@intCast(4)), size); // 2^4 = 16 bytes
+        // Plain `alloc(u8, size)` routes page-controlled bytes to the `.bytes`
+        // partition on Browser heaps (where every class is naturally 16-byte
+        // aligned; allocator-hardening design §3.1), never into `.objects`.
+        const data = try allocator.alloc(u8, size);
         @memset(data, 0);
 
         return SharedArrayBuffer{
@@ -812,8 +814,7 @@ pub const SharedArrayBuffer = struct {
     }
 
     pub fn deinit(self: *SharedArrayBuffer) void {
-        // Must free with the same alignment we allocated with (16 bytes = 2^4)
-        self.allocator.rawFree(self.data, @fromBackingInt(@intCast(4)), @returnAddress());
+        self.allocator.free(self.data);
     }
 
     /// Get the byte length of this SharedArrayBuffer

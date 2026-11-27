@@ -5856,6 +5856,25 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&lint_test_inputs.step);
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_test_inputs_module }), "tools-lint_test_inputs", null).step);
 
+    // lint-objects-bytes (allocator-hardening design §3.1): raw byte/scalar
+    // slices allocated with explicit pointer alignment would route page-controlled
+    // bytes into `.objects`. `zig build test` depends on it.
+    const lint_objects_bytes_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_objects_bytes.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_objects_bytes_exe = b.addExecutable(.{
+        .name = "lint_objects_bytes",
+        .root_module = lint_objects_bytes_module,
+    });
+    const lint_objects_bytes_step = b.step("lint-objects-bytes", "Fail on raw byte slices allocated with explicit pointer alignment into .objects in src/");
+    const lint_objects_bytes = b.addRunArtifact(lint_objects_bytes_exe);
+    lint_objects_bytes.has_side_effects = true;
+    lint_objects_bytes.setCwd(b.path("."));
+    lint_objects_bytes_step.dependOn(&lint_objects_bytes.step);
+    test_step.dependOn(&lint_objects_bytes.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_objects_bytes_module }), "tools-lint_objects_bytes", null).step);
     // The generated tables' tools (`addGeneratedTables`): their own tests.
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.reverse_index_tool }), "tools-reverse_index_table", null).step);
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.psl_tool }), "tools-psl_table", null).step);
