@@ -51,9 +51,14 @@
 //!   the rest; over another worklist, start afresh.
 //! - `--files-per-runner=N` - A child ends after N files and its runner starts
 //!   a fresh one (default 0: no limit).
+//! - `--handle-baseline=path` - The bug-finding runner's per-file V8 handle
+//!   caps (handle_gate.zig; default tools/wpt_handle_leaks_baseline.txt from
+//!   the run's directory, or 0 / 0 for every file when there is none). Each
+//!   runner process ends with a `handle gate:` summary line, which
+//!   wpt_build_compare reconciles with the run's OK files.
 //! - `--capabilities` - Print what this runner supports (`shared-queue
-//!   stop-file resume files-per-runner`) and exit: how a sweep script tells it
-//!   from a frozen runner without them.
+//!   stop-file resume files-per-runner handle-baseline`) and exit: how a sweep
+//!   script tells it from a frozen runner without them.
 //!
 //! Flakiness (repeat.zig):
 //! - `--repeat=N` - Run the worklist (normally one file: name it as an
@@ -910,19 +915,37 @@ pub fn executeTests(
     // Bug-finding per-file V8 handle-count delta gate (`handle_gate.zig`):
     // compiled out in production so the production runner has zero extra GCs
     // or `about:blank` navigations.
+    // Every OK file is checked and counted (`handle_tally`), and the run
+    // ends with the tally's summary line, which wpt_build_compare reconciles
+    // with the run's OK files: a gate that did not run is a failure there,
+    // never a silent pass.
     var handle_baseline: handle_gate.Baseline = handle_gate.Baseline.empty(allocator);
     defer handle_baseline.deinit();
+    var handle_tally: handle_gate.Tally = .{};
     if (comptime !wpt_options.production) {
+        // `--handle-baseline=<path>` must name a baseline that exists; with
+        // none, the checkout's tools/wpt_handle_leaks_baseline.txt from the
+        // run's directory, and when there is none either, every file is held
+        // to 0 / 0 (the summary says so).
+        const baseline_path = options.handle_baseline orelse handle_gate.default_baseline_path;
         var hdiag: handle_gate.ParseDiagnostic = .{};
-        handle_baseline = handle_gate.Baseline.loadOptional(allocator, handle_gate.default_baseline_path, &hdiag) catch |err| {
+        const loaded = if (options.handle_baseline != null)
+            handle_gate.Baseline.load(allocator, baseline_path, &hdiag)
+        else
+            handle_gate.Baseline.loadOptional(allocator, baseline_path, &hdiag);
+        handle_baseline = loaded catch |err| {
             print("warning(handle): could not load {s}:{d}: {s} ({})\n", .{
-                handle_gate.default_baseline_path,
+                baseline_path,
                 hdiag.line,
                 hdiag.reason,
                 err,
             });
             return err;
         };
+        if (handle_baseline.found) {
+            handle_tally.baseline = baseline_path;
+            handle_tally.baseline_entries = handle_baseline.entries.len;
+        }
     }
     var handle_before: ?handle_gate.Snapshot = null;
 
@@ -1164,18 +1187,18 @@ pub fn executeTests(
         if (comptime !wpt_options.production) {
             if (tally.status == .ok) {
                 browser.wpt_browser.settleForHandleGate();
-                if (readHandleSnapshot()) |after| {
-                    if (handle_before) |before| {
-                        const check = handle_baseline.check(test_file.path, before, after);
-                        if (check.leaked) {
-                            var diag_buf: [1024]u8 = undefined;
-                            var diag_writer: std.Io.Writer = .fixed(&diag_buf);
-                            handle_gate.writeDiagnostic(&diag_writer, test_file.path, check) catch {};
-                            print("warning(handle): {s}\n", .{diag_writer.buffered()});
-                        }
+                const after = readHandleSnapshot();
+                if (after != null and handle_before != null) {
+                    const check = handle_baseline.check(test_file.path, handle_before.?, after.?);
+                    handle_tally.record(check);
+                    if (check.leaked) {
+                        var diag_buf: [1024]u8 = undefined;
+                        var diag_writer: std.Io.Writer = .fixed(&diag_buf);
+                        handle_gate.writeDiagnostic(&diag_writer, test_file.path, check) catch {};
+                        print("warning(handle): {s}\n", .{diag_writer.buffered()});
                     }
-                    handle_before = after;
-                }
+                } else handle_tally.unread += 1;
+                if (after) |a| handle_before = a;
             }
         }
 
@@ -1192,6 +1215,12 @@ pub fn executeTests(
             browser = try browser_adapter.BrowserAdapter.init(allocator, options.wpt_root, poisoning != null);
             handle_before = null;
         }
+    }
+    if (comptime !wpt_options.production) {
+        var summary_buf: [std.Io.Dir.max_path_bytes + 256]u8 = undefined;
+        var summary: std.Io.Writer = .fixed(&summary_buf);
+        handle_tally.writeSummary(&summary) catch {};
+        print("{s}\n", .{summary.buffered()});
     }
     if (source.end) |end| switch (end) {
         .done => {},
@@ -2263,7 +2292,7 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
 }
 
 /// What `--capabilities` prints: the options a sweep script may rely on.
-const capabilities = "shared-queue stop-file resume files-per-runner";
+const capabilities = "shared-queue stop-file resume files-per-runner handle-baseline";
 
 /// The exit status of a run its `--stop-file` stopped with files left: what
 /// finished is journalled, and `--resume` runs the rest.

@@ -137,6 +137,11 @@ pub const Options = struct {
     /// claim, so the run ends within one file's time with the rest unclaimed
     /// (exit status `stopped_exit_code`); `--resume` runs the rest.
     stop_file: ?[]const u8 = null,
+    /// `--handle-baseline=<path>` (the bug-finding runner): the per-file V8
+    /// handle caps (handle_gate.zig), which must exist; without it, the
+    /// checkout's tools/wpt_handle_leaks_baseline.txt from the run's
+    /// directory, if there is one. A supervisor passes it to its children.
+    handle_baseline: ?[]const u8 = null,
     /// `--resume`: a supervised run over the worklist an earlier run in the
     /// same `--output` was given keeps that run's journalled files and runs
     /// the rest (work_queue.Plan.resume_run). Another worklist starts afresh.
@@ -336,6 +341,7 @@ pub fn childArgv(arena: std.mem.Allocator, options: Options, run: ChildRun) ![]c
             try std.fmt.allocPrint(arena, "--spawn={d}", .{q.spawn}),
         });
         if (options.stop_file) |p| try argv.append(arena, try std.fmt.allocPrint(arena, "--stop-file={s}", .{p}));
+        if (options.handle_baseline) |p| try argv.append(arena, try std.fmt.allocPrint(arena, "--handle-baseline={s}", .{p}));
         if (options.files_per_runner > 0) try argv.append(arena, try std.fmt.allocPrint(arena, "--files-per-runner={d}", .{options.files_per_runner}));
     }
     return argv.toOwnedSlice(arena);
@@ -448,6 +454,8 @@ pub fn parseArgsDiagnosed(allocator: std.mem.Allocator, args: []const []const u8
             options.queue_spawn = std.fmt.parseInt(u32, arg["--spawn=".len..], 10) catch 0;
         } else if (std.mem.startsWith(u8, arg, "--stop-file=")) {
             options.stop_file = arg["--stop-file=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--handle-baseline=")) {
+            options.handle_baseline = arg["--handle-baseline=".len..];
         } else if (std.mem.eql(u8, arg, "--resume")) {
             options.resume_run = true;
         } else if (std.mem.startsWith(u8, arg, "--files-per-runner=")) {
@@ -1111,4 +1119,30 @@ test "--crashtests and --include-crashtests are accepted by parseArgs" {
         try testing.expect(!std.mem.eql(u8, arg, "--crashtests"));
         try testing.expect(!std.mem.eql(u8, arg, "--include-crashtests"));
     }
+}
+
+test "--handle-baseline is the bug-finding runner's handle caps, and a supervisor passes it to each queue child" {
+    const testing = std.testing;
+    var options = try parseArgs(testing.allocator, &.{ "--parallel=4", "--handle-baseline=/frozen/tip/wpt_handle_leaks_baseline.txt" });
+    defer options.deinit();
+    try testing.expectEqualStrings("/frozen/tip/wpt_handle_leaks_baseline.txt", options.handle_baseline.?);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const queued = try childArgv(arena.allocator(), options, .{
+        .exe = "wpt_runner_bug_finding",
+        .worklist = "o/worklist.txt",
+        .start_index = 0,
+        .journal = "o/journal.shard0.jsonl",
+        .output_dir = "o",
+        .heartbeat = "o/journal.shard0.jsonl.heartbeat",
+        .queue = .{ .path = "o/queue.txt", .runner = 0, .spawn = 0 },
+    });
+    const found = for (queued) |arg| {
+        if (std.mem.eql(u8, arg, "--handle-baseline=/frozen/tip/wpt_handle_leaks_baseline.txt")) break true;
+    } else false;
+    try testing.expect(found);
+
+    var plain = try parseArgs(testing.allocator, &.{"dom/"});
+    defer plain.deinit();
+    try testing.expect(plain.handle_baseline == null);
 }

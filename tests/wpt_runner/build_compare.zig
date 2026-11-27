@@ -21,10 +21,13 @@
 //!   subtest's;
 //! - the bug-finding run's log: the allocator's leak and double-free
 //!   reports, panics (a failed assertion or safety check, the full C
-//!   sanitizer's reports), and faults at a poison address.
+//!   sanitizer's reports), faults at a poison address, and the per-file V8
+//!   handle gate's leak lines and summaries (handle_gate.zig).
 //!
 //! What fails it (exit 1): the bug-finding gate - a crash, a poison read, a
-//! leak, a double free, a panic, a refcount or ownership violation - and any
+//! leak (of the heap or of V8 handles), a double free, a panic, a refcount
+//! or ownership violation, a handle gate that did not check every OK file -
+//! and any
 //! difference between the runs that the known list does not name, or a known
 //! difference that no longer occurs (remove it: the list only goes down).
 //!
@@ -34,6 +37,7 @@
 const std = @import("std");
 const host = @import("host");
 const journal = @import("journal.zig");
+const handle_gate = @import("handle_gate.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -398,9 +402,25 @@ pub const LogFindings = struct {
     /// allocator, so the bug-finding run did not exercise the hardened pools
     /// (allocator-hardening design §10.2).
     unexpected_rungs: usize = 0,
+    /// Files whose V8 handles rose past their cap in
+    /// tools/wpt_handle_leaks_baseline.txt after the page closed and a full
+    /// GC (`handle leak: <path>: ...`, handle_gate.writeDiagnostic): a handle
+    /// leak fails the gate like a heap leak (tmp/plans/queue-0.1-audit.md,
+    /// "Bug-finding gate does not count V8 handles"; audit report-I H1).
+    handle_leaks: usize = 0,
+    /// The runner processes' handle gate summaries (handle_gate.Tally), summed:
+    /// how many ran, the OK files they checked, the leaks they counted, the
+    /// OK files they could not read. Reconciled with the run's OK files and
+    /// with `handle_leaks` (Report.handleGateProblem).
+    handle_gate_runs: usize = 0,
+    handle_checked: usize = 0,
+    handle_leaks_summarized: usize = 0,
+    handle_unread: usize = 0,
+    /// The baseline the first summary names ("" for none: 0 / 0 for every file).
+    handle_baseline: []const u8 = "",
 
     pub fn total(self: LogFindings) usize {
-        return self.leaks + self.bad_frees + self.panics + self.poison_reads + self.refcount + self.heap_leaks + self.unexpected_rungs;
+        return self.leaks + self.bad_frees + self.panics + self.poison_reads + self.refcount + self.heap_leaks + self.unexpected_rungs + self.handle_leaks;
     }
 
     pub fn scan(self: *LogFindings, text: []const u8) void {
@@ -430,6 +450,14 @@ pub const LogFindings = struct {
         if (std.mem.indexOf(u8, line, "the Browser's heap got the ")) |at| {
             const rest = line[at + "the Browser's heap got the ".len ..];
             if (!std.mem.startsWith(u8, rest, "full ")) self.unexpected_rungs += 1;
+        }
+        if (handle_gate.isLeakLine(line)) self.handle_leaks += 1;
+        if (handle_gate.Tally.parseSummary(line)) |t| {
+            if (self.handle_gate_runs == 0) self.handle_baseline = if (t.baseline.len > 0) t.baseline else "none";
+            self.handle_gate_runs += 1;
+            self.handle_checked += t.checked;
+            self.handle_leaks_summarized += t.leaks;
+            self.handle_unread += t.unread;
         }
     }
 };
@@ -470,6 +498,9 @@ pub const Report = struct {
     /// Journal records that name the wrong build, or none: a run given as
     /// the wrong side.
     wrong_build: usize,
+    /// The bug-finding run's files that finished OK: each must have been
+    /// through the handle gate (`handleGateProblem`).
+    bug_finding_ok: usize = 0,
 
     pub fn passed(self: Report) bool {
         return self.gatePassed() and self.verdict.new.len == 0 and self.verdict.stale.len == 0 and self.wrong_build == 0;
@@ -477,7 +508,27 @@ pub const Report = struct {
 
     pub fn gatePassed(self: Report) bool {
         const log_clean = if (self.log) |l| l.total() == 0 else true;
-        return self.crashes.len == 0 and self.ownership_violations == 0 and log_clean;
+        return self.crashes.len == 0 and self.ownership_violations == 0 and log_clean and self.handleGateProblem() == null;
+    }
+
+    pub const HandleGateProblem = enum {
+        /// No summary in the log: the handle gate never ran (a runner from
+        /// before it, or a log that is not the run's), so nothing was checked.
+        not_run,
+        /// Fewer files checked than finished OK.
+        unchecked,
+        /// The summaries' leak count is not the log's leak lines.
+        lost_lines,
+    };
+
+    /// Why the handle gate's summaries do not cover the run, or null when they
+    /// do (or no log was given: then, as for leaks, nothing is read).
+    pub fn handleGateProblem(self: Report) ?HandleGateProblem {
+        const l = self.log orelse return null;
+        if (l.handle_gate_runs == 0) return if (self.bug_finding_ok > 0) .not_run else null;
+        if (l.handle_checked < self.bug_finding_ok) return .unchecked;
+        if (l.handle_leaks_summarized != l.handle_leaks) return .lost_lines;
+        return null;
     }
 
     pub fn write(self: Report, w: *std.Io.Writer) std.Io.Writer.Error!void {
@@ -485,8 +536,13 @@ pub const Report = struct {
         if (self.wrong_build > 0) try w.print("  WRONG BUILD: {d} journal record(s) are not the side they were given as (a production journal as --production, a bug-finding one as --bug-finding)\n", .{self.wrong_build});
         try w.print("bug-finding gate: {s} - crashes {d}, ownership violations {d}", .{ if (self.gatePassed()) "PASS" else "FAIL", self.crashes.len, self.ownership_violations });
         if (self.log) |l| {
-            try w.print(", leaks {d}, bad frees {d}, panics {d}, poison reads {d}, refcount {d}, heap leaks {d}, unexpected rungs {d} (and {d} node(s) swept at Browser ends, not counted)\n", .{ l.leaks, l.bad_frees, l.panics, l.poison_reads, l.refcount, l.heap_leaks, l.unexpected_rungs, l.heap_swept_nodes });
-        } else try w.writeAll(" (no log given: leaks, bad frees, panics and poison reads not read)\n");
+            try w.print(", leaks {d}, bad frees {d}, panics {d}, poison reads {d}, refcount {d}, heap leaks {d}, unexpected rungs {d}, handle leaks {d} (and {d} node(s) swept at Browser ends, not counted)\n", .{ l.leaks, l.bad_frees, l.panics, l.poison_reads, l.refcount, l.heap_leaks, l.unexpected_rungs, l.handle_leaks, l.heap_swept_nodes });
+            if (self.handleGateProblem()) |p| switch (p) {
+                .not_run => try w.print("  handle gate: NOT RUN - no `handle gate:` summary in the log, so none of the bug-finding run's {d} OK file(s) was checked\n", .{self.bug_finding_ok}),
+                .unchecked => try w.print("  handle gate: NOT RECONCILED - checked {d} of the bug-finding run's {d} OK file(s) ({d} unread)\n", .{ l.handle_checked, self.bug_finding_ok, l.handle_unread }),
+                .lost_lines => try w.print("  handle gate: NOT RECONCILED - the summaries count {d} handle leak(s), the log has {d} line(s)\n", .{ l.handle_leaks_summarized, l.handle_leaks }),
+            } else try w.print("  handle gate: checked {d} of the bug-finding run's {d} OK file(s) in {d} runner process(es), {d} handle leak(s); baseline {s}\n", .{ l.handle_checked, self.bug_finding_ok, l.handle_gate_runs, l.handle_leaks, if (l.handle_baseline.len > 0) l.handle_baseline else "none" });
+        } else try w.writeAll(" (no log given: leaks, bad frees, panics, poison reads and handle leaks not read)\n");
         for (self.crashes) |path| try w.print("  CRASH {s}\n", .{path});
         try w.print("differences: {d} ({d} known, {d} NEW, {d} STALE)\n", .{ self.differences.len, self.verdict.known, self.verdict.new.len, self.verdict.stale.len });
         if (self.verdict.new.len > 0) {
@@ -534,7 +590,8 @@ const usage =
     \\         journal*.wptreport.jsonl under it (a sweep's full/ directory)
     \\  --known: the known differences (default tools/wpt_build_differences.txt)
     \\  --log:   the bug-finding run's log (a sweep's sweep.log), read for
-    \\           leaks, bad frees, panics and poison reads; repeatable
+    \\           leaks, bad frees, panics, poison reads and the V8 handle
+    \\           gate's leaks and summaries; repeatable
     \\Exit status: 0 when the bug-finding gate passes and every difference is
     \\known and every known one seen; 1 otherwise; 2 on a usage error.
     \\
@@ -616,9 +673,19 @@ pub fn main(init: std.process.Init) !u8 {
         .ownership_violations = bug_finding.ownership_violations,
         .log = findings,
         .wrong_build = wrongBuild(&production, .production) + wrongBuild(&bug_finding, .bug_finding),
+        .bug_finding_ok = okFiles(&bug_finding),
     };
     try report.write(out);
     return if (report.passed()) 0 else 1;
+}
+
+/// The files of `run` whose journal status is OK.
+pub fn okFiles(run: *const Run) usize {
+    var n: usize = 0;
+    for (run.files.values()) |status| {
+        if (status == .ok) n += 1;
+    }
+    return n;
 }
 
 fn valueOf(arg: []const u8, comptime name: []const u8) ?[]const u8 {
@@ -930,11 +997,13 @@ test "the report passes only with the gate clean and the differences all known" 
 test "unexpected non-full heap rungs fail the bug-finding gate (§10.2)" {
     var f: LogFindings = .{};
     f.scan(
-        \\info(browser): the Browser's heap got the cage_alone rung: its objects partition is in the cage's upper half
-        \\info(browser): the Browser's heap got the smaller_cage rung: its objects partition is in the cage's upper half
-        \\info(browser): the Browser's heap got the unreserved rung: its objects partition is in the cage's upper half
-        \\info(browser): the Browser's heap got the full rung: all pools active
+        \\warning(browser): the Browser's heap got the cage_alone rung: its objects partition is in the cage's upper half
+        \\warning(browser): the Browser's heap got the smaller_cage rung: its objects partition is in the cage's upper half
+        \\warning(browser): the Browser's heap got the unreserved rung: its objects partition is in the cage's upper half
     );
+    // Those are Browser.init's own line (src/browser/Browser.zig, at
+    // Browser.heap_rung_log_level, which main.zig holds at or above the
+    // runner's log level); a Browser on the full rung logs nothing.
     try testing.expectEqual(@as(usize, 3), f.unexpected_rungs);
     try testing.expectEqual(@as(usize, 3), f.total());
 
@@ -967,4 +1036,75 @@ test "a V8 handle leak line in the bug-finding log counts in the gate's total, a
         \\warning(handle): handle leak: streams/a.html: live_object_globals +1 (max 0), wrapper_cache_entries +5 (max 0), global_handle_bytes +64, node_wrappers 0
     );
     try testing.expectEqual(@as(usize, 1), f.total());
+}
+
+test "a V8 handle leak fails the bug-finding gate like a heap leak, and the handle gate must have run over every OK file" {
+    var f: LogFindings = .{};
+    f.scan(
+        \\warning(handle): handle leak: streams/a.html: live_object_globals +1 (max 0), wrapper_cache_entries +5 (max 0), global_handle_bytes +64, node_wrappers 0
+        \\handle gate: checked 2 file(s), 1 handle leak(s) over the baseline, 0 OK file(s) unread (no counters); baseline tools/wpt_handle_leaks_baseline.txt (5 entries)
+        \\handle gate: checked 1 file(s), 0 handle leak(s) over the baseline, 0 OK file(s) unread (no counters); baseline tools/wpt_handle_leaks_baseline.txt (5 entries)
+        \\warning(heap): heap leak: 3 State block(s) and 3 Instance slot(s) alive at the Browser's end
+    );
+    try testing.expectEqual(@as(usize, 1), f.handle_leaks);
+    try testing.expectEqual(@as(usize, 1), f.heap_leaks);
+    try testing.expectEqual(@as(usize, 2), f.total());
+    try testing.expectEqual(@as(usize, 2), f.handle_gate_runs);
+    try testing.expectEqual(@as(usize, 3), f.handle_checked);
+    try testing.expectEqual(@as(usize, 1), f.handle_leaks_summarized);
+
+    var report: Report = .{
+        .production_files = 3,
+        .bug_finding_files = 3,
+        .bug_finding_ok = 3,
+        .differences = &.{},
+        .verdict = .{ .new = &.{}, .stale = &.{}, .known = 0 },
+        .crashes = &.{},
+        .ownership_violations = 0,
+        .log = .{ .handle_leaks = 1, .handle_gate_runs = 1, .handle_checked = 3, .handle_leaks_summarized = 1 },
+        .wrong_build = 0,
+    };
+    try testing.expect(!report.gatePassed());
+    var buf: [4096]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try report.write(&w);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "handle leaks 1") != null);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "bug-finding gate: FAIL") != null);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "handle gate: checked 3 of the bug-finding run's 3 OK file(s)") != null);
+
+    // Clean: every OK file checked, no leak.
+    var clean = report;
+    clean.log = .{ .handle_gate_runs = 1, .handle_checked = 3 };
+    try testing.expect(clean.gatePassed());
+    try testing.expect(clean.handleGateProblem() == null);
+
+    // A log with no summary line: the handle gate never ran (a runner from
+    // before it, or a log that is not the run's), so nothing was checked.
+    var unrun = report;
+    unrun.log = .{};
+    try testing.expect(!unrun.gatePassed());
+    w = .fixed(&buf);
+    try unrun.write(&w);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "handle gate: NOT RUN") != null);
+
+    // Fewer files checked than finished OK: some went unchecked.
+    var short = clean;
+    short.log = .{ .handle_gate_runs = 2, .handle_checked = 2, .handle_unread = 1 };
+    try testing.expect(!short.gatePassed());
+    w = .fixed(&buf);
+    try short.write(&w);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "handle gate: NOT RECONCILED - checked 2 of the bug-finding run's 3 OK file(s) (1 unread)") != null);
+
+    // The summaries count a leak the log has no line for: lines were lost.
+    var lost = clean;
+    lost.log = .{ .handle_gate_runs = 1, .handle_checked = 3, .handle_leaks_summarized = 2, .handle_leaks = 1 };
+    try testing.expect(!lost.gatePassed());
+    w = .fixed(&buf);
+    try lost.write(&w);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "handle gate: NOT RECONCILED - the summaries count 2 handle leak(s), the log has 1 line(s)") != null);
+
+    // No log given: the handle gate is not read (as leaks are not), and says so.
+    var no_log = clean;
+    no_log.log = null;
+    try testing.expect(no_log.gatePassed());
 }
