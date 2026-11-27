@@ -186,6 +186,24 @@ pub const WptBrowser = struct {
         return ca;
     }
 
+    /// Settle the Browser onto a clean initial `about:blank` realm and force
+    /// full GC + deferred-teardown drain so `wpt_runner_bug_finding` can
+    /// sample net V8 handle deltas across a file boundary (`handle_gate.zig`).
+    pub fn settleForHandleGate(self: *WptBrowser) void {
+        self.closeOldWindows();
+        self.browser.navigateWithOptions("about:blank", .window, .{ .skip_load = true }) catch return;
+        const page = self.browser.current_context orelse return;
+        const window = page.window_instance orelse return;
+        const agent = window.ctx.agent orelse return;
+        // Two GC + deferred-teardown passes so weak callbacks, finalizers, and
+        // any second-pass released wrappers all settle cleanly.
+        var pass: usize = 0;
+        while (pass < 2) : (pass += 1) {
+            engine.requestGarbageCollection(agent);
+            self.browser.agent_host.deferred_teardown.drainAll();
+        }
+    }
+
     /// Cleanup
     pub fn deinit(self: *WptBrowser) void {
         // Before the agent goes: the thread holds its address.

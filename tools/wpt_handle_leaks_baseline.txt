@@ -1,0 +1,18 @@
+# Known per-file V8 handle deltas in `wpt_runner_bug_finding` (handle_gate.zig).
+#
+# Format: five TAB-separated fields per line (blank lines and `#` comments ignored):
+#   <wpt_path>	<max_object_globals>	<max_wrapper_cache_entries>	<owner>	<reason>
+#
+# Any unlisted file has a strict 0 / 0 cap: a net positive `live_object_globals`
+# or `wrapper_cache_entries` delta after closing the file's page and forcing full
+# GC emits `handle leak: <path>: ...` in the bug-finding log.
+#
+# Seeded from a real bug-finding sweep on server1 (602/602 crashtests + css/mediaqueries):
+# 597/602 crashtests and 9/9 mediaqueries files had 0/0 delta; the 5 entries below
+# are genuine cross-realm popup/stream retention holders to fix in follow-up lifetime lanes.
+# This list is a ratchet: entries only go down as handle leaks are fixed.
+html/browsers/origin/origin-keyed-agent-clusters/popups-crash.https.html	4	16	lane-rc9	cross-origin popup realm retains 4 object globals and 16 wrapper entries after close
+streams/piping/crashtests/cross-piping2.https.html	1	5	lane-rc9	cross-realm pipe retains 1 object global and 5 wrapper entries after teardown
+streams/readable-byte-streams/crashtests/from-cross-realm-error.html	1	6	lane-rc9	cross-realm ReadableStream.from error retains 1 object global and 6 wrapper entries
+streams/readable-byte-streams/crashtests/from-cross-realm.html	1	6	lane-rc9	cross-realm ReadableStream.from retains 1 object global and 6 wrapper entries
+streams/readable-streams/crashtests/from-cross-realm.https.html	1	5	lane-rc9	cross-realm ReadableStream.from retains 1 object global and 5 wrapper entries

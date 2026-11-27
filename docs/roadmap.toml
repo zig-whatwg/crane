@@ -249,6 +249,7 @@ progress = [
   "ec02b245478, ed58e03a2f6, 2863e2ced88, b9619348994, 1a16294b06f - an iframe src navigation out of memory starts no navigation (resolveSrc panicked); a meta http-equiv that cannot be read fails its CSP closed; a CSP decision whose policy container cannot be found is Blocked (CSPList.unavailable, PolicyContainer.unavailable: a Window with no document, a Document with no state); an iframe navigation whose policies cannot be found does not start, inheritance fails closed, the UIR 3.3 double deinit; contentWindow never answers its WindowProxy struct as a Window (a type confusion) (leaks5)",
   "2db2eb8e9cb, 1c016b202f0, ff366e92c68 - an unenforceable CSP list derives every sandboxing flag; a worker creator whose settings cannot be found has the unavailable policy container; nonce hiding hides the nonce when the document's CSP list cannot be read (leaks6)",
   "7104774e9f9, 29047f89485, e2980307ea5, 4e67ff64b6c, 8587c694eef - cross-origin isolation (coi1): COOP obtained and enforced with browsing context group switches (a popup severed from its opener: new WindowProxy, closed, no name), COEP on documents, frames (CORP and adherence checks with coep reports) and workers, Fetch's CORP check and COEP credentialless, crossOriginIsolated from the group's concrete mode and the cross-origin-isolated feature, the WPT runner's top-level page isolated by its headers",
+  "5a621f2cb (lane blk6) - HTML create-a-new-realm step 5 gates SharedArrayBuffer on cross-origin isolation across Window/Worker/Worklet realms; 72dd54d3b (lane sab1) - Window agent clusters keyed by browsing context group and SharedWorker isolation aligned with workerCrossOriginIsolated",
 ]
 
   [[infra.items]]
@@ -268,7 +269,7 @@ progress = [
   status = "done"
 
   [[infra.items]]
-  name = "Cross-origin isolation: COOP browsing context group switches, COEP and CORP enforcement, crossOriginIsolated (COOP reports, per-hop COOP and the SharedArrayBuffer constructor gate remain)"
+  name = "Cross-origin isolation: COOP browsing context group switches (with COOP reports and per-hop checks), COEP and CORP enforcement, crossOriginIsolated and the SharedArrayBuffer constructor gate"
   status = "done"
 
 [[infra]]
@@ -1017,6 +1018,41 @@ progress = [
   name = "Time marches on on the media timeline"
   status = "done"
 
+[[infra]]
+id = "allocator-hardening"
+title = "Hardened partitioned per-Browser allocator (0.1 requirement)"
+why = """Each Browser's DOM nodes, satellites, objects and byte buffers share the system \
+heap by default without partition isolation, out-of-line metadata, zero-on-free, quarantine, \
+or guard-page retirement. A hardened partitioned heap (PartitionAlloc / isoheap model) isolates \
+untrusted byte buffers from pointer-bearing objects and DOM nodes, catches double-frees and \
+use-after-free bugs, and decommits idle spans cleanly across Browsers."""
+done_when = """Per-Browser partitioned heap spans (.node, .satellite, .objects, .bytes) with \
+out-of-line metadata, zero-on-free, quarantine, validated frees, idle decommit, MADV_NOHUGEPAGE \
+on Linux, lint-direct-allocator and lint-pointer-align at 0, and --memory-map observability \
+pass full WPT A/B, bug-finding, macOS leaks, and the 3% cost bar."""
+progress = [
+  "8d44f5f90 (lane hard1 8b0520c13) - Batch A: per-Browser span engine with out-of-line 2-bit slot maps, validated frees, lowest-address-first placement with K=2 random buckets, zero-on-free with verify on issue, 512 KiB task quarantine with random eviction, span-aware magazine, idle decommit, bug-finding retire/poison/leak report, and Instance + State combined allocation",
+  "71a665128 (lane hard1-b 6c07edbd9) - Batch B1: general-memory .objects and .bytes partitions, lock-free AgentCache, 512 KiB .objects quarantine, shared meta_pool, idle bitmap-page decommit with partition-scoped sentinel guard, coalescing bytes large-run allocator, PROT_NONE guard-page retirement, BrowserConfig.general_memory = .crane default, and platform.currentThreadToken",
+  "a2a47d6d1 (lane hard1-b2 7e46a3061) - Batch B2: split node cage into .node + guard + .satellite partition (src/runtime/heap/satellite.zig) housing rare/own blocks, listener lists, attribute blocks, observer registrations, slot state and ElementStyle; reshaped ElementName & QualifiedName into .objects header + .bytes buffer; platform GeneralMemoryPolicy; Linux MADV_NOHUGEPAGE on all 4 heap ranges",
+  "b64a9b95a (lane hard1-c 64e5ffd27) - Batch C: moved per-Browser/per-agent V8 adapter Zig records and remaining non-V8 c_allocator sites into .objects; routed Brotli & zlib/WS deflate C callback buffers into .bytes; added lint-direct-allocator (0 unmarked) & lint-pointer-align (0) to zig build test; added AllocObserver + Darwin malloc_logger callouts, --memory-map, 4-partition gc_bench columns and standalone_heap_* runner counters",
+]
+
+  [[infra.items]]
+  name = "Batch A: hardened span engine, out-of-line metadata, zero-on-free, quarantine and leak reporting"
+  status = "done"
+
+  [[infra.items]]
+  name = "Batch B1: general-memory .objects and .bytes partitions, AgentCache, coalescing large runs and guard-page retirement"
+  status = "done"
+
+  [[infra.items]]
+  name = "Batch B2: cage .satellite partition, ElementName/QualifiedName split, platform GeneralMemoryPolicy and Linux MADV_NOHUGEPAGE"
+  status = "done"
+
+  [[infra.items]]
+  name = "Batch C: V8/non-V8 .objects & codec .bytes migrations, lint-direct-allocator / lint-pointer-align at 0, and --memory-map observability"
+  status = "done"
+
 [[parallel]]
 name = "Heavy builds and WPT runs on chat.local, one mirror per lane"
 status = "done"
@@ -1061,14 +1097,14 @@ moved is re-run at --parallel=1 against the same HEAD without the change."""
 name = "Object lifetime and V8 handle ownership"
 infra = "lifetime"
 owner = "integrator"
-status = "doing"
+status = "done"
 paths = ["src/runtime/ (bindings, conversions, wrapper cache, v8_wrapper.cpp)", "context_manager.zig outside the navigation lane's functions"]
 
 [[lane]]
 name = "Asynchronous networking"
 infra = "networking"
 owner = "agent"
-status = "doing"
+status = "done"
 branch = "lane/networking"
 paths = ["src/fetch/", "src/xhr/algorithms/{fetch_integration,send}.zig", "conversions.zig: convertBodyInit and the union Instance-arm implements check", "interface.zig: the argument-cleanup predicates' BodyInit entries", "src/webidl/impls/{Request,Response,Headers,XMLHttpRequest*}.zig", "call_fetch in WindowOrWorkerGlobalScope.zig", "fetch in worker_v8_context.zig", "one additive pump step in event_loop.zig", "tests/fetch/", "tests/xhr/", "tests/wpt/crane/net-*"]
 
@@ -1084,7 +1120,7 @@ paths = ["src/html/workers/", "src/html/worker_v8_context.zig", "src/webidl/impl
 name = "Navigation and document lifecycle"
 infra = "navigation"
 owner = "agent"
-status = "doing"
+status = "done"
 branch = "lane/navigation"
 paths = ["src/browser/", "src/html/window/", "context_manager.zig: createChildContext, createWindowForExistingBrowsingContext, destroyChildContext, removeContext, retireEntry", "src/webidl/impls/{Window,Location,History,Navigation*,HTMLIFrameElement,HTMLFrameElement,HTMLFrameSetElement,HTMLAnchorElement,HTMLAreaElement,HTMLHyperlinkElementUtils,BarProp,WindowEventHandlers}.zig", "form submission's navigation step", "src/html/navigation/", "src/dom/document_lifecycle.zig and Document.zig's lifecycle section", "src/dom/activation.zig, EventTarget dispatch's activation steps, HTMLElement.call_click", "v8_Context_NewFromSnapshotWithGlobal (additive FFI)", "Document.call_open steps 8 and 13", "src/dom/attribute_change_steps.zig and its call in Element.attributeChangeSteps", "BeforeUnloadEvent.zig", "src/dom/navigables.zig (hook)", "increment 3: Document.get_defaultView, the about base URL (a Document field and Node.get_baseURI), src/webidl/impls/Storage.zig, the activation install and steps in input/button/label impls", "tests/browser/", "tests/html/navigation/", "tests/wpt/crane/nav-*"]
 
@@ -1092,7 +1128,7 @@ paths = ["src/browser/", "src/html/window/", "context_manager.zig: createChildCo
 name = "Reflected IDL attributes"
 infra = "bindings"
 owner = "agent"
-status = "paused"
+status = "done"
 branch = "lane/reflection"
 paths = ["src/webidl/codegen/ (reflection emission)", "regenerated src/webidl/interfaces/ and mixins", "src/webidl/impls/reflection.zig (new helper)", "src/webidl/impls/HTML*.zig: deleting reflected-attribute stubs only, except the navigation lane's files and HTMLScriptElement.zig", "src/dom/token_lists.zig (new hook) and its install in DOMTokenList.zig", "increment 4: DOMTokenList attribute change steps, property_classifier / lazy_properties emission and interface.zig lazy interceptor, [PutForwards] in codegen and runtime.setPropertyOnInstance, input.size in HTMLInputElement.zig, restricted double in codegen and conversions.fromV8Value", "tests/codegen/reflect_*", "tests/html/reflection*", "tests/wpt/crane/reflect-*"]
 
@@ -1108,7 +1144,7 @@ paths = ["src/websocket/", "src/webidl/impls/{WebSocket,CloseEvent}.zig", "tests
 name = "Scripting (the script element)"
 area = "html/semantics/scripting-1/"
 owner = "agent"
-status = "paused"
+status = "done"
 branch = "lane/scripting"
 paths = ["src/html/{script_execution,module_script,module_graph,external_script_loader,parser_script_execution,script_runner,report_exception,rejected_promises}.zig", "src/webidl/impls/HTMLScriptElement.zig", "increment 2: src/html/parser/, src/html/scripted_parser.zig, src/html/dom_tree_adapter.zig, src/webidl/impls/HTMLParser.zig, Document.call_write/call_writeln, the script registration in src/dom/attribute_change_steps.zig, html/syntax/ and html/webappapis/dynamic-markup-insertion/", "tests/html/script*", "tests/html/module*", "tests/html/parser*", "tests/wpt/crane/script-*", "tests/wpt/crane/parse-*"]
 
@@ -1116,7 +1152,7 @@ paths = ["src/html/{script_execution,module_script,module_graph,external_script_
 name = "Engine boundary: workers and messaging"
 infra = "engine-adapter"
 owner = "agent"
-status = "doing"
+status = "done"
 branch = "lane/engine-boundary"
 paths = ["src/html/worker_v8_context.zig", "src/html/workers/", "src/webidl/impls/{Worker,AbstractWorker,DedicatedWorkerGlobalScope,WorkerGlobalScope,MessagePort,MessageChannel,MessageEvent,WebSocket,AbortSignal}.zig", "new files under src/runtime/engines/v8/ for the moved engine parts", "additive Engine operations in engine_interface.zig and the jsc/quickjs tables, announced to the integrator", "tests/v8/ (new)", "tests/html/workers/", "tests/websocket/", "tests/wpt/crane/eb-*"]
 
@@ -1124,7 +1160,7 @@ paths = ["src/html/worker_v8_context.zig", "src/html/workers/", "src/webidl/impl
 name = "Engine boundary: the page realm"
 infra = "engine-adapter"
 owner = "agent"
-status = "doing"
+status = "done"
 branch = "lane/page-realm"
 paths = ["src/browser/Context.zig", "src/browser/navigation.zig", "src/webdriver/session.zig", "tools/repl.zig", "new adapter files for the page realm's engine half", "its Engine table region", "tests/v8/ (new)", "tests/wpt/crane/eb-page-realm-*"]
 
@@ -1132,7 +1168,7 @@ paths = ["src/browser/Context.zig", "src/browser/navigation.zig", "src/webdriver
 name = "Engine boundary: runtime internals and unclaimed impls"
 infra = "engine-adapter"
 owner = "agent"
-status = "doing"
+status = "done"
 branch = "lane/runtime-impls"
 paths = ["src/runtime/*.zig outside engines/ (not engine_interface, context, root)", "src/runtime/typedefs/", "src/streams/internal/{v8_promise_chaining,iterator_record,from_iterable_algorithm}.zig", "unclaimed impls not in tmp/plans/held-files.md (observers, cookie store, canvas, events, IndexedDB, URL, ...)", "its Engine table region", "tests/v8/ (new)", "tests/wpt/crane/eb-runtime-impls-*"]
 
@@ -1208,6 +1244,6 @@ name = "Worklets: addModule, worklet global scopes and their realms (HTML 11)"
 area = "content-security-policy/gen/, mixed-content/gen/, upgrade-insecure-requests/gen/ (worklet-*)"
 infra = "engine-adapter"
 owner = "agent"
-status = "doing"
+status = "done"
 branch = "lane/worklets"
 paths = ["src/html/worklet_host.zig", "src/webidl/impls/{Worklet,WorkletGlobalScope,PaintWorkletGlobalScope,LayoutWorkletGlobalScope,AnimationWorkletGlobalScope,AudioWorklet,AudioWorkletGlobalScope,AudioWorkletProcessor}.zig", "CSS.zig: the worklet getters", "BaseAudioContext.get_audioWorklet", "src/runtime/engines/v8/worklet_realm.zig and the createWorkletRealm/destroyWorkletRealm protocol entries", "namespace attributes in generator.zig and namespace.zig", "module_script.zig: script_destination, credentials_mode, the reportScriptFetch realm", "tests/v8/worklet_realm_test.zig", "tests/html/worklet_test.zig", "tests/wpt/crane/wl-*"]

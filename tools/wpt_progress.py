@@ -88,16 +88,31 @@ def alt_rates(worklist, records):
 
 def gate_status(rec, path=None):
     """The status the gate judges `rec` by: the runner's, or NONE-PASSED - or
-    EXEMPT, when `path` is listed in the gate's exemptions and would block."""
+    EXEMPT, when `path` is listed in the gate's exemptions and would block.
+
+    A WPT crashtest (`crashtest: True`) reports 0 subtests: completing with
+    `status == 'OK'` is always a clean pass (never NONE-PASSED), while
+    TIMEOUT / CRASH / ERROR still block.
+    """
     st = rec.get('status', 'ERROR')
-    if st == 'OK' and rec.get('passed', 0) == 0 and (
-            rec.get('failed', 0) + rec.get('timed_out', 0) + rec.get('notrun', 0)) > 0:
-        st = NONE_PASSED
+    if st == 'OK':
+        if rec.get('crashtest'):
+            return 'OK'
+        if rec.get('passed', 0) == 0 and (
+                rec.get('failed', 0) + rec.get('timed_out', 0) + rec.get('notrun', 0)) > 0:
+            st = NONE_PASSED
     # Anything but OK blocks (an unknown status included), so anything but OK
     # is what an exemption turns into EXEMPT.
     if path is not None and path in EXEMPTIONS and st != 'OK':
         return EXEMPT
     return st
+
+
+def is_clean_ok(rec):
+    """Whether an OK record counts as clean: every crashtest OK is clean;
+    otherwise no failed or timed_out subtests."""
+    return bool(rec.get('crashtest')) or (
+        rec.get('failed', 0) == 0 and rec.get('timed_out', 0) == 0)
 
 
 # Reference runs (lane chromeref1; the user, 2026-11-03: "I want the chrome results on the
@@ -1718,7 +1733,7 @@ def build(worklist, records, shape=None):
             if status == NONE_PASSED:
                 areas[a]['sub_fail'] += rec.get('failed', 0)
         elif status == 'OK':
-            if rec.get('failed', 0) == 0 and rec.get('timed_out', 0) == 0:
+            if is_clean_ok(rec):
                 areas[a]['clean'] += 1
             else:
                 areas[a]['partial'] += 1
@@ -1769,7 +1784,7 @@ def area_stats(prefixes, worklist, records):
             c['unrun'] += 1
         elif st in GATING:
             c['blocking'] += 1
-        elif not rec.get('failed') and not rec.get('timed_out'):
+        elif is_clean_ok(rec):
             c['clean'] += 1
     return c
 
@@ -2738,7 +2753,7 @@ def compare_reference(worklist, records, ref):
         st = gate_status(rec, path)
         if st not in ('OK', EXEMPT):
             t['blocking'] += 1
-        elif st == 'OK' and rec.get('failed', 0) == 0 and rec.get('timed_out', 0) == 0:
+        elif st == 'OK' and is_clean_ok(rec):
             t['clean'] += 1
 
     # The totals compare the files both have a result for; the files only one has are listed.
@@ -5597,6 +5612,29 @@ def _check_configuration_marker():
     assert CONFIGURATION_CHANGE_PRODUCTION == 'configuration change: production build'
 
 
+def _check_crashtest_gate():
+    """Crashtest records (`crashtest: True`) with status OK count as clean
+    (never NONE-PASSED); non-OK statuses still block."""
+    ok_crash = {'status': 'OK', 'passed': 0, 'failed': 0, 'timed_out': 0, 'notrun': 0, 'crashtest': True}
+    ok_crash_extra = {'status': 'OK', 'passed': 0, 'failed': 1, 'crashtest': True}
+    to_crash = {'status': 'TIMEOUT', 'passed': 0, 'failed': 0, 'crashtest': True}
+    cr_crash = {'status': 'CRASH', 'passed': 0, 'failed': 0, 'crashtest': True}
+    assert gate_status(ok_crash) == 'OK'
+    assert gate_status(ok_crash_extra) == 'OK'
+    assert gate_status(to_crash) == 'TIMEOUT'
+    assert gate_status(cr_crash) == 'CRASH'
+    assert is_clean_ok(ok_crash)
+    assert is_clean_ok(ok_crash_extra)
+    wl = ['dom/a-crash.html', 'dom/b-crash.html']
+    recs = {'dom/a-crash.html': ok_crash, 'dom/b-crash.html': to_crash}
+    areas, _, _ = build(wl, recs)
+    assert areas['dom']['clean'] == 1, areas['dom']
+    assert areas['dom']['gating'] == 1, areas['dom']
+    assert areas['dom']['none-passed'] == 0, areas['dom']
+    st = area_stats(['dom/'], wl, recs)
+    assert st['clean'] == 1 and st['blocking'] == 1, st
+
+
 if __name__ == '__main__':
     if sys.argv[1:] == ['--self-test']:
         _check_production_journal_only()
@@ -5604,6 +5642,7 @@ if __name__ == '__main__':
         _check_declared_variants()
         _check_history_chart()
         _check_gate_rule()
+        _check_crashtest_gate()
         _check_fixed_crane_test_in_fork()
         _check_history_subs()
         _check_history_sources()

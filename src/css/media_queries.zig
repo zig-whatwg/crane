@@ -21,7 +21,7 @@
 //! ## Choices the specification leaves open (see the tests)
 //!
 //! - A media feature the environment holds no fact for (hover, pointer,
-//!   color-gamut, ...) evaluates to unknown - never an invented answer. So
+//!   display-mode, ...) evaluates to unknown - never an invented answer. So
 //!   does a feature name nobody defined (section 3.2).
 //! - "Negative values" of a range feature that is "false in the negative
 //!   range" (width, height, resolution, color, ...) are valid and parsed
@@ -45,7 +45,7 @@ const Token = tokenizer.Token;
 
 /// What a media query is evaluated against: the facts a headless engine can
 /// state. Everything else a media feature could ask (hover, pointer,
-/// color-gamut, ...) has no fact here and is unknown (module doc).
+/// display-mode, ...) has no fact here and is unknown (module doc).
 pub const MediaValues = struct {
     /// The media type the document is displayed on (section 2.3).
     media_type: enum { screen, print } = .screen,
@@ -68,6 +68,11 @@ pub const MediaValues = struct {
     prefers_reduced_motion: enum { no_preference, reduce } = .no_preference,
     prefers_contrast: enum { no_preference, more, less, custom } = .no_preference,
     forced_colors: bool = false,
+    prefers_reduced_transparency: enum { no_preference, reduce } = .no_preference,
+    inverted_colors: enum { none, inverted } = .none,
+    color_gamut: enum { srgb, p3, rec2020 } = .srgb,
+    dynamic_range: enum { standard, high } = .standard,
+    prefers_reduced_data: enum { no_preference, reduce } = .no_preference,
     scripting: enum { none, initial_only, enabled } = .enabled,
     /// The initial value of `font-size`: what `em`, `rem`, `ex` and `ch` are
     /// relative to in a query (section 1.3).
@@ -161,6 +166,11 @@ pub const FeatureId = enum {
     prefers_reduced_motion,
     prefers_contrast,
     forced_colors,
+    prefers_reduced_transparency,
+    inverted_colors,
+    color_gamut,
+    dynamic_range,
+    prefers_reduced_data,
     scripting,
     webkit_device_pixel_ratio,
 
@@ -194,7 +204,18 @@ pub const FeatureId = enum {
             .resolution => .resolution,
             .color, .color_index, .monochrome => .integer,
             .webkit_device_pixel_ratio => .number,
-            .orientation, .prefers_color_scheme, .prefers_reduced_motion, .prefers_contrast, .forced_colors, .scripting => .keyword,
+            .orientation,
+            .prefers_color_scheme,
+            .prefers_reduced_motion,
+            .prefers_contrast,
+            .forced_colors,
+            .prefers_reduced_transparency,
+            .inverted_colors,
+            .color_gamut,
+            .dynamic_range,
+            .prefers_reduced_data,
+            .scripting,
+            => .keyword,
         };
     }
 };
@@ -445,14 +466,15 @@ fn compare(id: FeatureId, op: Op, value: *const Value, values: *const MediaValue
             return Tri.fromBool(relation(op, values.resolution, v));
         },
         .keyword => {
-            // Discrete: an exact match of one of the feature's keywords.
+            // Discrete: an exact match of one of the feature's keywords (or
+            // inclusive ascending match for color-gamut §6.4 and dynamic-range §6.5).
             if (op != .eq) return .u;
             const ident = switch (value.*) {
                 .ident => |i| i,
                 else => return .u,
             };
             for (keywordValues(id)) |k| {
-                if (std.mem.eql(u8, k, ident)) return Tri.fromBool(std.mem.eql(u8, keywordFact(id, values), k));
+                if (std.mem.eql(u8, k, ident)) return Tri.fromBool(keywordMatches(id, values, k));
             }
             return .u;
         },
@@ -526,6 +548,27 @@ fn keywordFact(id: FeatureId, values: *const MediaValues) []const u8 {
             .custom => "custom",
         },
         .forced_colors => if (values.forced_colors) "active" else "none",
+        .prefers_reduced_transparency => switch (values.prefers_reduced_transparency) {
+            .no_preference => "no-preference",
+            .reduce => "reduce",
+        },
+        .inverted_colors => switch (values.inverted_colors) {
+            .none => "none",
+            .inverted => "inverted",
+        },
+        .color_gamut => switch (values.color_gamut) {
+            .srgb => "srgb",
+            .p3 => "p3",
+            .rec2020 => "rec2020",
+        },
+        .dynamic_range => switch (values.dynamic_range) {
+            .standard => "standard",
+            .high => "high",
+        },
+        .prefers_reduced_data => switch (values.prefers_reduced_data) {
+            .no_preference => "no-preference",
+            .reduce => "reduce",
+        },
         .scripting => switch (values.scripting) {
             .none => "none",
             .initial_only => "initial-only",
@@ -535,7 +578,26 @@ fn keywordFact(id: FeatureId, values: *const MediaValues) []const u8 {
     };
 }
 
-/// The value syntax of a discrete feature (sections 4.4, 9.1, 12).
+/// Whether `values` matches keyword `k` for discrete feature `id`.
+/// MQ5 §6.4 (`color-gamut`) and §6.5 (`dynamic-range`) are ascending/inclusive:
+/// `rec2020` also matches `p3` and `srgb`; `p3` also matches `srgb`; `high`
+/// also matches `standard`.
+fn keywordMatches(id: FeatureId, values: *const MediaValues, k: []const u8) bool {
+    return switch (id) {
+        .color_gamut => switch (values.color_gamut) {
+            .srgb => std.mem.eql(u8, k, "srgb"),
+            .p3 => std.mem.eql(u8, k, "srgb") or std.mem.eql(u8, k, "p3"),
+            .rec2020 => std.mem.eql(u8, k, "srgb") or std.mem.eql(u8, k, "p3") or std.mem.eql(u8, k, "rec2020"),
+        },
+        .dynamic_range => switch (values.dynamic_range) {
+            .standard => std.mem.eql(u8, k, "standard"),
+            .high => std.mem.eql(u8, k, "standard") or std.mem.eql(u8, k, "high"),
+        },
+        else => std.mem.eql(u8, keywordFact(id, values), k),
+    };
+}
+
+/// The value syntax of a discrete feature (sections 4.4, 6.4-6.6, 9.1, 12).
 fn keywordValues(id: FeatureId) []const []const u8 {
     return switch (id) {
         .orientation => &.{ "portrait", "landscape" },
@@ -543,6 +605,11 @@ fn keywordValues(id: FeatureId) []const []const u8 {
         .prefers_reduced_motion => &.{ "no-preference", "reduce" },
         .prefers_contrast => &.{ "no-preference", "less", "more", "custom" },
         .forced_colors => &.{ "none", "active" },
+        .prefers_reduced_transparency => &.{ "no-preference", "reduce" },
+        .inverted_colors => &.{ "none", "inverted" },
+        .color_gamut => &.{ "srgb", "p3", "rec2020" },
+        .dynamic_range => &.{ "standard", "high" },
+        .prefers_reduced_data => &.{ "no-preference", "reduce" },
         .scripting => &.{ "none", "initial-only", "enabled" },
         else => unreachable,
     };
@@ -659,6 +726,11 @@ const feature_table = [_]struct { []const u8, FeatureId }{
     .{ "prefers-reduced-motion", .prefers_reduced_motion },
     .{ "prefers-contrast", .prefers_contrast },
     .{ "forced-colors", .forced_colors },
+    .{ "prefers-reduced-transparency", .prefers_reduced_transparency },
+    .{ "inverted-colors", .inverted_colors },
+    .{ "color-gamut", .color_gamut },
+    .{ "dynamic-range", .dynamic_range },
+    .{ "prefers-reduced-data", .prefers_reduced_data },
     .{ "scripting", .scripting },
     .{ "-webkit-device-pixel-ratio", .webkit_device_pixel_ratio },
     // Range features MQ5 defines that the environment has no fact for:
@@ -1856,6 +1928,62 @@ test "preference features (section 12)" {
     try expectMatch("(forced-colors: active)", .{ .forced_colors = true }, true);
     try expectMatch("(forced-colors)", .{ .forced_colors = true }, true);
     try expectMatch("(forced-colors: none)", .{ .forced_colors = true }, false);
+
+    // prefers-reduced-transparency (section 12.2)
+    try expectT("(prefers-reduced-transparency: no-preference)");
+    try expectF("(prefers-reduced-transparency: reduce)");
+    try expectF("(prefers-reduced-transparency)");
+    try expectT("not (prefers-reduced-transparency)");
+    try expectMatch("(prefers-reduced-transparency: reduce)", .{ .prefers_reduced_transparency = .reduce }, true);
+    try expectMatch("(prefers-reduced-transparency)", .{ .prefers_reduced_transparency = .reduce }, true);
+    try expectMatch("(prefers-reduced-transparency: no-preference)", .{ .prefers_reduced_transparency = .reduce }, false);
+    try expectF("(prefers-reduced-transparency: none)");
+    try expectF("not (prefers-reduced-transparency: none)");
+
+    // inverted-colors (section 6.6)
+    try expectT("(inverted-colors: none)");
+    try expectF("(inverted-colors: inverted)");
+    try expectF("(inverted-colors)");
+    try expectT("not (inverted-colors)");
+    try expectMatch("(inverted-colors: inverted)", .{ .inverted_colors = .inverted }, true);
+    try expectMatch("(inverted-colors)", .{ .inverted_colors = .inverted }, true);
+    try expectMatch("(inverted-colors: none)", .{ .inverted_colors = .inverted }, false);
+    try expectF("(inverted-colors: no-preference)");
+    try expectF("not (inverted-colors: no-preference)");
+
+    // color-gamut (section 6.4): ascending inclusive matching (rec2020 >= p3 >= srgb)
+    try expectT("(color-gamut)");
+    try expectT("(color-gamut: srgb)");
+    try expectF("(color-gamut: p3)");
+    try expectF("(color-gamut: rec2020)");
+    try expectMatch("(color-gamut: srgb)", .{ .color_gamut = .p3 }, true);
+    try expectMatch("(color-gamut: p3)", .{ .color_gamut = .p3 }, true);
+    try expectMatch("(color-gamut: rec2020)", .{ .color_gamut = .p3 }, false);
+    try expectMatch("(color-gamut: srgb)", .{ .color_gamut = .rec2020 }, true);
+    try expectMatch("(color-gamut: p3)", .{ .color_gamut = .rec2020 }, true);
+    try expectMatch("(color-gamut: rec2020)", .{ .color_gamut = .rec2020 }, true);
+    try expectF("(color-gamut: invalid)");
+    try expectF("not (color-gamut: invalid)");
+
+    // dynamic-range (section 6.5): ascending inclusive matching (high >= standard)
+    try expectT("(dynamic-range)");
+    try expectT("(dynamic-range: standard)");
+    try expectF("(dynamic-range: high)");
+    try expectMatch("(dynamic-range: standard)", .{ .dynamic_range = .high }, true);
+    try expectMatch("(dynamic-range: high)", .{ .dynamic_range = .high }, true);
+    try expectF("(dynamic-range: invalid)");
+    try expectF("not (dynamic-range: invalid)");
+
+    // prefers-reduced-data (section 12.6)
+    try expectT("(prefers-reduced-data: no-preference)");
+    try expectF("(prefers-reduced-data: reduce)");
+    try expectF("(prefers-reduced-data)");
+    try expectT("not (prefers-reduced-data)");
+    try expectMatch("(prefers-reduced-data: reduce)", .{ .prefers_reduced_data = .reduce }, true);
+    try expectMatch("(prefers-reduced-data)", .{ .prefers_reduced_data = .reduce }, true);
+    try expectMatch("(prefers-reduced-data: no-preference)", .{ .prefers_reduced_data = .reduce }, false);
+    try expectF("(prefers-reduced-data: none)");
+    try expectF("not (prefers-reduced-data: none)");
 }
 
 test "scripting (section 9.1)" {
@@ -1874,12 +2002,11 @@ test "scripting (section 9.1)" {
 
 test "features the environment has no fact for are unknown (section 3.2)" {
     for ([_][]const u8{
-        "hover",                      "any-hover",            "pointer",                      "any-pointer",
-        "display-mode",               "color-gamut",          "dynamic-range",                "update",
-        "overflow-block",             "overflow-inline",      "grid",                         "scan",
-        "inverted-colors",            "prefers-reduced-data", "prefers-reduced-transparency", "environment-blending",
-        "nav-controls",               "video-color-gamut",    "video-dynamic-range",          "horizontal-viewport-segments",
-        "vertical-viewport-segments", "ua-color-scheme",      "device-posture",               "made-up-feature",
+        "hover",             "any-hover",           "pointer",                      "any-pointer",
+        "display-mode",      "update",              "overflow-block",               "overflow-inline",
+        "grid",              "scan",                "environment-blending",         "nav-controls",
+        "video-color-gamut", "video-dynamic-range", "horizontal-viewport-segments", "vertical-viewport-segments",
+        "ua-color-scheme",   "device-posture",      "made-up-feature",
     }) |name| {
         var buf: [96]u8 = undefined;
         // Boolean form: unknown, so false and its negation false.

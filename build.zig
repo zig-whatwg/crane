@@ -560,11 +560,13 @@ fn addSuiteRuntimeInputs(b: *std.Build, run: *std.Build.Step.Run, launch: *const
     if (std.mem.startsWith(u8, suite_name, "wpt_runner-")) {
         run.addFileInput(b.path("tests/wpt_0_1_worklist.txt"));
         run.addFileInput(b.path("tools/wpt_build_differences.txt"));
+        run.addFileInput(b.path("tools/wpt_handle_leaks_baseline.txt"));
         run.addFileInput(b.path("specs/w3c/webdriver2.md"));
     }
-    // Recorded Chrome traces in tests/devtools/fixtures/.
+    // Recorded Chrome traces in tests/devtools/fixtures/ and heap snapshots in tools/mcp_diff/fixtures/.
     if (suiteIncludesDir(suite_name, groups, "tests/devtools")) {
         addRunInputTree(b, run, launch.inputs, "tests/devtools/fixtures");
+        addRunInputTree(b, run, launch.inputs, "tools/mcp_diff/fixtures");
     }
     // PEM trust-store fixtures in tests/fetch/fixtures/trust_store/ (the
     // content_coding fixtures are @embedFile'd and already tracked by compile).
@@ -584,6 +586,7 @@ fn addSuiteRuntimeInputs(b: *std.Build, run: *std.Build.Step.Run, launch: *const
         addRunInputTree(b, run, launch.inputs, "src/webidl/interfaces");
         addRunInputTree(b, run, launch.inputs, "src/webidl/mixins");
         addRunInputTree(b, run, launch.inputs, "src/webidl/callbacks");
+        addRunInputTree(b, run, launch.inputs, "src/webidl/dictionaries");
     }
     // tests/infra includes repo-wide source checks (test_allocators_test scans
     // src/ and tests/; adapter script-compile check scans the engine adapter):
@@ -4539,6 +4542,7 @@ pub fn build(b: *std.Build) void {
             "tests/wpt_runner/file_lock.zig",
             "tests/wpt_runner/work_queue.zig",
             "tests/wpt_runner/build_compare.zig",
+            "tests/wpt_runner/handle_gate.zig",
             // The A/B runner (lane tool1-ab) and what it shares with perf_bench
             // window: the clock, commit abbreviations, SHA256SUMS.
             "tests/wpt_runner/ab.zig",
@@ -5831,6 +5835,26 @@ pub fn build(b: *std.Build) void {
     lint_pointer_align_step.dependOn(&lint_pointer_align.step);
     test_step.dependOn(&lint_pointer_align.step);
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_pointer_align_module }), "tools-lint_pointer_align", null).step);
+
+    // ========================================================================
+    // LINT: runtime file reads in tests/ declared in addSuiteRuntimeInputs
+    // ========================================================================
+    const lint_test_inputs_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_test_inputs.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_test_inputs_exe = b.addExecutable(.{
+        .name = "lint_test_inputs",
+        .root_module = lint_test_inputs_module,
+    });
+    const lint_test_inputs_step = b.step("lint-test-inputs", "Fail on readFileAlloc of a repo file in tests/ not declared in addSuiteRuntimeInputs");
+    const lint_test_inputs = b.addRunArtifact(lint_test_inputs_exe);
+    lint_test_inputs.has_side_effects = true;
+    lint_test_inputs.setCwd(b.path("."));
+    lint_test_inputs_step.dependOn(&lint_test_inputs.step);
+    test_step.dependOn(&lint_test_inputs.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_test_inputs_module }), "tools-lint_test_inputs", null).step);
 
     // The generated tables' tools (`addGeneratedTables`): their own tests.
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.reverse_index_tool }), "tools-reverse_index_table", null).step);

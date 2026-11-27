@@ -230,9 +230,19 @@ pub fn setEmulatedMedia(session: *PageSession, params: E.setEmulatedMedia.Params
             media.contrast = if (std.mem.eql(u8, value, "more")) .more else if (std.mem.eql(u8, value, "less")) .less else if (std.mem.eql(u8, value, "custom")) .custom else if (std.mem.eql(u8, value, "no-preference")) .no_preference else null;
         } else if (std.mem.eql(u8, feature.name, "forced-colors")) {
             media.forced_colors = if (std.mem.eql(u8, value, "active")) true else if (std.mem.eql(u8, value, "none")) false else null;
+        } else if (std.mem.eql(u8, feature.name, "prefers-reduced-transparency")) {
+            media.reduced_transparency = if (std.mem.eql(u8, value, "reduce")) .reduce else if (std.mem.eql(u8, value, "no-preference")) .no_preference else null;
+        } else if (std.mem.eql(u8, feature.name, "inverted-colors")) {
+            media.inverted_colors = if (std.mem.eql(u8, value, "inverted")) .inverted else if (std.mem.eql(u8, value, "none")) .none else null;
+        } else if (std.mem.eql(u8, feature.name, "color-gamut")) {
+            media.color_gamut = if (std.mem.eql(u8, value, "srgb")) .srgb else if (std.mem.eql(u8, value, "p3")) .p3 else if (std.mem.eql(u8, value, "rec2020")) .rec2020 else null;
+        } else if (std.mem.eql(u8, feature.name, "dynamic-range")) {
+            media.dynamic_range = if (std.mem.eql(u8, value, "standard")) .standard else if (std.mem.eql(u8, value, "high")) .high else null;
+        } else if (std.mem.eql(u8, feature.name, "prefers-reduced-data")) {
+            media.reduced_data = if (std.mem.eql(u8, value, "reduce")) .reduce else if (std.mem.eql(u8, value, "no-preference")) .no_preference else null;
         }
     }
-    const any = media.media_type != null or media.color_scheme != null or media.reduced_motion != null or media.contrast != null or media.forced_colors != null;
+    const any = media.media_type != null or media.color_scheme != null or media.reduced_motion != null or media.contrast != null or media.forced_colors != null or media.reduced_transparency != null or media.inverted_colors != null or media.color_gamut != null or media.dynamic_range != null or media.reduced_data != null;
     bc.host_overrides.setMedia(owner(session), if (any) media else null);
     mediaChanged(bc);
     return .{};

@@ -182,6 +182,27 @@ fn styleMediaValues(instance: *runtime.Instance) @import("css").media_queries.Me
             .custom => .custom,
         };
         if (media.forced_colors) |forced| values.forced_colors = forced;
+        if (media.reduced_transparency) |rt| values.prefers_reduced_transparency = switch (rt) {
+            .no_preference => .no_preference,
+            .reduce => .reduce,
+        };
+        if (media.inverted_colors) |inv| values.inverted_colors = switch (inv) {
+            .none => .none,
+            .inverted => .inverted,
+        };
+        if (media.color_gamut) |gamut| values.color_gamut = switch (gamut) {
+            .srgb => .srgb,
+            .p3 => .p3,
+            .rec2020 => .rec2020,
+        };
+        if (media.dynamic_range) |dr| values.dynamic_range = switch (dr) {
+            .standard => .standard,
+            .high => .high,
+        };
+        if (media.reduced_data) |rd| values.prefers_reduced_data = switch (rd) {
+            .no_preference => .no_preference,
+            .reduce => .reduce,
+        };
     };
     return values;
 }
