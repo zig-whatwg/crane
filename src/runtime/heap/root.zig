@@ -768,6 +768,92 @@ pub const AgentCache = struct {
     pub fn allocator(self: *AgentCache) std.mem.Allocator {
         return general.agentAllocator(self);
     }
+
+    /// Comptime-routed single-object allocation through this agent's cache
+    /// (allocator-hardening design §3.1, §4.1, §7 B.2): pointer-bearing `T`
+    /// goes to `.objects`, pointer-free `T` goes to `.bytes`.
+    pub fn create(self: *AgentCache, comptime T: type) Error!*T {
+        const pid = comptime partitionForType(T);
+        if (@sizeOf(T) == 0) return zeroSizedPtr(T);
+        const align_val = comptime std.mem.Alignment.of(T);
+        const thread = platform.currentThreadToken();
+        const raw = if (self.owner.load(.monotonic) == thread)
+            try self.engine.cacheAlloc(self, pid, @sizeOf(T), align_val, @returnAddress())
+        else
+            try self.engine.allocGeneral(pid, @sizeOf(T), @alignOf(T), @returnAddress());
+        return @ptrCast(@alignCast(raw));
+    }
+
+    /// Comptime-routed single-object destruction through this agent's cache.
+    pub fn destroy(self: *AgentCache, ptr: anytype) void {
+        const info = @typeInfo(@TypeOf(ptr));
+        if (info != .pointer or info.pointer.size != .one)
+            @compileError("heap.destroy expects a single-item pointer");
+        const T = info.pointer.child;
+        const pid = comptime partitionForType(T);
+        if (@sizeOf(T) == 0) return;
+        const align_bytes = comptime ptrAlignment(@TypeOf(ptr));
+        const align_val = comptime std.mem.Alignment.fromByteUnits(align_bytes);
+        const raw: [*]u8 = @ptrCast(@constCast(ptr));
+        const thread = platform.currentThreadToken();
+        if (self.owner.load(.monotonic) == thread) {
+            self.engine.cacheFree(self, pid, raw, @sizeOf(T), align_val, thread);
+        } else {
+            self.engine.freeGeneral(raw, @sizeOf(T), align_bytes);
+        }
+    }
+
+    /// Comptime-routed slice allocation through this agent's cache.
+    pub fn alloc(self: *AgentCache, comptime T: type, n: usize) Error![]T {
+        return self.allocAligned(T, .of(T), n);
+    }
+
+    /// Comptime-routed aligned slice allocation through this agent's cache:
+    /// even when `alignment >= @alignOf(usize)`, a pointer-free `T` (such as
+    /// 16-byte-aligned raw `u8` buffers) still routes to `.bytes`.
+    pub fn allocAligned(self: *AgentCache, comptime T: type, comptime alignment: std.mem.Alignment, n: usize) Error![]align(alignment.toByteUnits()) T {
+        comptime {
+            if (alignment.toByteUnits() < @alignOf(T))
+                @compileError("heap.allocAligned alignment must be >= @alignOf(T)");
+        }
+        const pid = comptime partitionForType(T);
+        if (n == 0 or @sizeOf(T) == 0) return &.{};
+        const total = std.math.mul(usize, @sizeOf(T), n) catch return error.OutOfMemory;
+        const thread = platform.currentThreadToken();
+        const raw = if (self.owner.load(.monotonic) == thread)
+            try self.engine.cacheAlloc(self, pid, total, alignment, @returnAddress())
+        else
+            try self.engine.allocGeneral(pid, total, alignment.toByteUnits(), @returnAddress());
+        const typed: [*]align(alignment.toByteUnits()) T = @ptrCast(@alignCast(raw));
+        return typed[0..n];
+    }
+
+    /// Comptime-routed slice free through this agent's cache.
+    pub fn free(self: *AgentCache, memory: anytype) void {
+        const info = @typeInfo(@TypeOf(memory));
+        if (info != .pointer or info.pointer.size != .slice)
+            @compileError("heap.free expects a slice");
+        const align_val = comptime std.mem.Alignment.fromByteUnits(ptrAlignment(@TypeOf(memory)));
+        self.freeAligned(memory, align_val);
+    }
+
+    /// Comptime-routed aligned slice free through this agent's cache.
+    pub fn freeAligned(self: *AgentCache, memory: anytype, comptime alignment: std.mem.Alignment) void {
+        const info = @typeInfo(@TypeOf(memory));
+        if (info != .pointer or info.pointer.size != .slice)
+            @compileError("heap.freeAligned expects a slice");
+        const T = info.pointer.child;
+        const pid = comptime partitionForType(T);
+        if (memory.len == 0 or @sizeOf(T) == 0) return;
+        const total = @sizeOf(T) * memory.len;
+        const raw: [*]u8 = @ptrCast(@constCast(memory.ptr));
+        const thread = platform.currentThreadToken();
+        if (self.owner.load(.monotonic) == thread) {
+            self.engine.cacheFree(self, pid, raw, total, alignment, thread);
+        } else {
+            self.engine.freeGeneral(raw, total, alignment.toByteUnits());
+        }
+    }
 };
 
 // ============================================================================
@@ -3760,7 +3846,210 @@ pub const Engine = struct {
             @panic("heap.Engine.configureForTest: the heap has issued blocks already");
         self.config = config;
     }
+
+    /// Comptime-routed single-object allocation on the shared general path
+    /// (allocator-hardening design §3.1, §4.1, §7 B.2).
+    pub fn createTyped(self: *Engine, comptime T: type) Error!*T {
+        const pid = comptime partitionForType(T);
+        if (@sizeOf(T) == 0) return zeroSizedPtr(T);
+        const raw = try self.allocGeneral(pid, @sizeOf(T), @alignOf(T), @returnAddress());
+        return @ptrCast(@alignCast(raw));
+    }
+
+    /// Comptime-routed single-object destruction on the shared general path.
+    pub fn destroyTyped(self: *Engine, ptr: anytype) void {
+        const info = @typeInfo(@TypeOf(ptr));
+        if (info != .pointer or info.pointer.size != .one)
+            @compileError("heap.destroy expects a single-item pointer");
+        const T = info.pointer.child;
+        _ = comptime partitionForType(T);
+        if (@sizeOf(T) == 0) return;
+        const raw: [*]u8 = @ptrCast(@constCast(ptr));
+        self.freeGeneral(raw, @sizeOf(T), comptime ptrAlignment(@TypeOf(ptr)));
+    }
+
+    /// Comptime-routed slice allocation on the shared general path.
+    pub fn allocTyped(self: *Engine, comptime T: type, n: usize) Error![]T {
+        return self.allocAlignedTyped(T, .of(T), n);
+    }
+
+    /// Comptime-routed aligned slice allocation on the shared general path.
+    pub fn allocAlignedTyped(self: *Engine, comptime T: type, comptime alignment: std.mem.Alignment, n: usize) Error![]align(alignment.toByteUnits()) T {
+        comptime {
+            if (alignment.toByteUnits() < @alignOf(T))
+                @compileError("heap.allocAligned alignment must be >= @alignOf(T)");
+        }
+        const pid = comptime partitionForType(T);
+        if (n == 0 or @sizeOf(T) == 0) return &.{};
+        const total = std.math.mul(usize, @sizeOf(T), n) catch return error.OutOfMemory;
+        const raw = try self.allocGeneral(pid, total, alignment.toByteUnits(), @returnAddress());
+        const typed: [*]align(alignment.toByteUnits()) T = @ptrCast(@alignCast(raw));
+        return typed[0..n];
+    }
+
+    /// Comptime-routed slice free on the shared general path.
+    pub fn freeTyped(self: *Engine, memory: anytype) void {
+        const info = @typeInfo(@TypeOf(memory));
+        if (info != .pointer or info.pointer.size != .slice)
+            @compileError("heap.free expects a slice");
+        const align_val = comptime std.mem.Alignment.fromByteUnits(ptrAlignment(@TypeOf(memory)));
+        self.freeAlignedTyped(memory, align_val);
+    }
+
+    /// Comptime-routed aligned slice free on the shared general path.
+    pub fn freeAlignedTyped(self: *Engine, memory: anytype, comptime alignment: std.mem.Alignment) void {
+        const info = @typeInfo(@TypeOf(memory));
+        if (info != .pointer or info.pointer.size != .slice)
+            @compileError("heap.freeAligned expects a slice");
+        const T = info.pointer.child;
+        _ = comptime partitionForType(T);
+        if (memory.len == 0 or @sizeOf(T) == 0) return;
+        const raw: [*]u8 = @ptrCast(@constCast(memory.ptr));
+        self.freeGeneral(raw, @sizeOf(T) * memory.len, alignment.toByteUnits());
+    }
 };
+
+// ============================================================================
+// Comptime-typed routing entry points (design §3.1, §4.1, §7 B.2)
+// ============================================================================
+
+/// Whether `T` contains any runtime pointer field (recursively across structs,
+/// unions, optionals, error unions, arrays, and vectors).
+pub fn containsPointer(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .pointer, .@"fn", .@"opaque" => true,
+        .optional => |opt| containsPointer(opt.child),
+        .error_union => |eu| containsPointer(eu.payload),
+        .array => |arr| containsPointer(arr.child),
+        .vector => |vec| containsPointer(vec.child),
+        .@"struct" => |s| blk: {
+            for (s.field_types, s.field_attrs) |field_type, attr| {
+                if (attr.@"comptime") continue;
+                if (containsPointer(field_type)) break :blk true;
+            }
+            break :blk false;
+        },
+        .@"union" => |u| blk: {
+            for (u.field_types) |field_type| {
+                if (containsPointer(field_type)) break :blk true;
+            }
+            break :blk false;
+        },
+        else => false,
+    };
+}
+
+/// The general heap partition for type `T` (allocator-hardening design §3.1):
+/// pointer-bearing types route to `.objects` (comptime-asserting pointer
+/// alignment), while pointer-free byte/scalar types route to `.bytes`.
+pub fn partitionForType(comptime T: type) PartitionId {
+    if (comptime containsPointer(T)) {
+        if (@sizeOf(T) > 0 and @alignOf(T) < @alignOf(usize))
+            @compileError("heap.partitionForType: pointer-bearing type " ++ @typeName(T) ++ " has alignment below @alignOf(usize)");
+        return .objects;
+    }
+    return .bytes;
+}
+
+fn ptrAlignment(comptime Ptr: type) usize {
+    const info = @typeInfo(Ptr).pointer;
+    return info.attrs.@"align" orelse @alignOf(info.child);
+}
+
+inline fn zeroSizedPtr(comptime T: type) *T {
+    return @ptrFromInt(std.mem.alignBackward(usize, std.math.maxInt(usize), @alignOf(T)));
+}
+
+/// Allocate one `T` from `source` (`*Engine`, `*AgentCache`, or
+/// `std.mem.Allocator`), routing pointer-bearing `T` to `.objects` and
+/// pointer-free `T` to `.bytes` at comptime (falls back to `source.create(T)`
+/// when `source` is a host/test `std.mem.Allocator`).
+pub fn create(source: anytype, comptime T: type) Error!*T {
+    _ = comptime partitionForType(T);
+    const S = @TypeOf(source);
+    if (S == *Engine) return source.createTyped(T);
+    if (S == *AgentCache) return source.create(T);
+    if (S == std.mem.Allocator) {
+        if (general.agentCacheOf(source)) |cache| return cache.create(T);
+        if (general.engineOf(source)) |eng| return eng.createTyped(T);
+        return source.create(T);
+    }
+    @compileError("heap.create expects *heap.Engine, *heap.AgentCache, or std.mem.Allocator");
+}
+
+/// Free one pointer allocated by `heap.create`.
+pub fn destroy(source: anytype, ptr: anytype) void {
+    const info = @typeInfo(@TypeOf(ptr));
+    if (info != .pointer or info.pointer.size != .one)
+        @compileError("heap.destroy expects a single-item pointer");
+    _ = comptime partitionForType(info.pointer.child);
+    const S = @TypeOf(source);
+    if (S == *Engine) return source.destroyTyped(ptr);
+    if (S == *AgentCache) return source.destroy(ptr);
+    if (S == std.mem.Allocator) {
+        if (general.agentCacheOf(source)) |cache| return cache.destroy(ptr);
+        if (general.engineOf(source)) |eng| return eng.destroyTyped(ptr);
+        return source.destroy(ptr);
+    }
+    @compileError("heap.destroy expects *heap.Engine, *heap.AgentCache, or std.mem.Allocator");
+}
+
+/// Allocate a slice of `n` elements of `T` from `source`, routing
+/// pointer-bearing `T` to `.objects` and pointer-free `T` to `.bytes` at
+/// comptime.
+pub fn alloc(source: anytype, comptime T: type, n: usize) Error![]T {
+    return allocAligned(source, T, .of(T), n);
+}
+
+/// Allocate a slice of `n` elements of `T` with explicit `alignment` from
+/// `source`, routing by `partitionForType(T)` at comptime (so pointer-free
+/// aligned buffers still land in `.bytes`, never `.objects`).
+pub fn allocAligned(source: anytype, comptime T: type, comptime alignment: std.mem.Alignment, n: usize) Error![]align(alignment.toByteUnits()) T {
+    comptime {
+        if (alignment.toByteUnits() < @alignOf(T))
+            @compileError("heap.allocAligned alignment must be >= @alignOf(T)");
+    }
+    _ = comptime partitionForType(T);
+    const S = @TypeOf(source);
+    if (S == *Engine) return source.allocAlignedTyped(T, alignment, n);
+    if (S == *AgentCache) return source.allocAligned(T, alignment, n);
+    if (S == std.mem.Allocator) {
+        if (general.agentCacheOf(source)) |cache| return cache.allocAligned(T, alignment, n);
+        if (general.engineOf(source)) |eng| return eng.allocAlignedTyped(T, alignment, n);
+        return source.alignedAlloc(T, alignment, n);
+    }
+    @compileError("heap.allocAligned expects *heap.Engine, *heap.AgentCache, or std.mem.Allocator");
+}
+
+/// Free a slice allocated by `heap.alloc` (or `heap.allocAligned` when the
+/// slice's type carries its alignment).
+pub fn free(source: anytype, memory: anytype) void {
+    const info = @typeInfo(@TypeOf(memory));
+    if (info != .pointer or info.pointer.size != .slice)
+        @compileError("heap.free expects a slice");
+    const align_val = comptime std.mem.Alignment.fromByteUnits(ptrAlignment(@TypeOf(memory)));
+    freeAligned(source, memory, align_val);
+}
+
+/// Free a slice allocated with explicit `alignment` by `heap.allocAligned`.
+pub fn freeAligned(source: anytype, memory: anytype, comptime alignment: std.mem.Alignment) void {
+    const info = @typeInfo(@TypeOf(memory));
+    if (info != .pointer or info.pointer.size != .slice)
+        @compileError("heap.freeAligned expects a slice");
+    const T = info.pointer.child;
+    _ = comptime partitionForType(T);
+    const S = @TypeOf(source);
+    if (S == *Engine) return source.freeAlignedTyped(memory, alignment);
+    if (S == *AgentCache) return source.freeAligned(memory, alignment);
+    if (S == std.mem.Allocator) {
+        if (general.agentCacheOf(source)) |cache| return cache.freeAligned(memory, alignment);
+        if (general.engineOf(source)) |eng| return eng.freeAlignedTyped(memory, alignment);
+        if (memory.len == 0 or @sizeOf(T) == 0) return;
+        const aligned: []align(alignment.toByteUnits()) T = @alignCast(@constCast(memory));
+        return source.free(aligned);
+    }
+    @compileError("heap.freeAligned expects *heap.Engine, *heap.AgentCache, or std.mem.Allocator");
+}
 
 test {
     _ = classes;

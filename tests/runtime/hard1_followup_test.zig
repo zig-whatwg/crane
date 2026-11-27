@@ -92,3 +92,115 @@ test "item 3: openSpan and allocHuge never commit or allocate inside the 0xDDDDD
         try testing.expect(offset >= poison_hi);
     }
 }
+
+// ============================================================================
+// Item 4 (§3.1, §4.1, §7 B.2): Comptime-typed heap.create / heap.alloc routing
+// ============================================================================
+
+test "item 4: containsPointer and partitionForType classify scalar and pointer-bearing types at comptime" {
+    const ScalarOnly = struct { a: u64, b: u32, c: [16]u8 };
+    const ScalarUnion = union(enum) { int: u64, bytes: [8]u8 };
+    const WithPtr = struct { count: u32, next: ?*ScalarOnly };
+    const WithSlice = struct { text: []const u8 };
+    const WithNestedPtr = struct { items: [2]WithPtr };
+    const PtrUnion = union(enum) { none: void, ptr: *u8 };
+    const ComptimePtrOnly = struct { comptime tag: []const u8 = "x", val: u32 };
+
+    comptime {
+        std.debug.assert(!heap.containsPointer(u8));
+        std.debug.assert(!heap.containsPointer(u64));
+        std.debug.assert(!heap.containsPointer(ScalarOnly));
+        std.debug.assert(!heap.containsPointer(ScalarUnion));
+        std.debug.assert(!heap.containsPointer(ComptimePtrOnly));
+        std.debug.assert(heap.partitionForType(u8) == .bytes);
+        std.debug.assert(heap.partitionForType(u64) == .bytes);
+        std.debug.assert(heap.partitionForType(ScalarOnly) == .bytes);
+        std.debug.assert(heap.partitionForType(ScalarUnion) == .bytes);
+
+        std.debug.assert(heap.containsPointer(*u8));
+        std.debug.assert(heap.containsPointer([]const u8));
+        std.debug.assert(heap.containsPointer(?*anyopaque));
+        std.debug.assert(heap.containsPointer(WithPtr));
+        std.debug.assert(heap.containsPointer(WithSlice));
+        std.debug.assert(heap.containsPointer(WithNestedPtr));
+        std.debug.assert(heap.containsPointer(PtrUnion));
+        std.debug.assert(heap.partitionForType(WithPtr) == .objects);
+        std.debug.assert(heap.partitionForType(WithSlice) == .objects);
+        std.debug.assert(heap.partitionForType(WithNestedPtr) == .objects);
+        std.debug.assert(heap.partitionForType(PtrUnion) == .objects);
+    }
+    try testing.expectEqual(heap.PartitionId.bytes, heap.partitionForType(ScalarOnly));
+    try testing.expectEqual(heap.PartitionId.objects, heap.partitionForType(WithPtr));
+}
+
+test "item 4: heap.create/destroy/alloc/free route pointer types to .objects and bytes/scalars to .bytes" {
+    if (Heap.profile != .full) return error.SkipZigTest;
+
+    const ScalarRecord = struct { a: u64, b: u64 };
+    const PtrRecord = struct { a: u64, ptr: ?*u8 };
+
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const eng = try scope.heapEngine();
+    const cache = try eng.attachAgent();
+    defer eng.detachAgent(cache);
+    const agent_alloc = cache.allocator();
+    const shared_alloc = heap.general.allocatorOf(eng);
+
+    // 1. Via *Engine directly
+    {
+        const p_obj = try heap.create(eng, PtrRecord);
+        defer heap.destroy(eng, p_obj);
+        try testing.expectEqual(heap.PartitionId.objects, eng.partitionOf(p_obj).?);
+
+        const p_scalar = try heap.create(eng, ScalarRecord);
+        defer heap.destroy(eng, p_scalar);
+        // Even though @alignOf(ScalarRecord) == 8, comptime typed routing puts pointer-free scalars in .bytes!
+        try testing.expectEqual(heap.PartitionId.bytes, eng.partitionOf(p_scalar).?);
+
+        const s_bytes = try heap.alloc(eng, u8, 64);
+        defer heap.free(eng, s_bytes);
+        try testing.expectEqual(heap.PartitionId.bytes, eng.partitionOf(s_bytes.ptr).?);
+
+        const s_aligned = try heap.allocAligned(eng, u8, .@"16", 64);
+        defer heap.freeAligned(eng, s_aligned, .@"16");
+        try testing.expectEqual(heap.PartitionId.bytes, eng.partitionOf(s_aligned.ptr).?);
+        try testing.expectEqual(@as(usize, 0), @intFromPtr(s_aligned.ptr) % 16);
+    }
+
+    // 2. Via *AgentCache and std.mem.Allocator (both agent and shared)
+    {
+        const p_obj = try runtime.heapCreate(agent_alloc, PtrRecord);
+        defer runtime.heapDestroy(agent_alloc, p_obj);
+        try testing.expectEqual(heap.PartitionId.objects, eng.partitionOf(p_obj).?);
+
+        const s_obj = try runtime.heapAlloc(cache, PtrRecord, 4);
+        defer runtime.heapFree(cache, s_obj);
+        try testing.expectEqual(heap.PartitionId.objects, eng.partitionOf(s_obj.ptr).?);
+
+        const s_bytes = try runtime.heapAllocAligned(agent_alloc, u8, .@"16", 128);
+        defer runtime.heapFreeAligned(agent_alloc, s_bytes, .@"16");
+        try testing.expectEqual(heap.PartitionId.bytes, eng.partitionOf(s_bytes.ptr).?);
+        try testing.expectEqual(@as(usize, 0), @intFromPtr(s_bytes.ptr) % 16);
+
+        const s_shared = try heap.alloc(shared_alloc, u64, 8);
+        defer heap.free(shared_alloc, s_shared);
+        try testing.expectEqual(heap.PartitionId.bytes, eng.partitionOf(s_shared.ptr).?);
+    }
+
+    // 3. Fallback host std.mem.Allocator (testing.allocator) + empty/ZST edge cases
+    {
+        const p = try heap.create(testing.allocator, PtrRecord);
+        defer heap.destroy(testing.allocator, p);
+        p.* = .{ .a = 7, .ptr = null };
+
+        const buf = try heap.allocAligned(testing.allocator, u8, .@"16", 32);
+        defer heap.freeAligned(testing.allocator, buf, .@"16");
+        try testing.expectEqual(@as(usize, 0), @intFromPtr(buf.ptr) % 16);
+
+        const empty = try heap.alloc(agent_alloc, u8, 0);
+        heap.free(agent_alloc, empty);
+        const z = try heap.create(agent_alloc, void);
+        heap.destroy(agent_alloc, z);
+    }
+}
