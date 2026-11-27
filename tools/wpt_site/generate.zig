@@ -1597,6 +1597,48 @@ test "site: index.html opens with the WPT subtest numbers, written into the mark
     try testing.expect(std.mem.indexOf(u8, index, "% of subtests") == null);
 }
 
+test "site: the worklist's crashtests are judged by their own rule and counted apart from its testharness files" {
+    // Lane gate2 (the integrator's conditions, 2026-11-27 5:18 PM ET): the
+    // crashtests joined the worklist; tests/wpt_0_1_crashtests.txt says which
+    // they are, and the scope line names both kinds.
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    const worklist = fixture_worklist ++
+        \\dom/crashtests/finishes-crash.html
+        \\dom/crashtests/hangs-crash.html
+        \\
+    ;
+    const base = try f.state(gpa);
+    defer gpa.free(base);
+    const crash_records = try std.fmt.allocPrint(gpa,
+        \\,"dom/crashtests/finishes-crash.html":{{"path":"dom/crashtests/finishes-crash.html","status":"OK","passed":0,"failed":0,"timed_out":0,"notrun":0,"crashtest":true,"_journal":"journal.jsonl","_mtime":{d}}},
+        \\"dom/crashtests/hangs-crash.html":{{"path":"dom/crashtests/hangs-crash.html","status":"TIMEOUT","passed":0,"failed":0,"timed_out":0,"notrun":0,"crashtest":true,"_journal":"journal.jsonl","_mtime":{d}}}}}
+    , .{ f.journal_mtime, f.journal_mtime });
+    defer gpa.free(crash_records);
+    const st = try std.mem.concat(gpa, u8, &.{ base[0 .. base.len - 1], crash_records });
+    defer gpa.free(st);
+    var out = try f.tmp.dir.createDirPathOpen(testing.io, "out", .{ .open_options = .{ .iterate = true } });
+    defer out.close(testing.io);
+    const s = try generate(gpa, testing.io, .{
+        .state_json = st,
+        .history_json = fixture_history,
+        .worklist_text = worklist,
+        .crashtests_text = "# index\ndom/crashtests/finishes-crash.html\ndom/crashtests/hangs-crash.html\n",
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+    }, out);
+    try testing.expectEqual(@as(usize, 7), s.files);
+    try testing.expectEqual(@as(usize, 2), s.crashtest_files);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<dt>Test files</dt><dd>7</dd>");
+    // b.html TIMEOUT, c.any.js NONE-PASSED, and the crashtest that hangs.
+    try expectHas(index, "<div class=\"blk\"><dt>Blocking files</dt><dd>3</dd>");
+    try expectHas(index, "the 7 files of the 0.1 worklist &ndash; 5 testharness files and 2 crashtests &ndash; in ");
+}
+
 test "site: one page per directory, mirroring the WPT tree; each test file a section of its directory's page" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream);
