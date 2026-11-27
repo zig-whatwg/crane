@@ -242,6 +242,43 @@ crane_status crane_tab_close(crane_browser_t *browser, crane_tab_id tab, bool pr
  * text (NULL: none) is what an accepted prompt() returns. */
 crane_status crane_tab_answer_dialog(crane_browser_t *browser, crane_tab_id tab, bool accept, const char *text);
 
+/* ---- MCP server ------------------------------------------------------- */
+
+typedef struct {
+    uint32_t struct_size;
+    const char *host;                    /* NULL or "": "127.0.0.1" (loopback);
+                                            non-loopback requires TLS */
+    uint16_t port;                       /* 0: any free port */
+    bool tls;                            /* true: enable TLS on loopback too
+                                            (non-loopback always enables TLS) */
+    const char *cert_pem;                /* NULL: ephemeral self-signed cert */
+    const char *key_pem;                 /* NULL unless cert_pem is set */
+    bool memory_debugging;               /* enable heap snapshot analysis tools */
+    const char *const *filesystem_roots; /* NULL: OS temp directory only */
+    size_t filesystem_root_count;
+    bool allow_unrestricted_paths;
+    const char *const *allowed_origins;  /* NULL: reject all Origin headers */
+    size_t allowed_origin_count;
+} crane_mcp_options_t;
+
+typedef struct {
+    uint16_t port;                       /* bound TCP port */
+    bool tls;                            /* true when TLS is active */
+    char *bearer_token;                  /* 256-bit pre-shared bearer token (hex) */
+    char *cert_fingerprint;              /* SHA-256 "AA:BB:..." when tls is true,
+                                            else NULL */
+} crane_mcp_info_t;
+
+/* Start the Streamable HTTP MCP server on a Browser (options may be NULL for
+ * loopback 127.0.0.1:0 defaults). Free `out` with crane_mcp_info_free. */
+crane_status crane_browser_start_mcp(crane_browser_t *browser,
+                                     const crane_mcp_options_t *options,
+                                     crane_mcp_info_t *out);
+/* Stop the Browser's MCP server (idempotent if not running).
+ * crane_browser_destroy stops an active MCP server automatically. */
+crane_status crane_browser_stop_mcp(crane_browser_t *browser);
+void         crane_mcp_info_free(crane_mcp_info_t *info);
+
 #ifdef __cplusplus
 }
 #endif

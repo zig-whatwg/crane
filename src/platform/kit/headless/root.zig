@@ -936,6 +936,39 @@ pub fn devtoolsOpenInheritedPipe(read_fd: i32, write_fd: i32) Error!platform.Dev
     return error.NotSupported;
 }
 
+pub fn devtoolsListenAddress(host: Str, port: u16) Error!platform.DevtoolsListener {
+    _ = .{ host, port };
+    return error.NotSupported;
+}
+
+pub fn devtoolsTlsServerNew(allocator: std.mem.Allocator, options: *const platform.DevtoolsTlsOptions) Error!platform.DevtoolsTlsServerInfo {
+    _ = .{ allocator, options };
+    return error.NotSupported;
+}
+
+pub fn devtoolsTlsServerClose(server: *platform.DevtoolsTlsServer) void {
+    _ = server;
+}
+
+pub fn devtoolsTlsAccept(allocator: std.mem.Allocator, server: *platform.DevtoolsTlsServer, stream: platform.DevtoolsStream, wake: platform.DevtoolsWake) Error!?*platform.DevtoolsTlsStream {
+    _ = .{ allocator, server, stream, wake };
+    return error.NotSupported;
+}
+
+pub fn devtoolsTlsRead(stream: *platform.DevtoolsTlsStream, buffer: []u8, wake: platform.DevtoolsWake) Error!?usize {
+    _ = .{ stream, buffer, wake };
+    return error.NotSupported;
+}
+
+pub fn devtoolsTlsWrite(stream: *platform.DevtoolsTlsStream, bytes: Bytes) Error!void {
+    _ = .{ stream, bytes };
+    return error.NotSupported;
+}
+
+pub fn devtoolsTlsClose(stream: *platform.DevtoolsTlsStream) void {
+    _ = stream;
+}
+
 // ---------------------------------------------------------------------------
 // 6.11 Address space: no reservations. A Browser cannot start on a platform
 // without them (runtime.BrowserScope.reserveHeap returns NotSupported, so

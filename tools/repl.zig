@@ -147,6 +147,22 @@ pub const Options = struct {
     /// stdout - Crane's built-in chrome-devtools-mcp tools (lane mcp1,
     /// devtools.mcp; `serveMcp`).
     mcp: bool = false,
+    /// `--mcp-port=<n>` (0: any free port): serve MCP over Streamable HTTP on
+    /// TCP (`devtools.mcp.http`; `serveMcpHttp`).
+    mcp_port: ?u16 = null,
+    /// `--mcp-host=<addr>`: bind address for `--mcp-port` (default 127.0.0.1;
+    /// non-loopback always requires TLS).
+    mcp_host: []const u8 = "127.0.0.1",
+    /// `--mcp-tls`: enable TLS on loopback too (non-loopback always enables TLS).
+    mcp_tls: bool = false,
+    /// `--mcp-cert=<pem>` and `--mcp-key=<pem>`: optional host-supplied TLS
+    /// certificate and private key files (default: ephemeral self-signed cert).
+    mcp_cert: ?[]const u8 = null,
+    mcp_key: ?[]const u8 = null,
+    /// chrome-devtools-mcp's `--isolated`: profile-less in-memory Browser.
+    isolated: bool = false,
+    /// chrome-devtools-mcp's `--viewport=<WxH>`: initial top-level viewport size.
+    viewport: ?Viewport = null,
     /// chrome-devtools-mcp's `--filesystemRoot` / `--workspace` (repeatable;
     /// also `--filesystem-root`; the value after `=` or as the next
     /// argument): the directories MCP tools may read and write. None: the
@@ -160,6 +176,11 @@ pub const Options = struct {
     /// chrome-devtools-mcp's `--memoryDebugging` (`--memory-debugging`):
     /// enable MCP heap snapshot analysis tools.
     memory_debugging: bool = false,
+    /// chrome-devtools-mcp's `--categoryNetworkMocks`
+    /// (`--category-network-mocks`): enable network mocking tools.
+    category_network_mocks: bool = false,
+    /// chrome-devtools-mcp's `--slim`: expose only the slim tool set.
+    slim: bool = false,
     /// Chrome's `--remote-allow-origins=<a,b>` (or `*`): origins whose
     /// WebSocket connections are served.
     remote_allow_origins: ?[]const u8 = null,
@@ -181,6 +202,8 @@ pub const Options = struct {
     /// tabs it wants (Playwright passes it for a launch that is not
     /// persistent, playwright-core chromium.ts _innerDefaultArgs).
     no_startup_window: bool = false,
+
+    pub const Viewport = struct { width: i32, height: i32 };
 
     /// Whether the command line asks for remote debugging: then Chrome's
     /// other switches are accepted and ignored, as a launcher passes many.
@@ -220,6 +243,15 @@ pub const usage =
     \\  --user-data-dir=<dir>         the profile directory; DevToolsActivePort is written there
     \\  --mcp                         serve the Model Context Protocol on stdin/stdout:
     \\                                chrome-devtools-mcp's tools, built into Crane
+    \\  --mcp-port=<n>                serve MCP over Streamable HTTP on <host>:<n>/mcp
+    \\                                (0: any free port); prints URL & bearer token on stderr
+    \\  --mcp-host=<addr>             bind address for --mcp-port (default 127.0.0.1;
+    \\                                non-loopback always requires TLS)
+    \\  --mcp-tls                     enable TLS on loopback too (ephemeral self-signed cert)
+    \\  --isolated                    in-memory Browser without a profile directory
+    \\  --viewport=<WxH>              initial viewport size in CSS pixels (e.g. 1280x720)
+    \\  --categoryNetworkMocks        with --mcp/--mcp-port: enable network mocking tools
+    \\  --slim                        with --mcp/--mcp-port: expose only the slim tool set
     \\  --workspace=<dir>             with --mcp: a directory tools may read and write
     \\                                (repeatable; also --filesystem-root, --filesystemRoot);
     \\                                by default only the OS temp directory
@@ -232,7 +264,7 @@ pub const usage =
 /// Why `--profile` is refused.
 pub const profile_refusal = "profiles are not supported yet: Crane's stores (cookies, localStorage, IndexedDB, the Cache API, the HTTP cache) are in memory only, so a profile directory would keep nothing";
 
-pub const OptionsError = error{ UnknownOption, MissingValue, InvalidTimeout, TooManyArguments, InvalidPort };
+pub const OptionsError = error{ UnknownOption, MissingValue, InvalidTimeout, TooManyArguments, InvalidPort, InvalidViewport, RefusedOption };
 
 /// How many --workspace directories the console takes.
 pub const max_filesystem_roots = 16;
@@ -240,6 +272,51 @@ pub const max_filesystem_roots = 16;
 /// The MCP root flags' names (chrome-devtools-mcp's yargs option
 /// `filesystemRoot`, alias `workspace`, and the kebab-case spelling).
 const filesystem_root_flags = [_][]const u8{ "--filesystem-root", "--filesystemRoot", "--workspace" };
+
+/// chrome-devtools-mcp external-browser flags that have no meaning in-process
+/// and are refused by name (tmp/plans/mcp1-design.md 2.2).
+const refused_flags = [_][]const u8{
+    "--executablePath",
+    "--executable-path",
+    "--browserUrl",
+    "--browser-url",
+    "--wsEndpoint",
+    "--ws-endpoint",
+    "--autoConnect",
+    "--auto-connect",
+    "--channel",
+};
+
+fn isRefusedFlag(arg: []const u8) bool {
+    for (refused_flags) |flag| {
+        if (std.mem.eql(u8, arg, flag) or valueOf(arg, flag) != null) return true;
+    }
+    return false;
+}
+
+fn parseViewport(text: []const u8) OptionsError!Options.Viewport {
+    const sep = std.mem.indexOfAny(u8, text, "xX") orelse return error.InvalidViewport;
+    const w = std.fmt.parseUnsigned(i32, text[0..sep], 10) catch return error.InvalidViewport;
+    const h = std.fmt.parseUnsigned(i32, text[sep + 1 ..], 10) catch return error.InvalidViewport;
+    if (w <= 0 or h <= 0) return error.InvalidViewport;
+    return .{ .width = w, .height = h };
+}
+
+/// Read `<flag>=<value>` or `<flag> <value>` from `args[index..]`.
+fn takeFlagValue(args: []const []const u8, index: *usize, flag: []const u8) OptionsError!?[]const u8 {
+    const arg = args[index.*];
+    if (valueOf(arg, flag)) |value| {
+        if (value.len == 0) return error.MissingValue;
+        return value;
+    }
+    if (std.mem.eql(u8, arg, flag)) {
+        index.* += 1;
+        if (index.* >= args.len) return error.MissingValue;
+        if (args[index.*].len == 0) return error.MissingValue;
+        return args[index.*];
+    }
+    return null;
+}
 
 /// The options `args` (without the program name) ask for. Every slice is
 /// borrowed from `args`. `bad` is set to the argument a failure is about.
@@ -257,20 +334,55 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
     while (index < args.len) : (index += 1) {
         const arg = args[index];
         bad.* = arg;
+        if (isRefusedFlag(arg)) return error.RefusedOption;
         // --workspace=<dir> or --workspace <dir> (yargs takes both).
         const root: ?[]const u8 = for (filesystem_root_flags) |flag| {
-            if (valueOf(arg, flag)) |value| break value;
-            if (std.mem.eql(u8, arg, flag)) {
-                index += 1;
-                if (index >= args.len) return error.MissingValue;
-                break args[index];
-            }
+            if (try takeFlagValue(args, &index, flag)) |value| break value;
         } else null;
         if (root) |dir| {
-            if (dir.len == 0) return error.MissingValue;
             if (options.filesystem_root_count == max_filesystem_roots) return error.TooManyArguments;
             options.filesystem_roots[options.filesystem_root_count] = dir;
             options.filesystem_root_count += 1;
+            continue;
+        }
+        if (try takeFlagValue(args, &index, "--mcp-port")) |value| {
+            options.mcp_port = std.fmt.parseUnsigned(u16, value, 10) catch return error.InvalidPort;
+            continue;
+        }
+        if (try takeFlagValue(args, &index, "--mcp-host")) |value| {
+            options.mcp_host = value;
+            continue;
+        }
+        if (try takeFlagValue(args, &index, "--mcp-cert")) |value| {
+            options.mcp_cert = value;
+            continue;
+        }
+        if (try takeFlagValue(args, &index, "--mcp-key")) |value| {
+            options.mcp_key = value;
+            continue;
+        }
+        if (try takeFlagValue(args, &index, "--viewport")) |value| {
+            options.viewport = try parseViewport(value);
+            continue;
+        }
+        if (try takeFlagValue(args, &index, "--userDataDir") orelse try takeFlagValue(args, &index, "--user-data-dir")) |value| {
+            options.user_data_dir = value;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--mcp-tls")) {
+            options.mcp_tls = true;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--isolated")) {
+            options.isolated = true;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--categoryNetworkMocks") or std.mem.eql(u8, arg, "--category-network-mocks")) {
+            options.category_network_mocks = true;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--slim")) {
+            options.slim = true;
             continue;
         }
         if (std.mem.eql(u8, arg, "--allow-unrestricted-paths") or std.mem.eql(u8, arg, "--allowUnrestrictedPaths")) {
@@ -283,8 +395,10 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
         }
         if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
             options.help = true;
-        } else if (std.mem.eql(u8, arg, "--accept-insecure-certs")) {
+        } else if (std.mem.eql(u8, arg, "--accept-insecure-certs") or std.mem.eql(u8, arg, "--acceptInsecureCerts")) {
             options.accept_insecure_certs = true;
+        } else if (valueOf(arg, "--acceptInsecureCerts")) |value| {
+            options.accept_insecure_certs = !std.mem.eql(u8, value, "false") and !std.mem.eql(u8, value, "0");
         } else if (std.mem.eql(u8, arg, "--wait-for-navigation")) {
             options.wait_for_navigation = true;
         } else if (std.mem.eql(u8, arg, "--check-leaks")) {
@@ -317,9 +431,6 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
             options.mcp = true;
         } else if (valueOf(arg, "--remote-allow-origins")) |value| {
             options.remote_allow_origins = value;
-        } else if (valueOf(arg, "--user-data-dir")) |value| {
-            if (value.len == 0) return error.MissingValue;
-            options.user_data_dir = value;
         } else if (std.mem.eql(u8, arg, "--headless") or valueOf(arg, "--headless") != null) {
             options.headless = true;
         } else if (valueOf(arg, "--proxy-server")) |value| {
@@ -363,8 +474,9 @@ fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.I
     defer if (proxy_rules) |*rules| rules.deinit();
     if (proxy_rules) |*rules| config.proxy = .{ .rules = rules };
     // Decision D6 (the user, 2026-11-21): --user-data-dir is the Browser's
-    // profile directory (lane life1's profile persistence).
-    if (comptime @hasField(BrowserConfig, "profile_dir")) config.profile_dir = options.user_data_dir;
+    // profile directory (lane life1's profile persistence). --isolated forces
+    // an in-memory profile-less Browser.
+    if (comptime @hasField(BrowserConfig, "profile_dir")) config.profile_dir = if (options.isolated) null else options.user_data_dir;
     try requireProductionMemory(config);
     const host = devtools.host_bridge.BrowserHost.start(allocator, config) catch |err| {
         try err_out.print("repl: the browser could not start: {t}\n", .{err});
@@ -422,9 +534,12 @@ fn serveDevtools(allocator: std.mem.Allocator, options: Options, err_out: *std.I
 /// client's Target.createTarget makes the first tab).
 pub fn openFirstWindow(host: *devtools.host_bridge.BrowserHost, options: Options) !void {
     if (options.no_startup_window) return;
-    if (std.mem.eql(u8, options.url, "about:blank")) return;
+    const need_nav = !std.mem.eql(u8, options.url, "about:blank");
+    if (!need_nav and options.viewport == null) return;
     const FirstWindow = struct {
         url: []const u8,
+        need_nav: bool,
+        viewport: ?Options.Viewport,
         failed: bool = false,
         fn run(context: ?*anyopaque, b: *Browser) void {
             const self: *@This() = @ptrCast(@alignCast(context.?));
@@ -432,12 +547,17 @@ pub fn openFirstWindow(host: *devtools.host_bridge.BrowserHost, options: Options
                 self.failed = true;
                 return;
             };
-            b.navigateTraversable(id, self.url) catch {
-                self.failed = true;
-            };
+            if (self.viewport) |vp| {
+                browser_mod.viewport.setWindowBounds(b.scope, id, .{ .width = vp.width, .height = vp.height }) catch {};
+            }
+            if (self.need_nav) {
+                b.navigateTraversable(id, self.url) catch {
+                    self.failed = true;
+                };
+            }
         }
     };
-    var first: FirstWindow = .{ .url = options.url };
+    var first: FirstWindow = .{ .url = options.url, .need_nav = need_nav, .viewport = options.viewport };
     host.call(&first, FirstWindow.run) catch return error.FirstWindow;
     if (first.failed) return error.FirstWindow;
 }
@@ -452,12 +572,13 @@ pub fn openFirstWindow(host: *devtools.host_bridge.BrowserHost, options: Options
 fn serveMcp(allocator: std.mem.Allocator, io: std.Io, options: Options, err_out: *std.Io.Writer) !u8 {
     // stdio goes through the platform's pipe reads (devtools.mcp.server.Stdio).
     _ = io;
-    const config: BrowserConfig = .{
+    var config: BrowserConfig = .{
         .ca_bundle_path = options.ca_bundle,
         .user_agent = options.user_agent,
         .proxy = options.proxy,
         .accept_insecure_certs = options.accept_insecure_certs,
     };
+    if (comptime @hasField(BrowserConfig, "profile_dir")) config.profile_dir = if (options.isolated) null else options.user_data_dir;
     try requireProductionMemory(config);
     const host = devtools.host_bridge.BrowserHost.start(allocator, config) catch |err| {
         try err_out.print("repl: the browser could not start: {t}\n", .{err});
@@ -504,11 +625,163 @@ fn serveMcp(allocator: std.mem.Allocator, io: std.Io, options: Options, err_out:
         .filesystem_roots = if (options.filesystem_root_count > 0) options.filesystem_roots[0..options.filesystem_root_count] else null,
         .allow_unrestricted_paths = options.allow_unrestricted_paths,
         .memory_debugging = options.memory_debugging,
+        .category_network_mocks = options.category_network_mocks,
+        .slim = options.slim,
     }) catch |err| {
         try err_out.print("repl: --mcp: {t}\n", .{err});
         try err_out.flush();
         return 1;
     };
+    return 0;
+}
+
+/// Async-signal-safe wake pipe fd for Ctrl+C / SIGTERM shutdown in
+/// `serveMcpHttp`. Written only by `serveMcpHttp` while active.
+var mcp_signal_wake_fd: std.atomic.Value(i64) = .init(-1);
+
+fn mcpSignalHandler(_: std.posix.SIG) callconv(.c) void {
+    const fd = mcp_signal_wake_fd.load(.acquire);
+    if (fd >= 0) {
+        const byte = [1]u8{1};
+        _ = std.c.write(@intCast(fd), &byte, 1);
+    }
+}
+
+/// `--mcp-port=<n>` (lane mcp-http1; design tmp/plans/mcp1-design.md 2.2 & 3):
+/// Crane's built-in Streamable HTTP MCP server over TCP, with bearer-token auth,
+/// mandatory TLS on non-loopback, optional TLS on loopback, and clean
+/// SIGINT/SIGTERM/Browser.close shutdown.
+fn serveMcpHttp(allocator: std.mem.Allocator, options: Options, err_out: *std.Io.Writer) !u8 {
+    const plat = @import("platform");
+    if ((options.mcp_cert != null) != (options.mcp_key != null)) {
+        try err_out.print("repl: --mcp-cert and --mcp-key must both be given\n", .{});
+        try err_out.flush();
+        return 2;
+    }
+    const cert_pem: []u8 = if (options.mcp_cert) |p| (plat.readFile(allocator, plat.Str.from(p), 1 << 20) catch |err| {
+        try err_out.print("repl: --mcp-cert={s}: {t}\n", .{ p, err });
+        try err_out.flush();
+        return 1;
+    }) else try allocator.alloc(u8, 0);
+    defer allocator.free(cert_pem);
+    const key_pem: []u8 = if (options.mcp_key) |p| (plat.readFile(allocator, plat.Str.from(p), 1 << 20) catch |err| {
+        try err_out.print("repl: --mcp-key={s}: {t}\n", .{ p, err });
+        try err_out.flush();
+        return 1;
+    }) else try allocator.alloc(u8, 0);
+    defer allocator.free(key_pem);
+
+    var config: BrowserConfig = .{
+        .ca_bundle_path = options.ca_bundle,
+        .user_agent = options.user_agent,
+        .proxy = options.proxy,
+        .accept_insecure_certs = options.accept_insecure_certs,
+    };
+    var proxy_rules = try chromeProxyRules(allocator, options);
+    defer if (proxy_rules) |*rules| rules.deinit();
+    if (proxy_rules) |*rules| config.proxy = .{ .rules = rules };
+    if (comptime @hasField(BrowserConfig, "profile_dir")) config.profile_dir = if (options.isolated) null else options.user_data_dir;
+    try requireProductionMemory(config);
+
+    const host = devtools.host_bridge.BrowserHost.start(allocator, config) catch |err| {
+        try err_out.print("repl: the browser could not start: {t}\n", .{err});
+        try err_out.flush();
+        return 1;
+    };
+    defer host.stop();
+
+    openFirstWindow(host, options) catch {
+        try err_out.print("repl: the first page could not open\n", .{});
+        try err_out.flush();
+        return 1;
+    };
+
+    const sig_wake = plat.devtoolsWakeNew() catch |err| {
+        try err_out.print("repl: --mcp-port: {t}\n", .{err});
+        try err_out.flush();
+        return 1;
+    };
+    defer plat.devtoolsWakeClose(sig_wake);
+
+    const CloseCtx = struct {
+        wake: plat.DevtoolsWake,
+        fn onClose(ctx: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx.?));
+            plat.devtoolsWake(self.wake);
+        }
+    };
+    var close_ctx: CloseCtx = .{ .wake = sig_wake };
+
+    const dt_server = devtools.Server.start(allocator, .{
+        .user_agent = options.user_agent orelse "",
+        .default_host = host,
+        .context_config = config,
+        .on_close = .{ .context = &close_ctx, .run = CloseCtx.onClose },
+    }) catch |err| {
+        try err_out.print("repl: the MCP server could not start: {t}\n", .{err});
+        try err_out.flush();
+        return 1;
+    };
+    defer dt_server.stop();
+
+    var origins: [32][]const u8 = undefined;
+    var origin_count: usize = 0;
+    if (options.remote_allow_origins) |list| {
+        var it = std.mem.tokenizeScalar(u8, list, ',');
+        while (it.next()) |origin| {
+            if (origin_count == origins.len) break;
+            origins[origin_count] = std.mem.trim(u8, origin, " ");
+            origin_count += 1;
+        }
+    }
+
+    const http_srv = devtools.mcp.http.HttpServer.start(allocator, dt_server, .{
+        .host = options.mcp_host,
+        .port = options.mcp_port.?,
+        .tls = if (options.mcp_tls) .required else .auto,
+        .cert_pem = cert_pem,
+        .key_pem = key_pem,
+        .allowed_origins = origins[0..origin_count],
+        .mcp = .{
+            .filesystem_roots = if (options.filesystem_root_count > 0) options.filesystem_roots[0..options.filesystem_root_count] else null,
+            .allow_unrestricted_paths = options.allow_unrestricted_paths,
+            .memory_debugging = options.memory_debugging,
+            .category_network_mocks = options.category_network_mocks,
+            .slim = options.slim,
+        },
+    }) catch |err| {
+        try err_out.print("repl: --mcp-port: {t}\n", .{err});
+        try err_out.flush();
+        return 1;
+    };
+    defer http_srv.stop();
+
+    const scheme = if (http_srv.isTls()) "https" else "http";
+    try err_out.print("MCP listening on {s}://{s}:{d}/mcp\n", .{ scheme, options.mcp_host, http_srv.boundPort() });
+    try err_out.print("MCP bearer token: {s}\n", .{http_srv.bearerToken()});
+    if (http_srv.certFingerprint()) |fp| {
+        try err_out.print("MCP TLS SHA-256 fingerprint: {s}\n", .{fp});
+    }
+    try err_out.flush();
+
+    mcp_signal_wake_fd.store(sig_wake.write, .release);
+    defer mcp_signal_wake_fd.store(-1, .release);
+    var old_int: std.posix.Sigaction = undefined;
+    var old_term: std.posix.Sigaction = undefined;
+    const act: std.posix.Sigaction = .{
+        .handler = .{ .handler = mcpSignalHandler },
+        .mask = std.posix.sigemptyset(),
+        .flags = 0,
+    };
+    std.posix.sigaction(.INT, &act, &old_int);
+    std.posix.sigaction(.TERM, &act, &old_term);
+    defer {
+        std.posix.sigaction(.INT, &old_int, null);
+        std.posix.sigaction(.TERM, &old_term, null);
+    }
+
+    var byte: [1]u8 = undefined;
+    _ = plat.devtoolsRead(.{ .handle = sig_wake.read }, &byte) catch {};
     return 0;
 }
 
@@ -2202,12 +2475,19 @@ pub fn main(init: std.process.Init) !u8 {
     const rest = try init.arena.allocator().alloc([]const u8, if (args.len > 0) args.len - 1 else 0);
     for (rest, 0..) |*arg, i| arg.* = args[i + 1];
     const options = parseOptions(rest, &bad) catch |err| {
+        if (err == error.RefusedOption) {
+            try err_out.print("repl: {s}: not supported (Crane's MCP server runs in-process; it does not launch or attach to an external browser)\n", .{bad});
+            try err_out.flush();
+            return 2;
+        }
         try err_out.print("repl: {s}: {s}\n{s}", .{ bad, switch (err) {
             error.UnknownOption => "unknown option",
             error.MissingValue => "needs a value",
             error.InvalidTimeout => "not a number of milliseconds",
             error.TooManyArguments => "only one URL is opened",
             error.InvalidPort => "not a port number",
+            error.InvalidViewport => "expected <width>x<height> with positive integers",
+            error.RefusedOption => unreachable,
         }, usage });
         try err_out.flush();
         return 2;
@@ -2222,8 +2502,8 @@ pub fn main(init: std.process.Init) !u8 {
         try err_out.flush();
         return 2;
     }
-    if (options.mcp and !devtools.enabled) {
-        try err_out.print("repl: --mcp: {s}\n", .{devtools.unavailable_message});
+    if ((options.mcp or options.mcp_port != null) and !devtools.enabled) {
+        try err_out.print("repl: {s}: {s}\n", .{ if (options.mcp_port != null) "--mcp-port" else "--mcp", devtools.unavailable_message });
         try err_out.flush();
         return 2;
     }
@@ -2265,6 +2545,7 @@ pub fn main(init: std.process.Init) !u8 {
     defer process.deinit();
 
     if (comptime devtools.enabled) {
+        if (options.mcp_port != null) return serveMcpHttp(allocator, options, err_out);
         if (options.mcp) return serveMcp(allocator, io, options, err_out);
         if (options.remoteDebugging()) return serveDevtools(allocator, options, err_out);
     }
@@ -2281,6 +2562,11 @@ pub fn main(init: std.process.Init) !u8 {
     try requireProductionMemory(console_config);
     const browser = try Browser.init(allocator, console_config);
     defer browser.deinit();
+    if (options.viewport) |vp| {
+        if (browser.hostTraversableId()) |id| {
+            browser_mod.viewport.setWindowBounds(browser.scope, id, .{ .width = vp.width, .height = vp.height }) catch {};
+        }
+    }
 
     var out_buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.stdout().writerStreaming(io, &out_buffer);
@@ -2318,4 +2604,71 @@ pub fn main(init: std.process.Init) !u8 {
         stdout.interface.flush() catch {};
     }
     return 0;
+}
+
+test "parseOptions: MCP HTTP flags, chrome-devtools-mcp aliases, and refused flags" {
+    const testing = std.testing;
+    var bad: []const u8 = "";
+
+    const opts = try parseOptions(&.{
+        "--mcp-port=0",
+        "--mcp-host=0.0.0.0",
+        "--mcp-tls",
+        "--isolated",
+        "--viewport=1280x720",
+        "--acceptInsecureCerts",
+        "--userDataDir=/tmp/crane-prof",
+        "--categoryNetworkMocks",
+        "--slim",
+    }, &bad);
+    try testing.expectEqual(@as(?u16, 0), opts.mcp_port);
+    try testing.expectEqualStrings("0.0.0.0", opts.mcp_host);
+    try testing.expect(opts.mcp_tls);
+    try testing.expect(opts.isolated);
+    try testing.expectEqual(@as(i32, 1280), opts.viewport.?.width);
+    try testing.expectEqual(@as(i32, 720), opts.viewport.?.height);
+    try testing.expect(opts.accept_insecure_certs);
+    try testing.expectEqualStrings("/tmp/crane-prof", opts.user_data_dir.?);
+    try testing.expect(opts.category_network_mocks);
+    try testing.expect(opts.slim);
+
+    // Space-separated and kebab-case variants.
+    const opts2 = try parseOptions(&.{
+        "--mcp-port",
+        "9333",
+        "--mcp-host",
+        "127.0.0.1",
+        "--viewport",
+        "800X600",
+        "--userDataDir",
+        "/tmp/p2",
+        "--category-network-mocks",
+    }, &bad);
+    try testing.expectEqual(@as(?u16, 9333), opts2.mcp_port);
+    try testing.expectEqualStrings("127.0.0.1", opts2.mcp_host);
+    try testing.expectEqual(@as(i32, 800), opts2.viewport.?.width);
+    try testing.expectEqual(@as(i32, 600), opts2.viewport.?.height);
+    try testing.expectEqualStrings("/tmp/p2", opts2.user_data_dir.?);
+    try testing.expect(opts2.category_network_mocks);
+
+    // Invalid viewport rejected.
+    try testing.expectError(error.InvalidViewport, parseOptions(&.{"--viewport=wide"}, &bad));
+    try testing.expectError(error.InvalidViewport, parseOptions(&.{"--viewport=0x600"}, &bad));
+
+    // Refused flags (in-process MCP has no external Chrome launch/attach).
+    const refused = [_][]const u8{
+        "--executablePath=/usr/bin/chrome",
+        "--executablePath",
+        "--browserUrl=http://127.0.0.1:9222",
+        "--browserUrl",
+        "--wsEndpoint=ws://127.0.0.1:9222/devtools/browser/1",
+        "--wsEndpoint",
+        "--autoConnect",
+        "--channel=canary",
+        "--channel",
+    };
+    for (refused) |flag| {
+        try testing.expectError(error.RefusedOption, parseOptions(&.{flag}, &bad));
+        try testing.expectEqualStrings(flag, bad);
+    }
 }

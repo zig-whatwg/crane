@@ -38,6 +38,11 @@ pub const Options = struct {
     /// Enable heap snapshot analysis tools (chrome-devtools-mcp's
     /// `--memoryDebugging` / `--memory-debugging`).
     memory_debugging: bool = false,
+    /// Enable network mocking tools (`--categoryNetworkMocks` /
+    /// `--category-network-mocks`).
+    category_network_mocks: bool = false,
+    /// Expose only the slim tool set (`--slim`: navigate, evaluate, screenshot).
+    slim: bool = false,
 };
 
 pub const McpServer = struct {
@@ -59,13 +64,19 @@ pub const McpServer = struct {
         errdefer link.close();
         const session = try Session.create(allocator, link);
         errdefer session.destroy();
-        const tools_json = try tools.listJsonWith(allocator, options.memory_debugging);
+        const tools_json = try tools.listJsonWithOptions(allocator, .{
+            .memory_debugging = options.memory_debugging,
+            .category_network_mocks = options.category_network_mocks,
+            .slim = options.slim,
+        });
         errdefer allocator.free(tools_json);
         // The input schemas each call is checked against.
         session.schemas = try std.json.parseFromSlice(std.json.Value, allocator, tools_json, .{});
         session.paths.configured = options.filesystem_roots;
         session.paths.allow_unrestricted = options.allow_unrestricted_paths;
         session.memory_debugging = options.memory_debugging;
+        session.category_network_mocks = options.category_network_mocks;
+        session.slim = options.slim;
         self.* = .{
             .allocator = allocator,
             .link = link,

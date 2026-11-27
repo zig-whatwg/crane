@@ -68,6 +68,7 @@ const mixins = @import("mixins");
 
 // Browser module
 const browser = @import("browser");
+const devtools = @import("devtools");
 
 // Spec implementations
 const dom = @import("dom");
@@ -134,6 +135,7 @@ fn forceModuleCompilation() void {
 // crane_browser_*, crane_tab_* (src/browser/capi.zig; lane cdph).
 comptime {
     _ = browser.capi;
+    _ = devtools.capi;
 }
 
 // ============================================================================
