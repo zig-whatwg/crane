@@ -2772,26 +2772,6 @@ safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
 matches         = chrome, safari
 revisit         = when Chrome or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
-[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-insert-source.html]
-kind            = follows-majority
-why             = Crane runs resource selection's stable section in a task (required by media-src-7_1_2.sub.html, 3/3 pass), so inserting source1 before a in the following script causes x1 to fire error (expected 0 got 1, identical to Firefox); Chrome and Safari also fail 0/1 (failing one line earlier on c)
-chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
-firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
-safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
-matches         = firefox
-ruling          = the integrator (2026-11-25 4:46 PM ET, lane media1): all three browsers fail 0/1 due to task-based resource selection required by media-src-7_1_2.sub.html; Crane matches Firefox's exact x1 failure
-revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
-
-[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-remove-source.html]
-kind            = follows-majority
-why             = Crane runs resource selection's stable section in a task (required by media-src-7_1_2.sub.html, 3/3 pass), so removing x1 in the following script prevents x1 from being selected (expected 1 got 0, identical to Firefox); Chrome and Safari also fail 0/1 (failing one line earlier on c)
-chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
-firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
-safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
-matches         = firefox
-ruling          = the integrator (2026-11-25 4:46 PM ET, lane media1): all three browsers fail 0/1 due to task-based resource selection required by media-src-7_1_2.sub.html; Crane matches Firefox's exact x1 failure
-revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
-
 [html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-source-media-env-change.html]
 kind      = needs-decoder
 why       = selects /media-source/mp4/test.mp4#a and waits 2 rAFs before resizing the iframe; without an MP4 decoder #a fails decoding immediately and falls through to #b
@@ -2832,14 +2812,4 @@ kind      = needs-decoder
 why       = waits for a video resource to load and seek via timeout_on_seek.py; the default platform decodes no video (also 0/2 TIMEOUT in Chrome, Firefox and Safari on wpt.fyi)
 media     = /media/movie_5.mp4 (video/mp4)
 assertion = TIMEOUT: Test timed out
-
-[html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/blob-data.https.html]
-kind            = follows-majority
-why             = WPT PR #25748 (ce281cc3f3) changed data worker self.crossOriginIsolated to false (HTML run a worker step 9) without removing blobWorkerIncrementerTest("data worker"), whose blob sub-worker inherits false (step 8) and must throw DataCloneError on postMessage(SAB) (StructuredSerializeInternal step 14.1.1 -> ERROR), and data frame (opaque origin, no allow="cross-origin-isolated") also has crossOriginIsolated false; Crane gets ERROR 15/18 while every browser blocks differently (Chrome ERROR 14/18 ReferenceError + data frame COI/isSecureContext FAIL, Firefox TIMEOUT 17/18 violating step 9, Safari TIMEOUT 15/18 + data frame isSecureContext FAIL)
-chrome.result   = wpt.fyi run 4786307730243584: 14/18 (ERROR, Chrome 157, 2358bd4835)
-firefox.result  = wpt.fyi run 4877168468033536: 17/18 (TIMEOUT, Firefox 160, 2358bd4835)
-safari.result   = wpt.fyi run 6479119966273536: 15/18 (TIMEOUT, Safari 27.2, 2358bd4835)
-matches         = none
-ruling          = golden rule 2, the spec where all three differ (main, 2026-11-26 4:14 AM ET, lane sab1): each browser blocks differently and the test contradicts HTML run a worker steps 8-9 + StructuredSerializeInternal step 14.1.1; upstream test-bug draft is tmp/plans/sab1-upstream-drafts/blob-data.md (filing needs the user's OK)
-revisit         = when the test is fixed upstream, or Chrome, Firefox or Safari changes its result, or Crane's result moves
 
