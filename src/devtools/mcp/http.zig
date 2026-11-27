@@ -76,6 +76,22 @@ pub const Options = struct {
     rate_limit_window_ms: u64 = 10_000,
     /// Max concurrent TCP connections accepted.
     max_connections: u32 = 32,
+    /// Connections that have not authenticated yet (lane mcp3: not enforced
+    /// before the next commit).
+    max_pending_connections: u32 = 64,
+    /// How long a new connection has to authenticate (not enforced yet).
+    auth_timeout_ms: u32 = 10_000,
+    /// How long a started request has for its head and body (not enforced yet).
+    request_timeout_ms: u32 = 60_000,
+    /// How long a kept-alive connection may wait for its next request (not
+    /// enforced yet).
+    keep_alive_timeout_ms: u32 = 5_000,
+    /// How long one write may block (not enforced yet).
+    write_timeout_ms: u32 = 30_000,
+    /// How long a legacy session may go unused (0: never; not enforced yet).
+    session_idle_timeout_ms: u64 = 30 * std.time.ms_per_min,
+    /// How often the deadlines are checked (not enforced yet).
+    reap_interval_ms: u32 = 1_000,
     /// Options passed through to `McpServer`.
     mcp: server_mod.Options = .{},
 };
@@ -359,6 +375,18 @@ pub const HttpServer = struct {
 
     pub fn wakeHandle(self: *const HttpServer) platform.DevtoolsWake {
         return self.wake;
+    }
+
+    /// Legacy sessions listed now (tests).
+    pub fn sessionCount(self: *HttpServer) usize {
+        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.state_mutex);
+        return self.sessions.items.len;
+    }
+
+    /// Connections whose workers have not finished (tests).
+    pub fn connectionCount(self: *const HttpServer) u32 {
+        return self.live_workers.load(.acquire);
     }
 
     /// Signal the server to stop (callable from any thread, including
