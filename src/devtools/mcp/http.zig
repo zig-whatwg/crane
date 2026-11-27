@@ -1085,6 +1085,154 @@ pub const HttpServer = struct {
 };
 
 // ---------------------------------------------------------------------------
+// Host C ABI (include/crane.h: crane_browser_start_mcp / stop_mcp / info_free)
+// ---------------------------------------------------------------------------
+
+pub const capi = struct {
+    const browser_capi = @import("browser").capi;
+    // direct-allocator: C ABI host allocator for external embedder handles and strings returned across include/crane.h
+    const capi_allocator = std.heap.c_allocator;
+
+    const Instance = struct {
+        devtools_server: *DevtoolsServer,
+        http_server: *HttpServer,
+        owned_roots: [][]u8,
+        root_slices: [][]const u8,
+
+        fn stopAndFree(raw: *anyopaque) void {
+            const self: *Instance = @ptrCast(@alignCast(raw));
+            self.http_server.stop();
+            self.devtools_server.stop();
+            for (self.owned_roots) |r| capi_allocator.free(r);
+            capi_allocator.free(self.owned_roots);
+            capi_allocator.free(self.root_slices);
+            capi_allocator.destroy(self);
+        }
+    };
+
+    fn dupeZ(text: []const u8) ![*:0]u8 {
+        return (try capi_allocator.dupeSentinel(u8, text, 0)).ptr;
+    }
+
+    pub export fn crane_browser_start_mcp(
+        browser: ?*browser_capi.Handle,
+        options: ?*const browser_capi.McpOptions,
+        out: ?*browser_capi.McpInfo,
+    ) callconv(.c) browser_capi.Status {
+        const handle = browser orelse return .invalid_argument;
+        const result = out orelse return .invalid_argument;
+        result.* = .{};
+        if (handle.browserHost().isBrowserThread()) return .wrong_thread;
+        if (handle.hasMcp()) return .invalid_argument;
+
+        var o: browser_capi.McpOptions = .{ .struct_size = @sizeOf(browser_capi.McpOptions) };
+        if (options) |given| {
+            if (given.struct_size < @sizeOf(u32)) return .invalid_argument;
+            const covered = @min(given.struct_size, @sizeOf(browser_capi.McpOptions));
+            const from: [*]const u8 = @ptrCast(given);
+            @memcpy(std.mem.asBytes(&o)[0..covered], from[0..covered]);
+        }
+
+        const cert_pem: []const u8 = if (o.cert_pem) |p| std.mem.span(p) else "";
+        const key_pem: []const u8 = if (o.key_pem) |p| std.mem.span(p) else "";
+        if ((cert_pem.len != 0) != (key_pem.len != 0)) return .invalid_argument;
+        if (o.filesystem_root_count > 0 and o.filesystem_roots == null) return .invalid_argument;
+        if (o.allowed_origin_count > 0 and o.allowed_origins == null) return .invalid_argument;
+
+        const host: []const u8 = if (o.host) |h| std.mem.span(h) else "127.0.0.1";
+
+        const owned_roots = capi_allocator.alloc([]u8, o.filesystem_root_count) catch return .out_of_memory;
+        errdefer capi_allocator.free(owned_roots);
+        const root_slices = capi_allocator.alloc([]const u8, o.filesystem_root_count) catch return .out_of_memory;
+        errdefer capi_allocator.free(root_slices);
+        var roots_copied: usize = 0;
+        errdefer for (owned_roots[0..roots_copied]) |r| capi_allocator.free(r);
+        if (o.filesystem_roots) |list| {
+            for (list[0..o.filesystem_root_count], 0..) |r, i| {
+                owned_roots[i] = capi_allocator.dupe(u8, std.mem.span(r)) catch return .out_of_memory;
+                root_slices[i] = owned_roots[i];
+                roots_copied += 1;
+            }
+        }
+
+        const origin_slices = capi_allocator.alloc([]const u8, o.allowed_origin_count) catch return .out_of_memory;
+        defer capi_allocator.free(origin_slices);
+        if (o.allowed_origins) |list| {
+            for (list[0..o.allowed_origin_count], 0..) |orig, i| {
+                origin_slices[i] = std.mem.span(orig);
+            }
+        }
+
+        const inst = capi_allocator.create(Instance) catch return .out_of_memory;
+        errdefer capi_allocator.destroy(inst);
+
+        const dt = DevtoolsServer.start(capi_allocator, .{
+            .default_host = handle.browserHost(),
+        }) catch |err| return switch (err) {
+            error.OutOfMemory => .out_of_memory,
+            error.NotSupported => .unsupported,
+            else => .internal,
+        };
+        errdefer dt.stop();
+
+        const http_srv = HttpServer.start(capi_allocator, dt, .{
+            .host = host,
+            .port = o.port,
+            .tls = if (o.tls) .required else .auto,
+            .cert_pem = cert_pem,
+            .key_pem = key_pem,
+            .allowed_origins = origin_slices,
+            .mcp = .{
+                .filesystem_roots = if (root_slices.len > 0) root_slices else null,
+                .allow_unrestricted_paths = o.allow_unrestricted_paths,
+                .memory_debugging = o.memory_debugging,
+            },
+        }) catch |err| return switch (err) {
+            error.OutOfMemory => .out_of_memory,
+            error.NotSupported => .unsupported,
+            error.AccessDenied, error.InvalidTlsConfig, error.TlsRequired => .invalid_argument,
+            else => .internal,
+        };
+        errdefer http_srv.stop();
+
+        const token_z = dupeZ(http_srv.bearerToken()) catch return .out_of_memory;
+        errdefer capi_allocator.free(std.mem.span(token_z));
+        const fp_z: ?[*:0]u8 = if (http_srv.certFingerprint()) |fp| (dupeZ(fp) catch return .out_of_memory) else null;
+        errdefer if (fp_z) |f| capi_allocator.free(std.mem.span(f));
+
+        inst.* = .{
+            .devtools_server = dt,
+            .http_server = http_srv,
+            .owned_roots = owned_roots,
+            .root_slices = root_slices,
+        };
+        handle.attachMcp(inst, Instance.stopAndFree);
+
+        result.* = .{
+            .port = http_srv.boundPort(),
+            .tls = http_srv.isTls(),
+            .bearer_token = token_z,
+            .cert_fingerprint = fp_z,
+        };
+        return .ok;
+    }
+
+    pub export fn crane_browser_stop_mcp(browser: ?*browser_capi.Handle) callconv(.c) browser_capi.Status {
+        const handle = browser orelse return .invalid_argument;
+        if (handle.browserHost().isBrowserThread()) return .wrong_thread;
+        handle.detachMcp();
+        return .ok;
+    }
+
+    pub export fn crane_mcp_info_free(info: ?*browser_capi.McpInfo) callconv(.c) void {
+        const i = info orelse return;
+        if (i.bearer_token) |t| capi_allocator.free(std.mem.span(t));
+        if (i.cert_fingerprint) |f| capi_allocator.free(std.mem.span(f));
+        i.* = .{};
+    }
+};
+
+// ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
 

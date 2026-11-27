@@ -51,6 +51,9 @@ pub const Server = @import("server.zig").Server;
 pub const LocalLink = @import("server.zig").LocalLink;
 /// Crane's own MCP server (lane mcp1), built with the CDP feature.
 pub const mcp = @import("mcp/root.zig");
+/// Host C ABI MCP exports (`crane_browser_start_mcp`, `crane_browser_stop_mcp`,
+/// `crane_mcp_info_free`; include/crane.h).
+pub const capi = mcp.http.capi;
 /// The DevTools front end /json/list names (server.zig frontend_revision).
 pub const server_frontend_revision = @import("server.zig").frontend_revision;
 pub const ServerOptions = @import("server.zig").Options;

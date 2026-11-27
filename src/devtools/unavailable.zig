@@ -8,3 +8,20 @@ pub const enabled = false;
 
 /// What a request for CDP answers in this build.
 pub const unavailable_message = "this Crane was built without CDP support (-Dcdp=false)";
+
+/// Host C ABI MCP stubs when compiled without CDP (`-Dcdp=false`).
+pub const capi = struct {
+    pub export fn crane_browser_start_mcp(browser: ?*anyopaque, options: ?*const anyopaque, out: ?*anyopaque) callconv(.c) c_int {
+        _ = .{ browser, options, out };
+        return 3; // CRANE_ERR_UNSUPPORTED
+    }
+
+    pub export fn crane_browser_stop_mcp(browser: ?*anyopaque) callconv(.c) c_int {
+        _ = browser;
+        return 3; // CRANE_ERR_UNSUPPORTED
+    }
+
+    pub export fn crane_mcp_info_free(info: ?*anyopaque) callconv(.c) void {
+        _ = info;
+    }
+};

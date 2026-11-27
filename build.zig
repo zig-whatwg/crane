@@ -3769,6 +3769,7 @@ pub fn build(b: *std.Build) void {
         // prof2_storage_sequence_test.zig).
         .{ .name = "storage", .module = testing_graph.storage },
         .{ .name = "platform", .module = testing_graph.platform },
+        .{ .name = "devtools", .module = testing_graph.devtools },
     };
     if (addTestFilesFromDirCompile(b, test_browser_step, "tests/browser", target, &browser_test_imports, true, test_selection) catch |err| blk: {
         std.debug.print("Warning: Failed to add browser test files: {}\n", .{err});
@@ -3869,6 +3870,7 @@ pub fn build(b: *std.Build) void {
     lib_exports_mod.addImport("callbacks", callbacks_mod);
     lib_exports_mod.addImport("mixins", mixins_mod);
     lib_exports_mod.addImport("browser", browser_mod);
+    lib_exports_mod.addImport("devtools", crane_graph.devtools);
     lib_exports_mod.addImport("dom", dom_mod);
     lib_exports_mod.addImport("encoding", encoding_mod);
     lib_exports_mod.addImport("url", url_mod);
@@ -3956,6 +3958,7 @@ pub fn build(b: *std.Build) void {
     crane_mod.addImport("callbacks", callbacks_mod);
     crane_mod.addImport("mixins", mixins_mod);
     crane_mod.addImport("browser", browser_mod);
+    crane_mod.addImport("devtools", crane_graph.devtools);
     crane_mod.addImport("dom", dom_mod);
     crane_mod.addImport("encoding", encoding_mod);
     crane_mod.addImport("url", url_mod);

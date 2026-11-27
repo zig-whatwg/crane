@@ -201,6 +201,28 @@ pub const EvaluateResult = extern struct {
 pub const eval_await_promise: u32 = 1;
 pub const eval_user_activation: u32 = 2;
 
+pub const McpOptions = extern struct {
+    struct_size: u32,
+    host: ?[*:0]const u8 = null,
+    port: u16 = 0,
+    tls: bool = false,
+    cert_pem: ?[*:0]const u8 = null,
+    key_pem: ?[*:0]const u8 = null,
+    memory_debugging: bool = false,
+    filesystem_roots: ?[*]const [*:0]const u8 = null,
+    filesystem_root_count: usize = 0,
+    allow_unrestricted_paths: bool = false,
+    allowed_origins: ?[*]const [*:0]const u8 = null,
+    allowed_origin_count: usize = 0,
+};
+
+pub const McpInfo = extern struct {
+    port: u16 = 0,
+    tls: bool = false,
+    bearer_token: ?[*:0]u8 = null,
+    cert_fingerprint: ?[*:0]u8 = null,
+};
+
 /// The ABI's `crane_browser_t`.
 pub const Handle = CBrowser;
 
@@ -211,8 +233,33 @@ const CBrowser = struct {
     on_event: ?EventFn,
     event_context: ?*anyopaque,
     answers_dialogs: bool = false,
+    /// Optional active Streamable HTTP MCP server owned by this Browser
+    /// (stopped by crane_browser_stop_mcp or crane_browser_destroy).
+    mcp_handle: ?*anyopaque = null,
+    mcp_stop: ?*const fn (*anyopaque) void = null,
     /// Copies of what the options borrowed, kept for the Browser's life.
     strings: std.ArrayListUnmanaged([]u8) = .empty,
+
+    pub fn browserHost(self: *CBrowser) *BrowserHost {
+        return self.host;
+    }
+
+    pub fn hasMcp(self: *const CBrowser) bool {
+        return self.mcp_handle != null;
+    }
+
+    pub fn attachMcp(self: *CBrowser, handle: *anyopaque, stop_fn: *const fn (*anyopaque) void) void {
+        self.mcp_handle = handle;
+        self.mcp_stop = stop_fn;
+    }
+
+    pub fn detachMcp(self: *CBrowser) void {
+        const handle = self.mcp_handle orelse return;
+        const stop_fn = self.mcp_stop;
+        self.mcp_handle = null;
+        self.mcp_stop = null;
+        if (stop_fn) |f| f(handle);
+    }
 
     fn listener(self: *CBrowser) host_events.Listener {
         return .{ .context = self, .on_event = deliver };
@@ -515,6 +562,7 @@ fn freeBrowser(self: *CBrowser) void {
 pub export fn crane_browser_destroy(browser: ?*CBrowser) callconv(.c) void {
     const self = browser orelse return;
     if (self.host.isBrowserThread()) return;
+    self.detachMcp();
     if (self.on_event != null or self.answers_dialogs) self.host.call(self, CBrowser.removeListener) catch {};
     self.host.stop();
     freeBrowser(self);
