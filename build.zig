@@ -355,6 +355,9 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // The browser console (tools/repl.zig): every test starts a Browser
     // (lane console1).
     .{ .name = "tests-repl", .config = .{ .batch = 1 } },
+    // The shipped crane CLI (tools/crane.zig) and crash handler: starts a
+    // Browser and spawns crash-handler subprocesses.
+    .{ .name = "tests-cli", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
     .{ .name = "tests-codegen", .config = .{ .slow = &codegen_slow } },
 };
@@ -2040,6 +2043,21 @@ pub fn build(b: *std.Build) void {
         "cdp",
         "The Chrome DevTools Protocol remote end: the console's --remote-debugging-port, WebDriver's se:cdp, the devtools_transport platform capability (default on)",
     ) orelse true;
+
+    const crane_version = b.option(
+        []const u8,
+        "crane-version",
+        "Crane version string embedded in the crane CLI and crash reports (default: 0.1.0)",
+    ) orelse "0.1.0";
+    const crane_git_sha = b.option(
+        []const u8,
+        "crane-git-sha",
+        "Git commit SHA embedded in the crane CLI and crash reports (default: unknown)",
+    ) orelse "unknown";
+    const crane_cli_options = b.addOptions();
+    crane_cli_options.addOption([]const u8, "version", crane_version);
+    crane_cli_options.addOption([]const u8, "git_sha", crane_git_sha);
+    const crane_cli_options_mod = crane_cli_options.createModule();
 
     // ========================================================================
     // DEBUG OPTIONS
@@ -4431,6 +4449,41 @@ pub fn build(b: *std.Build) void {
         };
         const repl_unit_tests = addModuleTestWithEngine(b, repl_test_mod, target, tests_engine_link);
         test_step.dependOn(&addSuiteRun(b, launch, repl_unit_tests, "tools-repl", null).step);
+
+        // tests/cli/: the shipped crane CLI (tools/crane.zig) and custom crash
+        // handler (tools/crash_handler.zig).
+        const crash_handler_test_mod = b.createModule(.{
+            .root_source_file = b.path("tools/crash_handler.zig"),
+            .target = target,
+        });
+        const crash_fixture_handler_mod = b.createModule(.{
+            .root_source_file = b.path("tools/crash_handler.zig"),
+            .target = target,
+            .optimize = .ReleaseSafe,
+        });
+        const crash_fixture_exe = b.addExecutable(.{
+            .name = "cli_crash_fixture",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/cli/crash_fixture.zig"),
+                .target = target,
+                .optimize = .ReleaseSafe,
+                .strip = false,
+                .link_libc = true,
+                .imports = &.{
+                    .{ .name = "crash_handler", .module = crash_fixture_handler_mod },
+                },
+            }),
+        });
+        const cli_fixtures_options = b.addOptions();
+        cli_fixtures_options.addOptionPath("crash_fixture", crash_fixture_exe.getEmittedBin());
+        const cli_test_imports = [_]std.Build.Module.Import{
+            .{ .name = "crash_handler", .module = crash_handler_test_mod },
+            .{ .name = "cli_fixtures", .module = cli_fixtures_options.createModule() },
+            .{ .name = "crane_options", .module = crane_cli_options_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/cli", target, &cli_test_imports, false, test_selection) catch |err| {
+            std.debug.print("Warning: Failed to add cli test files: {}\n", .{err});
+        };
     }
 
     // ========================================================================
