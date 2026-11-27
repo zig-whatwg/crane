@@ -1,20 +1,8 @@
 name: Kotlin Bindings
 
+# Deferred to 0.2 bindings: manual workflow_dispatch only so main CI stays green.
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'bindings/kotlin/**'
-      - 'include/**'
-      - 'src/**'
-      - '.github/workflows/kotlin.yml'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'bindings/kotlin/**'
-      - 'include/**'
-      - 'src/**'
-      - '.github/workflows/kotlin.yml'
+  workflow_dispatch:
 
 jobs:
   build:

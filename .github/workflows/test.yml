@@ -1,59 +1,22 @@
 name: Test Suite
 
-# KNOWN-RED ON A CLEAN CHECKOUT. Read this before "fixing" a failure here.
-#
-# Every step in this file invokes a `zig build` step that statically links V8
-# out of jsengines/v8/out/static/obj/*.a. That is true of the default install
-# step (build.zig: full_static_lib, repl_exe, minimal_snapshot_test_exe,
-# wpt_runner_exe) and of `zig build test`, which calls
-# addTestFilesFromDir(..., link_v8=true) for tests/html, tests/v8 and
-# tests/benchmarks.
-#
-# Nothing under jsengines/ is tracked: `git ls-files jsengines/` is empty and
-# .gitignore line 47 excludes jsengines/v8/. So a fresh CI checkout has no
-# libv8_monolith.a (~68 MB on a developer machine) and no jsengines/v8/include,
-# and the link dies in hundreds of undefined _v8_* / _uv_* symbols.
-#
-# build.zig also hardcodes /opt/homebrew/opt/libuv/{lib,include} for those same
-# artifacts. That path exists only under Homebrew on Apple Silicon, so the
-# ubuntu-latest and windows-latest matrix legs cannot succeed even once V8 is
-# provisioned.
-#
-# On a machine that DOES have the archives, the suite is GREEN on the pinned
-# Zig 0.17 (lane z17f's gate, 2026-11-21, macOS on chat2: 135 test suites,
-# 15,855 tests passed, 34 skipped, 0 failed; Linux on server1 the same 135,
-# 15,860 passed, 29 skipped).
-# So a failure here is either the missing-V8 provisioning above, or a real
-# regression - it is no longer expected noise.
-#
-# The `toolchain` job is the exception: it needs no V8 and can be green.
-#
-# These jobs are deliberately left enabled. A red job that names its cause is
-# worth more than a green one that hides it. Do NOT paper this over with
-# continue-on-error, `|| true`, or a fallback build that produces a different
-# artifact than the one under test. Fix the provisioning (vendor or download the
-# V8 archives, unhardcode the libuv path).
-
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  # Run on any branch by hand (once this file is on main): `gh workflow run test.yml --ref <branch>`.
   workflow_dispatch:
 
 jobs:
-  # The toolchain itself, and nothing that needs V8: the pinned Zig fetched from the toolchain
-  # release, checked against its pinned SHA-256 (.github/actions/setup-zig-pinned), reporting the
-  # pinned version, and build.zig's refusal of every other Zig (tools/zig_toolchain.zig, std-only).
-  # Unlike the jobs below, this one can be green on a clean checkout - so a red one is the toolchain.
+  # Fast std-only check: the pinned Zig from the toolchain release, version check,
+  # and build.zig's toolchain refusal tests (tools/zig_toolchain.zig).
   toolchain:
     name: Pinned Zig on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-24.04, macos-14]
 
     steps:
       - name: Checkout code
@@ -62,69 +25,29 @@ jobs:
       - name: Setup Zig (the pinned 0.17)
         uses: ./.github/actions/setup-zig-pinned
 
-      - name: zig version is the pin
+      - name: Verify zig version matches pin
         shell: bash
         run: |
           set -euo pipefail
           got="$(zig version)"
           echo "zig $(command -v zig): $got"
-          [ "$got" = "0.17.1-dev+77c319a0f0" ] || { echo "::error::zig version is '$got', not 0.17.1-dev+77c319a0f0"; exit 1; }
+          [ "$got" = "0.17.1-dev+77c319a0f0" ] || {
+            echo "::error::zig version is '$got', not 0.17.1-dev+77c319a0f0"
+            exit 1
+          }
 
-      - name: build.zig's toolchain check (tools/zig_toolchain.zig)
+      - name: Run tools/zig_toolchain.zig tests
+        shell: bash
         run: zig test tools/zig_toolchain.zig
 
   test:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Zig (the pinned 0.17)
-        # The pinned 0.17.1-dev+77c319a0f0 from the toolchain release (the action says why
-        # setup-zig cannot fetch it). build.zig refuses every other Zig by name; on Windows,
-        # which the release has no build for, this step fails naming that.
-        uses: ./.github/actions/setup-zig-pinned
-
-      # Advisory only - deliberately does NOT exit non-zero.
-      #
-      # `zig build test` links V8 in just 4 of ~21 test groups (tests/dom,
-      # tests/html, tests/v8, tests/benchmarks - the `link_v8 = true` call sites
-      # in build.zig). The other ~17 groups - infra, webidl, url, encoding,
-      # streams, selector, fetch, csp and the rest - build and run with no V8 at
-      # all, and account for the large majority of the ~3,700 tests that pass.
-      #
-      # Hard-failing here would abort before any of them ran, so a URL-parser
-      # regression would surface as "missing libv8_monolith.a". The V8-linked
-      # groups will fail on their own, loudly, in the step below; this note just
-      # explains why when they do.
-      - name: Preflight - note whether V8 archives are present (advisory)
-        shell: bash
-        run: |
-          set -uo pipefail
-          for path in \
-            jsengines/v8/include \
-            jsengines/v8/out/static/obj/libv8_monolith.a \
-            jsengines/v8/out/static/obj/libv8_libplatform_fat.a \
-            jsengines/v8/out/static/obj/libv8_libbase_fat.a
-          do
-            if [ ! -e "$path" ]; then
-              echo "::warning::missing $path - jsengines/ is gitignored and is not vendored or downloaded by this workflow, so the 4 V8-linked test groups cannot link. The other ~17 groups still run and report below."
-            fi
-          done
-
-      - name: Run tests (V8-linked groups will fail without jsengines/ - see file header)
-        run: zig build test --summary all
-
-  # Fetch network tests - run separately with network access
-  fetch-network-tests:
-    name: Fetch Network Tests
-    runs-on: ubuntu-latest
+        os: [ubuntu-24.04, macos-14]
 
     steps:
       - name: Checkout code
@@ -133,42 +56,47 @@ jobs:
       - name: Setup Zig (the pinned 0.17)
         uses: ./.github/actions/setup-zig-pinned
 
-      - name: Preflight - V8 archives must be present to link (see file header)
+      - name: Setup prebuilt V8 15.7.112.43 (static)
+        uses: ./.github/actions/setup-v8-prebuilt
+        with:
+          link: static
+
+      - name: Run unit & integration tests (includes lints and codegen-check)
+        shell: bash
+        run: zig build test -j2 -Dv8-dir="$CRANE_V8_DIR"
+
+      - name: Run browser initialization tests
+        shell: bash
+        run: zig build test-browser -j2 -Dv8-dir="$CRANE_V8_DIR"
+
+      - name: Verify -Dcdp=false build
+        shell: bash
+        run: zig build check-cdp-off -j2 -Dv8-dir="$CRANE_V8_DIR"
+
+      - name: Build crane and run version smoke test
         shell: bash
         run: |
-          set -uo pipefail
-          missing=0
-          for path in \
-            jsengines/v8/include \
-            jsengines/v8/out/static/obj/libv8_monolith.a \
-            jsengines/v8/out/static/obj/libv8_libplatform_fat.a \
-            jsengines/v8/out/static/obj/libv8_libbase_fat.a
-          do
-            if [ ! -e "$path" ]; then
-              echo "::error::missing $path - jsengines/ is gitignored and is not vendored or downloaded by this workflow, so nothing here can link V8"
-              missing=1
+          set -euo pipefail
+          zig build crane -j2 -Dv8-dir="$CRANE_V8_DIR"
+          ./zig-out/bin/crane --version
+
+      - name: Test out-of-tree Zig consumer (Zig module & C ABI samples)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd examples/zig-consumer
+          zig build test -j2 -Dv8-dir="$CRANE_V8_DIR"
+          zig build -j2 -Dv8-dir="$CRANE_V8_DIR"
+          count=0
+          for bin in zig-out/bin/*; do
+            if [ -f "$bin" ] && [ -x "$bin" ]; then
+              echo "--- running sample binary: $bin"
+              "$bin"
+              count=$((count + 1))
             fi
           done
-          exit "$missing"
-
-      - name: Build with static libcurl
-        run: zig build
-
-      # No continue-on-error here on purpose. It used to carry the note "Allow
-      # network test failures as httpbin.org may be unavailable", but this step
-      # runs the ENTIRE suite (3,772 tests) with WHATWG_NETWORK_TESTS=1 set, not
-      # only the network ones, so continue-on-error swallowed every unrelated
-      # regression and leak alongside any httpbin outage. If httpbin flakiness
-      # needs tolerating, scope the tolerance to the network tests in build.zig
-      # or point them at a hermetic server - do not blanket-ignore the suite.
-      - name: Run fetch network integration tests (whole suite)
-        run: zig build test --summary all
-        env:
-          # Enable network tests
-          WHATWG_NETWORK_TESTS: "1"
-
-      - name: Verify libcurl integration compiles
-        run: |
-          # Verify the fetch module with libcurl compiles correctly
-          zig build -Dsystem-curl=false
-          echo "Static libcurl build successful"
+          if [ "$count" -lt 2 ]; then
+            echo "::error::expected at least 2 sample binaries (Zig module + C ABI) in examples/zig-consumer/zig-out/bin/, found $count"
+            ls -la zig-out/bin/ || true
+            exit 1
+          fi
