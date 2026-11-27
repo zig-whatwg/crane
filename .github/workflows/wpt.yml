@@ -63,6 +63,14 @@ jobs:
         with:
           link: static
 
+      - name: Generate WPT MANIFEST.json and /etc/hosts entries
+        shell: bash
+        run: |
+          set -euo pipefail
+          ( cd tests/wpt && python3 ./wpt make-hosts-file | sudo tee -a /etc/hosts >/dev/null )
+          ( cd tests/wpt && python3 ./wpt manifest --path MANIFEST.json )
+          test -s tests/wpt/MANIFEST.json
+
       - name: Build production wpt_runner
         shell: bash
         run: zig build wpt-runner -j2 -Dv8-dir="$CRANE_V8_DIR"
@@ -75,6 +83,7 @@ jobs:
           set -euo pipefail
           ./zig-out/bin/wpt_runner "${WPT_SCOPE}" \
             --output=wpt-results \
+            --parallel=4 \
             --quiet \
             --baseline=tests/wpt_expectations.jsonl
 
