@@ -95,6 +95,8 @@ pub const BrowserHost = struct {
     /// returns error.BrowserGone. Not from the Browser's own thread.
     pub fn stop(self: *BrowserHost) void {
         std.debug.assert(!self.isBrowserThread());
+        // A CPU throttle's debt being paid ends now (EventLoop.throttleAfterWork).
+        if (self.pause) |p| p.interruptThrottle();
         if (self.sink) |sink| {
             _ = sink.post(.{ .run = stopTask, .drop = ignoreDrop, .data = self });
         }

@@ -27,6 +27,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const platform = @import("platform");
 const task_sink = @import("task_sink.zig");
 const CrossThreadTask = task_sink.CrossThreadTask;
 
@@ -52,6 +53,9 @@ pub const BrowserPause = struct {
     /// How deep the Browser thread is paused now (a dialog inside a debugger
     /// pause, or the reverse): read on the Browser's thread only.
     depth: u32 = 0,
+    /// The host is stopping the Browser: a CPU throttle's debt
+    /// (`pauseUntilDeadline`) ends now. Any thread sets it.
+    throttle_interrupted: std.atomic.Value(bool) = .init(false),
 
     pub fn init(allocator: Allocator) BrowserPause {
         return .{ .allocator = allocator };
@@ -119,6 +123,43 @@ pub const BrowserPause = struct {
         }
     }
 
+    /// The Browser's thread: pay a CPU throttle's debt - wait until
+    /// `deadline_ns` on the monotonic clock, running each session message
+    /// posted meanwhile, in order, and nothing else, as `.debugger` does. It
+    /// ends early when the host stops the Browser (`interruptThrottle`) or the
+    /// pause closes. Chrome's ThreadCPUThrottler suspends the renderer's main
+    /// thread in slices, and V8 still serves the inspector's interrupting
+    /// tasks while a throttled task runs
+    /// (third_party/blink/renderer/platform/scheduler/common/thread_cpu_throttler.cc,
+    /// core/inspector/inspector_task_runner.cc; BSD-3, reproduced, not
+    /// copied). What a host posts as an ordinary task - a browser-target
+    /// CDP command through BrowserHost.call - waits for the debt's end,
+    /// where Chrome's browser process would answer it at once.
+    pub fn pauseUntilDeadline(self: *BrowserPause, deadline_ns: u64) void {
+        self.depth += 1;
+        defer self.depth -= 1;
+        while (true) {
+            const seen = self.wake.load(.acquire);
+            if (self.throttle_interrupted.load(.acquire)) return;
+            const now = platform.monotonicNow().ns;
+            if (now >= deadline_ns) return;
+            if (self.takeMessage()) |message| {
+                message.run(message.data);
+                continue;
+            }
+            if (self.isClosed()) return;
+            const left_ms: i64 = @intCast(@max((deadline_ns - now) / std.time.ns_per_ms, 1));
+            futexIo().futexWaitTimeout(u32, &self.wake.raw, seen, .{ .duration = .{ .raw = .fromMilliseconds(left_ms), .clock = .awake } }) catch {};
+        }
+    }
+
+    /// The host stops the Browser: a debt being paid ends at once. Any
+    /// thread.
+    pub fn interruptThrottle(self: *BrowserPause) void {
+        self.throttle_interrupted.store(true, .release);
+        self.notify();
+    }
+
     pub fn isClosed(self: *BrowserPause) bool {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
@@ -141,6 +182,32 @@ pub const BrowserPause = struct {
 
 fn futexIo() std.Io {
     return std.Io.Threaded.global_single_threaded.io();
+}
+
+test "a throttle's debt runs the session messages posted meanwhile, ends at its deadline, and ends at once when interrupted" {
+    const testing = std.testing;
+    var pause = BrowserPause.init(testing.allocator);
+    defer pause.deinit();
+    const Ran = struct {
+        count: u32 = 0,
+        fn run(data: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.count += 1;
+        }
+        fn drop(data: ?*anyopaque) void {
+            _ = data;
+        }
+    };
+    var ran: Ran = .{};
+    try testing.expect(pause.postMessage(.{ .run = Ran.run, .drop = Ran.drop, .data = &ran, .source = .generic }));
+    const start = platform.monotonicNow().ns;
+    pause.pauseUntilDeadline(start + 30 * std.time.ns_per_ms);
+    try testing.expectEqual(@as(u32, 1), ran.count);
+    try testing.expect(platform.monotonicNow().ns >= start + 30 * std.time.ns_per_ms);
+    pause.interruptThrottle();
+    const again = platform.monotonicNow().ns;
+    pause.pauseUntilDeadline(again + 10 * std.time.ns_per_s);
+    try testing.expect(platform.monotonicNow().ns - again < std.time.ns_per_s);
 }
 
 test "a dialog pause leaves session messages queued; a debugger pause runs them in order until its goal" {
