@@ -17,19 +17,26 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const fetch = @import("fetch");
+const url_mod = @import("url");
 const registry = @import("../tools.zig");
 const Context = registry.Context;
 const Tool = registry.Tool;
 const session_mod = @import("../session.zig");
+const Session = session_mod.Session;
 const Page = session_mod.Page;
+const NetworkMock = session_mod.NetworkMock;
 const Response = @import("../response.zig").Response;
 const network = @import("../network.zig");
+const paths_mod = @import("../paths.zig");
 const console_tools = @import("console.zig");
 const text_util = @import("../text.zig");
 
 pub const list = [_]Tool{
     .{ .name = "get_network_request", .page_tool = true, .blocked_by_dialog = true, .files = &.{ .{ .name = "requestFilePath" }, .{ .name = "responseFilePath" } }, .run = getNetworkRequest },
     .{ .name = "list_network_requests", .page_tool = true, .run = listNetworkRequests },
+    .{ .name = "mock_network", .page_tool = true, .blocked_by_dialog = false, .files = &.{.{ .name = "body" }}, .category_network_mocks = true, .run = mockNetwork },
+    .{ .name = "remove_network_mock", .page_tool = true, .blocked_by_dialog = false, .category_network_mocks = true, .run = removeNetworkMock },
 };
 
 /// RESPONSE_BODY_TIMEOUT_MS.
@@ -250,4 +257,697 @@ fn decodeBody(arena: Allocator, body: []const u8, base64: bool) !?[]const u8 {
     const decoded = try arena.alloc(u8, size);
     decoder.decode(decoded, body) catch return null;
     return decoded;
+}
+
+// ============================================================================
+// mock_network & remove_network_mock (--categoryNetworkMocks)
+// Translated from chrome-devtools-mcp v1.13.0 src/tools/network.ts,
+// src/NetworkOverrideManager.ts, src/formatters/NetworkOverridesFormatter.ts,
+// src/utils/network.ts, src/utils/url.ts (Copyright 2026 Google LLC,
+// Apache-2.0; THIRD_PARTY_NOTICES.md).
+// ============================================================================
+
+const default_url_pattern = "*://*:*/*";
+
+const measurement_warning =
+    "Network mocks disable the page HTTP cache and intercept every request. " ++
+    "Replacement resources use altered delivery paths; these timings do not " ++
+    "represent normal production loading. Compare baseline and candidate using " ++
+    "the same mock mechanism, cache policy, and throttling.";
+
+fn inferContentType(file_path: []const u8) []const u8 {
+    const ext = paths_mod.extname(file_path);
+    const map = [_]struct { []const u8, []const u8 }{
+        .{ ".css", "text/css; charset=utf-8" },
+        .{ ".gif", "image/gif" },
+        .{ ".htm", "text/html; charset=utf-8" },
+        .{ ".html", "text/html; charset=utf-8" },
+        .{ ".ico", "image/x-icon" },
+        .{ ".jpeg", "image/jpeg" },
+        .{ ".jpg", "image/jpeg" },
+        .{ ".js", "application/javascript; charset=utf-8" },
+        .{ ".json", "application/json; charset=utf-8" },
+        .{ ".mjs", "application/javascript; charset=utf-8" },
+        .{ ".png", "image/png" },
+        .{ ".svg", "image/svg+xml" },
+        .{ ".txt", "text/plain; charset=utf-8" },
+        .{ ".wasm", "application/wasm" },
+        .{ ".webp", "image/webp" },
+        .{ ".xml", "application/xml; charset=utf-8" },
+    };
+    for (map) |entry| {
+        if (std.ascii.eqlIgnoreCase(ext, entry[0])) return entry[1];
+    }
+    return "application/octet-stream";
+}
+
+fn mockNetwork(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Response) anyerror!void {
+    const target = page.?;
+    const route = registry.stringArg(args, "route");
+    const resource_type = registry.stringArg(args, "resourceType");
+    // checkFiles turns whitespace-only `body` into `.null`.
+    if (args.get("body")) |b| if (b == .null) {
+        return ctx.failPlain("Input validation error: Invalid arguments for tool mock_network: body: Too small: expected string to have >=1 characters", .{});
+    };
+    const body_path = registry.stringArg(args, "body");
+    const upstream = registry.stringArg(args, "upstream");
+
+    if (route) |r| {
+        if (try validateRoute(ctx.arena, r)) |err_msg| return ctx.fail("{s}", .{err_msg});
+    }
+    if (body_path != null and upstream != null) {
+        return ctx.fail("body and upstream are mutually exclusive.", .{});
+    }
+
+    if (upstream) |up_url| {
+        if (!isHttpOrHttpsUrl(ctx.arena, up_url)) {
+            return ctx.fail("Unsupported URL protocol: {s}", .{up_url});
+        }
+        const mock_ptr = try upsertMock(ctx, target, route orelse default_url_pattern, resource_type, .upstream, up_url, "");
+        try response.line("Network mock configured. Reload or navigate the page to apply it.", .{});
+        try response.line("{s}", .{try formatMocks(ctx.arena, &.{mock_ptr.*})});
+        return;
+    }
+
+    if (body_path) |path| {
+        // Validate & read eagerly, matching NetworkOverrideManager.#createOverride.
+        _ = ctx.session.paths.readFile(ctx.arena, path) catch |err| switch (err) {
+            error.Denied => return ctx.fail("{s}", .{ctx.session.paths.message}),
+            error.OutOfMemory => return error.OutOfMemory,
+        };
+        const content_type = inferContentType(path);
+        const mock_ptr = try upsertMock(ctx, target, route orelse default_url_pattern, resource_type, .file, path, content_type);
+        try response.line("Network mock configured. Reload or navigate the page to apply it.", .{});
+        try response.line("{s}", .{try formatMocks(ctx.arena, &.{mock_ptr.*})});
+        return;
+    }
+
+    // Inspection mode: list mocks matching exact route/resourceType filters.
+    var matched: std.ArrayList(NetworkMock) = .empty;
+    for (target.network_mocks.overrides.items) |m| {
+        if (matchesFilter(&m, route, resource_type)) {
+            try matched.append(ctx.arena, m);
+        }
+    }
+    if (matched.items.len == 0) {
+        try response.line("No network mocks match these filters.", .{});
+        return;
+    }
+    try response.line("{s}", .{try formatMocks(ctx.arena, matched.items)});
+}
+
+fn removeNetworkMock(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Response) anyerror!void {
+    const target = page.?;
+    const route = registry.stringArg(args, "route");
+    const resource_type = registry.stringArg(args, "resourceType");
+    if (route) |r| {
+        if (try validateRoute(ctx.arena, r)) |err_msg| return ctx.fail("{s}", .{err_msg});
+    }
+
+    const allocator = ctx.session.allocator;
+    var removed: usize = 0;
+    var i: usize = 0;
+    while (i < target.network_mocks.overrides.items.len) {
+        if (matchesFilter(&target.network_mocks.overrides.items[i], route, resource_type)) {
+            var item = target.network_mocks.overrides.orderedRemove(i);
+            item.deinit(allocator);
+            removed += 1;
+            continue;
+        }
+        i += 1;
+    }
+
+    if (removed > 0 and target.network_mocks.overrides.items.len == 0) {
+        try deactivateMocks(ctx, target);
+    }
+
+    try response.line("Removed {d} network {s}.", .{ removed, if (removed == 1) "mock" else "mocks" });
+}
+
+fn matchesFilter(m: *const NetworkMock, route: ?[]const u8, resource_type: ?[]const u8) bool {
+    if (route) |r| if (!std.mem.eql(u8, m.url_pattern, r)) return false;
+    if (resource_type) |rt| {
+        const stored = m.resource_type orelse return false;
+        if (!std.mem.eql(u8, stored, rt)) return false;
+    }
+    return true;
+}
+
+fn upsertMock(
+    ctx: *Context,
+    page: *Page,
+    url_pattern: []const u8,
+    resource_type: ?[]const u8,
+    kind: NetworkMock.Kind,
+    target_val: []const u8,
+    content_type: []const u8,
+) !*NetworkMock {
+    const allocator = ctx.session.allocator;
+    const state = &page.network_mocks;
+
+    var existing_idx: ?usize = null;
+    for (state.overrides.items, 0..) |m, idx| {
+        const rt_match = if (m.resource_type == null and resource_type == null)
+            true
+        else if (m.resource_type != null and resource_type != null)
+            std.mem.eql(u8, m.resource_type.?, resource_type.?)
+        else
+            false;
+        if (std.mem.eql(u8, m.url_pattern, url_pattern) and rt_match) {
+            existing_idx = idx;
+            break;
+        }
+    }
+
+    const id: u32 = if (existing_idx) |idx| state.overrides.items[idx].id else state.next_id;
+    const pat_copy = try allocator.dupe(u8, url_pattern);
+    errdefer allocator.free(pat_copy);
+    const rt_copy: ?[]u8 = if (resource_type) |rt| try allocator.dupe(u8, rt) else null;
+    errdefer if (rt_copy) |rt| allocator.free(rt);
+    const target_copy = try allocator.dupe(u8, target_val);
+    errdefer allocator.free(target_copy);
+    const ct_copy = try allocator.dupe(u8, content_type);
+    errdefer allocator.free(ct_copy);
+
+    try activateMocks(ctx, page);
+
+    if (existing_idx) |idx| {
+        var old = state.overrides.orderedRemove(idx);
+        old.deinit(allocator);
+    } else {
+        state.next_id += 1;
+    }
+
+    try state.overrides.append(allocator, .{
+        .id = id,
+        .url_pattern = pat_copy,
+        .resource_type = rt_copy,
+        .kind = kind,
+        .target = target_copy,
+        .content_type = ct_copy,
+    });
+    return &state.overrides.items[state.overrides.items.len - 1];
+}
+
+fn activateMocks(ctx: *Context, page: *Page) !void {
+    const state = &page.network_mocks;
+    if (!state.cache_disabled) {
+        var r = try ctx.session.client.call("Network.setCacheDisabled", "{\"cacheDisabled\":true}", page.session_id, session_mod.command_timeout_ms);
+        defer r.deinit();
+        if (r.errorMessage()) |msg| return ctx.fail("Protocol error (Network.setCacheDisabled): {s}", .{msg});
+        state.cache_disabled = true;
+    }
+    if (!state.active) {
+        var r = try ctx.session.client.call("Fetch.enable", "{\"patterns\":[{\"urlPattern\":\"*\"}]}", page.session_id, session_mod.command_timeout_ms);
+        defer r.deinit();
+        if (r.errorMessage()) |msg| return ctx.fail("Protocol error (Fetch.enable): {s}", .{msg});
+        state.active = true;
+    }
+}
+
+fn deactivateMocks(ctx: *Context, page: *Page) !void {
+    const state = &page.network_mocks;
+    if (state.active) {
+        var r = try ctx.session.client.call("Fetch.disable", "{}", page.session_id, session_mod.command_timeout_ms);
+        defer r.deinit();
+        state.active = false;
+    }
+    if (state.cache_disabled) {
+        var r = try ctx.session.client.call("Network.setCacheDisabled", "{\"cacheDisabled\":false}", page.session_id, session_mod.command_timeout_ms);
+        defer r.deinit();
+        state.cache_disabled = false;
+    }
+}
+
+fn formatMocks(arena: Allocator, mocks: []const NetworkMock) ![]const u8 {
+    if (mocks.len == 0) return "";
+    var lines: std.ArrayList([]const u8) = .empty;
+    try lines.append(arena, measurement_warning);
+    for (mocks) |m| {
+        const source = switch (m.kind) {
+            .file => try std.fmt.allocPrint(arena, "{s} ({s})", .{ m.target, m.content_type }),
+            .upstream => m.target,
+        };
+        const rt = if (m.resource_type) |t| try std.fmt.allocPrint(arena, " [{s}]", .{t}) else "";
+        try lines.append(arena, try std.fmt.allocPrint(arena, "{s}{s} -> {s}", .{ m.url_pattern, rt, source }));
+        try lines.append(arena, try std.fmt.allocPrint(arena, "  Since configured: {d} hits, {d} errors.", .{ m.hits, m.errors }));
+        if (m.last_error) |e| {
+            try lines.append(arena, try std.fmt.allocPrint(arena, "  Last error: {s}", .{e}));
+        }
+        if (m.hits == 0) {
+            try lines.append(arena, if (m.navigations > 0)
+                "  Warning: no requests matched after navigation. Check the full-URL pattern, resource type, and service worker."
+            else
+                "  No matches yet. Navigate or reload to verify this rule.");
+        }
+    }
+    return std.mem.join(arena, "\n", lines.items);
+}
+
+/// Handle `Fetch.requestPaused` for active network mocks on `page`.
+/// Uses `session.client.post` (non-blocking) so it is safe inside `onEvent`.
+pub fn handleRequestPaused(session: *Session, page: *Page, params: std.json.ObjectMap) !void {
+    const request_id = session_mod.str(params.get("requestId"));
+    if (request_id.len == 0) return;
+
+    var scratch = std.heap.ArenaAllocator.init(session.allocator);
+    defer scratch.deinit();
+    const arena = scratch.allocator();
+
+    const frame_id = session_mod.str(params.get("frameId"));
+    const resource_type = mapCdpResourceType(session_mod.str(params.get("resourceType")));
+    const req_val = params.get("request") orelse {
+        try postContinue(session, arena, page.session_id, request_id);
+        return;
+    };
+    if (req_val != .object) {
+        try postContinue(session, arena, page.session_id, request_id);
+        return;
+    }
+    const req_url = session_mod.str(req_val.object.get("url"));
+    const req_method = session_mod.str(req_val.object.get("method"));
+
+    if (std.mem.eql(u8, resource_type, "document") and std.mem.eql(u8, frame_id, page.mainFrameId())) {
+        for (page.network_mocks.overrides.items) |*m| {
+            m.navigations += 1;
+        }
+    }
+
+    // Most recently updated matching mock wins.
+    var matched: ?*NetworkMock = null;
+    var i = page.network_mocks.overrides.items.len;
+    while (i > 0) {
+        i -= 1;
+        const m = &page.network_mocks.overrides.items[i];
+        if (!matchUrlPattern(m.url_pattern, req_url)) continue;
+        if (m.resource_type) |rt| if (!std.mem.eql(u8, rt, resource_type)) continue;
+        matched = m;
+        break;
+    }
+
+    const mock = matched orelse {
+        try postContinue(session, arena, page.session_id, request_id);
+        return;
+    };
+
+    mock.hits += 1;
+    switch (mock.kind) {
+        .file => {
+            const bytes = session.paths.readFile(arena, mock.target) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.Denied => {
+                    try recordMockError(session.allocator, mock, session.paths.message);
+                    try postFail(session, arena, page.session_id, request_id);
+                    return;
+                },
+            };
+            const headers = [_]FulfillHeader{
+                .{ .name = "Content-Type", .value = mock.content_type },
+                .{ .name = "Cache-Control", .value = "no-store" },
+            };
+            try postFulfill(session, arena, page.session_id, request_id, 200, &headers, bytes);
+        },
+        .upstream => {
+            if (!std.mem.eql(u8, req_method, "GET") and !std.mem.eql(u8, req_method, "HEAD")) {
+                try recordMockError(session.allocator, mock, "Upstream mocks only support GET and HEAD requests.");
+                try postFail(session, arena, page.session_id, request_id);
+                return;
+            }
+            fulfillUpstream(session, arena, page.session_id, request_id, req_url, req_method, req_val.object.get("headers"), mock) catch |err| {
+                if (err == error.OutOfMemory) return error.OutOfMemory;
+                const msg = std.fmt.allocPrint(arena, "{t}", .{err}) catch "upstream fetch failed";
+                try recordMockError(session.allocator, mock, msg);
+                try postFail(session, arena, page.session_id, request_id);
+            };
+        },
+    }
+}
+
+const FulfillHeader = struct { name: []const u8, value: []const u8 };
+
+fn recordMockError(allocator: Allocator, mock: *NetworkMock, detail: []const u8) !void {
+    mock.errors += 1;
+    const msg = try std.fmt.allocPrint(allocator, "Failed to load {s}: {s}", .{ mock.target, detail });
+    if (mock.last_error) |old| allocator.free(old);
+    mock.last_error = msg;
+}
+
+fn postContinue(session: *Session, arena: Allocator, session_id: []const u8, request_id: []const u8) !void {
+    const body = try std.fmt.allocPrint(arena, "{{\"requestId\":{f}}}", .{std.json.fmt(request_id, .{})});
+    try session.client.post("Fetch.continueRequest", body, session_id);
+}
+
+fn postFail(session: *Session, arena: Allocator, session_id: []const u8, request_id: []const u8) !void {
+    const body = try std.fmt.allocPrint(arena, "{{\"requestId\":{f},\"errorReason\":\"Failed\"}}", .{std.json.fmt(request_id, .{})});
+    try session.client.post("Fetch.failRequest", body, session_id);
+}
+
+fn postFulfill(
+    session: *Session,
+    arena: Allocator,
+    session_id: []const u8,
+    request_id: []const u8,
+    status: u16,
+    headers: []const FulfillHeader,
+    body_bytes: []const u8,
+) !void {
+    const b64_len = std.base64.standard.Encoder.calcSize(body_bytes.len);
+    const b64 = try arena.alloc(u8, b64_len);
+    _ = std.base64.standard.Encoder.encode(b64, body_bytes);
+
+    var out: std.Io.Writer.Allocating = .init(arena);
+    const w = &out.writer;
+    try w.print("{{\"requestId\":{f},\"responseCode\":{d},\"responseHeaders\":[", .{ std.json.fmt(request_id, .{}), status });
+    for (headers, 0..) |h, idx| {
+        if (idx != 0) try w.writeAll(",");
+        try w.print("{{\"name\":{f},\"value\":{f}}}", .{ std.json.fmt(h.name, .{}), std.json.fmt(h.value, .{}) });
+    }
+    try w.print("],\"body\":{f}}}", .{std.json.fmt(b64, .{})});
+    try session.client.post("Fetch.fulfillRequest", out.written(), session_id);
+}
+
+fn fulfillUpstream(
+    session: *Session,
+    arena: Allocator,
+    session_id: []const u8,
+    request_id: []const u8,
+    req_url: []const u8,
+    method: []const u8,
+    req_headers_val: ?std.json.Value,
+    mock: *const NetworkMock,
+) !void {
+    const same_origin = sameOrigin(arena, req_url, mock.target);
+    var forward_headers: std.ArrayList(fetch.network.NetworkRequest.Header) = .empty;
+    if (req_headers_val) |hv| if (hv == .object) {
+        var it = hv.object.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.* != .string) continue;
+            const name = entry.key_ptr.*;
+            if (std.ascii.eqlIgnoreCase(name, "accept-encoding")) continue;
+            if (same_origin or isCrossOriginRedirectHeader(name)) {
+                try forward_headers.append(arena, .{ .name = name, .value = entry.value_ptr.string });
+            }
+        }
+    };
+
+    const backend = try fetch.network.LibcurlBackend.init(session.allocator);
+    defer backend.deinit();
+    const request: fetch.NetworkRequest = .{
+        .url = mock.target,
+        .method = method,
+        .headers = forward_headers.items,
+        .body = null,
+        .connect_timeout_ms = 5_000,
+        .timeout_ms = 30_000,
+        .follow_redirects = true,
+        .max_redirects = 20,
+    };
+    var resp = try backend.getBackend().send(session.allocator, &request);
+    defer resp.deinit();
+
+    var resp_headers: std.ArrayList(FulfillHeader) = .empty;
+    for (resp.headers) |h| {
+        if (std.ascii.eqlIgnoreCase(h.name, "content-encoding")) continue;
+        if (std.ascii.eqlIgnoreCase(h.name, "content-length")) continue;
+        try resp_headers.append(arena, .{ .name = h.name, .value = h.value });
+    }
+    try postFulfill(session, arena, session_id, request_id, resp.status, resp_headers.items, resp.body orelse "");
+}
+
+fn isCrossOriginRedirectHeader(name: []const u8) bool {
+    const allowed = [_][]const u8{ "accept", "accept-language", "cache-control", "origin", "pragma", "range", "user-agent" };
+    for (allowed) |a| if (std.ascii.eqlIgnoreCase(name, a)) return true;
+    return false;
+}
+
+fn sameOrigin(arena: Allocator, a: []const u8, b: []const u8) bool {
+    const ua = url_mod.parser.basic_url_parser.parse(arena, a, null) catch return false;
+    const ub = url_mod.parser.basic_url_parser.parse(arena, b, null) catch return false;
+    if (!std.mem.eql(u8, ua.scheme(), ub.scheme())) return false;
+    if (ua.port != ub.port) return false;
+    const ha = if (ua.host) |h| (url_mod.host_serializer.serializeHost(arena, h) catch return false) else "";
+    const hb = if (ub.host) |h| (url_mod.host_serializer.serializeHost(arena, h) catch return false) else "";
+    return std.mem.eql(u8, ha, hb);
+}
+
+fn isHttpOrHttpsUrl(arena: Allocator, raw: []const u8) bool {
+    const parsed = url_mod.parser.basic_url_parser.parse(arena, raw, null) catch return false;
+    const scheme = parsed.scheme();
+    return std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https");
+}
+
+fn mapCdpResourceType(cdp: []const u8) []const u8 {
+    const map = [_]struct { []const u8, []const u8 }{
+        .{ "Document", "document" },
+        .{ "Stylesheet", "stylesheet" },
+        .{ "Image", "image" },
+        .{ "Media", "media" },
+        .{ "Font", "font" },
+        .{ "Script", "script" },
+        .{ "TextTrack", "texttrack" },
+        .{ "XHR", "xhr" },
+        .{ "Fetch", "fetch" },
+        .{ "Prefetch", "prefetch" },
+        .{ "EventSource", "eventsource" },
+        .{ "Manifest", "manifest" },
+        .{ "SignedExchange", "signedexchange" },
+        .{ "Ping", "ping" },
+        .{ "CSPViolationReport", "cspviolationreport" },
+        .{ "Preflight", "preflight" },
+        .{ "FedCM", "fedcm" },
+    };
+    for (map) |entry| {
+        if (std.ascii.eqlIgnoreCase(cdp, entry[0])) return entry[1];
+    }
+    return "other";
+}
+
+// ----------------------------------------------------------------------------
+// URLPattern validation & wildcard matching (src/utils/url.ts validateUrlPatterns)
+// ----------------------------------------------------------------------------
+
+const ParsedPattern = struct {
+    scheme: []const u8,
+    host: []const u8,
+    port: ?[]const u8,
+    pathname: []const u8,
+    search: ?[]const u8,
+    hash: ?[]const u8,
+};
+
+fn parsePattern(raw: []const u8) ?ParsedPattern {
+    if (raw.len == 0 or raw[0] == '/') return null;
+    const sep = std.mem.indexOf(u8, raw, "://") orelse return null;
+    const scheme = raw[0..sep];
+    if (scheme.len == 0) return null;
+    var rest = raw[sep + 3 ..];
+
+    var hash: ?[]const u8 = null;
+    if (std.mem.indexOfScalar(u8, rest, '#')) |h_idx| {
+        hash = rest[h_idx + 1 ..];
+        rest = rest[0..h_idx];
+    }
+    var search: ?[]const u8 = null;
+    if (std.mem.indexOfScalar(u8, rest, '?')) |q_idx| {
+        search = rest[q_idx + 1 ..];
+        rest = rest[0..q_idx];
+    }
+    var pathname: []const u8 = "/";
+    if (std.mem.indexOfScalar(u8, rest, '/')) |p_idx| {
+        pathname = rest[p_idx..];
+        rest = rest[0..p_idx];
+    }
+    // Strip optional userinfo (`user:pass@`) if present.
+    if (std.mem.lastIndexOfScalar(u8, rest, '@')) |at_idx| {
+        rest = rest[at_idx + 1 ..];
+    }
+    if (rest.len == 0) return null;
+
+    var host = rest;
+    var port: ?[]const u8 = null;
+    if (rest[0] == '[') {
+        // IPv6 literal `[...]` optionally followed by `:port`.
+        const close = std.mem.indexOfScalar(u8, rest, ']') orelse return null;
+        host = rest[0 .. close + 1];
+        if (close + 1 < rest.len) {
+            if (rest[close + 1] != ':') return null;
+            port = rest[close + 2 ..];
+        }
+    } else if (std.mem.lastIndexOfScalar(u8, rest, ':')) |c_idx| {
+        host = rest[0..c_idx];
+        port = rest[c_idx + 1 ..];
+    }
+    if (host.len == 0) return null;
+    return .{
+        .scheme = scheme,
+        .host = host,
+        .port = port,
+        .pathname = pathname,
+        .search = search,
+        .hash = hash,
+    };
+}
+
+fn hasPartialIpv4Hostname(host: []const u8) bool {
+    var parts: [5][]const u8 = undefined;
+    var count: usize = 0;
+    var it = std.mem.splitScalar(u8, host, '.');
+    while (it.next()) |part| {
+        if (count >= 5) return false;
+        parts[count] = part;
+        count += 1;
+    }
+    if (count != 4) return false;
+    var has_wildcard = false;
+    var has_numeric = false;
+    for (parts[0..4]) |p| {
+        if (p.len == 0) return false;
+        var all_digits = true;
+        for (p) |c| {
+            if (c == '*') {
+                has_wildcard = true;
+                all_digits = false;
+            } else if (!std.ascii.isDigit(c)) {
+                return false;
+            }
+        }
+        if (all_digits) has_numeric = true;
+    }
+    return has_wildcard and has_numeric;
+}
+
+fn hasNamedGroup(component: []const u8) bool {
+    var i: usize = 0;
+    while (i + 1 < component.len) : (i += 1) {
+        if (component[i] == '\\') {
+            i += 1;
+            continue;
+        }
+        if (component[i] == ':') {
+            const next = component[i + 1];
+            if (std.ascii.isAlphabetic(next) or next == '_' or next == '$') return true;
+        }
+    }
+    return false;
+}
+
+/// validateUrlPatterns for `route`: returns null when valid, else an error message.
+pub fn validateRoute(arena: Allocator, raw: []const u8) Allocator.Error!?[]const u8 {
+    if (std.mem.indexOfAny(u8, raw, "()") != null) {
+        return try std.fmt.allocPrint(arena, "Invalid route \"{s}\": a regexp group is not enforced on redirects or subresources. Use an exact value or a \"*\" wildcard instead.", .{raw});
+    }
+    const parsed = parsePattern(raw) orelse {
+        return try std.fmt.allocPrint(arena, "Invalid route \"{s}\": Invalid URLPattern.", .{raw});
+    };
+    if (hasPartialIpv4Hostname(parsed.host)) {
+        return try std.fmt.allocPrint(arena, "Invalid route \"{s}\": a partial IPv4 wildcard is not enforced on redirects or subresources. Use an exact IPv4 address or a \"*\" wildcard instead.", .{raw});
+    }
+    if (parsed.port) |p| {
+        if (p.len > 0 and !std.mem.eql(u8, p, "*")) {
+            if (hasNamedGroup(p) or (p[0] == ':')) {
+                return try std.fmt.allocPrint(arena, "Invalid route \"{s}\": a \":name\" named group is not enforced on redirects or subresources. Use an exact value or a \"*\" wildcard instead.", .{raw});
+            }
+            for (p) |c| if (!std.ascii.isDigit(c) and c != '*') {
+                return try std.fmt.allocPrint(arena, "Invalid route \"{s}\": Invalid port.", .{raw});
+            };
+        }
+    }
+    const components = [_]?[]const u8{ parsed.scheme, parsed.host, parsed.pathname, parsed.search, parsed.hash };
+    for (components) |comp| {
+        if (comp) |c| if (hasNamedGroup(c)) {
+            return try std.fmt.allocPrint(arena, "Invalid route \"{s}\": a \":name\" named group is not enforced on redirects or subresources. Use an exact value or a \"*\" wildcard instead.", .{raw});
+        };
+    }
+    return null;
+}
+
+fn defaultPortFor(scheme: []const u8) []const u8 {
+    if (std.ascii.eqlIgnoreCase(scheme, "http") or std.ascii.eqlIgnoreCase(scheme, "ws")) return "80";
+    if (std.ascii.eqlIgnoreCase(scheme, "https") or std.ascii.eqlIgnoreCase(scheme, "wss")) return "443";
+    return "";
+}
+
+fn effectivePort(scheme: []const u8, raw_port: ?[]const u8) []const u8 {
+    const p = raw_port orelse return "";
+    if (p.len == 0) return "";
+    if (std.mem.eql(u8, p, defaultPortFor(scheme))) return "";
+    return p;
+}
+
+pub fn matchUrlPattern(pattern: []const u8, target_url: []const u8) bool {
+    const pat = parsePattern(pattern) orelse return false;
+    const tgt = parsePattern(target_url) orelse return false;
+    if (!wildcardMatch(pat.scheme, tgt.scheme, true)) return false;
+    if (!wildcardMatch(pat.host, tgt.host, true)) return false;
+    const pat_port: []const u8 = if (pat.port) |p|
+        (if (std.mem.eql(u8, p, "*")) "*" else effectivePort(pat.scheme, p))
+    else
+        "";
+    const tgt_port = effectivePort(tgt.scheme, tgt.port);
+    if (!wildcardMatch(pat_port, tgt_port, false)) return false;
+    if (!wildcardMatch(pat.pathname, tgt.pathname, false)) return false;
+    if (pat.search) |ps| {
+        const ts = tgt.search orelse "";
+        if (!wildcardMatch(ps, ts, false)) return false;
+    }
+    if (pat.hash) |ph| {
+        const th = tgt.hash orelse "";
+        if (!wildcardMatch(ph, th, false)) return false;
+    }
+    return true;
+}
+
+fn wildcardMatch(pattern: []const u8, text: []const u8, ignore_case: bool) bool {
+    var pi: usize = 0;
+    var ti: usize = 0;
+    var star_pi: ?usize = null;
+    var star_ti: usize = 0;
+    while (ti < text.len) {
+        if (pi < pattern.len and pattern[pi] == '*') {
+            star_pi = pi;
+            star_ti = ti;
+            pi += 1;
+        } else if (pi < pattern.len and charEq(pattern[pi], text[ti], ignore_case)) {
+            pi += 1;
+            ti += 1;
+        } else if (star_pi) |sp| {
+            pi = sp + 1;
+            star_ti += 1;
+            ti = star_ti;
+        } else {
+            return false;
+        }
+    }
+    while (pi < pattern.len and pattern[pi] == '*') pi += 1;
+    return pi == pattern.len;
+}
+
+fn charEq(a: u8, b: u8, ignore_case: bool) bool {
+    return if (ignore_case) std.ascii.toLower(a) == std.ascii.toLower(b) else a == b;
+}
+
+test "mock_network route validation and URLPattern matching" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    // Valid routes
+    try std.testing.expectEqual(@as(?[]const u8, null), try validateRoute(arena, "*://*:*/*"));
+    try std.testing.expectEqual(@as(?[]const u8, null), try validateRoute(arena, "https://example.com/app.js"));
+    try std.testing.expectEqual(@as(?[]const u8, null), try validateRoute(arena, "http://127.0.0.1:8080/api/*"));
+
+    // Invalid routes
+    try std.testing.expect((try validateRoute(arena, "/relative/path.js")) != null);
+    try std.testing.expect(std.mem.indexOf(u8, (try validateRoute(arena, "https://example.com/:id")).?, ":name") != null);
+    try std.testing.expect(std.mem.indexOf(u8, (try validateRoute(arena, "https://example.com/(a|b)")).?, "regexp") != null);
+    try std.testing.expect(std.mem.indexOf(u8, (try validateRoute(arena, "http://127.0.0.*/*")).?, "partial IPv4") != null);
+
+    // Matching
+    try std.testing.expect(matchUrlPattern("*://*:*/*", "http://127.0.0.1:12345/a/b?x=1#h"));
+    try std.testing.expect(matchUrlPattern("*://*:*/app.js", "http://127.0.0.1:8080/app.js?v=2"));
+    try std.testing.expect(!matchUrlPattern("*://*:*/app.js", "http://127.0.0.1:8080/other.js"));
+    try std.testing.expect(matchUrlPattern("https://example.com/api/*", "https://example.com:443/api/users"));
+    try std.testing.expect(!matchUrlPattern("https://example.com/api/*", "http://example.com/api/users"));
+    try std.testing.expect(matchUrlPattern("http://127.0.0.1:8080/data.json?k=*", "http://127.0.0.1:8080/data.json?k=abc"));
+    try std.testing.expect(!matchUrlPattern("http://127.0.0.1:8080/data.json?k=*", "http://127.0.0.1:8080/data.json?other=1"));
 }

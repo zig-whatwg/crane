@@ -158,6 +158,47 @@ pub const TextSnapshot = struct {
     targets: std.StringArrayHashMapUnmanaged(snapshot_mod.Target) = .empty,
 };
 
+/// One configured network mock on a page (chrome-devtools-mcp v1.13.0
+/// `NetworkOverrideManager`). OWNED by the Session's allocator.
+pub const NetworkMock = struct {
+    pub const Kind = enum { file, upstream };
+
+    id: u32,
+    url_pattern: []u8,
+    resource_type: ?[]u8 = null,
+    kind: Kind,
+    /// For `.file`: canonical local path; for `.upstream`: absolute HTTP(S) URL.
+    target: []u8,
+    /// For `.file`: inferred Content-Type; empty for `.upstream`.
+    content_type: []u8,
+    hits: u64 = 0,
+    errors: u64 = 0,
+    navigations: u64 = 0,
+    last_error: ?[]u8 = null,
+
+    pub fn deinit(self: *NetworkMock, allocator: Allocator) void {
+        allocator.free(self.url_pattern);
+        if (self.resource_type) |rt| allocator.free(rt);
+        allocator.free(self.target);
+        allocator.free(self.content_type);
+        if (self.last_error) |e| allocator.free(e);
+    }
+};
+
+/// Per-page network mock state (`NetworkOverrideManager`).
+pub const NetworkMocks = struct {
+    overrides: std.ArrayList(NetworkMock) = .empty,
+    next_id: u32 = 1,
+    active: bool = false,
+    cache_disabled: bool = false,
+
+    pub fn deinit(self: *NetworkMocks, allocator: Allocator) void {
+        for (self.overrides.items) |*m| m.deinit(allocator);
+        self.overrides.deinit(allocator);
+        self.* = .{};
+    }
+};
+
 pub const Page = struct {
     /// The MCP page id (McpPage.id).
     id: u32,
@@ -215,6 +256,8 @@ pub const Page = struct {
     console: collectors.Collector(console.Message) = .{ .max_per_navigation = console.max_per_navigation },
     /// NetworkCollector: the requests.
     network: network.Collector = .{},
+    /// NetworkOverrideManager (`mock_network` / `remove_network_mock`).
+    network_mocks: NetworkMocks = .{},
     /// Puppeteer's page.keyboard: the keys held.
     keyboard: keyboard_mod.Keyboard = .{},
     /// CDP CSS.styleSheetAdded headers kept for `get_css_styles`.
@@ -263,6 +306,7 @@ pub const Page = struct {
         self.clearDialog(allocator);
         self.console.deinit(allocator);
         self.network.deinit(allocator);
+        self.network_mocks.deinit(allocator);
         self.keyboard.deinit(allocator);
         self.clearCssSheets(allocator);
         self.css_sheets.deinit(allocator);
@@ -373,6 +417,15 @@ pub const Session = struct {
     paths: paths_mod.Policy,
     /// Whether `--memoryDebugging` / `--memory-debugging` is enabled.
     memory_debugging: bool = false,
+    /// Whether `--categoryNetworkMocks` is enabled (`mock_network`, `remove_network_mock`).
+    category_network_mocks: bool = false,
+    /// Whether `--categoryExperimentalThirdParty` is enabled
+    /// (`list_3p_developer_tools`, `execute_3p_developer_tool`).
+    category_experimental_third_party: bool = false,
+    /// Whether `--experimentalVision` is enabled (`click_at`).
+    experimental_vision: bool = false,
+    /// Whether `--slim` mode is enabled (`navigate`, `evaluate`, `screenshot`).
+    slim: bool = false,
     /// Loaded and cached heap snapshots (HeapSnapshotManager).
     heap_snapshots: heap_snapshot_mod.Cache = .{},
 
@@ -742,6 +795,9 @@ pub const Session = struct {
         if (std.mem.eql(u8, method, "Log.entryAdded")) {
             if (try console.fromLogEntry(self.allocator, p)) |message| try page.console.add(self.allocator, message);
             return;
+        }
+        if (std.mem.eql(u8, method, "Fetch.requestPaused")) {
+            return @import("tools/network.zig").handleRequestPaused(self, page, p);
         }
         if (std.mem.startsWith(u8, method, "Network.")) {
             const name = method["Network.".len..];
