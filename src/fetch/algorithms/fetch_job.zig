@@ -135,6 +135,9 @@ pub const FetchJob = struct {
     network_request_is_retry: bool = false,
     /// The next HTTP-network-or-cache fetch run is such a retry.
     retrying: bool = false,
+    /// Whether the current direct idempotent network request already retried
+    /// once on `EmptyResponse` (RFC 9110 §9.2.2).
+    empty_response_retried: bool = false,
     /// HTTP-network-or-cache fetch's use of the HTTP cache while the network
     /// answers `network_request` (steps 11.3-11.5 run on the answer).
     cache_transaction: ?cache_transaction.Transaction = null,
@@ -709,8 +712,14 @@ pub const FetchJob = struct {
     pub fn resumeNetwork(self: *FetchJob, result: NetworkError!NetworkResponse) FetchError!Step {
         const allocator = self.allocator;
         // A proxy that could not be reached: the same request again through
-        // the next proxy of its URL's list (fallBackToNextProxy).
-        if (result) |_| {} else |err| if (self.fallBackToNextProxy(err)) return .{ .network = .{ .request = &self.network_request.? } };
+        // the next proxy of its URL's list (fallBackToNextProxy). Otherwise,
+        // retry a direct idempotent request once on a fresh connection when
+        // the socket closed with no response (RFC 9110 §9.2.2).
+        if (result) |_| {} else |err| {
+            if (self.fallBackToNextProxy(err) or self.retryIdempotentEmptyResponse(err)) {
+                return .{ .network = .{ .request = &self.network_request.? } };
+            }
+        }
         const request = self.network_request orelse unreachable; // no request was asked for
         self.network_request = null;
         // Kept until the cache has read its headers (the Vary data).
@@ -1142,6 +1151,7 @@ pub const FetchJob = struct {
         };
         self.network_request = preflight;
         self.network_request_is_preflight = true;
+        self.empty_response_retried = false;
         self.network_start_time = http_fetch.getCurrentTimeMs();
         // A CORS-preflight request never carries credentials: its
         // credentials mode is "same-origin" and its tainting "cors".
@@ -1187,6 +1197,7 @@ pub const FetchJob = struct {
                 self.network_request = needed.request;
                 self.network_request_is_retry = self.retrying;
                 self.retrying = false;
+                self.empty_response_retried = false;
                 self.cache_transaction = needed.cache;
                 self.network_start_time = http_fetch.getCurrentTimeMs();
                 return .{ .network = .{ .request = &self.network_request.? } };
@@ -1353,6 +1364,35 @@ pub const FetchJob = struct {
         const context = request.network orelse return false;
         const next = context.proxyFailed(request.url, proxy.url) orelse return false;
         request.proxy = .{ .url = next, .no_proxy = proxy.no_proxy };
+        return true;
+    }
+
+    /// RFC 9110 §9.2.2 idempotent HTTP methods safe to automatically resend
+    /// once when a connection closes before returning any response bytes.
+    fn isIdempotentMethod(method: []const u8) bool {
+        return std.mem.eql(u8, method, "GET") or
+            std.mem.eql(u8, method, "HEAD") or
+            std.mem.eql(u8, method, "OPTIONS") or
+            std.mem.eql(u8, method, "PUT") or
+            std.mem.eql(u8, method, "DELETE");
+    }
+
+    /// RFC 9110 §9.2.2: retry a direct idempotent HTTP request once on a fresh
+    /// connection when a connection closes with no response (`EmptyResponse`).
+    /// Golden rule 2: Chrome (`net/http/http_network_transaction.cc`
+    /// `HandleIOError`/`ShouldResendRequest`), Firefox (`nsHttpTransaction`),
+    /// and Safari (`CFNetwork`) all silently resend idempotent requests once
+    /// after an empty close before surfacing `ERR_EMPTY_RESPONSE`.
+    fn retryIdempotentEmptyResponse(self: *FetchJob, err: NetworkError) bool {
+        if (err != NetworkError.EmptyResponse) return false;
+        if (self.empty_response_retried) return false;
+        const request = if (self.network_request) |*r| r else return false;
+        if (request.proxy) |proxy| if (proxy.url.len > 0) return false;
+        if (request.force_new_connection) return false;
+        if (!isIdempotentMethod(request.method)) return false;
+        self.empty_response_retried = true;
+        self.network_request_is_retry = true;
+        request.force_new_connection = true;
         return true;
     }
 

@@ -439,6 +439,13 @@ pub const NavigationFetchOptions = struct {
     /// navigation once, at its start. BORROWED for the call. Empty: none.
     user_agent_override: fetch.algorithms.http_fetch.UserAgentOverride = .{},
 
+    /// HTML "create navigation params by fetching" step 3: request's
+    /// traversable for user prompts is navigable's top-level traversable.
+    /// Defaults to Fetch's safe opaque traversable token so the fetch can
+    /// outlive the replaced Window without holding a dangling pointer while
+    /// enabling Fetch's 401/407 prompt and URL-credentials paths.
+    traversable_for_user_prompts: fetch.internal.request.TraversableForUserPrompts = .{ .traversable = fetch.algorithms.http_fetch.opaqueTraversable() },
+
     pub const Destination = enum {
         document,
         iframe,
@@ -566,6 +573,12 @@ pub fn navigationRequest(
         .include
     else
         .same_origin;
+
+    // HTML "create navigation params by fetching" step 3: use-URL-credentials
+    // flag is set, and traversable for user prompts is navigable's top-level
+    // traversable.
+    internal_request.use_url_credentials = true;
+    internal_request.traversable_for_user_prompts = options.traversable_for_user_prompts;
 
     // Set redirect mode
     internal_request.redirect_mode = switch (options.redirect) {

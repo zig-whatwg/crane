@@ -1919,10 +1919,15 @@ pub const JointHistory = struct {
         defer steps.deinit(allocator);
         try self.usedSteps(allocator, &steps);
         const top = self.top_navigable orelse return 0;
+        const view_step = self.viewStep();
         var current: usize = 0;
-        for (steps.items, 0..) |step, i| {
-            if (step == self.current_step) current = i;
+        for (steps.items) |step| {
             const at_step = self.entryAt(top, step) orelse continue;
+            // HTML "getting the used step" (`usedStepAtOrBefore`): right after
+            // `removeNavigable` drops the active iframe's step (before the
+            // queued creation/destruction update clamps `current_step`), the
+            // current step is the greatest used step <= `view_step`.
+            if (step <= view_step) current = out.items.len;
             var id = at_step.id;
             var record: NavigationEntryRecord = .{};
             for (self.entries.items) |*entry| {
@@ -2402,19 +2407,19 @@ pub const JointHistory = struct {
     /// step"); until then the step may be unused, and its readers take its
     /// used step.
     ///
-    /// Deviation, stated (golden rule 2; integrator's ruling of 2026-10-28):
-    /// the other documents' views - their History length - are written now,
-    /// not at that update's step 18. The browsers split three ways: Firefox
-    /// 158 removes the entries at once, which is what WPT expects
-    /// (discard_iframe_history_3 and _4, Firefox 1/1, read history.length
-    /// right after removeChild; initial-empty-document/iframe-nosrc and
-    /// iframe-src-204 read it right after the previous case's frame was
-    /// removed); Chrome 156 and Safari 27 keep the entries (0/1 at wpt.fyi
-    /// ffc4686d11); the spec writes the length at the queued update's step 18.
-    /// Crane keeps main's existing behaviour, because both the literal spec
-    /// timing and the Chrome/Safari majority would lose 8 PASS names (lane
-    /// nav2 C2's full A/B). Open question for the user (feature queue). A held
-    /// view (an apply running) stays held.
+    /// Golden rule 2 ruling (WHATWG HTML #6315 "destroy a child navigable"
+    /// step 7): the spec was updated so destroying a child navigable removes
+    /// its nested history, shrinking `history.length` and skipping its steps on
+    /// `history.back()`, and Firefox 158+ ships that newer behaviour (passing
+    /// WPT `discard_iframe_history_3.html` 1/1, `discard_iframe_history_4.html`
+    /// 1/1, `initial-empty-document/iframe-nosrc.html`, and
+    /// `iframe-src-204.html` at wpt.fyi `ffc4686d11`; Chrome 156/157 tracks the
+    /// gap in crbug.com/40788236 and Safari 27 likewise keeps the entries, 0/1
+    /// on both tests). Under golden rule 2 (newer spec + at least one shipping
+    /// browser), Crane drops the removed iframe's entries immediately and
+    /// updates the remaining documents' views now (integrator's ruling of
+    /// 2026-10-28, preserving all 8 WPT PASS names). A held view (an apply
+    /// running) stays held.
     pub fn removeNavigable(self: *JointHistory, navigable: u64) void {
         self.beginChange();
         defer self.endChange();

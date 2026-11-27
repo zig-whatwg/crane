@@ -116,6 +116,7 @@ pub fn sessionEnded(session: *PageSession) void {
     const had_media = bc.host_overrides.media_owner == owner(session);
     const had_screen = bc.host_overrides.screen_owner == owner(session);
     bc.host_overrides.clearOwnedBy(bc.allocator, owner(session));
+    if (session.browser) |b| dom.browser_state.TabOverrideStore.publish(b.scope, bc.getTop().id, &bc.getTop().host_overrides);
     if (bc.getTop().host_overrides.geolocation_owner == owner(session)) {
         @import("html").geolocation.setEmulatedPositionData(bc, 0, null);
     }
@@ -290,10 +291,14 @@ pub fn setUserAgentOverride(session: *PageSession, params: E.setUserAgentOverrid
     const no_platform = if (params.platform) |given| given.len == 0 else true;
     const all_empty = params.userAgent.len == 0 and no_language and no_platform;
     if (all_empty) {
-        if (bc.host_overrides.user_agent_owner == owner(session)) try bc.host_overrides.setUserAgent(bc.allocator, 0, null, null, null);
+        if (bc.host_overrides.user_agent_owner == owner(session)) {
+            try bc.host_overrides.setUserAgent(bc.allocator, 0, null, null, null);
+            if (session.browser) |b| dom.browser_state.TabOverrideStore.publish(b.scope, bc.getTop().id, &bc.getTop().host_overrides);
+        }
         return .{};
     }
     try bc.host_overrides.setUserAgent(bc.allocator, owner(session), params.userAgent, params.platform, params.acceptLanguage);
+    if (session.browser) |b| dom.browser_state.TabOverrideStore.publish(b.scope, bc.getTop().id, &bc.getTop().host_overrides);
     return .{};
 }
 

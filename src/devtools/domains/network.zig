@@ -47,6 +47,15 @@ fn clear(session: *PageSession) void {
     state.* = .{};
 }
 
+/// Publish `bc`'s tab overrides to the Browser's cross-thread snapshot store
+/// so nested worker main-script requests read the ancestor frame's current
+/// UA, Accept-Language, extra headers, and network conditions.
+fn publishTabOverrides(session: *PageSession, bc: *frames.BrowsingContext) void {
+    const browser = session.browser orelse return;
+    const top = bc.getTop();
+    @import("dom").browser_state.TabOverrideStore.publish(browser.scope, top.id, &top.host_overrides);
+}
+
 /// Clear this session's network emulation overrides on its tab, firing a
 /// trusted `online` event if navigator.onLine transitioned back to online.
 fn dropNetworkEmulation(session: *PageSession) void {
@@ -54,6 +63,7 @@ fn dropNetworkEmulation(session: *PageSession) void {
     const owner: host_overrides.Owner = @intFromPtr(session);
     if (bc.host_overrides.network_conditions_owner == owner) {
         bc.host_overrides.freeNetworkConditions(bc.allocator);
+        publishTabOverrides(session, bc);
     }
     if (bc.host_overrides.network_state_owner == owner) {
         if (bc.host_overrides.setNetworkStateOffline(0, false)) {
@@ -71,6 +81,7 @@ fn dropNetworkEmulation(session: *PageSession) void {
 fn applyHeaders(session: *PageSession) !void {
     const bc = frames.navigable(session, session.tab) orelse return;
     try bc.host_overrides.setExtraHeaders(bc.allocator, @intFromPtr(session), session.states.Network.extra_headers);
+    publishTabOverrides(session, bc);
 }
 
 /// The tab's extra headers, when they are this session's, off it.
@@ -79,6 +90,7 @@ fn dropHeaders(session: *PageSession) void {
     if (bc.host_overrides.extra_headers_owner != @intFromPtr(session)) return;
     // An empty set allocates nothing: it cannot fail.
     bc.host_overrides.setExtraHeaders(bc.allocator, @intFromPtr(session), &.{}) catch {};
+    publishTabOverrides(session, bc);
 }
 
 fn freeHeaders(session: *PageSession) void {
@@ -169,6 +181,7 @@ pub fn getRequestPostData(session: *PageSession, params: N.getRequestPostData.Pa
 pub fn setUserAgentOverride(session: *PageSession, params: N.setUserAgentOverride.Params) !N.setUserAgentOverride.Result {
     const bc = frames.navigable(session, session.tab) orelse return session.fail("Target is not a page");
     try bc.host_overrides.setUserAgent(bc.allocator, @intFromPtr(session), params.userAgent, params.platform, params.acceptLanguage);
+    publishTabOverrides(session, bc);
     return .{};
 }
 
@@ -216,6 +229,7 @@ pub fn emulateNetworkConditionsByRule(session: *PageSession, params: N.emulateNe
     } else {
         try bc.host_overrides.setNetworkConditions(bc.allocator, @intFromPtr(session), false, &.{});
     }
+    publishTabOverrides(session, bc);
     const ids = try arena.alloc([]const u8, params.matchedNetworkConditions.len);
     for (ids) |*id| {
         var bytes: [16]u8 = undefined;
@@ -246,6 +260,7 @@ pub fn emulateNetworkConditions(session: *PageSession, params: N.emulateNetworkC
         const one = [_]host_overrides.NetworkRule{.{ .url_pattern = "", .conditions = cond }};
         try bc.host_overrides.setNetworkConditions(bc.allocator, owner, false, &one);
     }
+    publishTabOverrides(session, bc);
     if (changed) fireOnlineOfflineEvent(session, bc, if (params.offline) "offline" else "online");
     return .{};
 }
