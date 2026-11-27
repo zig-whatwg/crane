@@ -386,3 +386,48 @@ test "mcp http tls: loopback TLS server exposes 95-char SHA-256 fingerprint and 
     try testing.expectEqual(@as(usize, 95), fp.len);
     try testing.expectEqual(@as(u8, ':'), fp[2]);
 }
+
+test "mcp http options: --slim and --categoryNetworkMocks forward into McpServer tool list" {
+    var debug_alloc: LeakChecked = .init;
+    defer testing.expect(debug_alloc.deinit() == .ok) catch {};
+    const allocator = debug_alloc.allocator();
+
+    const list_body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}";
+
+    // --slim exposes only navigate, evaluate, screenshot (not list_pages).
+    {
+        var fx = try Fixture.start(allocator, .{
+            .host = "127.0.0.1",
+            .port = 0,
+            .mcp = .{ .slim = true },
+        });
+        defer fx.stop();
+        const port = fx.mcp_http.boundPort();
+        const req = try std.fmt.allocPrint(allocator, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nMCP-Protocol-Version: 2026-07-28\r\nMcp-Method: tools/list\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n{s}", .{ port, fx.mcp_http.bearerToken(), list_body.len, list_body });
+        defer allocator.free(req);
+        var res = try sendRequest(allocator, port, req);
+        defer res.deinit(allocator);
+        try testing.expectEqual(@as(u16, 200), res.status);
+        try testing.expect(std.mem.indexOf(u8, res.body, "\"name\":\"navigate\"") != null);
+        try testing.expect(std.mem.indexOf(u8, res.body, "\"name\":\"evaluate\"") != null);
+        try testing.expect(std.mem.indexOf(u8, res.body, "\"name\":\"list_pages\"") == null);
+    }
+
+    // --categoryNetworkMocks exposes mock_network and remove_network_mock.
+    {
+        var fx = try Fixture.start(allocator, .{
+            .host = "127.0.0.1",
+            .port = 0,
+            .mcp = .{ .category_network_mocks = true },
+        });
+        defer fx.stop();
+        const port = fx.mcp_http.boundPort();
+        const req = try std.fmt.allocPrint(allocator, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nMCP-Protocol-Version: 2026-07-28\r\nMcp-Method: tools/list\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n{s}", .{ port, fx.mcp_http.bearerToken(), list_body.len, list_body });
+        defer allocator.free(req);
+        var res = try sendRequest(allocator, port, req);
+        defer res.deinit(allocator);
+        try testing.expectEqual(@as(u16, 200), res.status);
+        try testing.expect(std.mem.indexOf(u8, res.body, "\"name\":\"mock_network\"") != null);
+        try testing.expect(std.mem.indexOf(u8, res.body, "\"name\":\"remove_network_mock\"") != null);
+    }
+}
