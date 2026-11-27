@@ -426,3 +426,27 @@ test "union bigint steps 14/16/19 leak zero V8 Global handles through convertArg
     const after = ffi.v8_Isolate_GetGlobalHandleBytes(e.isolate);
     try testing.expectEqual(before, after);
 }
+
+// ============================================================================
+// Item 4: Namespace operations & attributes resolve types via type_registry
+// ============================================================================
+
+test "generated namespaces resolve types through type_registry (CSS and WebAssembly)" {
+    const namespaces = v8.namespace_mod.generated_namespaces;
+    // CSS.registerProperty takes dictionaries.PropertyDefinition (not runtime.JSValue).
+    const reg_params = @typeInfo(@TypeOf(namespaces.CSS.call_registerProperty)).@"fn".param_types;
+    try testing.expect(reg_params[1].? == conv.generated_dictionaries.PropertyDefinition);
+    // CSS.px returns *runtime.Instance (CSSUnitValue, not runtime.JSValue).
+    const px_ret = @typeInfo(@typeInfo(@TypeOf(namespaces.CSS.call_px)).@"fn".return_type.?).error_union.payload;
+    try testing.expect(px_ret == *runtime.Instance);
+    // CSS.get_highlights returns *runtime.Instance (HighlightRegistry).
+    const hl_ret = @typeInfo(@typeInfo(@TypeOf(namespaces.CSS.get_highlights)).@"fn".return_type.?).error_union.payload;
+    try testing.expect(hl_ret == *runtime.Instance);
+    // WebAssembly.validate takes typedefs.AllowSharedBufferSource and Opt(WebAssemblyCompileOptions).
+    const val_params = @typeInfo(@TypeOf(namespaces.WebAssembly.call_validate)).@"fn".param_types;
+    try testing.expect(val_params[1].? == conv.generated_typedefs.AllowSharedBufferSource);
+    try testing.expect(val_params[2].? == webidl.Opt(conv.generated_dictionaries.WebAssemblyCompileOptions));
+    // WebAssembly.instantiate__1 takes *runtime.Instance (Module).
+    const inst1_params = @typeInfo(@TypeOf(namespaces.WebAssembly.call_instantiate__1)).@"fn".param_types;
+    try testing.expect(inst1_params[1].? == *runtime.Instance);
+}

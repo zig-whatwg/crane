@@ -11,15 +11,17 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const typedefs = @import("typedefs");
+const dictionaries = @import("dictionaries");
 
-pub fn call_compile(ctx: runtime.Context, bytes: runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+pub fn call_compile(ctx: runtime.Context, bytes: typedefs.AllowSharedBufferSource, options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) anyerror!runtime.JSValue {
     _ = ctx;
     _ = bytes;
     _ = options;
     return error.NotImplemented;
 }
 
-pub fn call_instantiate(ctx: runtime.Context, bytes: runtime.JSValue, importObject: webidl.Opt(runtime.JSValue), options: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+pub fn call_instantiate(ctx: runtime.Context, bytes: typedefs.AllowSharedBufferSource, importObject: webidl.Opt(runtime.JSValue), options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) anyerror!runtime.JSValue {
     _ = ctx;
     _ = bytes;
     _ = importObject;
@@ -27,28 +29,28 @@ pub fn call_instantiate(ctx: runtime.Context, bytes: runtime.JSValue, importObje
     return error.NotImplemented;
 }
 
-pub fn call_instantiate__1(ctx: runtime.Context, moduleObject: runtime.JSValue, importObject: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+pub fn call_instantiate__1(ctx: runtime.Context, moduleObject: *runtime.Instance, importObject: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
     _ = ctx;
     _ = moduleObject;
     _ = importObject;
     return error.NotImplemented;
 }
 
-pub fn call_validate(ctx: runtime.Context, bytes: runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!bool {
+pub fn call_validate(ctx: runtime.Context, bytes: typedefs.AllowSharedBufferSource, options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) anyerror!bool {
     _ = ctx;
     _ = bytes;
     _ = options;
     return error.NotImplemented;
 }
 
-pub fn call_compileStreaming(ctx: runtime.Context, source: runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+pub fn call_compileStreaming(ctx: runtime.Context, source: runtime.JSValue, options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) anyerror!runtime.JSValue {
     _ = ctx;
     _ = source;
     _ = options;
     return error.NotImplemented;
 }
 
-pub fn call_instantiateStreaming(ctx: runtime.Context, source: runtime.JSValue, importObject: webidl.Opt(runtime.JSValue), options: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+pub fn call_instantiateStreaming(ctx: runtime.Context, source: runtime.JSValue, importObject: webidl.Opt(runtime.JSValue), options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) anyerror!runtime.JSValue {
     _ = ctx;
     _ = source;
     _ = importObject;

@@ -2104,7 +2104,7 @@ pub fn generateFromFile(
 
             // Generate impl stub if requested
             if (try cfg.getImplsPath()) |impls_path_for_ns| {
-                try generateNamespaceImpl(allocator, namespace, impls_path_for_ns);
+                try generateNamespaceImpl(allocator, namespace, impls_path_for_ns, &ir);
             }
 
             // Collect namespace name for root.zig
@@ -3722,6 +3722,79 @@ fn writeIdlTypeText(w: anytype, idl_type: types.IDLType) !void {
     if (idl_type.nullable) try w.writeAll("?");
 }
 
+/// Which generated type modules a namespace's signatures actually name
+/// (avoiding unused imports, which Zig rejects).
+const NamespaceImports = struct {
+    typedefs: bool = false,
+    dictionaries: bool = false,
+    enums: bool = false,
+    callbacks: bool = false,
+
+    fn noteType(self: *NamespaceImports, webidl_type: types.IDLType, type_registry: ?*const ir_mod.TypeRegistry) void {
+        if (webidl_type.unionTypes != null) return;
+        const reg = type_registry orelse return;
+        var type_str = webidl_type.type;
+        if (std.mem.indexOf(u8, type_str, "::")) |colon_pos| {
+            type_str = type_str[colon_pos + 2 ..];
+        }
+        // Primitives and string/any/object types are emitted directly by
+        // writeTypeSimple without consulting type_registry.
+        if (std.mem.eql(u8, type_str, "boolean") or
+            std.mem.eql(u8, type_str, "byte") or
+            std.mem.eql(u8, type_str, "octet") or
+            std.mem.eql(u8, type_str, "short") or
+            std.mem.eql(u8, type_str, "unsigned short") or
+            std.mem.eql(u8, type_str, "long") or
+            std.mem.eql(u8, type_str, "unsigned long") or
+            std.mem.eql(u8, type_str, "long long") or
+            std.mem.eql(u8, type_str, "unsigned long long") or
+            std.mem.eql(u8, type_str, "float") or
+            std.mem.eql(u8, type_str, "unrestricted float") or
+            std.mem.eql(u8, type_str, "double") or
+            std.mem.eql(u8, type_str, "unrestricted double") or
+            std.mem.eql(u8, type_str, "DOMString") or
+            std.mem.eql(u8, type_str, "USVString") or
+            std.mem.eql(u8, type_str, "ByteString") or
+            std.mem.eql(u8, type_str, "undefined") or
+            std.mem.eql(u8, type_str, "void") or
+            std.mem.eql(u8, type_str, "any") or
+            std.mem.eql(u8, type_str, "object"))
+        {
+            return;
+        }
+        const kind = reg.lookup(type_str) orelse return;
+        switch (kind) {
+            .typedef => self.typedefs = true,
+            .dictionary => self.dictionaries = true,
+            .enum_type => self.enums = true,
+            .callback => self.callbacks = true,
+            else => {},
+        }
+    }
+
+    fn collect(namespace: types.Namespace, type_registry: ?*const ir_mod.TypeRegistry, include_attributes: bool) NamespaceImports {
+        var imports: NamespaceImports = .{};
+        for (namespace.members) |member| {
+            if (member.type == .operation) {
+                if (member.operation) |op| {
+                    for (op.arguments) |arg| imports.noteType(arg.idlType, type_registry);
+                    imports.noteType(op.idlType, type_registry);
+                }
+            } else if (include_attributes and member.type == .attribute) {
+                if (member.attribute) |attr| imports.noteType(attr.idlType, type_registry);
+            }
+        }
+        return imports;
+    }
+
+    fn write(self: NamespaceImports, w: anytype) !void {
+        if (self.typedefs) try w.writeAll("const typedefs = @import(\"typedefs\");\n");
+        if (self.dictionaries) try w.writeAll("const dictionaries = @import(\"dictionaries\");\n");
+        if (self.enums) try w.writeAll("const enums = @import(\"enums\");\n");
+        if (self.callbacks) try w.writeAll("const callbacks = @import(\"callbacks\");\n");
+    }
+};
+
 /// Generate a namespace Zig file
 /// One namespace operation's delegate: overload `k` of `name` - `call_<name>`
 /// for the first, `call_<name>__<k>` for a further one, which answers
@@ -3733,6 +3806,7 @@ fn writeNamespaceOperation(
     name: []const u8,
     k: usize,
     op: types.Operation,
+    type_registry: ?*const ir_mod.TypeRegistry,
 ) !void {
     const fn_name = if (k == 0)
         try std.fmt.allocPrint(allocator, "call_{s}", .{name})
@@ -3747,10 +3821,11 @@ fn writeNamespaceOperation(
     }
     for (op.arguments) |arg| {
         try w.print(", {s}: ", .{arg.name});
-        try writeParamType(w, arg, null);
+        try writeParamType(w, arg, type_registry);
     }
     try w.writeAll(") anyerror!");
-    try writeTypeSimple(w, op.idlType, null);
+    if (op.idlType.nullable) try w.writeAll("?");
+    try writeTypeSimple(w, op.idlType, type_registry);
     try w.writeAll(" {\n");
 
     const indent = if (k == 0) "        " else "            ";
@@ -3777,6 +3852,9 @@ pub fn generateNamespace(
     namespaces_path: []const u8,
     model: ?*const ir_mod.IR,
 ) !void {
+    const type_registry: ?*const ir_mod.TypeRegistry = if (model) |m| &m.type_registry else null;
+    const ns_imports = NamespaceImports.collect(namespace, type_registry, true);
+
     // Create namespaces directory
     const io = host.io();
     try host.cwd().createDirPath(io, namespaces_path);
@@ -3805,6 +3883,7 @@ pub fn generateNamespace(
     // NOTE: v8 import removed - use runtime.JSValue instead of v8.JSValue
     try w.writeAll("const runtime = @import(\"runtime\");\n");
     try w.writeAll("const webidl = @import(\"webidl\");\n");
+    try ns_imports.write(w);
     try w.print("const {s}_impl = @import(\"impls\").{s};\n\n", .{ namespace.name, namespace.name });
 
     // Generate namespace as a struct with only static methods
@@ -3902,7 +3981,7 @@ pub fn generateNamespace(
     // a further one `call_<name>__<k>`, numbered in member order.
     for (overload_sets) |set| {
         for (set.operations, 0..) |op, k| {
-            try writeNamespaceOperation(allocator, w, namespace.name, set.name, k, op);
+            try writeNamespaceOperation(allocator, w, namespace.name, set.name, k, op, type_registry);
         }
     }
 
@@ -3930,9 +4009,7 @@ pub fn generateNamespace(
                 for (op.arguments, 0..) |arg, i| {
                     if (i > 0) try w.writeAll(",");
                     try w.writeAll(" ");
-                    // No type registry: a namespace module does not import
-                    // the interfaces, so an interface argument is `.other`.
-                    try writer.writeOverloadArg(w, arg, null);
+                    try writer.writeOverloadArg(w, arg, type_registry);
                 }
                 try w.writeAll(" } },\n");
             }
@@ -3949,7 +4026,8 @@ pub fn generateNamespace(
         if (member.type == .attribute) {
             if (member.attribute) |attr| {
                 try w.print("    pub fn get_{s}(ctx: runtime.Context) anyerror!", .{attr.name});
-                try writeTypeSimple(w, attr.idlType, null);
+                if (attr.idlType.nullable) try w.writeAll("?");
+                try writeTypeSimple(w, attr.idlType, type_registry);
                 try w.writeAll(" {\n");
                 try w.print("        if (comptime @hasDecl({s}_impl, \"get_{s}\")) {{\n", .{ namespace.name, attr.name });
                 try w.print("            return try {s}_impl.get_{s}(ctx);\n", .{ namespace.name, attr.name });
@@ -3972,7 +4050,11 @@ pub fn generateNamespaceImpl(
     allocator: std.mem.Allocator,
     namespace: types.Namespace,
     impls_path: []const u8,
+    model: ?*const ir_mod.IR,
 ) !void {
+    const type_registry: ?*const ir_mod.TypeRegistry = if (model) |m| &m.type_registry else null;
+    const ns_imports = NamespaceImports.collect(namespace, type_registry, false);
+
     // Create impls directory
     const io = host.io();
     try host.cwd().createDirPath(io, impls_path);
@@ -4000,7 +4082,9 @@ pub fn generateNamespaceImpl(
 
     // Write imports (optional arguments are webidl.Opt)
     try w.writeAll("const runtime = @import(\"runtime\");\n");
-    try w.writeAll("const webidl = @import(\"webidl\");\n\n");
+    try w.writeAll("const webidl = @import(\"webidl\");\n");
+    try ns_imports.write(w);
+    try w.writeAll("\n");
 
     // Collect operations for overload detection
     var operations = std.ArrayList(types.Operation).empty;
@@ -4035,10 +4119,11 @@ pub fn generateNamespaceImpl(
             }
             for (op.arguments) |arg| {
                 try w.print(", {s}: ", .{arg.name});
-                try writeParamType(w, arg, null);
+                try writeParamType(w, arg, type_registry);
             }
             try w.writeAll(") anyerror!");
-            try writeTypeSimple(w, op.idlType, null);
+            if (op.idlType.nullable) try w.writeAll("?");
+            try writeTypeSimple(w, op.idlType, type_registry);
             try w.writeAll(" {\n");
             try w.writeAll("    _ = ctx;\n");
             for (op.arguments) |arg| try w.print("    _ = {s};\n", .{arg.name});

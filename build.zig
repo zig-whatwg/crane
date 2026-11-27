@@ -7100,6 +7100,11 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
     interfaces_mod.addImport("impls", impls_mod);
     namespaces_mod.addImport("impls", impls_mod); // Namespaces need access to impls
+    namespaces_mod.addImport("interfaces", interfaces_mod);
+    namespaces_mod.addImport("typedefs", typedefs_mod);
+    namespaces_mod.addImport("dictionaries", dictionaries_mod);
+    namespaces_mod.addImport("enums", enums_mod);
+    namespaces_mod.addImport("callbacks", callbacks_mod);
     interfaces_mod.addImport("typedefs", typedefs_mod);
     interfaces_mod.addImport("dictionaries", dictionaries_mod);
     interfaces_mod.addImport("enums", enums_mod);

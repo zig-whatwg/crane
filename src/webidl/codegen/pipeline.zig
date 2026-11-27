@@ -451,7 +451,7 @@ pub fn processFiles(
 
             // Generate impl stub if requested
             if (try cfg.getImplsPath()) |impls_path_for_ns| {
-                try generator.generateNamespaceImpl(allocator, namespace, impls_path_for_ns);
+                try generator.generateNamespaceImpl(allocator, namespace, impls_path_for_ns, &ir);
             }
 
             const name_copy = try allocator.dupe(u8, namespace.name);
