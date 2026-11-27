@@ -19,6 +19,7 @@ const snapshot_mod = @import("snapshot.zig");
 const paths_mod = @import("paths.zig");
 const logpoints_mod = @import("logpoints.zig");
 const heap_snapshot_mod = @import("heap_snapshot.zig");
+const tools_mod = @import("tools.zig");
 
 const log = std.log.scoped(.mcp);
 
@@ -278,6 +279,12 @@ pub const Page = struct {
         }
     };
 
+    /// PageCollector's maxNavigationSaved, for both collectors.
+    pub fn keepNavigations(self: *Page, n: u32) void {
+        self.console.max_navigations = n;
+        self.network.requests.max_navigations = n;
+    }
+
     pub fn clearCssSheets(self: *Page, allocator: Allocator) void {
         for (self.css_sheets.keys()) |k| allocator.free(k);
         for (self.css_sheets.values()) |*v| v.deinit(allocator);
@@ -426,6 +433,19 @@ pub const Session = struct {
     experimental_vision: bool = false,
     /// Whether `--slim` mode is enabled (`navigate`, `evaluate`, `screenshot`).
     slim: bool = false,
+    /// `--javascriptEvaluation` (server.Options.javascript_evaluation).
+    javascript_evaluation: bool = true,
+    /// `--fileNavigations`.
+    file_navigations: bool = true,
+    /// `--pageIdRouting`.
+    page_id_routing: bool = true,
+    /// `--maxNavigationSaved`: each new page's collectors keep this many
+    /// navigations.
+    max_navigation_saved: u32 = 3,
+    /// `--redactNetworkHeaders`.
+    redact_network_headers: bool = false,
+    /// `--sourceMaps`.
+    source_maps: bool = true,
     /// Loaded and cached heap snapshots (HeapSnapshotManager).
     heap_snapshots: heap_snapshot_mod.Cache = .{},
 
@@ -493,6 +513,27 @@ pub const Session = struct {
             const page = self.pageByTarget(str(info.object.get("targetId"))) orelse continue;
             replace(self.allocator, &page.title, str(info.object.get("title"))) catch {};
         }
+    }
+
+    /// The tool flags this session runs under (tools.offered's input).
+    pub fn listOptions(self: *const Session) tools_mod.ListOptions {
+        return .{
+            .memory_debugging = self.memory_debugging,
+            .category_network_mocks = self.category_network_mocks,
+            .category_experimental_third_party = self.category_experimental_third_party,
+            .experimental_vision = self.experimental_vision,
+            .slim = self.slim,
+            .javascript_evaluation = self.javascript_evaluation,
+            .page_id_routing = self.page_id_routing,
+            .max_navigation_saved = self.max_navigation_saved,
+        };
+    }
+
+    /// `--maxNavigationSaved`: every page's collectors keep `n` navigations
+    /// from now on (the pages attached before the flags were set included).
+    pub fn setMaxNavigationSaved(self: *Session, n: u32) void {
+        self.max_navigation_saved = n;
+        for (self.pages.items) |page| page.keepNavigations(n);
     }
 
     /// Free the closed pages (at a call's start).
@@ -590,6 +631,7 @@ pub const Session = struct {
                 .title = try self.allocator.dupe(u8, str(info.get("title"))),
                 .browser_context_id = try self.allocator.dupe(u8, str(info.get("browserContextId"))),
             };
+            page.keepNavigations(self.max_navigation_saved);
             self.next_page_id += 1;
             try self.pages.append(self.allocator, page);
             if (self.watch) |w| if (std.mem.eql(u8, str(info.get("openerId")), w.page.target_id)) try w.opened.append(self.allocator, page);

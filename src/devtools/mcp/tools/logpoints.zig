@@ -22,7 +22,7 @@ const lp = @import("../logpoints.zig");
 const js_scopes = @import("../js_scopes.zig");
 
 pub const list = [_]Tool{
-    .{ .name = "set_logpoints", .page_tool = true, .run = setLogpoints },
+    .{ .name = "set_logpoints", .page_tool = true, .javascript_evaluation = true, .run = setLogpoints },
 };
 
 const logged = "Logged output appears in list_console_messages once a line executes; objects show as [object Object] there, get_console_message shows them as JSON.";

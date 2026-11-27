@@ -22,7 +22,7 @@ const console = @import("../console.zig");
 const elements = @import("../elements.zig");
 
 pub const list = [_]Tool{
-    .{ .name = "evaluate", .page_tool = false, .set_page = false, .slim = true, .run = evaluate },
+    .{ .name = "evaluate", .page_tool = false, .set_page = false, .slim = true, .javascript_evaluation = true, .run = evaluate },
     .{ .name = "navigate", .page_tool = false, .set_page = false, .slim = true, .run = navigate },
     .{ .name = "screenshot", .page_tool = false, .set_page = false, .files = &.{.{ .name = "filePath" }}, .slim = true, .run = screenshot },
 };

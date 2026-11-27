@@ -94,6 +94,13 @@ Crane is MIT-licensed (see `LICENSE`). The following files contain code derived 
 - What was derived: Source Map V3 parsing, URL completion, forward/reverse lookup, workspace normalization, breakpoint state management, minified variable name resolution and expression substitution, and V8 heap snapshot analysis and byte formatting reproduced in Zig.
 - License: BSD-3-Clause, Chromium's `LICENSE`, text C below. Copyright line: Copyright The Chromium Authors.
 
+### `src/devtools/mcp/network.zig` `allowed_headers` (copied)
+
+- Upstream project: Chrome DevTools Frontend (`devtools-frontend`), https://chromium.googlesource.com/devtools/devtools-frontend, commit `9ce9e7a16f1910fdf263b030fbc6521b833fb48d` (the `third_party/devtools-frontend` submodule of `chrome-devtools-mcp` v1.13.0)
+- Upstream file: `front_end/models/ai_assistance/data_formatters/NetworkRequestFormatter.ts` (`allowedHeaders`, `allowHeader`, `sanitizeHeaders`)
+- What was derived: the allowlist of header names whose values `--redactNetworkHeaders` keeps (copied, as data), and the rule that every other header's value reads `<redacted>` (reproduced).
+- License: BSD-3-Clause, Chromium's `LICENSE`, text C below. Copyright line: Copyright 2025 The Chromium Authors.
+
 ### `src/devtools/mcp/console.zig`, `network.zig`, `tools/script.zig`, `snapshot.zig`, `elements.zig`, `query.zig`, `tools/snapshot.zig`, `tools/input.zig`, `tools/emulation.zig` (translated)
 
 - Upstream project: Puppeteer, https://github.com/puppeteer/puppeteer, npm `puppeteer-core` 25.17.0

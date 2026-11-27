@@ -36,7 +36,7 @@ const elements = @import("../elements.zig");
 pub const list = [_]Tool{
     // evaluate_script resolves its page itself (defineTool with
     // pageIdSchema): its response does not show the page's dialog.
-    .{ .name = "evaluate_script", .page_tool = true, .set_page = false, .files = &.{ .{ .name = "filePath" }, .{ .name = "sourcePath", .allow_url = true } }, .run = evaluateScript },
+    .{ .name = "evaluate_script", .page_tool = true, .set_page = false, .javascript_evaluation = true, .files = &.{ .{ .name = "filePath" }, .{ .name = "sourcePath", .allow_url = true } }, .run = evaluateScript },
 };
 
 /// PuppeteerURL.INTERNAL_URL's comment, which Puppeteer appends to what it
