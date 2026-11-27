@@ -152,12 +152,26 @@ ZIG_VERSION=0.17.1-dev+77c319a0f0
 OUT="${OUT:-out/${V8_LINK}-15.7-icu}"
 STOP="${STOP:-$V8_ROOT/STOP}"
 LLVM="$V8/third_party/llvm-build/Release+Asserts"
+case "$(uname -m)" in
+  arm64|aarch64) HOST_CPU=arm64 ;;
+  x86_64|amd64)  HOST_CPU=x64 ;;
+  *) echo "build-v8-15.7: unsupported arch $(uname -m)" >&2; exit 1 ;;
+esac
+TARGET_CPU="${TARGET_CPU:-$HOST_CPU}"
+case "$TARGET_CPU" in
+  arm64|x64) ;;
+  *) echo "build-v8-15.7: unsupported TARGET_CPU='$TARGET_CPU' (expected arm64 or x64)" >&2; exit 2 ;;
+esac
 case "$(uname -s)" in
-  Darwin) HOST_OS=mac; GN_DIR=mac; TARGET_CPU=arm64; SHARED_EXT=dylib; NCPU=$(sysctl -n hw.ncpu)
+  Darwin) HOST_OS=mac; GN_DIR=mac; SHARED_EXT=dylib; NCPU=$(sysctl -n hw.ncpu)
           export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" ;;
-  Linux) HOST_OS=linux; GN_DIR=linux64; TARGET_CPU=x64; SHARED_EXT=so; NCPU=$(nproc) ;;
+  Linux)  HOST_OS=linux; GN_DIR=linux64; SHARED_EXT=so; NCPU=$(nproc) ;;
   *) echo "build-v8-15.7: unsupported host $(uname -s)" >&2; exit 1 ;;
 esac
+CROSS_LINUX_ARM64=0
+if [ "$HOST_OS" = linux ] && [ "$HOST_CPU" = x64 ] && [ "$TARGET_CPU" = arm64 ]; then
+  CROSS_LINUX_ARM64=1
+fi
 JOBS="${JOBS:-$NCPU}"
 # Linux: no CREL relocations in any object (see "ELF RELOCATIONS").
 [ "$HOST_OS" != linux ] || export CCC_OVERRIDE_OPTIONS='#x-Wa,--crel,--allow-experimental-crel'
@@ -217,10 +231,17 @@ cppgc_enable_object_section_gcinfo = false
 icu_use_data_file = false
 ARGS
   if [ "$HOST_OS" = linux ]; then
-    cat <<ARGS
+    if [ "$CROSS_LINUX_ARM64" = 1 ]; then
+      cat <<ARGS
+use_sysroot = true
+use_glib = false
+ARGS
+    else
+      cat <<ARGS
 use_sysroot = false
 use_glib = false
 ARGS
+    fi
   fi
 }
 
@@ -258,10 +279,17 @@ cppgc_enable_object_section_gcinfo = false
 icu_use_data_file = false
 ARGS
   if [ "$HOST_OS" = linux ]; then
-    cat <<ARGS
+    if [ "$CROSS_LINUX_ARM64" = 1 ]; then
+      cat <<ARGS
+use_sysroot = true
+use_glib = false
+ARGS
+    else
+      cat <<ARGS
 use_sysroot = false
 use_glib = false
 ARGS
+    fi
   fi
 }
 
@@ -325,6 +353,11 @@ GCLIENT
   fi
   [ "$(git -C v8 rev-parse HEAD)" = "$V8_COMMIT" ] || die "gclient moved v8 off $V8_TAG"
   ( cd v8 && python3 build/util/lastchange.py -o build/util/LASTCHANGE )
+  if [ "$CROSS_LINUX_ARM64" = 1 ]; then
+    log "installing Chromium Debian Bullseye sysroots (amd64 host + arm64 target)"
+    ( cd v8 && python3 build/linux/sysroot_scripts/install-sysroot.py --arch=amd64 \
+            && python3 build/linux/sysroot_scripts/install-sysroot.py --arch=arm64 )
+  fi
   local t
   for t in "$LLVM/bin/clang" "$V8/buildtools/$GN_DIR/gn" "$V8/third_party/ninja/ninja" \
     "$V8/third_party/rust-toolchain/bin/rustc" "$V8/third_party/cpython3/host/bin/python3"; do
@@ -649,14 +682,23 @@ PYIN
   else
     log "dynamic mode: Temporal Rust linked in libv8.$SHARED_EXT; system libs: $(tr '\n' ' ' < "$OUT/system-libs.txt")"
   fi
+  local run_target=()
+  if [ "$CROSS_LINUX_ARM64" = 1 ]; then
+    local qemu=""
+    for q in qemu-aarch64 qemu-aarch64-static; do
+      if command -v "$q" >/dev/null 2>&1; then qemu="$q"; break; fi
+    done
+    [ -n "$qemu" ] || die "cross-compiling linux-arm64 requires qemu-aarch64 (or qemu-aarch64-static) to run d8 and smoke tests"
+    run_target=("$qemu" -L "$V8/build/linux/debian_bullseye_arm64-sysroot")
+  fi
   local rc=0
-  "$OUT/d8" -e "print(1 + 1, Temporal.PlainDate.from('2026-11-10').add({ days: 1 }).toString())" > "$OUT/d8-smoke.txt" 2>&1 || rc=$?
+  "${run_target[@]}" "$OUT/d8" -e "print(1 + 1, Temporal.PlainDate.from('2026-11-10').add({ days: 1 }).toString())" > "$OUT/d8-smoke.txt" 2>&1 || rc=$?
   log "d8: $(cat "$OUT/d8-smoke.txt") (rc $rc)"
   [ "$rc" = 0 ] && grep -q -x '2 2026-11-11' "$OUT/d8-smoke.txt" || die "d8's smoke test failed"
   # ICU, with no icudtl.dat beside d8 (the data is linked in): a Unicode property escape, NFD splitting
   # U+00E9, German collation (a, U+00E4, z) and a Tokyo wall time.
   rc=0
-  "$OUT/d8" -e 'print(/\p{L}/u.test("é"), "é".normalize("NFD").length, ["z", "ä", "a"].sort(new Intl.Collator("de").compare).map((c) => c.codePointAt(0)).join(","), new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", hour: "numeric", hourCycle: "h23" }).format(0))' \
+  "${run_target[@]}" "$OUT/d8" -e 'print(/\p{L}/u.test("é"), "é".normalize("NFD").length, ["z", "ä", "a"].sort(new Intl.Collator("de").compare).map((c) => c.codePointAt(0)).join(","), new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", hour: "numeric", hourCycle: "h23" }).format(0))' \
     > "$OUT/d8-icu-smoke.txt" 2>&1 || rc=$?
   log "d8 ICU: $(cat "$OUT/d8-icu-smoke.txt") (rc $rc)"
   [ "$rc" = 0 ] && grep -q -x 'true 2 97,228,122 09' "$OUT/d8-icu-smoke.txt" || die "d8's ICU smoke test failed"
@@ -767,10 +809,26 @@ step_smoke() {
   while IFS= read -r f; do
     if [ "$f" = -isystem ]; then flags+=(-I); else flags+=("$f"); fi
   done < "$V8/$OUT/libcxx-flags.txt"
+  local zig_cc_target=()
+  local zig_exe_target=()
+  local zig_linker_flags=()
+  local run_target=()
+  if [ "$CROSS_LINUX_ARM64" = 1 ]; then
+    zig_cc_target=(-target aarch64-linux-gnu)
+    zig_exe_target=(-target aarch64-linux-gnu)
+    local qemu=""
+    for q in qemu-aarch64 qemu-aarch64-static; do
+      if command -v "$q" >/dev/null 2>&1; then qemu="$q"; break; fi
+    done
+    [ -n "$qemu" ] || die "cross-compiling linux-arm64 requires qemu-aarch64 (or qemu-aarch64-static) to run smoke tests"
+    run_target=("$qemu" -L "$V8/build/linux/debian_bullseye_arm64-sysroot")
+  elif [ "$HOST_OS" = linux ] && [ "$TARGET_CPU" = x64 ]; then
+    zig_linker_flags=(-fno-lld)
+  fi
   local rc=0
   # Compile as Crane compiles v8_wrapper.cpp (C++20, no exceptions, no RTTI), but against Chromium's
   # libc++ (the consumer flags) and with the archive's own V8/cppgc defines (v8-gn.h).
-  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc -x c++ -std=c++20 -fno-exceptions -fno-rtti "${flags[@]}" -DV8_GN_HEADER \
+  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc ${zig_cc_target[@]+"${zig_cc_target[@]}"} -x c++ -std=c++20 -fno-exceptions -fno-rtti "${flags[@]}" -DV8_GN_HEADER \
     ${icu_flags[@]+"${icu_flags[@]}"} -I "$inc" -I "$t/icu-include" -c "$t/smoke.cc" -o "$t/smoke.o" > "$t/compile.txt" 2>&1 || rc=$?
   if [ "$rc" != 0 ]; then
     head -60 "$t/compile.txt" | tee "$V8/$OUT/smoke.txt"
@@ -793,7 +851,7 @@ step_smoke() {
     link_inputs=("$o/libv8_monolith.a" "$o/libv8_libplatform_fat.a" "$o/libv8_libbase_fat.a" "$o/libc++_chromium.a" "$o/librust_v8.a")
   fi
   # `zig cc` links no C++ library of its own: Chromium's is the only one.
-  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc "$t/smoke.o" "${link_inputs[@]}" ${extra[@]+"${extra[@]}"} -o "$t/smoke" > "$t/link.txt" 2>&1 || rc=$?
+  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc ${zig_cc_target[@]+"${zig_cc_target[@]}"} "$t/smoke.o" "${link_inputs[@]}" ${extra[@]+"${extra[@]}"} -o "$t/smoke" > "$t/link.txt" 2>&1 || rc=$?
   if [ "$rc" != 0 ]; then
     {
       echo "LINK FAILED (rc $rc). Undefined symbols (Rust std/temporal ones mean Crane's link must add Rust):"
@@ -809,16 +867,16 @@ step_smoke() {
   cr=$("$nm" "$t/smoke" 2>/dev/null | grep -c 'St4__Cr' || true)
   other=$("$nm" "$t/smoke" 2>/dev/null | grep -c -E 'St3__1|_ZNSt7__cxx11|__gnu_cxx' || true)
   rc=0
-  "$t/smoke" > "$V8/$OUT/smoke.txt" 2>&1 || rc=$?
+  "${run_target[@]}" "$t/smoke" > "$V8/$OUT/smoke.txt" 2>&1 || rc=$?
   echo "smoke binary: std::__Cr symbols $cr, std::__1/libstdc++ symbols $other" >> "$V8/$OUT/smoke.txt"
   cat "$V8/$OUT/smoke.txt"
   [ "$other" = 0 ] && [ "$cr" -gt 0 ] || die "the smoke binary holds another C++ library than Chromium's"
   [ "$rc" = 0 ] || { rm -rf "$t"; die "the smoke test failed (rc $rc)"; }
-  # The same program as a Debug Zig executable linked by Zig's OWN linker (-fno-lld): on x86_64 Linux the
-  # one Crane's Debug builds use (the snapshot generator, the test binaries), which applies only the
-  # relocations it reads (ELF RELOCATIONS: an archive with CREL linked there called address 0 before main).
-  # The C++ main is renamed (CRANE_V8_SMOKE_ZIG_MAIN); a Zig main calls it.
-  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc -x c++ -std=c++20 -fno-exceptions -fno-rtti "${flags[@]}" -DV8_GN_HEADER \
+  # The same program as a Debug Zig executable linked by Zig's OWN linker (-fno-lld on x86_64 Linux):
+  # on x86_64 Linux the one Crane's Debug builds use (the snapshot generator, the test binaries), which
+  # applies only the relocations it reads (ELF RELOCATIONS: an archive with CREL linked there called
+  # address 0 before main). The C++ main is renamed (CRANE_V8_SMOKE_ZIG_MAIN); a Zig main calls it.
+  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc ${zig_cc_target[@]+"${zig_cc_target[@]}"} -x c++ -std=c++20 -fno-exceptions -fno-rtti "${flags[@]}" -DV8_GN_HEADER \
     ${icu_flags[@]+"${icu_flags[@]}"} -DCRANE_V8_SMOKE_ZIG_MAIN -I "$inc" -I "$t/icu-include" -c "$t/smoke.cc" -o "$t/smoke-zig.o" > "$t/compile-zig.txt" 2>&1 \
     || { cat "$t/compile-zig.txt"; rm -rf "$t"; die "the Zig-linker smoke compile failed"; }
   printf '%s\n' 'extern fn crane_v8_smoke_main() c_int;' \
@@ -827,11 +885,11 @@ step_smoke() {
   local zig_sys=()
   # shellcheck disable=SC2207
   zig_sys=($(cat "$V8/$OUT/system-libs.txt"))
-  ( cd "$t" && ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" build-exe smoke_main.zig smoke-zig.o "${link_inputs[@]}" \
-      ${zig_link_extra[@]+"${zig_link_extra[@]}"} ${zig_sys[@]+"${zig_sys[@]}"} -lc -O Debug -fno-lld --name smoke-zig ) > "$t/link-zig.txt" 2>&1 || rc=$?
+  ( cd "$t" && ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" build-exe ${zig_exe_target[@]+"${zig_exe_target[@]}"} smoke_main.zig smoke-zig.o "${link_inputs[@]}" \
+      ${zig_link_extra[@]+"${zig_link_extra[@]}"} ${zig_sys[@]+"${zig_sys[@]}"} -lc -O Debug ${zig_linker_flags[@]+"${zig_linker_flags[@]}"} --name smoke-zig ) > "$t/link-zig.txt" 2>&1 || rc=$?
   [ "$rc" = 0 ] || { head -40 "$t/link-zig.txt"; rm -rf "$t"; die "the Zig-linker smoke link failed (rc $rc)"; }
   rc=0
-  "$t/smoke-zig" > "$V8/$OUT/smoke-zig.txt" 2>&1 || rc=$?
+  "${run_target[@]}" "$t/smoke-zig" > "$V8/$OUT/smoke-zig.txt" 2>&1 || rc=$?
   echo "linked by Zig's own linker (-fno-lld, Debug): rc $rc" >> "$V8/$OUT/smoke-zig.txt"
   cat "$V8/$OUT/smoke-zig.txt"
   cat "$V8/$OUT/smoke-zig.txt" >> "$V8/$OUT/smoke.txt"

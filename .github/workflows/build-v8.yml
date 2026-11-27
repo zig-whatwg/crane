@@ -50,10 +50,13 @@ jobs:
           import json, os, sys
 
           runners = {
-              "macos-arm64": "macos-14",
-              "macos-x86_64": "macos-15-intel",
-              "linux-x86_64": "ubuntu-24.04",
-              "linux-arm64": "ubuntu-24.04-arm",
+              "macos-arm64":  ("macos-14",       "arm64"),
+              "macos-x86_64": ("macos-15-intel", "x64"),
+              "linux-x86_64": ("ubuntu-24.04",   "x64"),
+              # V8 DEPS ships Linux prebuilt clang/rustc/gn for x64 hosts only;
+              # cross-compile linux-arm64 from ubuntu-24.04 with Chromium's Debian
+              # Bullseye arm64 sysroot and verify d8/smoke under qemu-aarch64.
+              "linux-arm64":  ("ubuntu-24.04",   "arm64"),
           }
           allowed_modes = ("static", "dynamic")
 
@@ -80,11 +83,12 @@ jobs:
           include = []
           seen = set()
           for t in targets:
+              runner_os, target_cpu = runners[t]
               for m in modes:
                   key = (t, m)
                   if key not in seen:
                       seen.add(key)
-                      include.append({"target": t, "os": runners[t], "link": m})
+                      include.append({"target": t, "os": runner_os, "target_cpu": target_cpu, "link": m})
 
           if not include:
               print("::error::empty build matrix", file=sys.stderr)
@@ -132,6 +136,15 @@ jobs:
           xcode-select -p
           xcodebuild -version
 
+      - name: Install qemu-user for linux-arm64 smoke verification
+        if: matrix.target == 'linux-arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user
+          qemu-aarch64 --version
+
       - name: Setup Zig (the pinned 0.17)
         uses: ./.github/actions/setup-zig-pinned
 
@@ -139,6 +152,7 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
+          TARGET_CPU: ${{ matrix.target_cpu }}
           V8_LINK: ${{ matrix.link }}
         run: |
           set -euo pipefail
@@ -146,7 +160,7 @@ jobs:
           export ZIG="$(command -v zig)"
           export V8_ROOT="$RUNNER_TEMP/v8-${V8_VERSION}"
           export CRANE_V8="$RUNNER_TEMP/crane-v8-install"
-          export PROVENANCE_NOTE="CI: GitHub Actions run ${GITHUB_RUN_ID} (${RUNNER_OS} ${RUNNER_ARCH}, link=${V8_LINK}, ref=${GITHUB_SHA})"
+          export PROVENANCE_NOTE="CI: GitHub Actions run ${GITHUB_RUN_ID} (${TARGET}, host=${RUNNER_OS}/${RUNNER_ARCH}, link=${V8_LINK}, ref=${GITHUB_SHA})"
 
           if [ "${RUNNER_OS}" = "macOS" ]; then
             export DEVELOPER_DIR="$(xcode-select -p)"
@@ -161,25 +175,12 @@ jobs:
             bash scripts/build-v8-15.7.sh all
           fi
 
-          # Locate the installed V8 directory created by scripts/build-v8-15.7.sh.
-          install_dir=""
-          for candidate in \
-            "$CRANE_V8/${V8_VERSION}-icu-${V8_LINK}" \
-            "$CRANE_V8/${V8_VERSION}-icu"
-          do
-            if [ -f "$candidate/PROVENANCE" ] && [ -f "$candidate/SHA256SUMS" ]; then
-              install_dir="$candidate"
-              break
-            fi
-          done
-          if [ -z "$install_dir" ]; then
-            found="$(find "$CRANE_V8" -maxdepth 2 -name PROVENANCE -type f | head -1 || true)"
-            if [ -n "$found" ]; then
-              install_dir="$(dirname "$found")"
-            fi
-          fi
-          if [ -z "$install_dir" ] || [ ! -d "$install_dir" ]; then
-            echo "::error::could not locate installed V8 directory under $CRANE_V8"
+          # scripts/build-v8-15.7.sh installs static into $CRANE_V8/15.7.112.43-icu/
+          # and dynamic into $CRANE_V8/15.7.112.43-icu/out/dynamic/ so both layouts
+          # match src/runtime/engines/v8/build/archives.zig (-Dv8-dir=<root>).
+          install_dir="$CRANE_V8/${V8_VERSION}-icu"
+          if [ ! -d "$install_dir" ]; then
+            echo "::error::could not locate installed V8 directory at $install_dir"
             ls -la "$CRANE_V8"
             exit 1
           fi
@@ -189,6 +190,12 @@ jobs:
             SHA256_CMD=(sha256sum)
           else
             SHA256_CMD=(shasum -a 256)
+          fi
+
+          if [ "$V8_LINK" = "static" ]; then
+            meta_root="$install_dir"
+          else
+            meta_root="$install_dir/out/dynamic"
           fi
 
           # Validate expected layout before packaging.
@@ -201,8 +208,8 @@ jobs:
             PROVENANCE \
             SHA256SUMS
           do
-            if [ ! -f "$install_dir/$req" ]; then
-              echo "::error::missing required file $req in $install_dir"
+            if [ ! -f "$meta_root/$req" ]; then
+              echo "::error::missing required file $req in $meta_root"
               exit 1
             fi
           done
@@ -221,23 +228,28 @@ jobs:
               fi
             done
           else
-            if [ ! -d "$install_dir/out/dynamic" ]; then
-              echo "::error::missing out/dynamic/ directory in $install_dir"
-              exit 1
-            fi
             if [ "${RUNNER_OS}" = "macOS" ]; then
-              shlib_count="$(find "$install_dir/out/dynamic" -maxdepth 2 -name '*.dylib' | wc -l | tr -d ' ')"
+              ext="dylib"
             else
-              shlib_count="$(find "$install_dir/out/dynamic" -maxdepth 2 -name '*.so*' | wc -l | tr -d ' ')"
+              ext="so"
             fi
-            if [ "$shlib_count" -lt 1 ]; then
-              echo "::error::expected shared libraries in $install_dir/out/dynamic/"
-              ls -la "$install_dir/out/dynamic"
-              exit 1
-            fi
+            for lib in \
+              "libv8.${ext}" \
+              "libv8_libplatform.${ext}" \
+              "libv8_libbase.${ext}" \
+              "libc++.${ext}" \
+              "libicuuc.${ext}" \
+              "libicui18n.${ext}"
+            do
+              if [ ! -f "$meta_root/$lib" ]; then
+                echo "::error::missing shared library $lib in $meta_root"
+                ls -la "$meta_root"
+                exit 1
+              fi
+            done
           fi
 
-          ( cd "$install_dir" && "${SHA256_CMD[@]}" -c SHA256SUMS >/dev/null )
+          ( cd "$meta_root" && "${SHA256_CMD[@]}" -c SHA256SUMS >/dev/null )
 
           # Free build intermediates before tarring so the runner has ample disk space.
           rm -rf "$V8_ROOT"
@@ -262,7 +274,11 @@ jobs:
           rm -rf "$verify_dir"
           mkdir -p "$verify_dir"
           tar -xzf "$RUNNER_TEMP/$tarball" -C "$verify_dir"
-          ( cd "$verify_dir/$pkg_name" && "${SHA256_CMD[@]}" -c SHA256SUMS >/dev/null )
+          if [ "$V8_LINK" = "static" ]; then
+            ( cd "$verify_dir/$pkg_name" && "${SHA256_CMD[@]}" -c SHA256SUMS >/dev/null )
+          else
+            ( cd "$verify_dir/$pkg_name/out/dynamic" && "${SHA256_CMD[@]}" -c SHA256SUMS >/dev/null )
+          fi
           rm -rf "$verify_dir"
 
           ( cd "$RUNNER_TEMP" && "${SHA256_CMD[@]}" "$tarball" > "${tarball}.sha256" )

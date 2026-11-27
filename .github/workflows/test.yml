@@ -77,7 +77,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          zig build crane -j2 -Dv8-dir="$CRANE_V8_DIR"
+          zig build crane -j2 -Dv8-dir="$CRANE_V8_DIR" -Dcrane-git-sha="${GITHUB_SHA:0:9}"
           ./zig-out/bin/crane --version
 
       - name: Test out-of-tree Zig consumer (Zig module & C ABI samples)

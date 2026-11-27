@@ -71,7 +71,7 @@ jobs:
 
       - name: Build release CLI (crane-release)
         shell: bash
-        run: zig build crane-release -j2 ${{ matrix.cpu_flag }} -Dv8-dir="$CRANE_V8_DIR"
+        run: zig build crane-release -j2 ${{ matrix.cpu_flag }} -Dv8-dir="$CRANE_V8_DIR" -Dcrane-version="${RELEASE_TAG#v}" -Dcrane-git-sha="${GITHUB_SHA:0:9}"
 
       - name: Build release static library (crane-lib-release)
         shell: bash

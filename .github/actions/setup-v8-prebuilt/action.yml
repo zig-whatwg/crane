@@ -91,18 +91,35 @@ runs:
         rm -rf "$dl_dir"
 
         # Support both a top-level wrapper directory (e.g. v8-15.7.112.43-<target>-<link>/)
-        # and a flat archive extracting include/ directly.
-        if [ -d "$unpack_dir/include" ]; then
-          v8_dir="$unpack_dir"
-        else
-          candidates=("$unpack_dir"/*/include)
-          if [ "${#candidates[@]}" -eq 1 ] && [ -d "${candidates[0]}" ]; then
-            v8_dir="$(dirname "${candidates[0]}")"
+        # and a flat archive. Static puts include/ at root; dynamic puts out/dynamic/include/.
+        if [ "$V8_LINK" = "static" ]; then
+          if [ -d "$unpack_dir/include" ]; then
+            v8_dir="$unpack_dir"
           else
-            echo "::error::extracted ${asset} does not contain an include/ directory at root or single top-level dir"
-            ls -la "$unpack_dir"
-            exit 1
+            candidates=("$unpack_dir"/*/include)
+            if [ "${#candidates[@]}" -eq 1 ] && [ -d "${candidates[0]}" ]; then
+              v8_dir="$(dirname "${candidates[0]}")"
+            else
+              echo "::error::extracted ${asset} does not contain an include/ directory at root or single top-level dir"
+              ls -la "$unpack_dir"
+              exit 1
+            fi
           fi
+          meta_root="$v8_dir"
+        else
+          if [ -d "$unpack_dir/out/dynamic/include" ]; then
+            v8_dir="$unpack_dir"
+          else
+            candidates=("$unpack_dir"/*/out/dynamic/include)
+            if [ "${#candidates[@]}" -eq 1 ] && [ -d "${candidates[0]}" ]; then
+              v8_dir="$(dirname "$(dirname "$(dirname "${candidates[0]}")")")"
+            else
+              echo "::error::extracted ${asset} does not contain out/dynamic/include/ at root or single top-level dir"
+              ls -la "$unpack_dir"
+              exit 1
+            fi
+          fi
+          meta_root="$v8_dir/out/dynamic"
         fi
 
         # Verify expected layout and internal SHA256SUMS.
@@ -115,8 +132,8 @@ runs:
           PROVENANCE \
           SHA256SUMS
         do
-          if [ ! -f "$v8_dir/$req" ]; then
-            echo "::error::missing $req in extracted prebuilt V8 ($v8_dir)"
+          if [ ! -f "$meta_root/$req" ]; then
+            echo "::error::missing $req in extracted prebuilt V8 ($meta_root)"
             exit 1
           fi
         done
@@ -135,16 +152,30 @@ runs:
             fi
           done
         else
-          if [ ! -d "$v8_dir/out/dynamic" ] || [ -z "$(ls -A "$v8_dir/out/dynamic")" ]; then
-            echo "::error::missing or empty out/dynamic/ in dynamic prebuilt V8 ($v8_dir)"
-            exit 1
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            ext="dylib"
+          else
+            ext="so"
           fi
+          for lib in \
+            "libv8.${ext}" \
+            "libv8_libplatform.${ext}" \
+            "libv8_libbase.${ext}" \
+            "libc++.${ext}" \
+            "libicuuc.${ext}" \
+            "libicui18n.${ext}"
+          do
+            if [ ! -f "$meta_root/$lib" ]; then
+              echo "::error::missing $lib in dynamic prebuilt V8 ($meta_root)"
+              exit 1
+            fi
+          done
         fi
 
-        ( cd "$v8_dir" && "${SHA256_CMD[@]}" -c SHA256SUMS >/dev/null )
+        ( cd "$meta_root" && "${SHA256_CMD[@]}" -c SHA256SUMS >/dev/null )
 
         echo "CRANE_V8_DIR=$v8_dir" >> "$GITHUB_ENV"
         echo "v8-dir=$v8_dir" >> "$GITHUB_OUTPUT"
         echo "target=$target" >> "$GITHUB_OUTPUT"
         echo "V8 ${V8_VERSION} (${V8_LINK}) for ${target} ready at ${v8_dir} (tarball sha256 ${sha256})"
-        head -3 "$v8_dir/PROVENANCE"
+        head -3 "$meta_root/PROVENANCE"

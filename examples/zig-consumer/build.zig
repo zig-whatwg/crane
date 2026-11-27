@@ -48,4 +48,8 @@ pub fn build(b: *std.Build) void {
 
     const run_capi = b.addRunArtifact(capi_exe);
     b.step("run-capi", "Run the C ABI static library sample consumer").dependOn(&run_capi.step);
+
+    const test_step = b.step("test", "Build and run both the Zig module and C ABI sample consumers");
+    test_step.dependOn(&run_zig.step);
+    test_step.dependOn(&run_capi.step);
 }

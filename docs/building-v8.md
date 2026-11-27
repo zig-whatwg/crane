@@ -15,7 +15,7 @@ Three paths are supported:
 ## Prerequisites
 
 - **Pinned Zig:** `0.17.1-dev+77c319a0f0` (0.17.x branch at `77c319a0f00a`), or `0.17.1+` once released. Zig `0.17.0` is refused by `build.zig` ([`tools/zig_toolchain.zig`](../tools/zig_toolchain.zig)).
-- **Hosts:** macOS `aarch64` (Apple Silicon) or Linux `x86_64`.
+- **Targets:** `macos-arm64`, `macos-x86_64`, `linux-x86_64`, and `linux-arm64` (cross-compiled from Linux `x86_64` with Chromium's Debian Bullseye `arm64` sysroot because V8's `DEPS` ships Linux prebuilt clang/rustc/gn for `x64` hosts only).
 - **When compiling V8 from source (Options B & C):**
   - `git`, `python3` (with the `lzma` module for unpacking `.tar.xz` GCS packages), `curl`, `tar`
   - **~25 GB free disk** at `$V8_ROOT` (checkout ~10 GB, Ninja build output ~10 GB)
@@ -25,22 +25,23 @@ Three paths are supported:
 
 ## Option A — Prebuilt V8 Tarballs (Fastest)
 
-Download the tarball matching your host OS and CPU from the [`v8-prebuilt-15.7.112.43`](https://github.com/zig-whatwg/crane/releases/tag/v8-prebuilt-15.7.112.43) GitHub pre-release, unpack it, verify its checksums, and pass `-Dv8-dir` when building Crane:
+Download the tarball matching your target (`macos-arm64`, `macos-x86_64`, `linux-x86_64`, or `linux-arm64`) and link mode (`static` or `dynamic`) from the [`v8-prebuilt-15.7.112.43`](https://github.com/zig-whatwg/crane/releases/tag/v8-prebuilt-15.7.112.43) GitHub pre-release, unpack it, verify its checksums, and pass `-Dv8-dir` when building Crane:
 
 ```bash
-# Unpack into jsengines/v8/15.7.112.43-icu (the default path) or any directory
-mkdir -p jsengines/v8
-tar -xf v8-15.7.112.43-icu-<platform>.tar.zst -C jsengines/v8/
+# Static example (unpack anywhere or into jsengines/v8/15.7.112.43-icu)
+tar -xzf v8-15.7.112.43-<target>-static.tar.gz -C /path/to/
 
 # Verify archive integrity
 # Linux:
-(cd jsengines/v8/15.7.112.43-icu && sha256sum -c SHA256SUMS)
+(cd /path/to/v8-15.7.112.43-<target>-static && sha256sum -c SHA256SUMS)
 # macOS:
-(cd jsengines/v8/15.7.112.43-icu && shasum -a 256 -c SHA256SUMS)
+(cd /path/to/v8-15.7.112.43-<target>-static && shasum -a 256 -c SHA256SUMS)
 
 # Build Crane (omit -Dv8-dir if installed at jsengines/v8/15.7.112.43-icu)
-zig build crane-release -j2 -Dv8-dir=jsengines/v8/15.7.112.43-icu
+zig build crane-release -j2 -Dv8-dir=/path/to/v8-15.7.112.43-<target>-static
 ```
+
+For prebuilt dynamic tarballs (`v8-15.7.112.43-<target>-dynamic.tar.gz`), verify `out/dynamic/SHA256SUMS` and pass `-Dv8-link=dynamic -Dv8-dir=/path/to/v8-15.7.112.43-<target>-dynamic`.
 
 ---
 
@@ -134,19 +135,21 @@ All ABI-critical flags (`use_custom_libcxx = true`, `v8_enable_sandbox = true`, 
 
 ### Building and Running Crane Against Dynamic V8
 
+`scripts/build-v8-15.7.sh --dynamic` installs into `jsengines/v8/15.7.112.43-icu/out/dynamic/` without touching `out/static/`:
+
 ```bash
-zig build crane -j2 -Dv8-link=dynamic -Dv8-dir=jsengines/v8/15.7.112.43-icu-dynamic
+zig build crane -j2 -Dv8-link=dynamic -Dv8-dir=jsengines/v8/15.7.112.43-icu
 ```
 
 Because V8's shared libraries are loaded at runtime:
 
 - **macOS:** Set `DYLD_LIBRARY_PATH` to the installed dynamic output directory (or embed an rpath):
   ```bash
-  DYLD_LIBRARY_PATH=jsengines/v8/15.7.112.43-icu-dynamic/out/dynamic ./zig-out/bin/crane
+  DYLD_LIBRARY_PATH=jsengines/v8/15.7.112.43-icu/out/dynamic ./zig-out/bin/crane
   ```
 - **Linux:** Set `LD_LIBRARY_PATH` to the installed dynamic output directory (or embed an rpath):
   ```bash
-  LD_LIBRARY_PATH=jsengines/v8/15.7.112.43-icu-dynamic/out/dynamic ./zig-out/bin/crane
+  LD_LIBRARY_PATH=jsengines/v8/15.7.112.43-icu/out/dynamic ./zig-out/bin/crane
   ```
 
 ---

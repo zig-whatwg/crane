@@ -82,7 +82,7 @@ Geometric means across shared workloads in Round 12 (`369e0c50b` / `e38d1abcf`, 
    - **CDP enabled** (`127.0.0.1:9222` by default) and **MCP enabled** (`127.0.0.1:9223` Streamable HTTP by default, or stdio with `--mcp`).
 2. **`crane-lib` (Zig Module + C ABI)**
    - High-level Zig dependency (`dep.module("crane")`) via `build.zig.zon`.
-   - Thread-safe C-ABI static library (`dep.artifact("crane-lib")` &rarr; `libcrane.a` + [`include/crane.h`](include/crane.h)) supporting isolated multi-threaded `Browser` instances, tabs, navigation readiness, script evaluation, event callbacks, dialog handling, and embedded MCP servers.
+   - Thread-safe C-ABI static library (`dep.artifact("crane")` &rarr; `libcrane.a` + [`include/crane.h`](include/crane.h), plus `dep.module("crane-c")` for Zig callers, and `zig build crane-lib` / `zig build crane-lib-release`) supporting isolated multi-threaded `Browser` instances, tabs, navigation readiness, script evaluation, event callbacks, dialog handling, and embedded MCP servers.
 
 ---
 
@@ -223,10 +223,12 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const v8_dir = b.option([]const u8, "v8-dir", "Path to extracted V8 archive directory");
 
     const crane_dep = b.dependency("crane", .{
         .target = target,
         .optimize = optimize,
+        .@"v8-dir" = v8_dir orelse "",
     });
 
     const exe = b.addExecutable(.{
@@ -235,15 +237,15 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{
-                // High-level Zig module
-                .{ .name = "crane", .module = crane_dep.module("crane") },
-            },
+            .link_libc = true,
         }),
     });
+    // High-level Zig module:
+    exe.root_module.addImport("crane", crane_dep.module("crane"));
 
-    // Or link the C-ABI static library (libcrane.a + include/crane.h):
-    // exe.root_module.linkLibrary(crane_dep.artifact("crane-lib"));
+    // Or use the C-ABI static library (libcrane.a + include/crane.h):
+    // exe.root_module.addImport("crane_c", crane_dep.module("crane-c"));
+    // exe.root_module.linkLibrary(crane_dep.artifact("crane"));
 
     b.installArtifact(exe);
 }
@@ -255,27 +257,33 @@ pub fn build(b: *std.Build) void {
 const std = @import("std");
 const crane = @import("crane");
 
-pub fn main() !void {
+pub const std_options: std.Options = .{
+    .log_level = .warn,
+    .signal_stack_size = null,
+};
+
+pub fn main(init: std.process.Init) !void {
+    // Initialize the process runtime once before creating any Browser.
+    var rt = try crane.initRuntime(.{ .snapshot_path = "" });
+    defer rt.deinit();
+
     const allocator = std.heap.c_allocator;
+    var browser = try crane.Browser.create(allocator, .{});
+    defer browser.deinit();
 
-    // Start the process once before creating any Browser.
-    var proc = try crane.Process.init(.{});
-    defer proc.deinit();
+    try browser.navigate("data:text/html,<title>Hello Crane</title>");
 
-    // Start an isolated Browser on its own thread.
-    const host = try crane.BrowserHost.start(allocator, .{});
-    defer host.stop();
+    var result = try browser.eval("\"ran \" + (6 * 7)");
+    defer result.deinit();
+    if (result.isException()) return error.EvalException;
 
-    const tab = try host.createTab(.{});
-    const url = try host.navigate(allocator, tab, "https://example.com", .{
-        .wait = .complete,
-    });
-    defer allocator.free(url);
+    const text = (try result.stringValue(allocator)) orelse return error.UnexpectedResult;
+    defer allocator.free(text);
 
-    const result = try host.evaluate(allocator, tab, "document.title", .{}, 30_000);
-    defer result.deinit(allocator);
-
-    std.debug.print("URL: {s}\nTitle JSON: {s}\n", .{ url, result.json });
+    var stdout_buf: [256]u8 = undefined;
+    var stdout = std.Io.File.stdout().writerStreaming(init.io, &stdout_buf);
+    try stdout.interface.print("{s}\n", .{text});
+    try stdout.interface.flush();
 }
 ```
 
@@ -323,13 +331,13 @@ int main(void) {
 
 ## Building from Source
 
-Supported build hosts: **macOS (`aarch64` / Apple Silicon)** and **Linux (`x86_64`)**.
+Supported targets: **macOS (`arm64` / Apple Silicon, `x86_64`)** and **Linux (`x86_64`, `arm64`)**.
 
 ### Prerequisites
 
 | Requirement | Version / Notes |
 | :--- | :--- |
-| **Pinned Zig** | **`0.17.1-dev+77c319a0f0`** (0.17.x branch at `77c319a0f00a`), available from Crane's GitHub toolchain release (or `0.17.1+` once released). **`zig 0.17.0` is intentionally refused** by `build.zig` ([`tools/zig_toolchain.zig`](tools/zig_toolchain.zig)) due to `ziglang/zig#37061` (mobile Apple targets) and `ziglang/zig#37142` (`checkAllAllocationFailures` resizes). |
+| **Pinned Zig** | **`0.17.1-dev+77c319a0f0`** (0.17.x branch at `77c319a0f00a`), available for all 4 targets from Crane's GitHub toolchain release (or `0.17.1+` once released). **`zig 0.17.0` is intentionally refused** by `build.zig` ([`tools/zig_toolchain.zig`](tools/zig_toolchain.zig)) due to `ziglang/zig#37061` (mobile Apple targets) and `ziglang/zig#37142` (`checkAllAllocationFailures` resizes). |
 | **V8 15.7.112.43 (with ICU)** | Chrome 157's V8 built against Chromium's hardened `libc++` (`std::__Cr`), with ICU data and Temporal enabled. Choose **Option A, B, or C** below. System/Homebrew V8 packages are not compatible. |
 | **Python 3** | Required for running the WPT server (`tests/wpt`) and for compiling V8 from source (`lzma` module required). |
 
@@ -342,18 +350,18 @@ Crane links V8 `15.7.112.43` (commit `307108153d1e35e6e74528ee55f97b0cd59bf182`)
 
 #### Option A &mdash; Prebuilt V8 Tarballs (Fastest)
 
-Download the prebuilt V8 archive for your host (`macos-aarch64` or `linux-x86_64`) from the [`v8-prebuilt-15.7.112.43`](https://github.com/zig-whatwg/crane/releases/tag/v8-prebuilt-15.7.112.43) GitHub pre-release, unpack it, verify `SHA256SUMS`, and point Crane at it with `-Dv8-dir`:
+Download the prebuilt V8 archive for your target (`macos-arm64`, `macos-x86_64`, `linux-x86_64`, or `linux-arm64`) and link mode (`static` or `dynamic`) from the [`v8-prebuilt-15.7.112.43`](https://github.com/zig-whatwg/crane/releases/tag/v8-prebuilt-15.7.112.43) GitHub pre-release, unpack it, verify `SHA256SUMS`, and point Crane at it with `-Dv8-dir`:
 
 ```bash
-# Example: unpack to /path/to/v8-15.7.112.43-icu (or jsengines/v8/15.7.112.43-icu)
-tar -xf v8-15.7.112.43-icu-<platform>.tar.zst -C /path/to/
-(cd /path/to/v8-15.7.112.43-icu && sha256sum -c SHA256SUMS)   # macOS: shasum -a 256 -c SHA256SUMS
+# Example: static prebuilt for your target (e.g. macos-arm64, linux-x86_64)
+tar -xzf v8-15.7.112.43-<target>-static.tar.gz -C /path/to/
+(cd /path/to/v8-15.7.112.43-<target>-static && sha256sum -c SHA256SUMS)   # macOS: shasum -a 256 -c SHA256SUMS
 
 # Build the release crane CLI
-zig build crane-release -j2 -Dv8-dir=/path/to/v8-15.7.112.43-icu
+zig build crane-release -j2 -Dv8-dir=/path/to/v8-15.7.112.43-<target>-static
 ```
 
-If unpacked into the default path `jsengines/v8/15.7.112.43-icu/`, `-Dv8-dir` can be omitted.
+If unpacked into the default path `jsengines/v8/15.7.112.43-icu/`, `-Dv8-dir` can be omitted. Prebuilt `dynamic` tarballs (`v8-15.7.112.43-<target>-dynamic.tar.gz`) work the same way with `-Dv8-link=dynamic` (verify `out/dynamic/SHA256SUMS`).
 
 #### Option B &mdash; Statically Compiling V8 from Source (Default for `crane`)
 
@@ -398,22 +406,22 @@ v8_enable_temporal_support = true
 v8_generate_external_defines_header = true
 cppgc_enable_object_names = false
 cppgc_enable_object_section_gcinfo = false
-target_cpu = "arm64"   # "x64" on Linux x86_64
+target_cpu = "arm64"   # "x64" on x86_64 hosts
 # Linux only:
-use_sysroot = false
+use_sysroot = false    # true when cross-compiling linux-arm64 from linux-x64
 use_glib = false
 ```
 
 #### Option C &mdash; Dynamically Compiling V8 from Source
 
-Useful for faster iterative relinks during development when you want V8 built as shared component libraries instead of a static monolith:
+Useful for faster iterative relinks during development when you want V8 built as shared component libraries instead of a static monolith. `scripts/build-v8-15.7.sh --dynamic` installs into `jsengines/v8/15.7.112.43-icu/out/dynamic/` beside any static install without overwriting `out/static/`:
 
 ```bash
 # Build V8 as shared component libraries
 scripts/build-v8-15.7.sh --dynamic all
 
 # Build Crane linked dynamically against the shared V8 libraries
-zig build crane -j2 -Dv8-link=dynamic -Dv8-dir=jsengines/v8/15.7.112.43-icu-dynamic
+zig build crane -j2 -Dv8-link=dynamic -Dv8-dir=jsengines/v8/15.7.112.43-icu
 ```
 
 Underlying GN argument differences from static (all sandbox, `use_custom_libcxx`, ICU, Temporal, and external-defines flags remain identical):
@@ -425,16 +433,17 @@ v8_monolithic = false
 
 **Runtime library search paths (dynamic builds):**
 
-- **macOS:** Set `DYLD_LIBRARY_PATH` to the installed V8 shared library directory (e.g. `DYLD_LIBRARY_PATH=jsengines/v8/15.7.112.43-icu-dynamic/out/dynamic ./zig-out/bin/crane`) or embed an rpath (`-Wl,-rpath,...`) pointing to it.
-- **Linux:** Set `LD_LIBRARY_PATH` to the installed V8 shared library directory (e.g. `LD_LIBRARY_PATH=jsengines/v8/15.7.112.43-icu-dynamic/out/dynamic ./zig-out/bin/crane`) or embed an rpath (`-Wl,-rpath,...`).
+- **macOS:** Set `DYLD_LIBRARY_PATH` to the installed V8 shared library directory (e.g. `DYLD_LIBRARY_PATH=jsengines/v8/15.7.112.43-icu/out/dynamic ./zig-out/bin/crane`) or embed an rpath (`-Wl,-rpath,...`) pointing to it.
+- **Linux:** Set `LD_LIBRARY_PATH` to the installed V8 shared library directory (e.g. `LD_LIBRARY_PATH=jsengines/v8/15.7.112.43-icu/out/dynamic ./zig-out/bin/crane`) or embed an rpath (`-Wl,-rpath,...`).
 
-See [`docs/building-v8.md`](docs/building-v8.md) for why Chromium's hardened `libc++` is mandatory with V8's sandbox, how `v8-gn.h` and `librust_v8.a` are extracted, and why Linux builds strip `SHT_CREL` relocations for Zig's self-hosted ELF linker.
+See [`docs/building-v8.md`](docs/building-v8.md) for why Chromium's hardened `libc++` is mandatory with V8's sandbox, how `v8-gn.h` and `librust_v8.a` are extracted, how Linux ARM64 cross-compiles with Chromium's Bullseye sysroot, and why Linux builds strip `SHT_CREL` relocations for Zig's self-hosted ELF linker.
 
 ### Common Build & Test Commands
 
 ```bash
 zig build crane -j2              # Build the crane CLI (development / fast iteration)
 zig build crane-release -j2      # Build the release crane CLI (ReleaseSafe + debug symbols)
+zig build crane-lib-release -j2  # Build release libcrane.a + include/crane.h
 zig build test -j2               # Unit tests, codegen-check, crane-check, and all boundary lints
 zig build test-browser -j2       # Browser initialization & host API tests
 zig build wpt-runner -j2         # Production WPT runner (same build & allocator graph as crane-release)
@@ -492,8 +501,8 @@ WPT is judged in two builds of the same tree: the **production** runner (`wpt_ru
 
 ## Contributing & Reporting Bugs
 
-- **Found a bug or crash?** Open an issue at **[github.com/zig-whatwg/crane/issues/new](https://github.com/zig-whatwg/crane/issues/new)**.
-  - Release builds of `crane` compile in `ReleaseSafe` with debug symbols preserved and print a symbolicated stack trace alongside a built-in crash report checklist &mdash; paste that output directly into your issue along with the URL or minimal reproducer.
+- **Found a bug or crash?** Search existing open and closed issues at **[github.com/zig-whatwg/crane/issues](https://github.com/zig-whatwg/crane/issues)** first, then open a new issue at **[github.com/zig-whatwg/crane/issues/new](https://github.com/zig-whatwg/crane/issues/new)** if it isn't already tracked.
+  - Release builds of `crane` compile in `ReleaseSafe` with debug symbols preserved and print a symbolicated stack trace alongside a copy/paste-ready triage & bug-report block designed for both humans and browser AI agents (checking open/closed issues, `wontfix` rulings, upgrades, and the nightly release channel before opening a new issue).
 - **Contributing code:** Read [`AGENTS.md`](AGENTS.md) first (the engineering rulebook for humans and agents alike): implement spec algorithms step by step, write a failing test first, keep zero leaks, never hand-edit generated WebIDL files, and pass all `zig build test` boundary lints.
 - **Further docs:** [`docs/building-v8.md`](docs/building-v8.md) &middot; [`docs/console.md`](docs/console.md) &middot; [`docs/instances.md`](docs/instances.md) &middot; [`docs/engine-protocol.md`](docs/engine-protocol.md) &middot; [`docs/platform-protocol.md`](docs/platform-protocol.md) &middot; [`docs/roadmap.toml`](docs/roadmap.toml) &middot; [`docs/lessons/README.md`](docs/lessons/README.md) &middot; [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
