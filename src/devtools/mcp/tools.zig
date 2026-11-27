@@ -39,7 +39,29 @@ pub const Tool = struct {
     /// conditions: ['memoryDebugging'] — offered only when `--memoryDebugging`
     /// is enabled.
     memory_debugging: bool = false,
+    /// category: networkMocks — offered only when `--categoryNetworkMocks` is
+    /// enabled.
+    category_network_mocks: bool = false,
+    /// category: thirdParty — offered only when
+    /// `--categoryExperimentalThirdParty` is enabled.
+    category_experimental_third_party: bool = false,
+    /// conditions: ['experimentalVision'] — offered only when
+    /// `--experimentalVision` is enabled.
+    experimental_vision: bool = false,
+    /// conditions: ['slim'] — offered ONLY in `--slim` mode.
+    slim: bool = false,
     run: Run,
+};
+
+/// Options controlling which tools `listJsonWithOptions` advertises (matching
+/// chrome-devtools-mcp's category/condition CLI flags so `server.Options` can
+/// forward them directly).
+pub const ListOptions = struct {
+    memory_debugging: bool = false,
+    category_network_mocks: bool = false,
+    category_experimental_third_party: bool = false,
+    experimental_vision: bool = false,
+    slim: bool = false,
 };
 
 /// One verifyFilesSchema entry. Crane's browser is always local (it is this
@@ -88,20 +110,51 @@ const emulation_tools = @import("tools/emulation.zig");
 const logpoint_tools = @import("tools/logpoints.zig");
 const memory_tools = @import("tools/memory.zig");
 const css_tools = @import("tools/css.zig");
+const renderer_tools = @import("tools/renderer.zig");
+const slim_tools = @import("tools/slim.zig");
 const logpoints = @import("logpoints.zig");
 
 /// Every tool Crane offers (tools/list orders them as the copied
 /// definitions do).
-pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list ++ network_tools.list ++ input_tools.list ++ snapshot_tools.list ++ emulation_tools.list ++ logpoint_tools.list ++ memory_tools.list ++ css_tools.list);
+pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list ++ network_tools.list ++ input_tools.list ++ snapshot_tools.list ++ emulation_tools.list ++ logpoint_tools.list ++ memory_tools.list ++ css_tools.list ++ renderer_tools.list ++ slim_tools.list);
 
 /// The tools/list JSON array for `all` with default flags (memoryDebugging off).
 pub fn listJson(allocator: Allocator) ![]u8 {
-    return listJsonWith(allocator, false);
+    return listJsonWithOptions(allocator, .{});
 }
 
 /// The tools/list JSON array for `all`, including `--memoryDebugging` tools
 /// when `memory_debugging` is true.
 pub fn listJsonWith(allocator: Allocator, memory_debugging: bool) ![]u8 {
+    return listJsonWithOptions(allocator, .{ .memory_debugging = memory_debugging });
+}
+
+/// The tools/list JSON array for `--slim` mode (`evaluate`, `navigate`,
+/// `screenshot` from `schemas/slim.json`).
+pub fn listJsonSlim(allocator: Allocator) ![]u8 {
+    const copied = @embedFile("schemas/slim.json");
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, copied, .{});
+    defer parsed.deinit();
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    const w = &out.writer;
+    try w.writeAll("[");
+    var first = true;
+    for (parsed.value.object.get("tools").?.array.items) |definition| {
+        const name = definition.object.get("name").?.string;
+        const tool = find(name) orelse continue;
+        if (!tool.slim) continue;
+        if (!first) try w.writeAll(",");
+        first = false;
+        try std.json.Stringify.value(definition, .{}, w);
+    }
+    try w.writeAll("]");
+    return out.toOwnedSlice();
+}
+
+/// The tools/list JSON array for `all` under `options`.
+pub fn listJsonWithOptions(allocator: Allocator, options: ListOptions) ![]u8 {
+    if (options.slim) return listJsonSlim(allocator);
     const copied = @embedFile("schemas/tools.json");
     const parsed = try std.json.parseFromSlice(std.json.Value, allocator, copied, .{});
     defer parsed.deinit();
@@ -113,7 +166,11 @@ pub fn listJsonWith(allocator: Allocator, memory_debugging: bool) ![]u8 {
     for (parsed.value.object.get("tools").?.array.items) |definition| {
         const name = definition.object.get("name").?.string;
         const tool = find(name) orelse continue;
-        if (tool.memory_debugging and !memory_debugging) continue;
+        if (tool.slim) continue;
+        if (tool.memory_debugging and !options.memory_debugging) continue;
+        if (tool.category_network_mocks and !options.category_network_mocks) continue;
+        if (tool.category_experimental_third_party and !options.category_experimental_third_party) continue;
+        if (tool.experimental_vision and !options.experimental_vision) continue;
         if (!first) try w.writeAll(",");
         first = false;
         try std.json.Stringify.value(definition, .{}, w);
@@ -122,9 +179,10 @@ pub fn listJsonWith(allocator: Allocator, memory_debugging: bool) ![]u8 {
     return out.toOwnedSlice();
 }
 
-/// The tools chrome-devtools-mcp v1.13.0 offers with its default flags (its
-/// tools/list, dumped by lane mcp1 into tmp/mcp1/tools-default.json): every
-/// other copied definition is a category's or a flag's, off by default.
+/// The tools Crane offers with default flags (chrome-devtools-mcp v1.13.0's
+/// 33 defaults minus Chrome-only `lighthouse_audit` = 32): every other copied
+/// definition is a category's, a flag's, or Chrome-only (`lighthouse_audit`),
+/// so `disabled()` reports `"Tool <name> disabled"` instead of `"not found"`.
 const default_tools = [_][]const u8{
     "click",
     "close_page",
@@ -138,7 +196,6 @@ const default_tools = [_][]const u8{
     "get_network_request",
     "handle_dialog",
     "hover",
-    "lighthouse_audit",
     "list_console_messages",
     "list_network_requests",
     "list_pages",
@@ -161,21 +218,23 @@ const default_tools = [_][]const u8{
     "wait_for",
 };
 
-/// Handler.disabled: a tool Google's server has but leaves off by default
-/// (mock_network's category, the heap tools' flag, the Chrome products).
+/// Handler.disabled: a tool Google's server has but Crane leaves off by
+/// default (mock_network's category, the heap tools' flag, slim tools,
+/// Chrome products including `lighthouse_audit`).
 pub fn disabled(name: []const u8) bool {
     for (default_tools) |d| if (std.mem.eql(u8, d, name)) return false;
-    // A definition's name, as the copied file writes it.
-    const copied = @embedFile("schemas/tools.json");
     var buffer: [128]u8 = undefined;
     const needle = std.fmt.bufPrint(&buffer, "\"name\": \"{s}\"", .{name}) catch return false;
-    return std.mem.indexOf(u8, copied, needle) != null;
+    if (std.mem.indexOf(u8, @embedFile("schemas/tools.json"), needle) != null) return true;
+    return std.mem.indexOf(u8, @embedFile("schemas/slim.json"), needle) != null;
 }
 
 // The tool files whose own tests src-devtools runs (lane core1): Zig
 // collects a file's test blocks only when something analyzes its import.
 test {
     _ = script;
+    _ = renderer_tools;
+    _ = slim_tools;
     _ = @import("heap_snapshot.zig");
     _ = @import("heap_formatter.zig");
     _ = @import("heap_regex.zig");
@@ -184,7 +243,11 @@ test {
 test "disabled: a copied tool off by default, not one offered by default or unknown" {
     try std.testing.expect(disabled("mock_network"));
     try std.testing.expect(disabled("install_extension"));
+    try std.testing.expect(disabled("lighthouse_audit"));
+    try std.testing.expect(disabled("click_at"));
+    try std.testing.expect(disabled("navigate"));
     try std.testing.expect(!disabled("take_snapshot"));
+    try std.testing.expect(!disabled("take_screenshot"));
     try std.testing.expect(!disabled("nope"));
 }
 
@@ -197,7 +260,15 @@ pub fn find(name: []const u8) ?Tool {
 pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: std.json.Value) anyerror!?protocol.ToolResult {
     const session: *Session = @ptrCast(@alignCast(context));
     const tool = find(name) orelse return null;
-    if (tool.memory_debugging and !session.memory_debugging) return null;
+    if (session.slim) {
+        if (!tool.slim) return null;
+    } else {
+        if (tool.slim) return null;
+        if (tool.memory_debugging and !session.memory_debugging) return null;
+        if (tool.category_network_mocks and !session.category_network_mocks) return null;
+        if (tool.category_experimental_third_party and !session.category_experimental_third_party) return null;
+        if (tool.experimental_vision and !session.experimental_vision) return null;
+    }
     session.dropClosed();
     // Whatever came since the last call is recorded first.
     _ = try session.client.pump(0);

@@ -1,0 +1,79 @@
+{
+ "_source": "chrome-devtools-mcp v1.13.0 (https://github.com/ChromeDevTools/chrome-devtools-mcp, tag chrome-devtools-mcp-v1.13.0, commit b1e35e3ab1774664dfc66a2cb813a392535fe160): the tools/list answer of its own server with --slim (src/tools/slim/tools.ts definitions, serialized by its MCP SDK)",
+ "_license": "Copyright 2026 Google LLC. Apache-2.0 (see LICENSE beside this file and THIRD_PARTY_NOTICES.md)",
+ "tools": [
+  {
+   "name": "evaluate",
+   "description": "Evaluates a JavaScript script",
+   "inputSchema": {
+    "type": "object",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+     "script": {
+      "type": "string",
+      "description": "JS script to run on the page"
+     }
+    },
+    "required": [
+     "script"
+    ],
+    "additionalProperties": false
+   },
+   "annotations": {
+    "category": "debugging",
+    "readOnlyHint": false,
+    "conditions": [
+     "slim",
+     "javascriptEvaluation"
+    ]
+   }
+  },
+  {
+   "name": "navigate",
+   "description": "Loads a URL",
+   "inputSchema": {
+    "type": "object",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+     "url": {
+      "type": "string",
+      "description": "URL to navigate to"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "additionalProperties": false
+   },
+   "annotations": {
+    "category": "navigation",
+    "readOnlyHint": false,
+    "conditions": [
+     "slim"
+    ]
+   }
+  },
+  {
+   "name": "screenshot",
+   "description": "Takes a png screenshot",
+   "inputSchema": {
+    "type": "object",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+     "filePath": {
+      "description": "The absolute path, or a path relative to the current working directory, to save the screenshot to instead of attaching it to the response.",
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   },
+   "annotations": {
+    "category": "debugging",
+    "readOnlyHint": false,
+    "conditions": [
+     "slim"
+    ]
+   }
+  }
+ ]
+}

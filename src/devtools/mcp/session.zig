@@ -373,6 +373,15 @@ pub const Session = struct {
     paths: paths_mod.Policy,
     /// Whether `--memoryDebugging` / `--memory-debugging` is enabled.
     memory_debugging: bool = false,
+    /// Whether `--categoryNetworkMocks` is enabled (`mock_network`, `remove_network_mock`).
+    category_network_mocks: bool = false,
+    /// Whether `--categoryExperimentalThirdParty` is enabled
+    /// (`list_3p_developer_tools`, `execute_3p_developer_tool`).
+    category_experimental_third_party: bool = false,
+    /// Whether `--experimentalVision` is enabled (`click_at`).
+    experimental_vision: bool = false,
+    /// Whether `--slim` mode is enabled (`navigate`, `evaluate`, `screenshot`).
+    slim: bool = false,
     /// Loaded and cached heap snapshots (HeapSnapshotManager).
     heap_snapshots: heap_snapshot_mod.Cache = .{},
 
