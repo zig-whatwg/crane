@@ -1309,13 +1309,22 @@ pub const Engine = struct {
         // crosses a super page.
         if (at % super_page == 0) at += span_bytes;
         if (at % super_page + run * span_bytes > super_page) at = std.mem.alignForward(usize, at, super_page) + span_bytes;
+        // Design §4.4: permanently skip the cage super page containing
+        // 0xDDDDDDDD so a dereferenced bug-finding poisoned Link always faults.
+        if (browser_heap.overlapsPoisonSuperPage(at, run * span_bytes)) {
+            at = @as(usize, @intCast(browser_heap.poison_super_page_offset)) + super_page + span_bytes;
+        }
         const end = at + run * span_bytes;
         if (end > p.limit) return error.OutOfMemory;
         if (self.grow_hook) |hook| if (!hook.call(hook.context)) return error.OutOfMemory;
         // Data: whole super pages past their guard (Linux: one mprotect per
-        // super page, design 5.3).
+        // super page, design 5.3). Skip the uncommitted poison guard super page.
         while (p.data_hi < end) {
             const super_start = std.mem.alignBackward(usize, p.data_hi, super_page);
+            if (browser_heap.overlapsPoisonSuperPage(super_start, super_page)) {
+                p.data_hi = super_start + super_page;
+                continue;
+            }
             self.heap.commit(super_start + span_bytes, super_page - span_bytes) catch return error.OutOfMemory;
             p.data_hi = super_start + super_page;
         }
@@ -2721,8 +2730,11 @@ pub const Engine = struct {
             break :index r.first;
         } else index: {
             if (p.huge_count == huge_regions_max) return error.OutOfMemory;
-            const at = std.mem.alignForward(usize, p.frontier, super_page);
+            var at = std.mem.alignForward(usize, p.frontier, super_page);
             const supers = (span_bytes + need * span_bytes + super_page - 1) / super_page;
+            if (browser_heap.overlapsPoisonSuperPage(at, supers * super_page)) {
+                at = @as(usize, @intCast(browser_heap.poison_super_page_offset)) + super_page;
+            }
             const end = at + supers * super_page;
             if (end > p.limit) return error.OutOfMemory;
             if (self.grow_hook) |hook| if (!hook.call(hook.context)) return error.OutOfMemory;
