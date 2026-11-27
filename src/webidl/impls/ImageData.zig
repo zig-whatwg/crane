@@ -48,14 +48,21 @@ pub const InternalState = struct {
     height: u32 = 0,
     pixel_format: enums.ImageDataPixelFormat = ._rgba_unorm8_,
     color_space: enums.PredefinedColorSpace = ._srgb_,
-    /// The ImageDataArray, held for as long as this ImageData lives: `data`
-    /// returns this same object every time.
-    data: ?engine.Owned = null,
+    /// The ImageDataArray, held traced for as long as this ImageData lives:
+    /// `data` returns this same object every time (lane rc9 item 13).
+    data: ?engine.TracedValueHold = null,
     data_kind: ArrayKind = .uint8_clamped,
 
     fn deinit(self: *InternalState) void {
-        if (self.data) |owned| owned.release();
+        if (self.data) |held| held.release();
         self.data = null;
+    }
+
+    /// VTable.trace_held_nodes (lane rc9 item 13): trace `data` from this
+    /// ImageData's wrapper (or unwrapped-owner registry during deserialization).
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const internal = getInternal(instance) orelse return;
+        if (internal.data) |h| h.trace(tracer);
     }
 };
 
@@ -82,6 +89,7 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
+    engine.forgetUnwrappedTracedOwner(instance);
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
@@ -101,7 +109,7 @@ pub fn call_constructor(instance: *runtime.Instance, args: interfaces.ImageData.
         .unsigned_long_unsigned_long_ImageDataSettings => |a| {
             if (a.sw == 0 or a.sh == 0) return error.IndexSizeError;
             const settings: dictionaries.ImageDataSettings = if (a.settings.wasPassed()) a.settings.getValue() else .{};
-            try initialize(ctx, internal, a.sw, a.sh, settings, null, null);
+            try initialize(instance, ctx, internal, a.sw, a.sh, settings, null, null);
         },
         // "new ImageData(data, sw, sh, settings)".
         .ImageDataArray_unsigned_long_unsigned_long_ImageDataSettings => |a| {
@@ -130,7 +138,7 @@ pub fn call_constructor(instance: *runtime.Instance, args: interfaces.ImageData.
             // "8. Initialize this given sw, sh, settings, and source set to
             // data." With sh absent, the rows are height.
             const rows = std.math.cast(u32, height) orelse return error.IndexSizeError;
-            try initialize(ctx, internal, a.sw, rows, settings, a.data, null);
+            try initialize(instance, ctx, internal, a.sw, rows, settings, a.data, null);
         },
     }
 }
@@ -151,6 +159,7 @@ fn arrayValue(array: typedefs.ImageDataArray) runtime.JSValue {
 /// `rows`, `settings`, an optional `source` and an optional
 /// `default_color_space`.
 fn initialize(
+    owner: *runtime.Instance,
     realm: runtime.Context,
     internal: *InternalState,
     pixels_per_row: u32,
@@ -175,7 +184,7 @@ fn initialize(
         }
         // Step 1.3: "Initialize the data attribute of imageData to source" -
         // the object given, not a copy.
-        internal.data = try engine.retainValue(realm, arrayValue(array));
+        internal.data = try engine.keepValueTracedFor(owner, realm, arrayValue(array));
         internal.data_kind = kind;
     } else switch (pixel_format) {
         // Step 2.1: "a new Uint8ClampedArray object" over "a new ArrayBuffer"
@@ -187,7 +196,9 @@ fn initialize(
             // then rethrow the RangeError thrown by JavaScript."
             const buffer = engine.allocateArrayBuffer(realm, length) catch return error.RangeError;
             defer buffer.release();
-            internal.data = engine.createArrayBufferView(realm, .uint8_clamped_array, buffer.borrow(), 0, length) catch return error.RangeError;
+            const view = engine.createArrayBufferView(realm, .uint8_clamped_array, buffer.borrow(), 0, length) catch return error.RangeError;
+            defer view.release();
+            internal.data = engine.keepValueTracedFor(owner, realm, view.value) catch return error.RangeError;
             internal.data_kind = .uint8_clamped;
         },
         // Step 2.2: a new Float16Array - which this engine cannot make yet
@@ -225,7 +236,7 @@ pub fn get_data(instance: *runtime.Instance) anyerror!typedefs.ImageDataArray {
     // A union's JavaScript value is handed to the binding as a JSValue
     // result is (conv.unionReturnIsOwned): a hold of its own, released once
     // the value is set; the ImageData keeps `data` for the next read.
-    const hold = (try engine.retainValue(instance.ctx, data.borrow())).take();
+    const hold = (try engine.retainValue(instance.ctx, data.value())).take();
     return switch (internal.data_kind) {
         .uint8_clamped => .{ .uint8clamped_array = hold },
         .float16 => .{ .float16array = hold },
@@ -266,7 +277,7 @@ pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.Seriali
     const internal = getInternal(value) orelse return error.DataCloneError;
     const data = internal.data orelse return error.DataCloneError;
     // Step 1.
-    try serialized.subSerialize(data.borrow());
+    try serialized.subSerialize(data.value());
     // Steps 2-5.
     try serialized.writeUint32(internal.width);
     try serialized.writeUint32(internal.height);
@@ -299,9 +310,9 @@ pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *
     };
     const description = engine.describeArrayBufferView(target_realm, data) orelse return error.DataCloneError;
     if (kind != .uint8_clamped or description.view_type != .uint8_clamped_array) return error.DataCloneError;
-    // Step 1: the sub-deserialized array itself, kept (the record only
-    // lends it).
-    internal.data = try engine.retainValue(target_realm, data);
+    // Step 1: the sub-deserialized array itself, kept traced (the record only
+    // lends it; `value` has no wrapper yet until deserialization completes).
+    internal.data = try engine.keepValueTracedFor(value, target_realm, data);
     internal.data_kind = kind;
     // Steps 2-5.
     internal.width = width;

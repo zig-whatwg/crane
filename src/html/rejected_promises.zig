@@ -20,6 +20,14 @@
 //! "Whoever ends a weak arm inherits V8's Reset obligation") that are not worth
 //! taking on for a set whose only purpose is to notice a late handler. What it
 //! changes: a promise nobody will ever handle stays alive until its page does.
+//!
+//! Lane rc9 evaluation (integrator ruling, 2026-11-26): intentionally kept
+//! bounded-strong (`max_outstanding = 1024`, freed on `forgetGlobal` and
+//! `releaseAgent`). `engine.TracedHold` is not a weak reference: an untraced
+//! hold is swept on full GC even while script still holds the promise (which
+//! would drop late `.catch()` -> `rejectionhandled` notifications), whereas
+//! tracing it from Window is equivalent to holding it strongly for realm
+//! lifetime. There is no owner cycle here.
 
 const std = @import("std");
 const runtime = @import("runtime");

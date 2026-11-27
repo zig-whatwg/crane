@@ -32,9 +32,16 @@ pub const construction_args = .{"window_client"};
 
 pub const InternalState = struct {
     window: *const service_worker.manager.WindowData,
-    /// The ancestor origins array ([SameObject]), made on first read.
-    ancestor_origins: ?engine.Owned = null,
+    /// The ancestor origins array ([SameObject]), made on first read and kept
+    /// traced from this WindowClient's wrapper (lane rc9 item 14).
+    ancestor_origins: ?engine.TracedValueHold = null,
     allocator: std.mem.Allocator,
+
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const state = instance.stateAs(State) orelse return;
+        const internal = state.own._internal orelse return;
+        if (internal.ancestor_origins) |h| h.trace(tracer);
+    }
 };
 
 /// WindowClient's own construction steps: the generated chain runs Client's
@@ -50,6 +57,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 /// WindowClient's own teardown: the generated chain runs Client's after it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
+    engine.forgetUnwrappedTracedOwner(instance);
     const internal = state.own._internal orelse return;
     if (internal.ancestor_origins) |array| array.release();
     internal.allocator.destroy(internal);
@@ -82,10 +90,12 @@ pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!runtime.JSValue
         const values = try internal.allocator.alloc(runtime.JSValue, origins.len);
         defer internal.allocator.free(values);
         for (origins, values) |origin, *value| value.* = runtime.JSValue.fromStringRef(origin);
-        internal.ancestor_origins = try engine.createFrozenArray(instance.ctx, values);
+        const array = try engine.createFrozenArray(instance.ctx, values);
+        defer array.release();
+        internal.ancestor_origins = try engine.keepValueTracedFor(instance, instance.ctx, array.value);
     }
     // The object keeps its array; the binding gets a hold of its own.
-    return (try engine.retainValue(instance.ctx, internal.ancestor_origins.?.value)).take();
+    return (try engine.retainValue(instance.ctx, internal.ancestor_origins.?.value())).take();
 }
 
 /// Operation: focus (4.2.10).
