@@ -60,9 +60,297 @@ pub const Case = struct {
     client_roots: bool = false,
     /// Pass --memoryDebugging to both servers (enables heap analysis tools).
     memory_debugging: bool = false,
+    /// Pass --categoryNetworkMocks to both servers.
+    category_network_mocks: bool = false,
+    /// Pass --categoryExperimentalThirdParty to both servers.
+    category_experimental_third_party: bool = false,
+    /// Pass --experimentalVision to both servers.
+    experimental_vision: bool = false,
+    /// Pass --slim to both servers.
+    slim: bool = false,
     /// Fixture files (under --fixtures) copied into each server's `{files}` dir.
     copy_fixtures: []const []const u8 = &.{},
 };
+
+pub const chrome_mcp_version = "1.13.0";
+
+pub const ToolClass = enum {
+    equal,
+    expected_diff,
+    differs,
+    needs_renderer,
+    chrome_only,
+    not_tested,
+
+    pub fn word(self: ToolClass) []const u8 {
+        return switch (self) {
+            .equal => "equal",
+            .expected_diff => "expected_diff",
+            .differs => "differs",
+            .needs_renderer => "needs_renderer",
+            .chrome_only => "chrome_only",
+            .not_tested => "not_tested",
+        };
+    }
+};
+
+pub const CatalogEntry = struct {
+    name: []const u8,
+    category: []const u8,
+    /// Fixed classification for renderer-dependent or Chrome-product tools;
+    /// null for web-platform tools judged by the differential cases.
+    fixed: ?ToolClass = null,
+    reason: []const u8 = "",
+};
+
+/// All 66 tools of chrome-devtools-mcp v1.13.0 (63 documented + 3 slim),
+/// matching tmp/plans/mcp1-design-tools.md and §11 Q5.
+pub const tool_catalog = [_]CatalogEntry{
+    // Input (10)
+    .{ .name = "click", .category = "input" },
+    .{ .name = "drag", .category = "input" },
+    .{ .name = "fill", .category = "input" },
+    .{ .name = "fill_form", .category = "input" },
+    .{ .name = "handle_dialog", .category = "input" },
+    .{ .name = "hover", .category = "input" },
+    .{ .name = "press_key", .category = "input" },
+    .{ .name = "type_text", .category = "input" },
+    .{ .name = "upload_file", .category = "input" },
+    .{ .name = "click_at", .category = "input", .fixed = .needs_renderer, .reason = "Coordinate-based clicks require a renderer/layout engine to hit-test screen coordinates." },
+    // Navigation (6)
+    .{ .name = "close_page", .category = "navigation" },
+    .{ .name = "list_pages", .category = "navigation" },
+    .{ .name = "navigate_page", .category = "navigation" },
+    .{ .name = "new_page", .category = "navigation" },
+    .{ .name = "select_page", .category = "navigation" },
+    .{ .name = "wait_for", .category = "navigation" },
+    // Emulation (2)
+    .{ .name = "emulate", .category = "emulation" },
+    .{ .name = "resize_page", .category = "emulation" },
+    // Performance (3)
+    .{ .name = "performance_start_trace", .category = "performance", .fixed = .needs_renderer, .reason = "Performance traces require a rendering pipeline for frames, paint, LCP/CLS/INP, and trace screenshots." },
+    .{ .name = "performance_stop_trace", .category = "performance", .fixed = .needs_renderer, .reason = "Performance traces require a rendering pipeline." },
+    .{ .name = "performance_analyze_insight", .category = "performance", .fixed = .needs_renderer, .reason = "Performance trace insights require recorded renderer traces." },
+    // Network (2)
+    .{ .name = "get_network_request", .category = "network" },
+    .{ .name = "list_network_requests", .category = "network" },
+    // Network mocks (2)
+    .{ .name = "mock_network", .category = "networkMocks" },
+    .{ .name = "remove_network_mock", .category = "networkMocks" },
+    // Debugging (10)
+    .{ .name = "evaluate_script", .category = "debugging" },
+    .{ .name = "get_console_message", .category = "debugging" },
+    .{ .name = "get_css_styles", .category = "debugging" },
+    .{ .name = "lighthouse_audit", .category = "debugging", .fixed = .chrome_only, .reason = "Google's Lighthouse bundle is a Chrome product, not a web platform specification." },
+    .{ .name = "list_console_messages", .category = "debugging" },
+    .{ .name = "screencast_start", .category = "debugging", .fixed = .needs_renderer, .reason = "Screencast recording requires a pixel renderer." },
+    .{ .name = "screencast_stop", .category = "debugging", .fixed = .needs_renderer, .reason = "Screencast recording requires a pixel renderer." },
+    .{ .name = "set_logpoints", .category = "debugging" },
+    .{ .name = "take_screenshot", .category = "debugging", .fixed = .needs_renderer, .reason = "Screenshots require a pixel renderer." },
+    .{ .name = "take_snapshot", .category = "debugging" },
+    // Memory (14)
+    .{ .name = "take_heapsnapshot", .category = "memory" },
+    .{ .name = "get_heapsnapshot_summary", .category = "memory" },
+    .{ .name = "get_heapsnapshot_details", .category = "memory" },
+    .{ .name = "get_heapsnapshot_class_nodes", .category = "memory" },
+    .{ .name = "get_heapsnapshot_retainers", .category = "memory" },
+    .{ .name = "close_heapsnapshot", .category = "memory" },
+    .{ .name = "get_heapsnapshot_retaining_paths", .category = "memory" },
+    .{ .name = "get_heapsnapshot_edges", .category = "memory" },
+    .{ .name = "get_heapsnapshot_dominators", .category = "memory" },
+    .{ .name = "compare_heapsnapshots", .category = "memory" },
+    .{ .name = "get_heapsnapshot_duplicate_strings", .category = "memory" },
+    .{ .name = "get_heapsnapshot_object_details", .category = "memory" },
+    .{ .name = "query_heapsnapshot_objects", .category = "memory" },
+    .{ .name = "analyze_heapsnapshot_contexts", .category = "memory" },
+    // Third-party developer tools (2)
+    .{ .name = "list_3p_developer_tools", .category = "thirdParty" },
+    .{ .name = "execute_3p_developer_tool", .category = "thirdParty" },
+    // WebMCP (2)
+    .{ .name = "list_webmcp_tools", .category = "webmcp", .reason = "Chrome 150+ experimental feature behind --enable-features=WebMCP." },
+    .{ .name = "execute_webmcp_tool", .category = "webmcp", .reason = "Chrome 150+ experimental feature behind --enable-features=WebMCP." },
+    // WebAuthn (1)
+    .{ .name = "configure_webauthn", .category = "webauthn", .reason = "Requires WebAuthn behind navigator.credentials." },
+    // Extensions (5) - Chrome product
+    .{ .name = "install_extension", .category = "extensions", .fixed = .chrome_only, .reason = "Chrome's extension system has no web specification." },
+    .{ .name = "list_extensions", .category = "extensions", .fixed = .chrome_only, .reason = "Chrome's extension system has no web specification." },
+    .{ .name = "reload_extension", .category = "extensions", .fixed = .chrome_only, .reason = "Chrome's extension system has no web specification." },
+    .{ .name = "trigger_extension_action", .category = "extensions", .fixed = .chrome_only, .reason = "Chrome's extension system has no web specification." },
+    .{ .name = "uninstall_extension", .category = "extensions", .fixed = .chrome_only, .reason = "Chrome's extension system has no web specification." },
+    // PWA (4) - Chrome product
+    .{ .name = "get_os_app_state", .category = "pwa", .fixed = .chrome_only, .reason = "OS app installation (CDP PWA domain) is a Chrome product feature, not a web specification." },
+    .{ .name = "install_pwa", .category = "pwa", .fixed = .chrome_only, .reason = "OS app installation (CDP PWA domain) is a Chrome product feature, not a web specification." },
+    .{ .name = "launch_pwa", .category = "pwa", .fixed = .chrome_only, .reason = "OS app installation (CDP PWA domain) is a Chrome product feature, not a web specification." },
+    .{ .name = "uninstall_pwa", .category = "pwa", .fixed = .chrome_only, .reason = "OS app installation (CDP PWA domain) is a Chrome product feature, not a web specification." },
+    // Slim mode (3)
+    .{ .name = "navigate", .category = "slim" },
+    .{ .name = "evaluate", .category = "slim" },
+    .{ .name = "screenshot", .category = "slim", .fixed = .needs_renderer, .reason = "Screenshots require a pixel renderer." },
+};
+
+pub const CaseRecord = struct {
+    case: Case,
+    chrome: Outcome,
+    crane: Outcome,
+    equal: bool,
+    only_expected: bool,
+};
+
+pub const ToolSummaryRow = struct {
+    name: []const u8,
+    category: []const u8,
+    status: ToolClass,
+    cases: []const []const u8,
+    reason: []const u8,
+};
+
+pub const SummaryCounts = struct {
+    cases_total: usize = 0,
+    cases_equal: usize = 0,
+    cases_expected_diff: usize = 0,
+    cases_differs: usize = 0,
+    tools_total: usize = 0,
+    tools_equal: usize = 0,
+    tools_expected_diff: usize = 0,
+    tools_differs: usize = 0,
+    tools_needs_renderer: usize = 0,
+    tools_chrome_only: usize = 0,
+    tools_not_tested: usize = 0,
+};
+
+pub fn classifyTools(arena: Allocator, cases: Cases, records: []const CaseRecord) !struct { summary: SummaryCounts, tools: []ToolSummaryRow } {
+    var summary: SummaryCounts = .{ .cases_total = records.len, .tools_total = tool_catalog.len };
+    for (records) |rec| {
+        if (rec.equal) {
+            summary.cases_equal += 1;
+        } else if (rec.only_expected) {
+            summary.cases_expected_diff += 1;
+        } else {
+            summary.cases_differs += 1;
+        }
+    }
+    const rows = try arena.alloc(ToolSummaryRow, tool_catalog.len);
+    for (tool_catalog, 0..) |entry, ti| {
+        var matched_cases: std.ArrayList([]const u8) = .empty;
+        var seen_any = false;
+        var any_unexpected = false;
+        var expected_reason: []const u8 = "";
+
+        for (records) |rec| {
+            var call_idx: usize = 0;
+            var case_used = false;
+            for (rec.case.calls) |c| {
+                if (c.tool.len == 0) continue;
+                defer call_idx += 1;
+                if (!std.mem.eql(u8, c.tool, entry.name)) continue;
+                seen_any = true;
+                if (!case_used) {
+                    try matched_cases.append(arena, rec.case.name);
+                    case_used = true;
+                }
+                if (rec.chrome.failure != null or rec.crane.failure != null) {
+                    any_unexpected = true;
+                    continue;
+                }
+                const a_opt: ?client.Answer = if (call_idx < rec.chrome.answers.len) rec.chrome.answers[call_idx] else null;
+                const b_opt: ?client.Answer = if (call_idx < rec.crane.answers.len) rec.crane.answers[call_idx] else null;
+                const call_equal = a_opt != null and b_opt != null and sameAnswer(a_opt.?, b_opt.?);
+                if (!call_equal) {
+                    if (expectedFor(cases, rec.case.name, call_idx + 1)) |exp| {
+                        if (expected_reason.len == 0) expected_reason = exp.reason;
+                    } else {
+                        any_unexpected = true;
+                    }
+                }
+            }
+        }
+
+        const status: ToolClass = if (entry.fixed) |fixed|
+            fixed
+        else if (!seen_any)
+            .not_tested
+        else if (any_unexpected)
+            .differs
+        else if (expected_reason.len != 0)
+            .expected_diff
+        else
+            .equal;
+
+        const reason = if (entry.fixed != null)
+            entry.reason
+        else if (status == .expected_diff)
+            expected_reason
+        else
+            entry.reason;
+
+        switch (status) {
+            .equal => summary.tools_equal += 1,
+            .expected_diff => summary.tools_expected_diff += 1,
+            .differs => summary.tools_differs += 1,
+            .needs_renderer => summary.tools_needs_renderer += 1,
+            .chrome_only => summary.tools_chrome_only += 1,
+            .not_tested => summary.tools_not_tested += 1,
+        }
+        rows[ti] = .{
+            .name = entry.name,
+            .category = entry.category,
+            .status = status,
+            .cases = matched_cases.items,
+            .reason = reason,
+        };
+    }
+    return .{ .summary = summary, .tools = rows };
+}
+
+pub fn writeResultsJson(w: *Io.Writer, summary: SummaryCounts, tools: []const ToolSummaryRow, records: []const CaseRecord) !void {
+    try w.print(
+        "{{\"version\":1,\"chromeMcpVersion\":{f},\"summary\":{{" ++
+            "\"casesTotal\":{d},\"casesEqual\":{d},\"casesExpectedDiff\":{d},\"casesDiffers\":{d}," ++
+            "\"toolsTotal\":{d},\"toolsEqual\":{d},\"toolsExpectedDiff\":{d},\"toolsDiffers\":{d}," ++
+            "\"toolsNeedsRenderer\":{d},\"toolsChromeOnly\":{d},\"toolsNotTested\":{d}}},\"tools\":[",
+        .{
+            std.json.fmt(chrome_mcp_version, .{}),
+            summary.cases_total,
+            summary.cases_equal,
+            summary.cases_expected_diff,
+            summary.cases_differs,
+            summary.tools_total,
+            summary.tools_equal,
+            summary.tools_expected_diff,
+            summary.tools_differs,
+            summary.tools_needs_renderer,
+            summary.tools_chrome_only,
+            summary.tools_not_tested,
+        },
+    );
+    for (tools, 0..) |t, i| {
+        if (i != 0) try w.writeAll(",");
+        try w.print("{{\"name\":{f},\"category\":{f},\"status\":{f},\"cases\":[", .{
+            std.json.fmt(t.name, .{}),
+            std.json.fmt(t.category, .{}),
+            std.json.fmt(t.status.word(), .{}),
+        });
+        for (t.cases, 0..) |c, ci| {
+            if (ci != 0) try w.writeAll(",");
+            try w.print("{f}", .{std.json.fmt(c, .{})});
+        }
+        try w.print("],\"reason\":{f}}}", .{std.json.fmt(t.reason, .{})});
+    }
+    try w.writeAll("],\"cases\":[");
+    for (records, 0..) |rec, i| {
+        if (i != 0) try w.writeAll(",");
+        try w.print("{{\"name\":{f},\"about\":{f},\"equal\":{},\"onlyExpectedDifferences\":{}", .{
+            std.json.fmt(rec.case.name, .{}),
+            std.json.fmt(rec.case.about, .{}),
+            rec.equal,
+            rec.only_expected,
+        });
+        try writeSideJson(w, "chrome", rec.chrome);
+        try writeSideJson(w, "crane", rec.crane);
+        try w.writeAll("}");
+    }
+    try w.writeAll("]}\n");
+}
 
 /// A call whose answers are known to differ, and why (main, 2:24 PM ET
 /// 2026-11-23: a deferred feature's "not supported yet" is listed here).
@@ -419,9 +707,7 @@ pub fn main(init: std.process.Init) !void {
 
     var report: Io.Writer.Allocating = .init(arena);
     const w = &report.writer;
-    var results: Io.Writer.Allocating = .init(arena);
-    const jw = &results.writer;
-    try jw.writeAll("{\"cases\":[");
+    var records: std.ArrayList(CaseRecord) = .empty;
     var equal_cases: usize = 0;
     var expected_cases: usize = 0;
     var ran: usize = 0;
@@ -443,6 +729,22 @@ pub fn main(init: std.process.Init) !void {
             try chrome_argv.append(arena, "--memoryDebugging");
             try crane_argv.append(arena, "--memoryDebugging");
         }
+        if (case.category_network_mocks) {
+            try chrome_argv.append(arena, "--categoryNetworkMocks");
+            try crane_argv.append(arena, "--categoryNetworkMocks");
+        }
+        if (case.category_experimental_third_party) {
+            try chrome_argv.append(arena, "--categoryExperimentalThirdParty");
+            try crane_argv.append(arena, "--categoryExperimentalThirdParty");
+        }
+        if (case.experimental_vision) {
+            try chrome_argv.append(arena, "--experimentalVision");
+            try crane_argv.append(arena, "--experimentalVision");
+        }
+        if (case.slim) {
+            try chrome_argv.append(arena, "--slim");
+            try crane_argv.append(arena, "--slim");
+        }
         if (case.files or case.client_roots) {
             chrome_places.files = try filesDirectory(arena, io, options, slug, "chrome");
             crane_places.files = try filesDirectory(arena, io, options, slug, "crane");
@@ -463,16 +765,20 @@ pub fn main(init: std.process.Init) !void {
         const only_expected = !equal and chrome.failure == null and crane.failure == null and differsOnlyWhereExpected(cases, case.name, chrome.answers, crane.answers);
         if (equal) equal_cases += 1;
         if (only_expected) expected_cases += 1;
-        if (ran != 0) try jw.writeAll(",");
         ran += 1;
-        try jw.print("{{\"name\":{f},\"equal\":{},\"onlyExpectedDifferences\":{}", .{ std.json.fmt(case.name, .{}), equal, only_expected });
-        try writeSideJson(jw, "chrome", chrome);
-        try writeSideJson(jw, "crane", crane);
-        try jw.writeAll("}");
+        try records.append(arena, .{
+            .case = case,
+            .chrome = chrome,
+            .crane = crane,
+            .equal = equal,
+            .only_expected = only_expected,
+        });
         try case_lines.append(arena, try caseSection(arena, cases, case, chrome, crane, equal, only_expected));
         std.debug.print("mcp_diff: {s}: {s}\n", .{ case.name, if (equal) "equal" else if (only_expected) "differs where expected" else "DIFFERS" });
     }
-    try jw.writeAll("]}\n");
+    const classified = try classifyTools(arena, cases, records.items);
+    var results: Io.Writer.Allocating = .init(arena);
+    try writeResultsJson(&results.writer, classified.summary, classified.tools, records.items);
     try w.print("# MCP differential suite\n\nchrome-devtools-mcp v1.13.0 (Chrome for Testing) against Crane's `repl --mcp`, the same calls on fresh servers per case; answers compared with the fixture origin as `{{fixture}}`.\n\n**{d} of {d} cases equal; {d} more differ only where expected.**\n\n", .{ equal_cases, ran, expected_cases });
     if (cases.expected.len > 0) {
         try w.writeAll("## Expected differences\n\n");
@@ -596,6 +902,39 @@ test "the repository's cases file is well formed" {
     defer arena_state.deinit();
     const cases = try parseCases(arena_state.allocator(), @embedFile("cases.json"));
     try std.testing.expectEqualStrings("", try checkCases(cases));
+}
+
+test "classifyTools and writeResultsJson produce valid structured summary JSON" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const cases = try parseCases(arena,
+        \\{"cases":[{"name":"c1","about":"test","calls":[{"tool":"list_pages"},{"tool":"wait_for"}]}],"expected":[{"case":"c1","call":2,"reason":"visible needs layout"}]}
+    );
+    var a1 = [_]client.Answer{ .{ .text = "ok", .is_error = false }, .{ .text = "chrome", .is_error = false } };
+    var b1 = [_]client.Answer{ .{ .text = "ok", .is_error = false }, .{ .text = "crane", .is_error = true } };
+    const recs = [_]CaseRecord{.{
+        .case = cases.cases[0],
+        .chrome = .{ .answers = &a1 },
+        .crane = .{ .answers = &b1 },
+        .equal = false,
+        .only_expected = true,
+    }};
+    const res = try classifyTools(arena, cases, &recs);
+    try std.testing.expectEqual(@as(usize, 66), res.summary.tools_total);
+    try std.testing.expectEqual(@as(usize, 1), res.summary.tools_equal);
+    try std.testing.expectEqual(@as(usize, 1), res.summary.tools_expected_diff);
+    try std.testing.expectEqual(@as(usize, 0), res.summary.tools_differs);
+    try std.testing.expectEqual(@as(usize, 8), res.summary.tools_needs_renderer);
+    try std.testing.expectEqual(@as(usize, 10), res.summary.tools_chrome_only);
+
+    var out: Io.Writer.Allocating = .init(arena);
+    try writeResultsJson(&out.writer, res.summary, res.tools, &recs);
+    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena, out.written(), .{});
+    try std.testing.expectEqual(@as(i64, 1), parsed.object.get("version").?.integer);
+    try std.testing.expectEqual(@as(usize, 66), parsed.object.get("tools").?.array.items.len);
+    try std.testing.expectEqual(@as(usize, 1), parsed.object.get("cases").?.array.items.len);
 }
 
 test {

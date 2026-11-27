@@ -27,6 +27,7 @@ const snapshot_tools = @import("snapshot.zig");
 
 pub const list = [_]Tool{
     .{ .name = "click", .page_tool = true, .blocked_by_dialog = true, .run = click },
+    .{ .name = "click_at", .page_tool = true, .blocked_by_dialog = true, .experimental_vision = true, .run = clickAt },
     .{ .name = "drag", .page_tool = true, .blocked_by_dialog = true, .run = drag },
     .{ .name = "fill", .page_tool = true, .blocked_by_dialog = true, .run = fill },
     .{ .name = "fill_form", .page_tool = true, .blocked_by_dialog = true, .run = fillForm },
@@ -42,6 +43,13 @@ const typing_threshold: usize = 100;
 
 /// Puppeteer's waitForFileChooser timeout in chrome-devtools-mcp uploadFile.
 const file_chooser_timeout_ms: u32 = 3000;
+
+/// `click_at` (`--experimentalVision`): coordinate-based clicks require a
+/// renderer/layout engine to hit-test screen coordinates (design §4 & §6).
+fn clickAt(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Response) anyerror!void {
+    _ = .{ args, page, response };
+    return ctx.fail("click_at is not supported by Crane's MCP server: Crane is headless and has no renderer or layout to hit-test screen coordinates.", .{});
+}
 
 // ============================================================================
 // click

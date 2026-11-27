@@ -47,4 +47,5 @@ test {
     _ = @import("mcp1_stdio_test.zig");
     _ = @import("mcp1_paths_test.zig");
     _ = @import("mcp_http_test.zig");
+    _ = @import("mcp_tools_complete_test.zig");
 }

@@ -2505,28 +2505,69 @@
           }
         }
       ]
+    },
+    {
+      "name": "console: source-mapped stack traces",
+      "about": "Console stack traces resolved through Source Map V3 with ignoreList frames omitted in get_console_message and list_console_messages.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/console-sourcemap.html"
+          }
+        },
+        {
+          "sleep_ms": 500
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1,
+            "includeStackTraces": true
+          }
+        },
+        {
+          "tool": "get_console_message",
+          "args": {
+            "pageId": 1,
+            "msgid": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "refusals: disabled experimental tools",
+      "about": "Tools gated behind optional categories/flags (click_at, remove_network_mock, list_3p_developer_tools) report disabled with default flags.",
+      "calls": [
+        {
+          "tool": "click_at",
+          "args": {
+            "pageId": 1,
+            "x": 10,
+            "y": 20
+          }
+        },
+        {
+          "tool": "remove_network_mock",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "list_3p_developer_tools",
+          "args": {
+            "pageId": 1
+          }
+        }
+      ]
     }
   ],
   "expected": [
     {
       "case": "network: list, filter, details",
-      "call": 2,
-      "reason": "Chrome fetches /favicon.ico after the load, a page request in its Network events (reqid 4); Crane fetches no icon yet. All three browsers fetch one, so Crane will (golden rule 2): queue item icon1 (main, 2:44 PM ET 2026-11-23: link rel=icon processing plus the default /favicon.ico at Chrome's point after load)."
-    },
-    {
-      "case": "network: list, filter, details",
-      "call": 4,
-      "reason": "Chrome fetches /favicon.ico after the load, a page request in its Network events (reqid 4); Crane fetches no icon yet. All three browsers fetch one, so Crane will (golden rule 2): queue item icon1 (main, 2:44 PM ET 2026-11-23: link rel=icon processing plus the default /favicon.ico at Chrome's point after load). The count differs with it."
-    },
-    {
-      "case": "network: list, filter, details",
       "call": 5,
       "reason": "Request headers: Chrome sends its UA client hints (sec-ch-ua*, Chromium only) and its own user-agent; Crane's user-agent is Crane/0.1 (ruling 2026-11-21); the order of requestWillBeSent's headers is Blink's hash order. The response headers' order is a CDP finding (Chrome's Headers are a sorted dictionary) for Crane's Network domain."
-    },
-    {
-      "case": "network: list, filter, details",
-      "call": 9,
-      "reason": "Chrome fetches /favicon.ico after the load, a page request in its Network events (reqid 4); Crane fetches no icon yet. All three browsers fetch one, so Crane will (golden rule 2): queue item icon1 (main, 2:44 PM ET 2026-11-23: link rel=icon processing plus the default /favicon.ico at Chrome's point after load). The later reqids shift by it."
     },
     {
       "case": "wait_for: later text, names, timeouts",
