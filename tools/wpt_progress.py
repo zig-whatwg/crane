@@ -5258,6 +5258,7 @@ def _check_loss_exit_status():
         with patch.multiple(__name__, HISTORY=os.path.join(d, 'history.json'),
                             STATE=os.path.join(d, 'state.json'),
                             load_worklist=lambda: ['a.html'], load_exemptions=lambda *a: {},
+                            load_crashtests=lambda *a: set(),
                             load_loss_dispositions=lambda *a: {},
                             load_results=lambda: (records, []), load_shape=lambda wl: (shape, 0),
                             load_roadmap=lambda: None, git_head=lambda: 'test'):
