@@ -611,9 +611,7 @@ fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
 ///
 /// False by default: a required member (it converts null by its type
 /// already), a nullable member, `any`, a `webidl.Opt` member (its presence
-/// is its own), and a type this converter leaves to the impl - a
-/// dictionary, a callback, a buffer source, a union with no arms table -
-/// which keeps reading a present null as not present.
+/// is its own), and an unknown type with no conversion rule here.
 pub fn presentNullConvertsByType(comptime T: type, comptime field: Zig017Field) bool {
     comptime {
         const info = @typeInfo(field.type);
@@ -627,14 +625,23 @@ pub fn presentNullConvertsByType(comptime T: type, comptime field: Zig017Field) 
         const Payload = info.optional.child;
         if (Payload == runtime.DOMString or Payload == runtime.USVString or Payload == runtime.ByteString) return true;
         if (Payload == *runtime.Instance) return true;
+        // Buffer sources (WebIDL 3.2.26): null is not a buffer source -> TypeError.
+        if (Payload == typedefs.BufferSource or Payload == typedefs.AllowSharedBufferSource or Payload == typedefs.ArrayBufferView) return true;
+        // Callbacks (WebIDL 3.2.16 / 3.2.19): null is neither callable nor an object -> TypeError.
+        if (Payload == runtime.BorrowedCallbackFunction or Payload == runtime.BorrowedCallbackInterface) return true;
+        // Nested dictionary (WebIDL 3.2.18 step 1): null converts to an empty
+        // dictionary (or throws TypeError if it has a required member).
+        if (interface_mod.isDictionaryType(Payload)) return true;
+        // Non-nullable `object` member (listed in `object_members`, not `any`):
+        // null is not an Object -> requireObject throws TypeError.
+        if (Payload == runtime.JSValue and isObjectMember(T, field.name)) return true;
         // A union codegen describes (one with an arms table): null converts
         // by WebIDL 3.2.25 - step 4 to its dictionary member, 15 to its
         // string member ("null"), 17 to its numeric member (0), 18 to
         // boolean (false), else step 20's TypeError (`unionFromValue`;
         // HeadersInit's own converter throws it for a non-Object).
         // hasdecl: every union codegen emits declares `pub const arms`
-        // (union_arms.writeArms); runtime.JSValue, a DOMString and the
-        // buffer source unions declare none and keep the default.
+        // (union_arms.writeArms).
         if (@typeInfo(Payload) == .@"union" and @hasDecl(Payload, "arms")) return true;
         return switch (@typeInfo(Payload)) {
             .bool, .int, .float, .@"enum" => true,
@@ -1281,9 +1288,9 @@ const buffer_sources = @import("webidl").buffer_sources;
 /// here (`js` the buffer, no bytes), freed with the argument
 /// (`interface.freeConvertedArg`), which also releases the handle.
 ///
-/// null and undefined still read as no bytes (`.byte_slice`, empty, no
-/// handle), as before, rather than WebIDL's TypeError: an omitted optional
-/// argument reaches here as undefined.
+/// null and undefined throw TypeError per WebIDL 3.2.25/3.2.26 (omitted
+/// optional arguments are handled by `webidl.Opt` before reaching here, and
+/// nullable types by the optional branch).
 fn convertAllowSharedBufferSource(
     allocator: std.mem.Allocator,
     value: *v8.Value,
@@ -1315,7 +1322,6 @@ fn convertAllowSharedBufferSource(
         buffer.* = .{ .data = &[_]u8{}, .allocator = allocator, .js = @ptrCast(value) };
         return .{ .shared_array_buffer = buffer };
     }
-    if (v8.v8_Value_IsNullOrUndefined(value)) return .{ .byte_slice = &[_]u8{} };
     // Step 20.
     return ConversionError.TypeError;
 }

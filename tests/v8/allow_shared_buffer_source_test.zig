@@ -15,6 +15,7 @@
 const std = @import("std");
 const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const v8 = @import("v8");
 const engine = @import("engine");
 const ffi = v8.ffi;
@@ -214,19 +215,25 @@ test "a dictionary member a later member's getter detaches reads as empty" {
     try std.testing.expectEqual(@as(usize, 0), bytes.len);
 }
 
-test "null and undefined hold no bytes and no reference" {
+test "null and undefined are TypeError for non-nullable AllowSharedBufferSource; Opt and nullable handle them" {
     defer test_agent.close();
     try setUp();
     for ([_][]const u8{ "null", "undefined" }) |code| {
         const handle = try eval(code);
-        const source = try convert(handle);
-        // No reference kept: the binding releases the argument's handle at
-        // once (keptArgumentHandle is null), as this does.
-        ffi.v8_Value_Dispose(handle);
-        defer iface.freeConvertedArg(AllowSharedBufferSource, testing_allocator, source);
-        try std.testing.expectEqual(@as(?*anyopaque, null), source.jsHandle());
-        try std.testing.expectEqual(@as(usize, 0), (try source.asBytes()).len);
+        defer ffi.v8_Value_Dispose(handle);
+        try std.testing.expectError(error.TypeError, convert(handle));
     }
+    // webidl.Opt(AllowSharedBufferSource): undefined is .notPassed(), null is TypeError.
+    const undef = try eval("undefined");
+    defer ffi.v8_Value_Dispose(undef);
+    const opt_undef = try conv.fromV8Value(webidl.Opt(AllowSharedBufferSource), testing_allocator, test_isolate.?, test_context.?, undef);
+    try std.testing.expect(!opt_undef.wasPassed());
+    const js_null = try eval("null");
+    defer ffi.v8_Value_Dispose(js_null);
+    try std.testing.expectError(error.TypeError, conv.fromV8Value(webidl.Opt(AllowSharedBufferSource), testing_allocator, test_isolate.?, test_context.?, js_null));
+    // Nullable ?AllowSharedBufferSource: both null and undefined convert to null.
+    try std.testing.expectEqual(@as(?AllowSharedBufferSource, null), try conv.fromV8Value(?AllowSharedBufferSource, testing_allocator, test_isolate.?, test_context.?, js_null));
+    try std.testing.expectEqual(@as(?AllowSharedBufferSource, null), try conv.fromV8Value(?AllowSharedBufferSource, testing_allocator, test_isolate.?, test_context.?, undef));
 }
 
 // ---------------------------------------------------------------------------
