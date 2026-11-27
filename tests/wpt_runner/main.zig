@@ -183,6 +183,18 @@ pub const std_options: std.Options = .{
     .signal_stack_size = null,
 };
 
+// The bug-finding gate counts the line a Browser logs when its heap got a
+// rung below the full one (build_compare.zig `unexpected_rungs`, the
+// allocator-hardening design 10.2): a line under this runner's log level is
+// never written, and the gate then passes having read nothing (audit
+// report-B H1: the line was `log.info`, the runner logs `.warn`).
+comptime {
+    if (!std.log.logEnabled(@import("browser").Browser.heap_rung_log_level, .browser)) @compileError(std.fmt.comptimePrint(
+        "src/browser/Browser.zig logs its heap rung line at .{t}, below this runner's log level (.{t}): the bug-finding gate would never see a Browser off the full rung",
+        .{ @import("browser").Browser.heap_rung_log_level, std_options.log_level },
+    ));
+}
+
 /// The runner's own threads get the platform's alternate signal stack
 /// (signal_stack.zig reaches these through `@import("root")`, so the
 /// runner's std-only modules need no platform import).
