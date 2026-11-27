@@ -957,3 +957,14 @@ test "unexpected non-full heap rungs fail the bug-finding gate (§10.2)" {
     try testing.expect(std.mem.indexOf(u8, w.buffered(), "unexpected rungs 3") != null);
     try testing.expect(std.mem.indexOf(u8, w.buffered(), "bug-finding gate: FAIL") != null);
 }
+
+test "a V8 handle leak line in the bug-finding log counts in the gate's total, as a heap leak's does" {
+    // The bug-finding runner prints this line (main.zig, handle_gate.writeDiagnostic)
+    // for a file whose net live_object_globals or wrapper_cache_entries rose past
+    // its tools/wpt_handle_leaks_baseline.txt cap after the page closed and a full GC.
+    var f: LogFindings = .{};
+    f.scan(
+        \\warning(handle): handle leak: streams/a.html: live_object_globals +1 (max 0), wrapper_cache_entries +5 (max 0), global_handle_bytes +64, node_wrappers 0
+    );
+    try testing.expectEqual(@as(usize, 1), f.total());
+}
