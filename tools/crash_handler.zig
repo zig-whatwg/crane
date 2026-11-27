@@ -10,6 +10,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+pub const issues_url = "https://github.com/zig-whatwg/crane/issues";
 pub const issue_url = "https://github.com/zig-whatwg/crane/issues/new";
 
 pub const BuildInfo = struct {
@@ -58,15 +59,30 @@ pub fn writeHeader(writer: *std.Io.Writer, info: BuildInfo, kind: CrashKind) std
     try writer.writeAll("Stack trace:\n");
 }
 
-/// Write the bug-report instructions footer after the stack trace.
+/// Write copy/paste-ready bug-report and triage instructions (for a human or
+/// browser AI agent) after the stack trace.
 pub fn writeFooter(writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.writeAll("------------------------------------------------------------------------\n");
-    try writer.print("Please report this bug at:\n  {s}\n\n", .{issue_url});
-    try writer.writeAll("Please include:\n");
-    try writer.writeAll("  1. The Crane version and OS/arch shown above\n");
-    try writer.writeAll("  2. The exact `crane` command and flags you ran\n");
-    try writer.writeAll("  3. The URL or minimal HTML reproduction\n");
-    try writer.writeAll("  4. The full stack trace above\n");
+    try writer.writeAll("Bug report & triage instructions (copy/paste this entire block to a\n");
+    try writer.writeAll("human or AI agent):\n\n");
+    try writer.print("  1. Search existing issues (both open and closed) before filing:\n       {s}\n\n", .{issues_url});
+    try writer.writeAll("  2. If a matching CLOSED issue is found:\n");
+    try writer.writeAll("     - Closed as `wontfix` / not planned: do NOT file a new issue;\n");
+    try writer.writeAll("       explain to the user why it was closed.\n");
+    try writer.writeAll("     - Fixed and already released: do NOT file a new issue; suggest\n");
+    try writer.writeAll("       that the user upgrade Crane to get the bugfix.\n");
+    try writer.writeAll("     - Fixed but not yet released: do NOT file a new issue; let the\n");
+    try writer.writeAll("       user know they can try the nightly release channel.\n\n");
+    try writer.writeAll("  3. If a matching OPEN issue already exists:\n");
+    try writer.writeAll("     - Do NOT open a duplicate. If this stack trace, OS/arch, or\n");
+    try writer.writeAll("       reproduction adds useful diagnostic data, add it as a comment\n");
+    try writer.writeAll("       on that issue.\n\n");
+    try writer.print("  4. Otherwise, open a new issue at:\n       {s}\n", .{issue_url});
+    try writer.writeAll("     Include:\n");
+    try writer.writeAll("     - The Crane version, commit SHA, build mode, and OS/arch above\n");
+    try writer.writeAll("     - The exact `crane` command and flags run\n");
+    try writer.writeAll("     - The URL or minimal HTML reproduction\n");
+    try writer.writeAll("     - The full stack trace above\n");
     try writer.writeAll("========================================================================\n");
 }
 

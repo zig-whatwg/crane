@@ -56,19 +56,35 @@ test "crash_handler: formats signal header with address and without address" {
     try testing.expect(std.mem.indexOf(u8, text2, "0x") == null);
 }
 
-test "crash_handler: footer contains GitHub issue URL and 4-item report checklist" {
+test "crash_handler: footer contains agent/human triage workflow, both GitHub URLs, and 4-step checklist" {
     var out: std.Io.Writer.Allocating = .init(testing.allocator);
     defer out.deinit();
 
     try crash_handler.writeFooter(&out.writer);
     const text = out.written();
 
-    try testing.expect(std.mem.indexOf(u8, text, "https://github.com/zig-whatwg/crane/issues/new") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "copy/paste") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "AI agent") != null);
+    // Step 1: Search open and closed issues first.
     try testing.expect(std.mem.indexOf(u8, text, "1.") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "open and closed") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "https://github.com/zig-whatwg/crane/issues\n") != null);
+    // Step 2: Closed matching issue rules (wontfix, released -> upgrade, unreleased -> nightly).
     try testing.expect(std.mem.indexOf(u8, text, "2.") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "wontfix") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "not planned") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "upgrade Crane") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "nightly release channel") != null);
+    // Step 3: Open matching issue rule (no duplicate, comment if helpful).
     try testing.expect(std.mem.indexOf(u8, text, "3.") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "duplicate") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "comment") != null);
+    // Step 4: New issue URL and required details.
     try testing.expect(std.mem.indexOf(u8, text, "4.") != null);
-    try testing.expect(std.mem.indexOf(u8, text, "version") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "https://github.com/zig-whatwg/crane/issues/new") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "commit SHA") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "build mode") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "OS/arch") != null);
     try testing.expect(std.mem.indexOf(u8, text, "command") != null);
     try testing.expect(std.mem.indexOf(u8, text, "URL") != null);
     try testing.expect(std.mem.indexOf(u8, text, "stack trace") != null);
@@ -93,7 +109,10 @@ test "crash_handler: real panic subprocess prints banner, version, stack trace, 
     try testing.expect(std.mem.indexOf(u8, res.stderr, "0.1.0-test") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "deadbeef0") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "intentional crash fixture panic") != null);
+    try testing.expect(std.mem.indexOf(u8, res.stderr, "https://github.com/zig-whatwg/crane/issues\n") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "https://github.com/zig-whatwg/crane/issues/new") != null);
+    try testing.expect(std.mem.indexOf(u8, res.stderr, "wontfix") != null);
+    try testing.expect(std.mem.indexOf(u8, res.stderr, "nightly release channel") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "1.") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "4.") != null);
     // Symbolized stack trace must reference triggerPanic or crash_fixture.zig.
