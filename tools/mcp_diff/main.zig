@@ -51,10 +51,15 @@ pub const Call = struct {
     /// these tools in this order (null for one not listed) - how a case's
     /// flags shape the schemas both servers list (lane mcp3, audit M2).
     list_tools: []const []const u8 = &.{},
+    /// "chrome": the call runs on Chrome's side only and its answer is not
+    /// compared - how a case makes an input both sides then read (a heap
+    /// snapshot Chrome takes, copied to Crane by `copy_to_crane`).
+    side: []const u8 = "",
 
-    /// Whether the call has an answer (a tool call or a tools/list).
+    /// Whether the call has an answer both sides compare (a tool call or a
+    /// tools/list, on both sides).
     pub fn answered(self: Call) bool {
-        return self.tool.len != 0 or self.list_tools.len != 0;
+        return (self.tool.len != 0 or self.list_tools.len != 0) and self.side.len == 0;
     }
 };
 
@@ -82,6 +87,10 @@ pub const Case = struct {
     /// More flags given to both servers, as chrome-devtools-mcp spells them
     /// ("--no-page-id-routing", "--maxNavigationSaved=2").
     flags: []const []const u8 = &.{},
+    /// Files (in `{files}`) Chrome's side made that are copied to Crane's
+    /// `{files}` after Chrome's side ran and before Crane's runs: both
+    /// analyse the same input (audit M6: a heap snapshot of a real page).
+    copy_to_crane: []const []const u8 = &.{},
 };
 
 pub const chrome_mcp_version = "1.13.0";
@@ -398,7 +407,8 @@ pub fn checkCases(cases: Cases) ![]const u8 {
         for (cases.cases[0..i]) |other| if (std.mem.eql(u8, other.name, c.name)) return "two cases share a name";
         if (c.calls.len == 0) return "a case has no calls";
         for (c.calls) |call| {
-            if (!call.answered() and call.sleep_ms == 0) return "a call names no tool, no tools/list and no sleep";
+            if (call.tool.len == 0 and call.list_tools.len == 0 and call.sleep_ms == 0) return "a call names no tool, no tools/list and no sleep";
+            if (call.side.len != 0 and !std.mem.eql(u8, call.side, "chrome")) return "a call's side is not \"chrome\"";
             if (call.tool.len != 0 and call.args != .object and call.args != .null) return "a call's args are not an object";
         }
     }
@@ -485,6 +495,9 @@ fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, l
             Io.sleep(io, .fromMilliseconds(call.sleep_ms), .awake) catch {};
             continue;
         }
+        // A one-side call: Chrome's alone, its answer not kept.
+        const one_side = call.side.len != 0;
+        if (one_side and chrome_page == null) continue;
         // A uid a call names is Crane's numbering: Chrome's for Chrome.
         const call_args = if (chrome_page) |c| c.replay.argsForChrome(arena, call.args) catch call.args else call.args;
         const args = argsJson(arena, call_args, places) catch return .{ .answers = answers.items, .failure = "out of memory" };
@@ -496,6 +509,10 @@ fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, l
         if (chrome_page) |c| if (user_agent.hasSnapshot(answer.text)) setApart(gpa, arena, io, c, call, &answer);
         answer.text = normalize(arena, answer.text, places) catch answer.text;
         if (answer.raw) |raw| answer.raw = normalize(arena, raw, places) catch raw;
+        if (one_side) {
+            if (answer.is_error) return .{ .answers = answers.items, .failure = std.fmt.allocPrint(arena, "{s} (Chrome's side only): {s}", .{ call.tool, answer.text }) catch "a one-side call failed" };
+            continue;
+        }
         answers.append(arena, answer) catch return .{ .answers = answers.items, .failure = "out of memory" };
     }
     if (places.files) |dir| {
@@ -545,7 +562,7 @@ fn filesListing(arena: Allocator, io: Io, dir_path: []const u8) ![]const u8 {
         const st = try dir.statFile(io, name, .{});
         const mode = st.permissions.toMode() & 0o777;
         if (std.mem.endsWith(u8, name, ".heapsnapshot")) {
-            const bytes = try dir.readFileAlloc(io, name, arena, .limited(64 << 20));
+            const bytes = try dir.readFileAlloc(io, name, arena, .limited(512 << 20));
             const summary = summarizeHeapSnapshot(arena, bytes) catch "invalid heapsnapshot";
             try out.writer.print("{s} {o}\n{s}\n", .{ name, mode, summary });
             continue;
@@ -802,6 +819,14 @@ pub fn main(init: std.process.Init) !void {
             }
         }
         const chrome = runSide(gpa, arena, io, chrome_argv.items, try std.fmt.allocPrint(arena, "{s}/logs/{s}.chrome.log", .{ options.out, slug }), case, chrome_places, &chrome_page);
+        for (case.copy_to_crane) |name| {
+            const from = try std.fmt.allocPrint(arena, "{s}/{s}", .{ chrome_places.files orelse break, name });
+            const data = Io.Dir.cwd().readFileAlloc(io, from, arena, .limited(512 * 1024 * 1024)) catch |err| {
+                std.debug.print("mcp_diff: {s}: copying {s} to Crane's side: {t}\n", .{ case.name, name, err });
+                continue;
+            };
+            try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ crane_places.files.?, name }), .data = data });
+        }
         const crane = runSide(gpa, arena, io, crane_argv.items, try std.fmt.allocPrint(arena, "{s}/logs/{s}.crane.log", .{ options.out, slug }), case, crane_places, null);
         const equal = chrome.failure == null and crane.failure == null and sameAnswers(chrome.answers, crane.answers);
         const only_expected = !equal and chrome.failure == null and crane.failure == null and differsOnlyWhereExpected(cases, case.name, chrome.answers, crane.answers);
@@ -958,6 +983,17 @@ test "cases: a tools/list call and a case's flags; the list call has an answer a
         \\{"cases":[{"name":"n","calls":[{"args":{}}]}]}
     );
     try std.testing.expectEqualStrings("a call names no tool, no tools/list and no sleep", try checkCases(none));
+    // A Chrome-only call has no compared answer; another side is refused.
+    const one_side = try parseCases(arena,
+        \\{"cases":[{"name":"s","files":true,"copy_to_crane":["x.heapsnapshot"],"calls":[{"tool":"take_heapsnapshot","side":"chrome","args":{"pageId":1,"filePath":"{files}/x.heapsnapshot"}},{"tool":"get_heapsnapshot_summary","args":{"filePath":"{files}/x.heapsnapshot"}}]}],
+        \\ "expected":[{"case":"s","call":1,"reason":"r"}]}
+    );
+    try std.testing.expectEqualStrings("", try checkCases(one_side));
+    try std.testing.expect(!one_side.cases[0].calls[0].answered());
+    const bad_side = try parseCases(arena,
+        \\{"cases":[{"name":"b","calls":[{"tool":"list_pages","side":"crane"}]}]}
+    );
+    try std.testing.expectEqualStrings("a call's side is not \"chrome\"", try checkCases(bad_side));
 }
 
 test "the repository's cases file is well formed" {
