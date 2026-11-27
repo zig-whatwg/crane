@@ -18,6 +18,7 @@ const session_mod = @import("../session.zig");
 const Page = session_mod.Page;
 const Response = @import("../response.zig").Response;
 const console = @import("../console.zig");
+const lp = @import("../logpoints.zig");
 
 pub const list = [_]Tool{
     .{ .name = "get_console_message", .page_tool = true, .run = getConsoleMessage },
@@ -71,8 +72,11 @@ fn listConsoleMessages(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, re
         if (include_stacks) {
             const trace = try messageStack(ctx, target, group.message);
             if (trace) |t| {
-                stack = try console.formatStackTrace(ctx.arena, t.stack_json, t.cause_lines, false);
-                any_stack = true;
+                const formatted = try formatStackTraceResolved(ctx, target, t.stack_json, t.cause_lines, false);
+                if (formatted.len != 0) {
+                    stack = formatted;
+                    any_stack = true;
+                }
             }
         }
         try console.writeConcise(&out.writer, group.message, group.count, stack);
@@ -104,7 +108,10 @@ fn detailed(ctx: *Context, page: *Page, message: *console.Message) ![]const u8 {
         const details = try std.json.parseFromSliceLeaky(std.json.Value, arena, message.detail_json, .{});
         const symbolized = try fromDetails(ctx, page, details.object, 0);
         text = symbolized.message;
-        if (symbolized.stack_json) |s| stack_text = try console.formatStackTrace(arena, s, try causeLines(arena, symbolized.cause), true);
+        if (symbolized.stack_json) |s| {
+            const formatted = try formatStackTraceResolved(ctx, page, s, try causeLines(ctx, page, symbolized.cause), true);
+            if (formatted.len != 0) stack_text = formatted;
+        }
     } else {
         const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena, message.detail_json, .{});
         var resolved: std.ArrayList([]const u8) = .empty;
@@ -120,7 +127,10 @@ fn detailed(ctx: *Context, page: *Page, message: *console.Message) ![]const u8 {
             text = resolved.items[0];
             try arg_texts.appendSlice(arena, resolved.items[1..]);
         } else try arg_texts.appendSlice(arena, resolved.items);
-        if (message.stack_json.len != 0) stack_text = try console.formatStackTrace(arena, message.stack_json, &.{}, true);
+        if (message.stack_json.len != 0) {
+            const formatted = try formatStackTraceResolved(ctx, page, message.stack_json, &.{}, true);
+            if (formatted.len != 0) stack_text = formatted;
+        }
     }
     var lines: std.ArrayList([]const u8) = .empty;
     try lines.append(arena, try std.fmt.allocPrint(arena, "ID: {d}", .{message.id}));
@@ -144,7 +154,7 @@ fn resolveArg(ctx: *Context, page: *Page, arg: std.json.Value) ![]const u8 {
     const kind = session_mod.str(remote.get("type"));
     if (std.mem.eql(u8, kind, "object") and std.mem.eql(u8, session_mod.str(remote.get("subtype")), "error")) {
         const symbolized = try fromError(ctx, page, remote, 0);
-        return formatSymbolized(arena, symbolized);
+        return formatSymbolized(ctx, page, symbolized);
     }
     if (!console.isJsonLike(remote)) return console.formatRemoteObject(arena, remote);
     const object_id = remote.get("objectId") orelse {
@@ -195,7 +205,7 @@ fn messageStack(ctx: *Context, page: *Page, message: *console.Message) !?Message
     const details = try std.json.parseFromSliceLeaky(std.json.Value, ctx.arena, message.detail_json, .{});
     const symbolized = try fromDetails(ctx, page, details.object, 0);
     const stack = symbolized.stack_json orelse return null;
-    return .{ .stack_json = stack, .cause_lines = try causeLines(ctx.arena, symbolized.cause) };
+    return .{ .stack_json = stack, .cause_lines = try causeLines(ctx, page, symbolized.cause) };
 }
 
 /// SymbolizedError.#fromDetails with includeStackAndCause.
@@ -265,13 +275,16 @@ fn lookupCause(ctx: *Context, page: *Page, remote: std.json.ObjectMap) !?std.jso
     return null;
 }
 
-/// formatCause's lines.
-fn causeLines(arena: Allocator, cause: ?*Symbolized) ![]const []const u8 {
+/// formatCause's lines (with source-map resolution + ignoreList filtering).
+fn causeLines(ctx: *Context, page: *Page, cause: ?*Symbolized) ![]const []const u8 {
     var lines: std.ArrayList([]const u8) = .empty;
     var next = cause;
     while (next) |c| {
-        try lines.append(arena, try std.fmt.allocPrint(arena, "Caused by: {s}", .{c.message}));
-        if (c.stack_json) |s| try console.stackLines(arena, s, &lines);
+        try lines.append(ctx.arena, try std.fmt.allocPrint(ctx.arena, "Caused by: {s}", .{c.message}));
+        if (c.stack_json) |s| {
+            try ensureStackSourceMaps(ctx, page, s);
+            try stackLinesResolved(ctx.arena, &page.logpoints, s, &lines);
+        }
         next = c.cause;
     }
     return lines.items;
@@ -279,11 +292,214 @@ fn causeLines(arena: Allocator, cause: ?*Symbolized) ![]const []const u8 {
 
 /// formatArg of a SymbolizedError: its message, then its stack trace (with
 /// the causes) when it has one.
-fn formatSymbolized(arena: Allocator, symbolized: Symbolized) ![]const u8 {
+fn formatSymbolized(ctx: *Context, page: *Page, symbolized: Symbolized) ![]const u8 {
     const stack = symbolized.stack_json orelse return symbolized.message;
-    const trace = try console.formatStackTrace(arena, stack, try causeLines(arena, symbolized.cause), true);
+    const trace = try formatStackTraceResolved(ctx, page, stack, try causeLines(ctx, page, symbolized.cause), true);
     if (trace.len == 0) return symbolized.message;
-    return std.fmt.allocPrint(arena, "{s}\n{s}", .{ symbolized.message, trace });
+    return std.fmt.allocPrint(ctx.arena, "{s}\n{s}", .{ symbolized.message, trace });
+}
+
+// ----------------------------------------------------------------------------
+// Source-map-resolved stack trace formatting (reusing logpoints/source_map.zig)
+// ----------------------------------------------------------------------------
+
+const stack_trace_max_lines = 50;
+
+fn formatStackTraceResolved(
+    ctx: *Context,
+    page: *Page,
+    stack_json: []const u8,
+    cause_lines: []const []const u8,
+    include_note: bool,
+) ![]const u8 {
+    try ensureStackSourceMaps(ctx, page, stack_json);
+    return formatStackTraceWithState(ctx.arena, &page.logpoints, stack_json, cause_lines, include_note);
+}
+
+fn formatStackTraceWithState(
+    arena: Allocator,
+    state: *const lp.State,
+    stack_json: []const u8,
+    cause_lines: []const []const u8,
+    include_note: bool,
+) ![]const u8 {
+    var lines: std.ArrayList([]const u8) = .empty;
+    try stackLinesResolved(arena, state, stack_json, &lines);
+    try lines.appendSlice(arena, cause_lines);
+    if (lines.items.len == 0) return "";
+    var out: std.ArrayList([]const u8) = .empty;
+    const kept = @min(lines.items.len, stack_trace_max_lines);
+    try out.appendSlice(arena, lines.items[0..kept]);
+    if (lines.items.len > kept) try out.append(arena, try std.fmt.allocPrint(arena, "... and {d} more frames", .{lines.items.len - kept}));
+    if (include_note) try out.append(arena, "Note: line and column numbers use 1-based indexing");
+    return std.mem.join(arena, "\n", out.items);
+}
+
+/// Start & await source map loads for any script referenced by `stack_json`.
+fn ensureStackSourceMaps(ctx: *Context, page: *Page, stack_json: []const u8) !void {
+    if (stack_json.len == 0) return;
+    const state = &page.logpoints;
+    _ = state.pollLoads();
+    const parsed = std.json.parseFromSliceLeaky(std.json.Value, ctx.arena, stack_json, .{}) catch return;
+    if (parsed != .object) return;
+
+    var need_wait = false;
+    var fragment: ?std.json.ObjectMap = parsed.object;
+    while (fragment) |f| {
+        if (f.get("callFrames")) |cf| if (cf == .array) for (cf.array.items) |frame| {
+            if (frame != .object) continue;
+            const script_id = session_mod.str(frame.object.get("scriptId"));
+            const url = session_mod.str(frame.object.get("url"));
+            const line = jsonNumber(frame.object.get("lineNumber"));
+            const col = jsonNumber(frame.object.get("columnNumber"));
+            const idx = findScriptIndex(state, script_id, url, line, col) orelse continue;
+            const script = &state.scripts.items[idx];
+            if (script.source_map_url.len == 0 or script.has_syntax_error) continue;
+            if (script.map_state == .none) {
+                state.startMapLoad(ctx.session.allocator, script, page.url, &ctx.session.paths);
+            }
+            if (script.map_state == .loading) need_wait = true;
+        };
+        fragment = if (f.get("parent")) |p| (if (p == .object) p.object else null) else null;
+    }
+    if (need_wait) {
+        _ = try state.waitForMaps(ctx.session, page, null);
+    }
+}
+
+fn findScriptIndex(state: *const lp.State, script_id: []const u8, url: []const u8, line: i64, col: i64) ?usize {
+    if (script_id.len != 0) {
+        for (state.scripts.items, 0..) |s, idx| {
+            if (std.mem.eql(u8, s.id, script_id)) return idx;
+        }
+    }
+    if (url.len != 0) {
+        // Prefer the newest parsed script matching `url` whose span contains (line, col).
+        var fallback: ?usize = null;
+        var i = state.scripts.items.len;
+        while (i > 0) {
+            i -= 1;
+            const s = &state.scripts.items[i];
+            if (!std.mem.eql(u8, s.url, url)) continue;
+            if (s.containsLocation(line, col)) return i;
+            if (fallback == null) fallback = i;
+        }
+        return fallback;
+    }
+    return null;
+}
+
+fn stackLinesResolved(arena: Allocator, state: *const lp.State, stack_json: []const u8, lines: *std.ArrayList([]const u8)) !void {
+    if (stack_json.len == 0) return;
+    const parsed = std.json.parseFromSliceLeaky(std.json.Value, arena, stack_json, .{}) catch return;
+    if (parsed != .object) return;
+    var fragment: ?std.json.ObjectMap = parsed.object;
+    var first = true;
+    while (fragment) |f| {
+        var frames: std.ArrayList([]const u8) = .empty;
+        if (f.get("callFrames")) |cf| if (cf == .array) for (cf.array.items) |frame| {
+            if (frame != .object) continue;
+            if (try formatFrameResolved(arena, state, frame.object)) |formatted| {
+                try frames.append(arena, formatted);
+            }
+        };
+        if (!first and frames.items.len > 0) {
+            const description = session_mod.str(f.get("description"));
+            const prefix = try std.fmt.allocPrint(arena, "--- {s} ", .{if (description.len != 0) description else "async"});
+            const dashes = 40 -| prefix.len;
+            const separator = try arena.alloc(u8, prefix.len + dashes);
+            @memcpy(separator[0..prefix.len], prefix);
+            @memset(separator[prefix.len..], '-');
+            try lines.append(arena, separator);
+        }
+        try lines.appendSlice(arena, frames.items);
+        first = false;
+        fragment = if (f.get("parent")) |p| (if (p == .object) p.object else null) else null;
+    }
+}
+
+/// Resolve a call frame through its script's Source Map V3 (if loaded) and
+/// filter ignore-listed frames (`ignoreList` / `x_google_ignoreList`).
+/// Returns null when the frame is ignore-listed.
+fn formatFrameResolved(arena: Allocator, state: *const lp.State, frame: std.json.ObjectMap) !?[]const u8 {
+    const name = session_mod.str(frame.get("functionName"));
+    const script_id = session_mod.str(frame.get("scriptId"));
+    const url = session_mod.str(frame.get("url"));
+    const line = jsonNumber(frame.get("lineNumber"));
+    const col = jsonNumber(frame.get("columnNumber"));
+
+    if (findScriptIndex(state, script_id, url, line, col)) |idx| {
+        const script = &state.scripts.items[idx];
+        switch (script.map_state) {
+            .loaded => |sm| {
+                const rel = script.rawToRelative(line, col);
+                if (sm.findEntry(rel.line, rel.column)) |entry| {
+                    if (entry.source_url) |src_url| {
+                        if (state.isActiveSourceMap(idx, src_url) and entry.source_line >= 0 and entry.source_column >= 0) {
+                            if (sm.hasIgnoreListHint(src_url)) return null;
+                            return try std.fmt.allocPrint(
+                                arena,
+                                "at {s} ({s}:{d}:{d})",
+                                .{ name, try console.displayName(arena, src_url), entry.source_line + 1, entry.source_column + 1 },
+                            );
+                        }
+                    }
+                }
+            },
+            else => {},
+        }
+    }
+
+    if (url.len == 0) {
+        return try std.fmt.allocPrint(arena, "at {s} (VM{s}:{d}:{d})", .{ name, script_id, line + 1, col + 1 });
+    }
+    return try std.fmt.allocPrint(arena, "at {s} ({s}:{d}:{d})", .{ name, try console.displayName(arena, url), line + 1, col + 1 });
+}
+
+fn jsonNumber(value: ?std.json.Value) i64 {
+    const v = value orelse return 0;
+    return switch (v) {
+        .integer => |i| i,
+        .float => |f| @intFromFloat(f),
+        else => 0,
+    };
+}
+
+test "console stack trace source-map resolution and ignoreList filtering" {
+    const alloc = std.testing.allocator;
+    var arena_state = std.heap.ArenaAllocator.init(alloc);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const map_json =
+        \\{"version":3,"sources":["vendor.js","src/app.ts"],"ignoreList":[0],"names":[],"mappings":"AAAS;ACgCI"}
+    ;
+    const sm = try lp.source_map.parse(alloc, "http://example.test/bundle.js", "http://example.test/bundle.js.map", map_json);
+    var state: lp.State = .{};
+    defer state.deinit(alloc);
+    try state.scripts.append(alloc, .{
+        .id = try alloc.dupe(u8, "42"),
+        .url = try alloc.dupe(u8, "http://example.test/bundle.js"),
+        .source_map_url = try alloc.dupe(u8, "bundle.js.map"),
+        .has_source_url = true,
+        .has_syntax_error = false,
+        .start_line = 0,
+        .start_column = 0,
+        .end_line = 10,
+        .end_column = 0,
+        .context_id = 1,
+        .parse_order = 1,
+        .map_state = .{ .loaded = sm },
+    });
+
+    const stack =
+        \\{"callFrames":[{"functionName":"lib","scriptId":"42","url":"http://example.test/bundle.js","lineNumber":0,"columnNumber":15},{"functionName":"app","scriptId":"42","url":"http://example.test/bundle.js","lineNumber":1,"columnNumber":10}]}
+    ;
+    const formatted = try formatStackTraceWithState(arena, &state, stack, &.{}, true);
+    try std.testing.expectEqualStrings(
+        "at app (app.ts:42:5)\nNote: line and column numbers use 1-based indexing",
+        formatted,
+    );
 }
 
 pub fn pageSize(args: std.json.ObjectMap) ?usize {

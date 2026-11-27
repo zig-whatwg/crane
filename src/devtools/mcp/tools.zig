@@ -234,6 +234,7 @@ pub fn disabled(name: []const u8) bool {
 // collects a file's test blocks only when something analyzes its import.
 test {
     _ = script;
+    _ = console_tools;
     _ = network_tools;
     _ = renderer_tools;
     _ = third_party_tools;
