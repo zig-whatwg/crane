@@ -51,5 +51,18 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// assignedSlot: "return the result of find a slot given this and true".
 /// Spec: https://dom.spec.whatwg.org/#dom-slotable-assignedslot
 pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+    // Blink recalculates lazy slot distribution for an open shadow root when
+    // script reads assignedSlot (Node::AssignedSlotForBinding; lane cdpd1 D4):
+    // flush pending CDP DOM.distributedNodesUpdated synchronously (one acquire
+    // load when no DevTools DOM agent is enabled).
+    if (dom.inspector_probes.active()) flushAssignedSlotDistribution(instance);
     return dom.shadow_dom_algorithms.assignedSlotForScript(instance);
+}
+
+noinline fn flushAssignedSlotDistribution(instance: *runtime.Instance) void {
+    const parent = (interfaces.Node.get_parentNode(instance) catch null) orelse return;
+    if (!parent.implements(interfaces.Element.State)) return;
+    const shadow_root = dom.shadow_hosts.rootForHost(parent) orelse return;
+    if ((interfaces.ShadowRoot.get_mode(shadow_root) catch ._closed_) != ._open_) return;
+    dom.inspector_probes.flushSlotDistribution(shadow_root, false);
 }

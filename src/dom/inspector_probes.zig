@@ -122,6 +122,13 @@ pub const VTable = struct {
     node_created: *const fn (context: *anyopaque, node: *runtime.Instance) void,
     /// A slot's assigned nodes changed (DOM "assign slottables").
     slot_assignment_changed: *const fn (context: *anyopaque, slot: *runtime.Instance) void,
+    /// Script read a slot's distribution (`HTMLSlotElement.assignedNodes()`,
+    /// `assignedElements()`, or `Slottable.assignedSlot`): flush any pending
+    /// `DOM.distributedNodesUpdated` notifications for `node`'s shadow tree
+    /// (Blink `SlotAssignment::RecalcAssignment` ->
+    /// `probe::DidPerformSlotDistribution`; lane cdpd1 D4). `node` is either an
+    /// `HTMLSlotElement` or an open `ShadowRoot`.
+    flush_slot_distribution: *const fn (context: *anyopaque, node: *runtime.Instance, flatten: bool) void,
     /// A document's rendering update reached its style step.
     rendering_updated: *const fn (context: *anyopaque, document: *runtime.Instance) void,
     /// A Document's or ShadowRoot's adoptedStyleSheets changed.
@@ -260,11 +267,23 @@ pub noinline fn nodeCreated(node: *runtime.Instance) void {
 /// (HTMLSlotElement::NotifySlottedNodesOfFlatTreeChange ->
 /// probe::DidPerformSlotDistribution, from the next style recalc or slot
 /// read); Crane assigns as the DOM standard says, at once, so the agents
-/// keep it until the document's next rendering update (`renderingUpdated`).
+/// keep it until the document's next rendering update (`renderingUpdated`) or
+/// a script slot read (`flushSlotDistribution`).
 pub noinline fn slotAssignmentChanged(slot: *NodeBase) void {
     const instance = slot.registeredInstance() orelse return;
     const sink = sinkOf(instance) orelse return;
     sink.vtable.slot_assignment_changed(sink.context, instance);
+}
+
+/// Script read `HTMLSlotElement.assignedNodes()`, `assignedElements()`, or
+/// `Slottable.assignedSlot` (lane cdpd1 D4): flush any pending
+/// `DOM.distributedNodesUpdated` notifications for `node`'s shadow tree
+/// synchronously (matching Blink's lazy `SlotAssignment::RecalcAssignment` ->
+/// `probe::DidPerformSlotDistribution`). `node` is an `HTMLSlotElement` or an
+/// open `ShadowRoot`.
+pub noinline fn flushSlotDistribution(node: *runtime.Instance, flatten: bool) void {
+    const sink = sinkOf(node) orelse return;
+    sink.vtable.flush_slot_distribution(sink.context, node, flatten);
 }
 
 /// HTML "update the rendering" step 16 for `document`: where Blink's

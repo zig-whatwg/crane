@@ -140,6 +140,10 @@ fn sequenceOf(instance: *runtime.Instance, nodes: []const *runtime.Instance) !ru
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-slot-assignednodes
 pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AssignedNodesOptions)) anyerror!runtime.JSValue {
     const flatten = if (options.was_passed) options.value.flatten orelse false else false;
+    // Blink recalculates lazy slot distribution on assignedNodes() (lane cdpd1
+    // D4): flush pending CDP DOM.distributedNodesUpdated synchronously (one
+    // acquire load when no DevTools DOM agent is enabled).
+    if (dom.inspector_probes.active()) dom.inspector_probes.flushSlotDistribution(instance, flatten);
     const allocator = instance.ctx.allocator;
     const nodes = try dom.shadow_dom_algorithms.assignedNodes(allocator, instance, flatten, false);
     defer allocator.free(nodes);
@@ -151,6 +155,8 @@ pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(dicti
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-slot-assignedelements
 pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AssignedNodesOptions)) anyerror!runtime.JSValue {
     const flatten = if (options.was_passed) options.value.flatten orelse false else false;
+    // Blink recalculates lazy slot distribution on assignedElements() (D4).
+    if (dom.inspector_probes.active()) dom.inspector_probes.flushSlotDistribution(instance, flatten);
     const allocator = instance.ctx.allocator;
     const nodes = try dom.shadow_dom_algorithms.assignedNodes(allocator, instance, flatten, true);
     defer allocator.free(nodes);
