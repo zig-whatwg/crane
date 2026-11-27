@@ -12,23 +12,30 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 
-/// A traverser's filter: the callback interface value the calls are made
-/// through, taken at the conversion, so that its callback context is the
-/// incumbent realm of createNodeIterator() or createTreeWalker(). Its object
-/// is what the `filter` attribute returns - the object that was passed.
+/// A traverser's filter: the callback interface value kept as a TracedCallback
+/// (lane rc9, item 15), traced from its NodeIterator/TreeWalker wrapper so a
+/// filter closing over its own traverser collects cleanly.
 const Filter = struct {
-    callback: engine.CallbackInterface,
+    callback: engine.TracedCallback,
     allocator: std.mem.Allocator,
 };
 
 /// Keep the filter argument the binding converted (BORROWED for the call) as
-/// a traverser's filter: null for none. The result is the traverser's, freed
-/// by `release`.
-pub fn store(allocator: std.mem.Allocator, given: ?runtime.BorrowedCallbackInterface) error{OutOfMemory}!?*anyopaque {
+/// a traverser's traced filter: null for none. Registers `owner` while it has
+/// no wrapper yet so full collections before first wrap keep the filter alive.
+/// Freed by `release`.
+pub fn store(allocator: std.mem.Allocator, owner: *runtime.Instance, given: ?runtime.BorrowedCallbackInterface) error{OutOfMemory}!?*anyopaque {
     const converted = given orelse return null;
     const filter = try allocator.create(Filter);
-    filter.* = .{ .callback = converted.keep(), .allocator = allocator };
+    filter.* = .{ .callback = converted.keepTraced(), .allocator = allocator };
+    engine.noteUnwrappedTracedOwner(owner);
     return filter;
+}
+
+/// Trace the stored filter's callback hold from its owner's `traceHeldNodes`.
+pub fn trace(tracer: *engine.Tracer, stored: ?*anyopaque) void {
+    const filter: *const Filter = @ptrCast(@alignCast(stored orelse return));
+    engine.traceHeld(tracer, filter.callback.hold);
 }
 
 /// Invoke the filter `stored` keeps with « node » and return its answer as an
@@ -39,7 +46,9 @@ pub fn store(allocator: std.mem.Allocator, given: ?runtime.BorrowedCallbackInter
 /// script calling the traverser would make it.
 pub fn call(stored: *anyopaque, node: *runtime.Instance) Error!u16 {
     const filter: *Filter = @ptrCast(@alignCast(stored));
+    if (filter.callback.hold.isEmpty()) return error.InvalidStateError;
     const realm = engine.currentRealm() orelse node.ctx;
+    const callback = filter.callback.asInterface();
 
     // Step 6: "call a user object's operation" acceptNode with « node » and no
     // this value - the operation makes the filter object `this` when it gets
@@ -48,7 +57,7 @@ pub fn call(stored: *anyopaque, node: *runtime.Instance) Error!u16 {
     // "If an exception was thrown, re-throw the exception" is `.rethrow`:
     // what the filter or its return conversion threw comes back as a throw
     // completion, and is thrown on.
-    const completion = interfaces.NodeFilter.invoke_acceptNode(realm, &filter.callback, .undefined, node, .rethrow, realm.allocator) catch |err|
+    const completion = interfaces.NodeFilter.invoke_acceptNode(realm, &callback, .undefined, node, .rethrow, realm.allocator) catch |err|
         return traverserError(err);
     return switch (completion) {
         .normal => |held| blk: {
@@ -83,7 +92,8 @@ fn traverserError(err: engine.Error) Error {
 /// its filter. Null for none.
 pub fn fromStored(realm: runtime.Context, stored: ?*anyopaque) engine.Error!?runtime.JSValue {
     const filter: *Filter = @ptrCast(@alignCast(stored orelse return null));
-    return (try engine.retainValue(realm, filter.callback.object.value)).take();
+    if (filter.callback.hold.isEmpty()) return null;
+    return (try engine.retainValue(realm, filter.callback.hold.value())).take();
 }
 
 /// Release a stored filter: its callback interface value, then the record.
