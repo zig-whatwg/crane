@@ -32,6 +32,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 
+pub const TaskSource = @import("event_loop").TaskSource;
+
 const log = std.log.scoped(.task_sink);
 
 /// A task posted to another thread's loop.
@@ -41,6 +43,8 @@ pub const CrossThreadTask = struct {
     /// The task will never run: free `data`. May run on any thread.
     drop: *const fn (data: ?*anyopaque) void,
     data: ?*anyopaque,
+    /// HTML §8.1.7.2 task source for this cross-thread task (defaults to `.generic`).
+    source: TaskSource = .generic,
 };
 
 /// What a test build counts, for the tests that pin how a loop waits

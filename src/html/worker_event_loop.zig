@@ -49,7 +49,22 @@ const WorkerLink = @import("worker_link.zig").WorkerLink;
 
 const TimerManager = runtime.native_timer.NativeTimerManager;
 const Task = runtime.EventLoopTask;
+const TaskSource = Task.Source;
 const Microtask = runtime.EventLoopMicrotask;
+
+/// A queued worker task stamped with a monotonic enqueue sequence number for
+/// deterministic FIFO tie-breaking across equal-priority task sources.
+const QueuedTask = struct {
+    task: Task,
+    seq: u64,
+};
+
+/// One HTML §8.1.7.2 per-source task queue on a worker event loop.
+const SourceQueue = struct {
+    items: std.ArrayListUnmanaged(QueuedTask) = .empty,
+    drain_read: usize = 0,
+    drain_end: usize = 0,
+};
 
 /// An agent's fetches on its event loop (on its host: AgentHost.fetches).
 const AgentFetches = @import("fetch").algorithms.AgentFetches;
@@ -78,8 +93,16 @@ pub const WorkerEventLoop = struct {
     /// worker spent suspended. Its own allocation: the loop is returned by
     /// value, and the timer manager keeps a pointer to it.
     suspend_clock: *SuspendClock,
-    /// The task queue. Every task here is the worker's: no document.
-    tasks: std.ArrayListUnmanaged(Task) = .empty,
+    /// Per-source HTML §8.1.7.2 task queues. Every task here is the worker's:
+    /// no document, always runnable.
+    queues: [TaskSource.count]SourceQueue = @splat(.{}),
+    /// Total queued tasks across all per-source queues.
+    queued_count: usize = 0,
+    /// Monotonic enqueue sequence number for FIFO across equal-priority sources.
+    next_seq: u64 = 0,
+    /// Consecutive high-priority tasks executed while a normal-priority queue
+    /// had ready work (anti-starvation cap: `TaskSource.max_starvation_tasks`).
+    high_priority_streak: u8 = 0,
     /// For promise allocation (the interface's promiseAllocator).
     promise_arena: std.heap.ArenaAllocator,
     in_turn: bool = false,
@@ -120,7 +143,7 @@ pub const WorkerEventLoop = struct {
         self.sink.close();
         self.timers.deinit();
         self.allocator.destroy(self.suspend_clock);
-        self.tasks.deinit(self.allocator);
+        for (&self.queues) |*q| q.items.deinit(self.allocator);
         self.sink.release();
         self.freeDroppedMicrotasks();
         self.promise_arena.deinit();
@@ -138,12 +161,15 @@ pub const WorkerEventLoop = struct {
     /// Drop every task queued and every task posted: none will run.
     pub fn dropTasks(self: *WorkerEventLoop) void {
         self.takePosted();
-        var tasks = self.tasks;
-        self.tasks = .empty;
-        for (tasks.items) |task| {
-            if (task.drop) |drop| drop(task.context);
+        self.queued_count = 0;
+        for (&self.queues) |*q| {
+            var items = q.items;
+            q.items = .empty;
+            for (items.items) |entry| {
+                if (entry.task.drop) |drop| drop(entry.task.context);
+            }
+            items.deinit(self.allocator);
         }
-        tasks.deinit(self.allocator);
     }
 
     /// The EventLoop interface the worker's realm records
@@ -184,20 +210,9 @@ pub const WorkerEventLoop = struct {
         self.takePosted();
 
         // 2. The tasks queued before this turn, each followed by a
-        // checkpoint; a task they queue waits for the next turn.
-        var budget = self.tasks.items.len;
-        while (budget > 0 and self.tasks.items.len > 0) : (budget -= 1) {
-            // A closing worker runs nothing more: the rest are discarded at
-            // the loop's end.
-            if (!self.link.runsTasks()) return true;
-            // Suspended meanwhile (a task boundary): the rest wait, and the
-            // next turn parks.
-            if (self.link.isSuspended()) return true;
-            const task = self.tasks.orderedRemove(0);
-            task.callback(task.context);
-            self.checkpoint();
-            did_work = true;
-        }
+        // checkpoint; a task they queue waits for the next turn. Per-source
+        // FIFO with priority + anti-starvation (HTML §8.1.7.2 / Golden Rule 2).
+        if (self.drainQueuedTasks()) did_work = true;
         if (!self.link.runsTasks()) return did_work;
         if (self.link.isSuspended()) return did_work;
 
@@ -226,7 +241,7 @@ pub const WorkerEventLoop = struct {
 
         // 5. Nothing queued: wait for a post, the next timer, or - with work
         // in flight that will not post - a slice.
-        if (self.tasks.items.len == 0) {
+        if (self.queued_count == 0) {
             if (self.waitBound()) |bound| {
                 if (bound > 0) self.sink.waitForWork(bound);
             } else self.sink.waitForWork(null);
@@ -295,8 +310,110 @@ pub const WorkerEventLoop = struct {
         return bound;
     }
 
-    /// Move what other threads posted to the end of the task queue, in the
-    /// order it was posted. A task the queue cannot take is dropped.
+    /// Drain all tasks queued before this turn began across all per-source
+    /// queues, compacting each participating queue once on exit (including
+    /// early exit on close or suspension).
+    fn drainQueuedTasks(self: *WorkerEventLoop) bool {
+        var drain_mask: u32 = 0;
+        for (&self.queues, 0..) |*q, i| {
+            if (q.items.items.len == 0) continue;
+            q.drain_read = 0;
+            q.drain_end = q.items.items.len;
+            drain_mask |= (@as(u32, 1) << @intCast(i));
+        }
+        const touched_mask = drain_mask;
+        if (touched_mask == 0) return false;
+
+        defer {
+            var m = touched_mask;
+            while (m != 0) {
+                const idx: usize = @ctz(m);
+                m &= m - 1;
+                const q = &self.queues[idx];
+                const read = q.drain_read;
+                if (read > 0) {
+                    const remaining = q.items.items.len - read;
+                    std.mem.copyForwards(QueuedTask, q.items.items[0..remaining], q.items.items[read..]);
+                    q.items.shrinkRetainingCapacity(remaining);
+                    self.queued_count -= read;
+                }
+                q.drain_read = 0;
+                q.drain_end = 0;
+            }
+        }
+
+        var did_work = false;
+        while (drain_mask != 0) {
+            // A closing worker runs nothing more: the rest are discarded at
+            // the loop's end.
+            if (!self.link.runsTasks()) return true;
+            // Suspended meanwhile (a task boundary): the rest wait, and the
+            // next turn parks.
+            if (self.link.isSuspended()) return true;
+
+            const idx = self.selectNextQueue(drain_mask);
+            const q = &self.queues[idx];
+            const entry = q.items.items[q.drain_read];
+            q.drain_read += 1;
+            if (q.drain_read == q.drain_end) {
+                drain_mask &= ~(@as(u32, 1) << @intCast(idx));
+            }
+
+            const is_high = ((@as(u32, 1) << @intCast(idx)) & TaskSource.high_priority_mask) != 0;
+            const lower_ready = (drain_mask & ~TaskSource.high_priority_mask) != 0;
+            if (is_high) {
+                if (lower_ready) {
+                    self.high_priority_streak +|= 1;
+                } else {
+                    self.high_priority_streak = 0;
+                }
+            } else {
+                self.high_priority_streak = 0;
+            }
+
+            entry.task.callback(entry.task.context);
+            self.checkpoint();
+            did_work = true;
+        }
+        return did_work;
+    }
+
+    /// Choose the next per-source queue to service (same Golden Rule 2 policy
+    /// as `src/browser/event_loop.zig`: single-queue fast path, high-priority
+    /// `user_interaction` with `TaskSource.max_starvation_tasks` cap, and
+    /// oldest `QueuedTask.seq` FIFO across equal-priority queues).
+    inline fn selectNextQueue(self: *const WorkerEventLoop, drain_mask: u32) usize {
+        if (drain_mask & (drain_mask - 1) == 0) {
+            return @ctz(drain_mask);
+        }
+        const high_ready = drain_mask & TaskSource.high_priority_mask;
+        const normal_ready = drain_mask & ~TaskSource.high_priority_mask;
+        const chosen_mask: u32 = if (high_ready != 0 and
+            (normal_ready == 0 or self.high_priority_streak < TaskSource.max_starvation_tasks))
+            high_ready
+        else
+            normal_ready;
+        if (chosen_mask & (chosen_mask - 1) == 0) {
+            return @ctz(chosen_mask);
+        }
+        var m = chosen_mask;
+        var best_idx: usize = @ctz(m);
+        var best_seq: u64 = self.queues[best_idx].items.items[self.queues[best_idx].drain_read].seq;
+        m &= m - 1;
+        while (m != 0) {
+            const idx: usize = @ctz(m);
+            m &= m - 1;
+            const seq = self.queues[idx].items.items[self.queues[idx].drain_read].seq;
+            if (seq < best_seq) {
+                best_seq = seq;
+                best_idx = idx;
+            }
+        }
+        return best_idx;
+    }
+
+    /// Move what other threads posted to the end of their source's task queue,
+    /// in the order it was posted. A task the queue cannot take is dropped.
     fn takePosted(self: *WorkerEventLoop) void {
         var posted: std.ArrayListUnmanaged(runtime.CrossThreadTask) = .empty;
         defer posted.deinit(self.allocator);
@@ -306,7 +423,12 @@ pub const WorkerEventLoop = struct {
             return;
         };
         for (posted.items) |item| {
-            queueTask(self, .{ .callback = item.run, .context = item.data, .drop = item.drop });
+            queueTask(self, .{
+                .callback = item.run,
+                .context = item.data,
+                .drop = item.drop,
+                .source = item.source,
+            });
         }
     }
 
@@ -361,10 +483,15 @@ pub const WorkerEventLoop = struct {
             if (task.drop) |drop| drop(task.context);
             return;
         }
-        self.tasks.append(self.allocator, task) catch {
+        const idx = @backingInt(task.source);
+        const seq = self.next_seq;
+        self.next_seq += 1;
+        self.queues[idx].items.append(self.allocator, .{ .task = task, .seq = seq }) catch {
             if (task.drop) |drop| drop(task.context);
             log.debug("out of memory queueing a task; dropped", .{});
+            return;
         };
+        self.queued_count += 1;
     }
 
     fn runMicrotasks(ptr: *anyopaque) void {

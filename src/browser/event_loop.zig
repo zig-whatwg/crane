@@ -49,6 +49,7 @@ const memory_release = @import("memory_release.zig");
 
 const TimerManager = runtime.native_timer.NativeTimerManager;
 const Task = runtime.EventLoopTask;
+const TaskSource = Task.Source;
 const Microtask = runtime.EventLoopMicrotask;
 
 /// An agent's fetches on its event loop (on its host: AgentHost.fetches).
@@ -64,26 +65,17 @@ pub const EventLoop = struct {
     /// Arena for promise allocation (owned by this event loop)
     promise_arena: std.heap.ArenaAllocator,
 
-    /// The task queue: the engine has none of its own for the host's tasks.
-    /// Its first `waiting` tasks are the ones the last drain left in place
-    /// because their documents were not fully active (`drainTasks`).
-    tasks: std.ArrayList(Task),
+    /// Per-source HTML §8.1.7.2 task queues: the engine has none of its own
+    /// for the host's tasks. Each source keeps its own FIFO queue; waiting
+    /// tasks (inactive documents) stay compacted at `[0..waiting]` of their
+    /// source queue.
+    tasks: TaskQueues = .{},
 
-    /// How many tasks at the front of `tasks` the last drain left waiting:
-    /// their documents are not fully active, and may be again (HTML 8.1.7.1,
-    /// "a task is runnable if its document is either null or fully active").
-    /// Exact between drains - nothing but a drain and `deinit` removes from
-    /// `tasks`, and queueing appends - so `tasks.len > waiting` is "a
-    /// runnable task may be queued" (`runnableQueued`). 0 while a drain runs.
-    waiting: usize = 0,
-
-    /// While a drain walks `tasks` (`drainTasks`): the slots it already took
-    /// a task out of and has not compacted - `[drain_kept, drain_read)`,
-    /// stale copies of tasks that ran or were dropped - which
-    /// `discardDocumentTasks` must not read. Both 0, and `draining` false,
-    /// between drains.
-    drain_kept: usize = 0,
-    drain_read: usize = 0,
+    /// While a drain walks `tasks` (`drainTasks`): bitmask of source queues
+    /// participating in the current drain; each participating queue's
+    /// `[drain_kept, drain_read)` holds stale copies of tasks that ran or were
+    /// dropped, which `discardDocumentTasks` skips. 0 and false between drains.
+    drain_touched: u32 = 0,
     draining: bool = false,
 
     /// Track if we're inside runOnce to prevent reentrancy
@@ -235,7 +227,7 @@ pub const EventLoop = struct {
             .agent = agent,
             .allocator = allocator,
             .promise_arena = std.heap.ArenaAllocator.init(allocator),
-            .tasks = .empty,
+            .tasks = .{},
             .in_run_once = false,
             .sink = sink,
             .timer_manager = timer_mgr,
@@ -261,15 +253,12 @@ pub const EventLoop = struct {
         // Other threads post nothing more; what they posted is dropped.
         self.sink.close();
         // A task still queued will never run: let it free what it carries.
-        for (self.tasks.items) |task| {
-            if (task.drop) |drop| drop(task.context);
-        }
         self.tasks.deinit(self.allocator);
         // So does one waiting for a document the cache still holds (the
         // cache empties itself before the loop ends; this is the net).
         for (self.suspended.items) |*group| {
-            for (group.tasks.items) |task| {
-                if (task.drop) |drop| drop(task.context);
+            for (group.tasks.items) |entry| {
+                if (entry.task.drop) |drop| drop(entry.task.context);
             }
             group.tasks.deinit(self.allocator);
         }
@@ -355,20 +344,24 @@ pub const EventLoop = struct {
     /// alone.
     pub fn discardDocumentTasks(self: *Self, document: *anyopaque, generation: u64) void {
         self.discardDocument(document, generation);
-        const len = self.tasks.items.len;
-        var at: usize = 0;
-        while (at < len) : (at += 1) {
-            if (self.draining and at == self.drain_kept) {
-                at = self.drain_read;
-                if (at >= len) break;
+        for (&self.tasks.queues, 0..) |*q, i| {
+            const len = q.items.items.len;
+            if (len == 0) continue;
+            const in_drain = self.draining and ((self.drain_touched & (@as(u32, 1) << @intCast(i))) != 0);
+            var at: usize = 0;
+            while (at < len) : (at += 1) {
+                if (in_drain and at == q.drain_kept) {
+                    at = q.drain_read;
+                    if (at >= len) break;
+                }
+                // Read afresh: a `drop` below can queue a task (and move the
+                // storage), but never removes one.
+                const task = q.items.items[at].task;
+                const named = task.document orelse continue;
+                if (named != document or task.document_generation != generation) continue;
+                q.items.items[at].task = .{ .callback = discardedTask, .context = null, .source = task.source };
+                if (task.drop) |drop| drop(task.context);
             }
-            // Read afresh: a `drop` below can queue a task (and move the
-            // storage), but never removes one.
-            const task = self.tasks.items[at];
-            const named = task.document orelse continue;
-            if (named != document or task.document_generation != generation) continue;
-            self.tasks.items[at] = .{ .callback = discardedTask, .context = null };
-            if (task.drop) |drop| drop(task.context);
         }
     }
 
@@ -524,8 +517,8 @@ pub const EventLoop = struct {
         self.assertOwnThread();
         const index = self.groupIndexOf(document, document_generation) orelse return;
         var group = self.suspended.orderedRemove(index);
-        for (group.tasks.items) |task| {
-            if (task.drop) |drop| drop(task.context);
+        for (group.tasks.items) |entry| {
+            if (entry.task.drop) |drop| drop(entry.task.context);
         }
         group.tasks.deinit(self.allocator);
     }
@@ -574,16 +567,24 @@ pub const EventLoop = struct {
     /// cached one can have such a task, and a restore is unloading that page
     /// - its tasks are inactive or gone - so nothing observes the order.
     noinline fn spliceResumed(self: *Self) void {
-        var count: usize = 0;
+        var per_source_counts: [TaskSource.count]usize = @splat(0);
+        var total: usize = 0;
         for (self.suspended.items) |group| {
-            if (group.resumed) count += group.tasks.items.len;
+            if (!group.resumed) continue;
+            for (group.tasks.items) |entry| {
+                per_source_counts[@backingInt(entry.task.source)] += 1;
+                total += 1;
+            }
         }
         // A group with no tasks goes all the same.
-        var back: std.ArrayListUnmanaged(Task) = .empty;
-        defer back.deinit(self.allocator);
-        if (count > 0) {
-            back.ensureTotalCapacityPrecise(self.allocator, count) catch return;
-            self.tasks.ensureUnusedCapacity(self.allocator, count) catch return;
+        var back: [TaskSource.count]std.ArrayListUnmanaged(QueuedTask) = @splat(.empty);
+        defer for (&back) |*b| b.deinit(self.allocator);
+        if (total > 0) {
+            for (per_source_counts, 0..) |count, i| {
+                if (count == 0) continue;
+                back[i].ensureTotalCapacityPrecise(self.allocator, count) catch return;
+                self.tasks.queues[i].items.ensureUnusedCapacity(self.allocator, count) catch return;
+            }
         }
         var index: usize = 0;
         while (index < self.suspended.items.len) {
@@ -592,10 +593,17 @@ pub const EventLoop = struct {
                 continue;
             }
             var group = self.suspended.orderedRemove(index);
-            back.appendSliceAssumeCapacity(group.tasks.items);
+            for (group.tasks.items) |entry| {
+                back[@backingInt(entry.task.source)].appendAssumeCapacity(entry);
+            }
             group.tasks.deinit(self.allocator);
         }
-        if (back.items.len > 0) self.tasks.insertSliceAssumeCapacity(0, back.items);
+        for (&back, 0..) |*b, i| {
+            if (b.items.len == 0) continue;
+            self.tasks.queues[i].items.insertSliceAssumeCapacity(0, b.items);
+            self.tasks.items.len += b.items.len;
+            self.tasks.runnable_mask |= (@as(u32, 1) << @intCast(i));
+        }
     }
 
     /// Whether a resumed group waits to be put back: runnable work.
@@ -919,9 +927,9 @@ pub const EventLoop = struct {
     /// How long one idle turn decommits at most.
     const decommit_turn_ns: i64 = std.time.ns_per_ms;
 
-    /// Move what other threads posted to the end of the task queue, in the
-    /// order it was posted: each runs as a task of this loop. A task the
-    /// queue cannot take is dropped.
+    /// Move what other threads posted to the end of their source's task queue,
+    /// in the order it was posted: each runs as a task of this loop. A task
+    /// the queue cannot take is dropped.
     fn takePosted(self: *Self) void {
         var posted: std.ArrayListUnmanaged(runtime.CrossThreadTask) = .empty;
         defer posted.deinit(self.allocator);
@@ -931,29 +939,74 @@ pub const EventLoop = struct {
             return;
         };
         for (posted.items) |item| {
-            queueTask(self, .{ .callback = item.run, .context = item.data, .drop = item.drop });
+            queueTask(self, .{
+                .callback = item.run,
+                .context = item.data,
+                .drop = item.drop,
+                .source = item.source,
+            });
         }
     }
 
     /// Run what other threads posted so far - a snapshot: what these tasks
-    /// post waits - each followed by a checkpoint. Whether any ran.
+    /// post waits - each followed by a checkpoint. High-priority posted tasks
+    /// (`user_interaction`) run ahead of normal-priority ones with bounded
+    /// anti-starvation, preserving FIFO within each priority tier.
     fn runPosted(self: *Self) bool {
         var posted: std.ArrayListUnmanaged(runtime.CrossThreadTask) = .empty;
         defer posted.deinit(self.allocator);
         self.sink.takeAll(&posted, self.allocator) catch return false;
-        for (posted.items) |task| {
-            if (self.cpu_throttling_rate > 1.0) {
-                @branchHint(.unlikely);
-                const task_start = realMonotonicNs();
-                task.run(task.data);
-                self.endOfTask();
-                self.throttleAfterWork(realMonotonicNs() - task_start);
-            } else {
-                task.run(task.data);
-                self.endOfTask();
+        if (posted.items.len == 0) return false;
+        if (posted.items.len > 1) {
+            var has_high = false;
+            var has_normal = false;
+            for (posted.items) |task| {
+                if (task.source.priority() == .high) has_high = true else has_normal = true;
+            }
+            if (has_high and has_normal) {
+                var next_high: usize = 0;
+                var next_normal: usize = 0;
+                var ran: usize = 0;
+                while (ran < posted.items.len) : (ran += 1) {
+                    while (next_high < posted.items.len and posted.items[next_high].source.priority() != .high) next_high += 1;
+                    while (next_normal < posted.items.len and posted.items[next_normal].source.priority() == .high) next_normal += 1;
+                    const pick_high = next_high < posted.items.len and
+                        (next_normal >= posted.items.len or self.tasks.high_priority_streak < TaskSource.max_starvation_tasks);
+                    const task = if (pick_high) blk: {
+                        const t = posted.items[next_high];
+                        next_high += 1;
+                        if (next_normal < posted.items.len) {
+                            self.tasks.high_priority_streak +|= 1;
+                        } else {
+                            self.tasks.high_priority_streak = 0;
+                        }
+                        break :blk t;
+                    } else blk: {
+                        const t = posted.items[next_normal];
+                        next_normal += 1;
+                        self.tasks.high_priority_streak = 0;
+                        break :blk t;
+                    };
+                    self.runOnePosted(task);
+                }
+                return true;
             }
         }
-        return posted.items.len > 0;
+        for (posted.items) |task| self.runOnePosted(task);
+        return true;
+    }
+
+    fn runOnePosted(self: *Self, task: runtime.CrossThreadTask) void {
+        if (self.cpu_throttling_rate > 1.0) {
+            @branchHint(.unlikely);
+            const task_start = realMonotonicNs();
+            task.run(task.data);
+            self.endOfTask();
+            self.throttleAfterWork(realMonotonicNs() - task_start);
+        } else {
+            task.run(task.data);
+            self.endOfTask();
+        }
     }
 
     /// How long one turn frees collected trees at most, past its first slice:
@@ -1068,77 +1121,160 @@ pub const EventLoop = struct {
         // The tasks of documents a restore made fully active again come
         // first: they were queued before anything queued while they waited.
         if (self.suspended.items.len != 0) self.spliceResumed();
-        // The tasks queued before the drain began: `drain_read` walks them.
-        // Those left waiting are `self.tasks.items[0..drain_kept]`; while a
-        // task runs, `[drain_kept, drain_read)` holds none - stale copies
-        // (nothing reads the queue's tasks during a drain but the drain and
-        // `discardDocumentTasks`, which skips that range; nothing but a
-        // drain and `deinit` removes from it, and queueing appends past
-        // `end`, where the walk never goes).
-        const end = self.tasks.items.len;
-        // Until this drain is done, any queued task may be runnable.
-        self.waiting = 0;
+
+        // Snapshot the end of every non-empty per-source queue so tasks queued
+        // during this drain wait for the next turn.
+        var drain_mask: u32 = 0;
+        for (&self.tasks.queues, 0..) |*q, i| {
+            if (q.items.items.len == 0) continue;
+            q.drain_end = q.items.items.len;
+            q.drain_kept = 0;
+            q.drain_read = 0;
+            q.waiting = 0;
+            drain_mask |= (@as(u32, 1) << @intCast(i));
+        }
+        const touched_mask = drain_mask;
+        if (touched_mask == 0) {
+            self.tasks.runnable_mask = 0;
+            return false;
+        }
+
         std.debug.assert(!self.draining);
         self.draining = true;
-        self.drain_kept = 0;
-        self.drain_read = 0;
+        self.drain_touched = touched_mask;
         defer {
+            // Compact every queue that participated in this drain ONCE, moving
+            // tasks queued during the drain down behind the waiting ones.
+            var m = touched_mask;
+            var total_len = self.tasks.items.len;
+            while (m != 0) {
+                const idx: usize = @ctz(m);
+                m &= m - 1;
+                const q = &self.tasks.queues[idx];
+                const kept = q.drain_kept;
+                const read = q.drain_read;
+                if (kept != read) {
+                    const queued_meanwhile = q.items.items.len - read;
+                    std.mem.copyForwards(QueuedTask, q.items.items[kept .. kept + queued_meanwhile], q.items.items[read..]);
+                    q.items.shrinkRetainingCapacity(kept + queued_meanwhile);
+                    total_len -= (read - kept);
+                }
+                q.waiting = kept;
+                q.drain_kept = 0;
+                q.drain_read = 0;
+                q.drain_end = 0;
+                const bit = @as(u32, 1) << @intCast(idx);
+                if (q.items.items.len > q.waiting) {
+                    self.tasks.runnable_mask |= bit;
+                } else {
+                    self.tasks.runnable_mask &= ~bit;
+                }
+            }
+            self.tasks.items.len = total_len;
             self.draining = false;
-            self.drain_kept = 0;
-            self.drain_read = 0;
+            self.drain_touched = 0;
         }
+
         var progressed = false;
-        while (self.drain_read < end) {
+        while (drain_mask != 0) {
+            const idx = self.selectNextQueue(drain_mask);
+            const q = &self.tasks.queues[idx];
             // Read afresh each time: a task that ran may have queued one,
             // and the queue's storage moved.
-            const task = self.tasks.items[self.drain_read];
-            self.drain_read += 1;
-            switch (classify(task)) {
+            const entry = q.items.items[q.drain_read];
+            q.drain_read += 1;
+            if (q.drain_read == q.drain_end) {
+                drain_mask &= ~(@as(u32, 1) << @intCast(idx));
+            }
+            switch (classify(entry.task)) {
                 .inactive => {
                     // A document the back/forward cache holds: into its
                     // group, in queue order.
                     if (self.suspended.items.len != 0) {
-                        if (self.groupOf(task)) |group| {
+                        if (self.groupOf(entry.task)) |group| {
                             if (group.tasks.ensureUnusedCapacity(self.allocator, 1)) {
-                                group.tasks.appendAssumeCapacity(task);
+                                group.tasks.appendAssumeCapacity(entry);
                                 continue;
                             } else |_| {}
                         }
                     }
                     // Left in the queue, behind the ones left before it:
                     // the next drain asks again.
-                    self.tasks.items[self.drain_kept] = task;
-                    self.drain_kept += 1;
+                    q.items.items[q.drain_kept] = entry;
+                    q.drain_kept += 1;
                 },
                 .gone => {
-                    if (task.drop) |drop| drop(task.context);
+                    if (entry.task.drop) |drop| drop(entry.task.context);
                     progressed = true;
                 },
                 .fully_active => {
+                    // Track consecutive high-priority tasks executed while a
+                    // normal-priority queue has ready work (anti-starvation).
+                    const is_high = ((@as(u32, 1) << @intCast(idx)) & TaskSource.high_priority_mask) != 0;
+                    const lower_ready = (drain_mask & ~TaskSource.high_priority_mask) != 0;
+                    if (is_high) {
+                        if (lower_ready) {
+                            self.tasks.high_priority_streak +|= 1;
+                        } else {
+                            self.tasks.high_priority_streak = 0;
+                        }
+                    } else {
+                        self.tasks.high_priority_streak = 0;
+                    }
                     if (self.cpu_throttling_rate > 1.0) {
                         @branchHint(.unlikely);
                         const task_start = realMonotonicNs();
-                        task.callback(task.context);
+                        entry.task.callback(entry.task.context);
                         after(self);
                         self.throttleAfterWork(realMonotonicNs() - task_start);
                     } else {
-                        task.callback(task.context);
+                        entry.task.callback(entry.task.context);
                         after(self);
                     }
                     progressed = true;
                 },
             }
         }
-        // The tasks queued during the drain follow the waiting ones.
-        const kept = self.drain_kept;
-        const read = self.drain_read;
-        if (kept != read) {
-            const queued_meanwhile = self.tasks.items.len - read;
-            std.mem.copyForwards(Task, self.tasks.items[kept .. kept + queued_meanwhile], self.tasks.items[read..]);
-            self.tasks.shrinkRetainingCapacity(kept + queued_meanwhile);
-        }
-        self.waiting = kept;
         return progressed;
+    }
+
+    /// Choose the next per-source queue to service from `drain_mask` (HTML
+    /// §8.1.7.3 step 2.1; Golden Rule 2: Blink/Gecko/WebKit):
+    /// 1. Fast path when only one source queue is ready (e.g. timer bursts).
+    /// 2. High-priority sources (`user_interaction`) preempt normal-priority
+    ///    sources up to `TaskSource.max_starvation_tasks` consecutive tasks
+    ///    when a normal-priority queue is ready.
+    /// 3. Within the chosen priority tier, select the head with the smallest
+    ///    monotonic enqueue sequence (`QueuedTask.seq`) for deterministic FIFO
+    ///    ordering across equal-priority queues (Blink `EnqueueOrder`).
+    inline fn selectNextQueue(self: *const Self, drain_mask: u32) usize {
+        if (drain_mask & (drain_mask - 1) == 0) {
+            return @ctz(drain_mask);
+        }
+        const high_ready = drain_mask & TaskSource.high_priority_mask;
+        const normal_ready = drain_mask & ~TaskSource.high_priority_mask;
+        const chosen_mask: u32 = if (high_ready != 0 and
+            (normal_ready == 0 or self.tasks.high_priority_streak < TaskSource.max_starvation_tasks))
+            high_ready
+        else
+            normal_ready;
+        if (chosen_mask & (chosen_mask - 1) == 0) {
+            return @ctz(chosen_mask);
+        }
+        var m = chosen_mask;
+        var best_idx: usize = @ctz(m);
+        var best_seq: u64 = self.tasks.queues[best_idx].items.items[self.tasks.queues[best_idx].drain_read].seq;
+        m &= m - 1;
+        while (m != 0) {
+            const idx: usize = @ctz(m);
+            m &= m - 1;
+            const seq = self.tasks.queues[idx].items.items[self.tasks.queues[idx].drain_read].seq;
+            if (seq < best_seq) {
+                best_seq = seq;
+                best_idx = idx;
+            }
+        }
+        return best_idx;
     }
 
     /// HTML 8.1.7.1: "A task is runnable if its document is either null or
@@ -1156,7 +1292,7 @@ pub const EventLoop = struct {
     /// not leave waiting, or any while a drain runs - or a resumed document's
     /// group, which the next drain puts back. A suspended group is not.
     fn runnableQueued(self: *const Self) bool {
-        return self.tasks.items.len > self.waiting or (self.suspended.items.len != 0 and self.resumedPending());
+        return self.tasks.runnable_mask != 0 or (self.suspended.items.len != 0 and self.resumedPending());
     }
 
     /// Whether there is pending work that should keep the loop from idling.
@@ -1444,13 +1580,20 @@ pub const EventLoop = struct {
         // A task with a document may be dropped without running (drainTasks):
         // it must be able to free what it carries.
         std.debug.assert(task.document == null or task.drop != null);
-        self.tasks.append(self.allocator, task) catch {
+        const idx = @backingInt(task.source);
+        const q = &self.tasks.queues[idx];
+        const seq = self.tasks.next_seq;
+        self.tasks.next_seq += 1;
+        q.items.append(self.allocator, .{ .task = task, .seq = seq }) catch {
             // The interface cannot fail, so the task is dropped - and a task
             // that will never run frees what it carries, as at the loop's end:
             // a client counting its outstanding tasks hears of this one too.
             if (task.drop) |drop| drop(task.context);
             std.log.debug("event loop: out of memory queueing a task; dropped", .{});
+            return;
         };
+        self.tasks.items.len += 1;
+        self.tasks.runnable_mask |= (@as(u32, 1) << @intCast(idx));
     }
 
     fn runMicrotasks(ptr: *anyopaque) void {
@@ -1481,13 +1624,69 @@ fn realMonotonicMs() u32 {
     return @truncate(@as(u64, @intCast(realMonotonicNs())) / std.time.ns_per_ms);
 }
 
+/// A queued task stamped with a monotonic enqueue sequence number for
+/// deterministic FIFO tie-breaking across equal-priority task sources
+/// (Blink `TaskQueueSelector` `EnqueueOrder`).
+const QueuedTask = struct {
+    task: Task,
+    seq: u64,
+};
+
+/// One HTML §8.1.7.2 task queue (for a single `TaskSource`).
+const SourceQueue = struct {
+    items: std.ArrayListUnmanaged(QueuedTask) = .empty,
+    /// Inactive tasks compacted at `items[0..waiting]` by the previous drain.
+    waiting: usize = 0,
+    /// Active drain walk state (valid only while `EventLoop.draining` is true
+    /// and this queue's bit is set in `EventLoop.drain_touched`).
+    drain_kept: usize = 0,
+    drain_read: usize = 0,
+    drain_end: usize = 0,
+};
+
+/// Per-source HTML §8.1.7.2 task queues for `EventLoop`.
+pub const TaskQueues = struct {
+    /// Total tasks currently held across all per-source queues (kept in sync
+    /// so `event_loop.tasks.items.len` accurately reports total queued tasks).
+    items: struct { len: usize = 0 } = .{},
+    queues: [TaskSource.count]SourceQueue = @splat(.{}),
+    /// Bit `i` is set iff `queues[i].items.items.len > queues[i].waiting`.
+    runnable_mask: u32 = 0,
+    /// Monotonic enqueue sequence number for FIFO across equal-priority sources.
+    next_seq: u64 = 0,
+    /// Consecutive high-priority tasks executed while a normal-priority queue
+    /// had ready work (anti-starvation cap: `TaskSource.max_starvation_tasks`).
+    high_priority_streak: u8 = 0,
+
+    pub fn deinit(self: *TaskQueues, allocator: Allocator) void {
+        for (&self.queues) |*q| {
+            for (q.items.items) |entry| {
+                if (entry.task.drop) |drop| drop(entry.task.context);
+            }
+            q.items.deinit(allocator);
+        }
+        self.items.len = 0;
+        self.runnable_mask = 0;
+    }
+
+    pub fn queueOf(self: *TaskQueues, source: TaskSource) *SourceQueue {
+        return &self.queues[@backingInt(source)];
+    }
+
+    pub fn totalWaiting(self: *const TaskQueues) usize {
+        var sum: usize = 0;
+        for (&self.queues) |*q| sum += q.waiting;
+        return sum;
+    }
+};
+
 /// The tasks of a document the back/forward cache holds.
 const SuspendedGroup = struct {
     document: *anyopaque,
     document_generation: u64,
     window: ?*anyopaque,
     window_generation: u64,
-    tasks: std.ArrayListUnmanaged(Task) = .empty,
+    tasks: std.ArrayListUnmanaged(QueuedTask) = .empty,
     resumed: bool = false,
 };
 
@@ -1575,10 +1774,10 @@ test "an idle period starts only with no task queued, for each window that asked
     try testing.expect(loop.hasPendingWork());
 
     // A runnable task: the loop is not idle.
-    try loop.tasks.append(testing.allocator, .{ .callback = &noop, .context = null });
+    loop.eventLoop().queueTask(.{ .callback = &noop, .context = null });
     try testing.expect(!loop.startIdlePeriod(1_000 * std.time.ns_per_ms));
     try testing.expectEqual(@as(usize, 0), a.starts);
-    _ = loop.tasks.orderedRemove(0);
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
 
     const now: i64 = 1_000 * std.time.ns_per_ms;
     try testing.expect(loop.startIdlePeriod(now));
@@ -1744,9 +1943,10 @@ test "a task whose document is not fully active stays queued, in place, and is n
     // Neither run nor dropped: still queued, in their order, at the front.
     try testing.expect(!a.dropped and !c.dropped);
     try testing.expectEqual(@as(usize, 2), loop.tasks.items.len);
-    try testing.expectEqual(@as(?*anyopaque, &a), loop.tasks.items[0].context);
-    try testing.expectEqual(@as(?*anyopaque, &c), loop.tasks.items[1].context);
-    try testing.expectEqual(@as(usize, 2), loop.waiting);
+    const generic_items = loop.tasks.queueOf(.generic).items.items;
+    try testing.expectEqual(@as(?*anyopaque, &a), generic_items[0].task.context);
+    try testing.expectEqual(@as(?*anyopaque, &c), generic_items[1].task.context);
+    try testing.expectEqual(@as(usize, 2), loop.tasks.totalWaiting());
     // Not work: the loop may idle, and wait, with them queued.
     try testing.expect(!loop.runnableQueued());
     try testing.expect(!loop.hasPendingWork());
@@ -1766,7 +1966,7 @@ test "a waiting task runs once its document is fully active again, before the ta
     const queue = loop.eventLoop();
     queue.queueTask(a.task(&document));
     _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
-    try testing.expectEqual(@as(usize, 1), loop.waiting);
+    try testing.expectEqual(@as(usize, 1), loop.tasks.totalWaiting());
 
     // Queued after it: work again.
     queue.queueTask(d.task(null));
@@ -1775,7 +1975,7 @@ test "a waiting task runs once its document is fully active again, before the ta
     try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
     try testing.expectEqualStrings("ad", log.items);
     try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
-    try testing.expectEqual(@as(usize, 0), loop.waiting);
+    try testing.expectEqual(@as(usize, 0), loop.tasks.totalWaiting());
 }
 
 test "a waiting task whose document is gone is dropped without running" {
@@ -1795,7 +1995,7 @@ test "a waiting task whose document is gone is dropped without running" {
     try testing.expect(a.dropped);
     try testing.expectEqualStrings("", log.items);
     try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
-    try testing.expectEqual(@as(usize, 0), loop.waiting);
+    try testing.expectEqual(@as(usize, 0), loop.tasks.totalWaiting());
 }
 
 test "a task whose document is gone is dropped at once, and one with none runs" {
@@ -1829,13 +2029,13 @@ test "a task queued while waiting tasks are passed over waits for the next drain
     _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
     // b ran and queued e; e waits for the next turn, behind a.
     try testing.expectEqualStrings("b", log.items);
-    try testing.expectEqual(@as(usize, 1), loop.waiting);
+    try testing.expectEqual(@as(usize, 1), loop.tasks.totalWaiting());
     try testing.expectEqual(@as(usize, 2), loop.tasks.items.len);
-    try testing.expectEqual(@as(?*anyopaque, &e), loop.tasks.items[1].context);
+    try testing.expectEqual(@as(?*anyopaque, &e), loop.tasks.queueOf(.generic).items.items[1].task.context);
     try testing.expect(loop.hasPendingWork());
     _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
     try testing.expectEqualStrings("be", log.items);
-    try testing.expectEqual(@as(usize, 1), loop.waiting);
+    try testing.expectEqual(@as(usize, 1), loop.tasks.totalWaiting());
 }
 
 test "one drain over waiting, runnable and gone tasks keeps the waiting ones in order, ahead of what the runnable ones queued" {
@@ -1861,10 +2061,10 @@ test "one drain over waiting, runnable and gone tasks keeps the waiting ones in 
     try testing.expectEqualStrings("bf", log.items);
     try testing.expect(c.dropped and !a.dropped and !d.dropped);
     try testing.expectEqual(@as(usize, 4), loop.tasks.items.len);
-    for ([_]*Ordered{ &a, &d, &e, &g }, loop.tasks.items) |expected, task| {
-        try testing.expectEqual(@as(?*anyopaque, expected), task.context);
+    for ([_]*Ordered{ &a, &d, &e, &g }, loop.tasks.queueOf(.generic).items.items) |expected, entry| {
+        try testing.expectEqual(@as(?*anyopaque, expected), entry.task.context);
     }
-    try testing.expectEqual(@as(usize, 2), loop.waiting);
+    try testing.expectEqual(@as(usize, 2), loop.tasks.totalWaiting());
 
     first.activity = .fully_active;
     second.activity = .gone;
@@ -1872,7 +2072,7 @@ test "one drain over waiting, runnable and gone tasks keeps the waiting ones in 
     try testing.expectEqualStrings("bfaeg", log.items);
     try testing.expect(d.dropped);
     try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
-    try testing.expectEqual(@as(usize, 0), loop.waiting);
+    try testing.expectEqual(@as(usize, 0), loop.tasks.totalWaiting());
 }
 
 test "a drain of a burst runs every task in order, and each one queued meanwhile once, at the next drain" {
@@ -1914,7 +2114,7 @@ test "a drain of a burst runs every task in order, and each one queued meanwhile
     try testing.expect(state.in_order);
     // What they queued, in order, waits for the next drain.
     try testing.expectEqual(@as(usize, n), loop.tasks.items.len);
-    try testing.expectEqual(@as(usize, 0), loop.waiting);
+    try testing.expectEqual(@as(usize, 0), loop.tasks.totalWaiting());
     state.requeue = false;
     try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
     try testing.expectEqual(@as(usize, 2 * n), state.ran);
@@ -1968,13 +2168,13 @@ test "a suspended document's tasks move to its group in order, consecutive ones 
     try testing.expectEqualStrings("xy", log.items);
     // Out of the queue every drain walks: nothing waits there.
     try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
-    try testing.expectEqual(@as(usize, 0), loop.waiting);
+    try testing.expectEqual(@as(usize, 0), loop.tasks.totalWaiting());
     // All five in the group, in the order they were queued, none dropped.
     try testing.expectEqual(@as(usize, 1), loop.suspended.items.len);
     const group = loop.suspended.items[0].tasks.items;
     try testing.expectEqual(@as(usize, 5), group.len);
-    for (group, [_]*Ordered{ &a1, &a2, &a3, &a4, &a5 }) |task, expected| {
-        try testing.expectEqual(@as(?*anyopaque, expected), task.context);
+    for (group, [_]*Ordered{ &a1, &a2, &a3, &a4, &a5 }) |entry, expected| {
+        try testing.expectEqual(@as(?*anyopaque, expected), entry.task.context);
     }
     for ([_]*Ordered{ &a1, &a2, &a3, &a4, &a5 }) |task| try testing.expect(!task.dropped);
     // A suspended group is not work: the loop may wait and idle.
@@ -2015,7 +2215,7 @@ test "an inactive task of another document, or of another generation, stays in p
     _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
     // Both are the transient kind: left in place, as phase A leaves them.
     try testing.expectEqual(@as(usize, 2), loop.tasks.items.len);
-    try testing.expectEqual(@as(usize, 2), loop.waiting);
+    try testing.expectEqual(@as(usize, 2), loop.tasks.totalWaiting());
     try testing.expectEqual(@as(usize, 1), loop.suspended.items.len);
     try testing.expectEqual(@as(usize, 0), loop.suspended.items[0].tasks.items.len);
 }
@@ -2183,8 +2383,7 @@ test "a task another thread posted joins the task queue at the next turn" {
     try testing.expect(loop.hasPendingWork());
     loop.takePosted();
     try testing.expectEqual(@as(usize, 1), loop.tasks.items.len);
-    const task = loop.tasks.orderedRemove(0);
-    task.callback(task.context);
+    try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
     try testing.expectEqual(@as(u32, 1), tally.ran);
     try testing.expect(!loop.hasPendingWork());
 }
@@ -2288,7 +2487,7 @@ test "the deferred teardown runs between tasks: slices while nothing waits, one 
     var big: QueuedTree = .{ .nodes = DeferredTeardown.loop_low_water + 10 * DeferredTeardown.slice_budget };
     try big.queue(&q, &instance);
     try testing.expect(loop.hasPendingWork());
-    try loop.tasks.append(testing.allocator, .{ .callback = &noop, .context = null });
+    loop.eventLoop().queueTask(.{ .callback = &noop, .context = null });
     try testing.expect(loop.runDeferredTeardown());
     try testing.expect(q.pendingNodes() <= DeferredTeardown.loop_low_water);
     try testing.expect(q.pendingNodes() > DeferredTeardown.loop_low_water - DeferredTeardown.slice_budget);
@@ -2297,7 +2496,7 @@ test "the deferred teardown runs between tasks: slices while nothing waits, one 
     const at_mark = big.freed;
     try testing.expect(loop.runDeferredTeardown());
     try testing.expectEqual(at_mark + DeferredTeardown.slice_budget, big.freed);
-    _ = loop.tasks.orderedRemove(0);
+    _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
 
     // Nothing waiting: slices until the queue is empty or the turn's share
     // is spent; every turn makes progress until it is empty.
