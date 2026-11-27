@@ -143,3 +143,92 @@ pub fn existingBlobURLStoreOf(realm: runtime.Context) ?*file.BlobURLStore {
     const scope = realm.browser_scope orelse return null;
     return scope.existing(file.BlobURLStore);
 }
+
+/// Cross-thread snapshot of each tab's DevTools/BiDi UA, extra-header, and
+/// network overrides (`BrowsingContext.host_overrides`), stored as a supplement
+/// on `BrowserScope`. Updated on the window thread whenever a tab's overrides
+/// change or when a Window spawns a worker; read on worker threads under
+/// `mutex` so nested worker main-script requests inherit the ancestor frame's
+/// current `user_agent`, `accept_language`, `extra_headers`, and network
+/// conditions (matching Blink's `OnWorkerMainScriptRequestWillBeSent`).
+pub const TabOverrideStore = struct {
+    allocator: std.mem.Allocator,
+    mutex: std.Io.Mutex = .init,
+    /// tab_id (top-level BrowsingContext.id) -> owned OverrideSnapshot (or null when cleared).
+    /// Entries are overwritten in place rather than removed so the map accumulates no tombstones.
+    tabs: std.AutoHashMapUnmanaged(u64, ?*fetch.internal.request.OverrideSnapshot) = .empty,
+    /// ancestor Window realm pointer (opaque key, never dereferenced) -> tab_id.
+    realm_tabs: std.AutoHashMapUnmanaged(usize, u64) = .empty,
+
+    pub fn init(allocator: std.mem.Allocator) TabOverrideStore {
+        return .{ .allocator = allocator };
+    }
+
+    pub fn deinit(self: *TabOverrideStore) void {
+        var it = self.tabs.valueIterator();
+        while (it.next()) |slot| if (slot.*) |snap| snap.destroy(self.allocator);
+        self.tabs.deinit(self.allocator);
+        self.realm_tabs.deinit(self.allocator);
+    }
+
+    /// Publish `tab_id`'s current host overrides from the window thread.
+    pub fn publish(scope: *runtime.BrowserScope, tab_id: u64, overrides: *const html_core.window.host_overrides.HostOverrides) void {
+        const store = scope.of(TabOverrideStore) catch return;
+        const next = fetch.internal.request.OverrideSnapshot.createWithNetwork(
+            store.allocator,
+            overrides.user_agent,
+            overrides.accept_language,
+            overrides.extra_headers,
+            overrides.network_offline,
+            overrides.network_rules,
+        ) catch return;
+        std.Io.Threaded.mutexLockUncancelable(&store.mutex);
+        defer std.Io.Threaded.mutexUnlock(&store.mutex);
+        const gop = store.tabs.getOrPut(store.allocator, tab_id) catch {
+            if (next) |snap| snap.destroy(store.allocator);
+            return;
+        };
+        if (gop.found_existing) if (gop.value_ptr.*) |old| old.destroy(store.allocator);
+        gop.value_ptr.* = next;
+    }
+
+    /// Associate an ancestor Window realm pointer (opaque key) with its top-level `tab_id`.
+    pub fn bindRealm(scope: *runtime.BrowserScope, realm_key: *const anyopaque, tab_id: u64) void {
+        const store = scope.of(TabOverrideStore) catch return;
+        std.Io.Threaded.mutexLockUncancelable(&store.mutex);
+        defer std.Io.Threaded.mutexUnlock(&store.mutex);
+        store.realm_tabs.put(store.allocator, @intFromPtr(realm_key), tab_id) catch {};
+    }
+
+    /// Look up the top-level `tab_id` recorded for an ancestor Window realm key (any thread).
+    pub fn tabForRealm(scope: *runtime.BrowserScope, realm_key: *const anyopaque) ?u64 {
+        const store = scope.existing(TabOverrideStore) orelse return null;
+        std.Io.Threaded.mutexLockUncancelable(&store.mutex);
+        defer std.Io.Threaded.mutexUnlock(&store.mutex);
+        return store.realm_tabs.get(@intFromPtr(realm_key));
+    }
+
+    /// Copy `tab_id`'s current override snapshot into `request` under the lock (any thread).
+    /// Returns true whenever `TabOverrideStore` owns the tab's state (including when overrides
+    /// were cleared, leaving `request.override_snapshot == null`), false if no store exists.
+    pub fn copyIntoRequest(scope_ptr: *anyopaque, tab_id: u64, request: *fetch.internal.InternalRequest) std.mem.Allocator.Error!bool {
+        const scope: *runtime.BrowserScope = @ptrCast(@alignCast(scope_ptr));
+        const store = scope.existing(TabOverrideStore) orelse return false;
+        std.Io.Threaded.mutexLockUncancelable(&store.mutex);
+        defer std.Io.Threaded.mutexUnlock(&store.mutex);
+        const slot = store.tabs.get(tab_id) orelse return false;
+        if (slot) |snap| {
+            try request.setOverrideSnapshotWithNetwork(
+                snap.user_agent,
+                snap.accept_language,
+                snap.extra_headers,
+                snap.network_offline,
+                snap.network_rules,
+            );
+        } else if (request.override_snapshot) |old| {
+            old.destroy(request.allocator);
+            request.override_snapshot = null;
+        }
+        return true;
+    }
+};

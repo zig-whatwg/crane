@@ -129,6 +129,11 @@ pub const WorkerScriptFetchOptions = struct {
     /// Chrome's browser process applies DevTools' overrides to the worker's
     /// main script request. BORROWED for the call. Empty: none.
     user_agent_override: fetch.algorithms.http_fetch.UserAgentOverride = .{},
+    /// Traversable for user prompts for the worker's script request. When left
+    /// `.client`, resolved from `user_agent_override.has_traversable` (true for
+    /// a Window creator -> Fetch's safe opaque traversable token; false for a
+    /// nested worker or importScripts -> `.no_traversable`).
+    traversable_for_user_prompts: fetch.internal.request.TraversableForUserPrompts = .client,
 
     pub const CredentialsMode = enum {
         omit,
@@ -459,16 +464,36 @@ pub fn workerScriptRequest(
     } else if (options.referrer_source) |source| {
         if (source.len > 0) internal_request.setReferrerUrl(source) catch return WorkerScriptError.OutOfMemory;
     }
-    // The outside settings' user agent override, copied now (user agent
-    // data, not a step).
+    // Fetch "request's traversable for user prompts": resolved to a safe
+    // cross-thread traversable marker when the outside settings' global is a
+    // Window (`has_traversable`), else `.no_traversable` (nested worker or
+    // importScripts). Never left `.client` so Fetch's 401/407 steps run cleanly
+    // on the worker thread without dereferencing a cross-thread Window pointer.
     const client_override = options.user_agent_override;
-    internal_request.setOverrideSnapshotWithNetwork(
-        client_override.user_agent,
-        client_override.accept_language,
-        client_override.extra_headers,
-        client_override.network_offline,
-        client_override.network_rules,
-    ) catch return WorkerScriptError.OutOfMemory;
+    internal_request.traversable_for_user_prompts = if (options.traversable_for_user_prompts != .client)
+        options.traversable_for_user_prompts
+    else if (client_override.has_traversable)
+        .{ .traversable = fetch.algorithms.http_fetch.opaqueTraversable() }
+    else
+        .no_traversable;
+
+    // The outside settings' user agent override, copied now (user agent
+    // data, not a step). For a nested worker, read the ancestor frame's
+    // CURRENT overrides from the thread-safe TabOverrideStore (matching
+    // Blink's OnWorkerMainScriptRequestWillBeSent).
+    var applied_ancestor = false;
+    if (client_override.ancestor_overrides) |ancestor| {
+        applied_ancestor = ancestor.copy_into(ancestor.scope, ancestor.tab_id, internal_request) catch return WorkerScriptError.OutOfMemory;
+    }
+    if (!applied_ancestor) {
+        internal_request.setOverrideSnapshotWithNetwork(
+            client_override.user_agent,
+            client_override.accept_language,
+            client_override.extra_headers,
+            client_override.network_offline,
+            client_override.network_rules,
+        ) catch return WorkerScriptError.OutOfMemory;
+    }
     return internal_request;
 }
 

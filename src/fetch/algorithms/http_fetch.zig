@@ -983,7 +983,7 @@ pub fn wouldPrompt(allocator: Allocator, params: *FetchParams, options: HttpFetc
         request.traversable_for_user_prompts != .traversable) return null;
     // 15.2: a stream body with no source is a network error, never a prompt.
     if (request.body) |body| if (body == .body and body.body.source == .none) return null;
-    if (request.use_url_credentials and !options.is_authentication_fetch) return null;
+    if (request.use_url_credentials and !options.is_authentication_fetch and urlHasCredentials(request.currentUrl())) return null;
     const realm = (try basicChallengeRealmIn(allocator, headers, "WWW-Authenticate")) orelse return null;
     return .{ .source = .server, .realm = realm };
 }
@@ -1028,17 +1028,23 @@ pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, params: *FetchParams,
         response.deinit();
         return .{ .response = failed };
     };
-    // 15.3: "If request's use-URL-credentials flag is unset or
-    // isAuthenticationFetch is true": prompt the end user (15.3.2) -
-    // whoever can answer for one (`.prompt`: a host's handler, CDP's
-    // Fetch.authRequired; with nobody, `promptAnswered(.none)` hands the 401
-    // on, there being no prompting UI). Only a Basic challenge can be
-    // answered: another scheme's 401 is handed on as it is.
-    if (!request.use_url_credentials or options.is_authentication_fetch) {
+    // 15.3: "If request's use-URL-credentials flag is unset, or
+    // isAuthenticationFetch is true, or request's current URL does not include
+    // credentials": prompt the end user (15.3.2) - whoever can answer for one
+    // (`.prompt`: a host's handler, CDP's Fetch.authRequired; with nobody,
+    // `promptAnswered(.none)` hands the 401 on, matching headless Chrome,
+    // Firefox and Safari which deliver the 401 without an interactive prompt).
+    // Only a Basic challenge can be answered: another scheme's 401 is handed on
+    // as it is.
+    const url_creds = if (request.use_url_credentials and !options.is_authentication_fetch)
+        try urlCredentials(allocator, request.currentUrl())
+    else
+        null;
+    if (url_creds == null) {
         const challenge_realm = (try basicChallengeRealm(allocator, &response.header_list)) orelse return .{ .response = response };
         return .{ .prompt = .{ .response = response, .realm = challenge_realm, .source = .server } };
     }
-    const credentials = (try urlCredentials(allocator, request.currentUrl())) orelse return .{ .response = response };
+    const credentials = url_creds.?;
     defer credentials.deinit(allocator);
     const realm = (try basicChallengeRealm(allocator, &response.header_list)) orelse return .{ .response = response };
     errdefer allocator.free(realm);
@@ -1152,6 +1158,13 @@ fn urlCredentials(allocator: Allocator, url: []const u8) Allocator.Error!?URLCre
     const username = try std.fmt.allocPrint(allocator, "{f}", .{std.fmt.alt(uri.user orelse std.Uri.Component.empty, .formatRaw)});
     errdefer allocator.free(username);
     return .{ .username = username, .password = try std.fmt.allocPrint(allocator, "{f}", .{std.fmt.alt(uri.password orelse std.Uri.Component.empty, .formatRaw)}) };
+}
+
+fn urlHasCredentials(url: []const u8) bool {
+    const uri = std.Uri.parse(url) catch return false;
+    const user = uri.user orelse std.Uri.Component.empty;
+    const password = uri.password orelse std.Uri.Component.empty;
+    return !user.isEmpty() or !password.isEmpty();
 }
 
 fn urlPath(url: []const u8) []const u8 {
@@ -1334,13 +1347,30 @@ fn basicRealmOfValue(allocator: Allocator, header_value: []const u8) !?[]u8 {
 
 /// HTTP-network-or-cache fetch step 8's headers for httpRequest: those it
 /// appends to the request's header list, gathered for the request sent (each
-/// value owned). curl adds `Host`, and `Content-Length` for a body, itself.
+/// value owned). curl adds `Host` itself; step 8.5-8.8 appends `Content-Length`
+/// here so both the wire request and DevTools' `requestWillBeSentExtraInfo`
+/// carry it (matching Chrome's network service `BuildRequestHeaders`).
 fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *std.ArrayListUnmanaged(NetworkRequest.Header)) !void {
     const list = &request.header_list;
-    // 8.5-8.9: a null body's Content-Length is `0` for POST and PUT.
-    // (A body's own length curl sends with it.)
-    if (request.body == null and (std.mem.eql(u8, request.method, "POST") or std.mem.eql(u8, request.method, "PUT"))) {
-        try addHeader(allocator, added, "Content-Length", "0");
+    // 8.5. Let contentLengthValue be null.
+    // 8.6. If httpRequest's body is null and httpRequest's method is `POST`
+    //      or `PUT`, then set contentLengthValue to `0`.
+    // 8.7. If httpRequest's body is not null, then set contentLengthValue to
+    //      httpRequest's body's length, serialized and isomorphic encoded.
+    // 8.8. If contentLengthValue is non-null, then append (`Content-Length`,
+    //      contentLengthValue) to httpRequest's header list.
+    if (!list.contains("Content-Length")) {
+        if (request.body) |b| {
+            const len: usize = switch (b) {
+                .bytes => |bytes| bytes.len,
+                .body => |body_obj| body_obj.length orelse body_obj.getBytes().len,
+            };
+            var len_buf: [24]u8 = undefined;
+            const serialized = std.fmt.bufPrint(&len_buf, "{d}", .{len}) catch unreachable;
+            try addHeader(allocator, added, "Content-Length", serialized);
+        } else if (std.mem.eql(u8, request.method, "POST") or std.mem.eql(u8, request.method, "PUT")) {
+            try addHeader(allocator, added, "Content-Length", "0");
+        }
     }
     // 8.11. If httpRequest's referrer is a URL, append (`Referer`, it
     //       serialized and isomorphic encoded).
@@ -1453,6 +1483,32 @@ fn userAgentOf(request: *const InternalRequest) []const u8 {
 /// the request carries the client (content/browser/devtools/protocol/
 /// emulation_handler.cc ApplyOverrides; the network service's request
 /// headers). Null fields: no override.
+/// Non-dereferenceable sentinel standing for a traversable for user prompts on
+/// requests whose fetch may outlive or run off the thread of its creator Window
+/// (HTML "create navigation params by fetching" step 3; a Window-created
+/// worker's script request). Fetch's 401/407 steps only test the `.traversable`
+/// tag; readers that expect a Window `*runtime.Instance` guard with
+/// `isOpaqueTraversable`.
+const opaque_traversable_sentinel: u8 = 0;
+
+pub fn opaqueTraversable() *anyopaque {
+    return @ptrCast(@constCast(&opaque_traversable_sentinel));
+}
+
+pub fn isOpaqueTraversable(ptr: *anyopaque) bool {
+    return ptr == @as(*const anyopaque, @ptrCast(&opaque_traversable_sentinel));
+}
+
+/// Cross-thread handle to an ancestor tab's current override snapshot (Item 6:
+/// nested worker main script requests inherit the ancestor frame's current UA,
+/// Accept-Language, extra headers, and network conditions, matching Blink's
+/// `OnWorkerMainScriptRequestWillBeSent`).
+pub const AncestorOverrides = struct {
+    scope: *anyopaque,
+    tab_id: u64,
+    copy_into: *const fn (scope: *anyopaque, tab_id: u64, request: *InternalRequest) Allocator.Error!bool,
+};
+
 pub const UserAgentOverride = struct {
     user_agent: ?[]const u8 = null,
     accept_language: ?[]const u8 = null,
@@ -1465,6 +1521,11 @@ pub const UserAgentOverride = struct {
     /// global offline flag and URL-matched rules.
     network_offline: bool = false,
     network_rules: []const NetworkRule = &.{},
+    /// Whether the creator realm has a top-level traversable for user prompts
+    /// (true for a Window or navigable, false for a worker realm).
+    has_traversable: bool = false,
+    /// Cross-thread lookup for a nested worker's ancestor tab overrides.
+    ancestor_overrides: ?AncestorOverrides = null,
 };
 
 /// One DevTools extra header.

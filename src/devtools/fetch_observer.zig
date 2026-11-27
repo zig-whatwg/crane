@@ -444,6 +444,7 @@ pub fn attribute(side: *BrowserSide, request: *const InternalRequest) ?Attributi
         .traversable => |t| t,
         else => return null,
     };
+    if (fetch.algorithms.http_fetch.isOpaqueTraversable(window_ptr)) return null;
     const window: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
     const bc = dom.browser_state.browsingContextOf(window) orelse return null;
     // The document's loader id: the Page domain's record (Frames.loaderOf -
@@ -716,6 +717,10 @@ fn requestSent(context: *anyopaque, request: *const InternalRequest, network_req
     var headers: std.json.ObjectMap = .empty;
     for (network_request.headers) |h| putHeader(arena, &headers, h.name, h.value) catch return;
     if (headerOf(&headers, "host") == null) if (hostOf(network_request.url)) |host| putHeader(arena, &headers, "Host", host) catch return;
+    if (headerOf(&headers, "content-length") == null) if (network_request.body) |body| {
+        var len_buf: [24]u8 = undefined;
+        putHeader(arena, &headers, "Content-Length", std.fmt.bufPrint(&len_buf, "{d}", .{body.len}) catch "") catch return;
+    };
     sortHeaders(&headers);
     var id_buffer: [48]u8 = undefined;
     for (sessions) |s| {
