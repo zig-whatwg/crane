@@ -233,6 +233,7 @@ pub fn disabled(name: []const u8) bool {
 // collects a file's test blocks only when something analyzes its import.
 test {
     _ = script;
+    _ = network_tools;
     _ = renderer_tools;
     _ = slim_tools;
     _ = @import("heap_snapshot.zig");
