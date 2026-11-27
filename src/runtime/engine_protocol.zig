@@ -1694,8 +1694,9 @@ pub const WorldObserver = struct {
 /// navigation), or the one already made. Its settings object, event loop,
 /// Browser, origin and document are `main`'s. It is not entered for its
 /// life; it is entered for each call that runs in it. OWNED by `main`: it
-/// ends with it (`destroyWorldRealms`). Fails when `main` is no live
-/// Window realm, or with error.NotSupported on an engine without worlds.
+/// ends with `main` (`destroyWindowRealm` / `detachWindowRealm`). Fails when
+/// `main` is no live Window realm, or with error.NotSupported on an engine
+/// without worlds.
 pub inline fn createWorldRealm(main: Context, options: *const WorldRealmOptions) Error!Context {
     return impl.createWorldRealm(main, options);
 }
@@ -1727,13 +1728,6 @@ pub inline fn worldInfoOf(realm: Context) ?WorldInfo {
 /// Answers how many there are.
 pub inline fn worldRealmsOf(main: Context, out: []Context) usize {
     return impl.worldRealmsOf(main, out);
-}
-
-/// End every world realm of `main` (the observer told first). Implied by
-/// `destroyWindowRealm` of `main` - and by the detach it may make - so a
-/// host calls it only to drop its worlds while `main` lives on.
-pub inline fn destroyWorldRealms(main: Context) void {
-    impl.destroyWorldRealms(main);
 }
 
 /// Install (or, with null, remove) `agent`'s world observer. `observer` and

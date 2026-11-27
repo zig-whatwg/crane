@@ -413,10 +413,6 @@ pub fn worldRealmsOf(main: Context, out: []Context) usize {
     return protocol_worlds.worldRealmsOf(main, out);
 }
 
-pub fn destroyWorldRealms(main: Context) void {
-    protocol_worlds.destroyWorldRealms(main);
-}
-
 pub fn installWorldObserver(agent: *Agent, observer: ?*const engine.WorldObserver, host: ?*anyopaque) void {
     protocol_worlds.installWorldObserver(agent, observer, host);
 }

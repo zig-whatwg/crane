@@ -265,7 +265,6 @@ pub fn worldInfoOf(_: Context) ?engine.WorldInfo {
 pub fn worldRealmsOf(_: Context, _: []Context) usize {
     return 0;
 }
-pub fn destroyWorldRealms(_: Context) void {}
 pub fn installWorldObserver(_: *Agent, _: ?*const engine.WorldObserver, _: ?*anyopaque) void {}
 // [inspector_protocol] (engine section 4.2b): unsupported - no inspector, no
 // JavaScript domains of CDP.

@@ -93,7 +93,7 @@ test "a world realm's end takes its timers and leaves the page's" {
 
     try expect(world, "setTimeout(() => {}, 100000); setInterval(() => {}, 100000); 'ok'", "ok");
     try expect(page, "globalThis.pageRan = false; setTimeout(() => { globalThis.pageRan = true; }, 0); 'ok'", "ok");
-    engine.destroyWorldRealms(page);
+    engine.detachWindowRealm(page);
     _ = try browser.runEventLoopBlocking(100);
     try expect(page, "String(pageRan)", "true");
 }
