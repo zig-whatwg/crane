@@ -96,7 +96,8 @@ pub fn create(requested: Creation) !*runtime.Instance {
             // save/set/restore of its active custom element constructor map.
             const state = try driver.pushConstructor(realm, found);
             defer state.popConstructor();
-            const completion = try callbacks.call.CustomElementConstructor.construct(realm, &found.constructor, .{}, realm.allocator);
+            const ctor = found.constructorCallback();
+            const completion = try callbacks.call.CustomElementConstructor.construct(realm, &ctor, .{}, realm.allocator);
             if (state.active_constructors.get(state.active_constructors.len - 1).?.registry == null) {
                 switch (completion) {
                     .normal => |constructed| constructed.release(realm.allocator),
@@ -207,7 +208,7 @@ fn validateConstructed(options: Creation, element: *runtime.Instance) !?engine.O
 
 fn reportConstructionError(fallback: runtime.Context, definition: *ce.Definition, value: runtime.JSValue) void {
     const realm = if (engine.capabilities.exact_function_realm != .unsupported)
-        engine.functionRealm(definition.constructor.function.value) orelse fallback
+        engine.functionRealm(definition.constructorValue()) orelse fallback
     else
         fallback;
     if (!realm.hasEngine()) return;

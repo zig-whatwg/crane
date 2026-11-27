@@ -5,12 +5,15 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 pub fn Definition(comptime runtime: type, comptime engine: type) type {
+    const StoredCallback = if (@hasDecl(engine, "TracedCallback")) engine.TracedCallback else engine.CallbackFunction;
     return struct {
         const Self = @This();
         name: []const u8,
         local_name: []const u8,
-        /// OWNED WebIDL callback, including the context of its conversion.
-        constructor: engine.CallbackFunction,
+        /// OWNED WebIDL callback, kept traced from the owning
+        /// CustomElementRegistry wrapper (lane rc9 items 17-26) when the
+        /// engine provides `TracedCallback`, else strong (engine-free mocks).
+        constructor: StoredCallback,
         observed_attributes: []const []const u8,
         lifecycle_callbacks: LifecycleCallbacks,
         form_associated: bool,
@@ -35,15 +38,15 @@ pub fn Definition(comptime runtime: type, comptime engine: type) type {
         };
 
         pub const LifecycleCallbacks = struct {
-            connectedCallback: ?engine.CallbackFunction = null,
-            disconnectedCallback: ?engine.CallbackFunction = null,
-            adoptedCallback: ?engine.CallbackFunction = null,
-            connectedMoveCallback: ?engine.CallbackFunction = null,
-            attributeChangedCallback: ?engine.CallbackFunction = null,
-            formAssociatedCallback: ?engine.CallbackFunction = null,
-            formResetCallback: ?engine.CallbackFunction = null,
-            formDisabledCallback: ?engine.CallbackFunction = null,
-            formStateRestoreCallback: ?engine.CallbackFunction = null,
+            connectedCallback: ?StoredCallback = null,
+            disconnectedCallback: ?StoredCallback = null,
+            adoptedCallback: ?StoredCallback = null,
+            connectedMoveCallback: ?StoredCallback = null,
+            attributeChangedCallback: ?StoredCallback = null,
+            formAssociatedCallback: ?StoredCallback = null,
+            formResetCallback: ?StoredCallback = null,
+            formDisabledCallback: ?StoredCallback = null,
+            formStateRestoreCallback: ?StoredCallback = null,
 
             pub fn deinit(self: *LifecycleCallbacks, allocator: Allocator) void {
                 _ = allocator;
@@ -55,7 +58,7 @@ pub fn Definition(comptime runtime: type, comptime engine: type) type {
         };
 
         /// Takes constructor on success; other exits leave it with the caller.
-        pub fn init(allocator: Allocator, name: []const u8, local_name: []const u8, constructor: engine.CallbackFunction) !*Self {
+        pub fn init(allocator: Allocator, name: []const u8, local_name: []const u8, constructor: StoredCallback) !*Self {
             const definition = try allocator.create(Self);
             errdefer allocator.destroy(definition);
             const owned_name = try allocator.dupe(u8, name);
@@ -112,6 +115,28 @@ pub fn Definition(comptime runtime: type, comptime engine: type) type {
         pub fn retain(self: *Self) *Self {
             self.references += 1;
             return self;
+        }
+
+        /// Trace this definition's constructor and nine lifecycle callbacks
+        /// from its owning CustomElementRegistry wrapper (lane rc9 items 17-26).
+        pub fn trace(self: *const Self, tracer: *engine.Tracer) void {
+            if (comptime @hasDecl(engine, "TracedCallback")) {
+                engine.traceHeld(tracer, self.constructor.hold);
+                inline for (comptime std.meta.fieldNames(LifecycleCallbacks)) |field_name| {
+                    if (@field(self.lifecycle_callbacks, field_name)) |cb| engine.traceHeld(tracer, cb.hold);
+                }
+            }
+        }
+
+        /// The constructor as a BORROWED CallbackFunction (for invocation or
+        /// construction; never released by the caller).
+        pub fn constructorCallback(self: *const Self) engine.CallbackFunction {
+            return if (comptime @hasDecl(engine, "TracedCallback")) self.constructor.asFunction() else self.constructor;
+        }
+
+        /// The constructor's JSValue (BORROWED).
+        pub fn constructorValue(self: *const Self) runtime.JSValue {
+            return if (comptime @hasDecl(engine, "TracedCallback")) self.constructor.hold.value() else self.constructor.function.value;
         }
 
         /// HTMLConstructor steps 9, 12–13 and 15. The adapter has completed
