@@ -917,6 +917,7 @@ pub fn liveDeferredEdgeCount() usize {
 /// realms; it is taken off, so that its own end touches no freed list.
 pub fn endAgent(isolate: *v8.Isolate, caches: *Caches, allocator: std.mem.Allocator) void {
     _ = v8.v8_Isolate_SetPlatformWrapperHooks(isolate, null, &noWeakProcessing, &nothingDropped, &nothingDropped);
+    v8.v8_Isolate_SetUnwrappedTracedHook(isolate, null);
     if (caches.items.len != 0) log.err("{d} wrapper cache(s) outlived their agent's realms", .{caches.items.len});
     for (caches.items) |cache| {
         cache.peers = null;
@@ -982,6 +983,60 @@ fn unlinkCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
 fn processWeak(data: ?*anyopaque) callconv(.c) void {
     const caches: *Caches = @ptrCast(@alignCast(data orelse return));
     for (caches.items) |cache| cache.sweepUnmarked();
+}
+
+/// Unwrapped-owner trace hook (lane rc9; NodeWrapperRegistry::Trace in
+/// v8_wrapper.cpp): runs in every full collection's atomic pause and invokes
+/// `VTable.trace_held_nodes` on every live unwrapped owner registered via
+/// `noteUnwrappedTracedOwner`, keeping its `TracedHold` values alive until
+/// the owner receives a wrapper.
+fn traceUnwrapped(data: ?*anyopaque, raw_registry: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void {
+    const caches: *Caches = @ptrCast(@alignCast(data orelse return));
+    const registry: *node_wrappers.Registry = @ptrCast(@alignCast(raw_registry orelse return));
+    const vis = visitor orelse return;
+    if (registry.ended) return;
+    var tracer: node_wrappers.Tracer = .{ .visitor = vis, .registry = registry };
+    for (caches.items) |cache| {
+        if (cache.is_tearing_down or cache.unwrapped_traced_owners.count() == 0) continue;
+        var it = cache.unwrapped_traced_owners.iterator();
+        while (it.next()) |entry| {
+            const owner = entry.key_ptr.*;
+            const gen = entry.value_ptr.*;
+            if (runtime.SlabAllocator.generationOf(owner) != gen) continue;
+            if (runtime.instance_lifecycle.isCleanupStarted(owner)) continue;
+            const trace = owner.vtable.trace_held_nodes orelse continue;
+            registry.in_walk = true;
+            defer registry.in_walk = false;
+            trace(owner, &tracer);
+        }
+    }
+}
+
+/// Register `owner` as holding TracedHold values while it has no wrapper yet
+/// (lane rc9). No-op if `owner` already has a wrapper in its own realm or any
+/// isolated world. Removed on first wrap (`set`/`setNode`) or unwrapped
+/// teardown (`forgetUnwrappedTracedOwner`).
+pub fn noteUnwrappedTracedOwner(owner: *runtime.Instance) void {
+    const cache = cacheOf(owner) orelse return;
+    if (cache.get(owner) != null) return;
+    const protocol_worlds = @import("protocol_worlds.zig");
+    if (protocol_worlds.realmMayHaveWorlds(owner.ctx) and protocol_worlds.hasWrapperInOtherWorld(owner)) return;
+    if (!cache.registered) {
+        if (v8.v8_Isolate_GetCurrent()) |isolate| cache.register(isolate);
+    }
+    cache.pruneDeadUnwrappedTracedOwners();
+    if (cache.walks == 0) cache.unwrapped_guard.beforeInsert(&cache.unwrapped_traced_owners);
+    const generation = runtime.SlabAllocator.generationOf(owner);
+    cache.unwrapped_traced_owners.put(cache.allocator, owner, generation) catch {};
+}
+
+/// Remove any pending unwrapped-owner trace registration for `owner`.
+pub fn forgetUnwrappedTracedOwner(owner: *runtime.Instance) void {
+    const cache = cacheOf(owner) orelse return;
+    if (cache.unwrapped_traced_owners.count() == 0) return;
+    if (cache.unwrapped_traced_owners.remove(owner)) {
+        cache.unwrapped_guard.noteRemoval(&cache.unwrapped_traced_owners);
+    }
 }
 
 /// A collection took `raw`'s wrapper, and the record's handle is Reset and
@@ -1382,6 +1437,15 @@ pub const WrapperCache = struct {
     /// `deferEdge` inserts. A `*DeferredEdges` is read and written only
     /// between an insert and the next.
     edges_guard: tombstones.TombstoneGuard = .{},
+
+    /// Unwrapped owners whose TracedHold values must survive full collections
+    /// until they receive a wrapper (`noteUnwrappedTracedOwner`, lane rc9):
+    /// keyed by instance pointer -> slab generation, traced during every full
+    /// collection's atomic pause (`traceUnwrapped`), and removed on first wrap
+    /// or unwrapped teardown.
+    unwrapped_traced_owners: address_map.AddressHashMapUnmanaged(*runtime.Instance, u64) = .empty,
+    unwrapped_guard: tombstones.TombstoneGuard = .{},
+    unwrapped_prune_watermark: usize = small_deferred_map,
 
     /// Past `small_deferred_map` owners, `deferEdge` prunes dead owners'
     /// edges only once the map has grown to this many - then to twice what
@@ -2449,6 +2513,7 @@ pub const WrapperCache = struct {
         self.unregister();
         self.cache.deinit();
         self.pending_before_wrap.deinit(self.allocator);
+        self.unwrapped_traced_owners.deinit(self.allocator);
         self.disposeDeferredEdges();
         self.disposeDetachedHolder();
         self.freeChunks();
@@ -2518,6 +2583,7 @@ pub const WrapperCache = struct {
         // is made with the agent's node wrapper registry.
         node_wrappers.prepareHolderTracing(isolate);
         self.anchors = v8.v8_Isolate_SetPlatformWrapperHooks(isolate, caches, &processWeak, &dropped, &changed);
+        if (self.anchors) v8.v8_Isolate_SetUnwrappedTracedHook(isolate, &traceUnwrapped);
     }
 
     fn unregister(self: *Self) void {
@@ -2705,6 +2771,15 @@ pub const WrapperCache = struct {
         }
         // Edges traced from the instance before script saw it.
         self.drawDeferredEdges(instance, entry.stamp.generation, wrapper);
+        // Owner is now wrapped (in its own realm or an isolated world): its
+        // wrapper's HolderAnchor traces its TracedHold values from here on.
+        if (own_cache) |oc| {
+            if (oc.unwrapped_traced_owners.count() != 0) {
+                if (oc.unwrapped_traced_owners.remove(instance)) {
+                    oc.unwrapped_guard.noteRemoval(&oc.unwrapped_traced_owners);
+                }
+            }
+        }
         // (A holder of nodes was bound to its HolderAnchor with the wrapper -
         // platform_anchor.bind - so a collection that keeps this wrapper
         // keeps the wrappers of what it holds for script: the redesign's P6,
@@ -2753,7 +2828,31 @@ pub const WrapperCache = struct {
         defer node_wrappers.arm(isolate, instance, adopted);
         // Edges traced from the node before script saw it.
         self.drawDeferredEdges(instance, generation, adopted.handle);
+        if (self.unwrapped_traced_owners.count() != 0) {
+            if (self.unwrapped_traced_owners.remove(instance)) {
+                self.unwrapped_guard.noteRemoval(&self.unwrapped_traced_owners);
+            }
+        }
         return adopted.handle;
+    }
+
+    /// Prune dead entries from `unwrapped_traced_owners` (same watermark
+    /// policy as `edges_before_wrap`: safety net if an unwrapped owner was
+    /// freed without calling `forgetUnwrappedTracedOwner`).
+    fn pruneDeadUnwrappedTracedOwners(self: *Self) void {
+        const count = self.unwrapped_traced_owners.count();
+        if (count < self.unwrapped_prune_watermark) return;
+        var it = self.unwrapped_traced_owners.iterator();
+        while (it.next()) |entry| {
+            const owner = entry.key_ptr.*;
+            const gen = entry.value_ptr.*;
+            if (runtime.SlabAllocator.generationOf(owner) != gen or runtime.instance_lifecycle.isCleanupStarted(owner)) {
+                self.unwrapped_traced_owners.removeByPtr(entry.key_ptr);
+                self.unwrapped_guard.noteRemoval(&self.unwrapped_traced_owners);
+            }
+        }
+        const remaining = self.unwrapped_traced_owners.count();
+        self.unwrapped_prune_watermark = @max(small_deferred_map, remaining *| 2);
     }
 
     /// Clear the entire cache

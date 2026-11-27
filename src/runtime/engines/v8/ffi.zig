@@ -1698,6 +1698,13 @@ pub extern fn v8_Isolate_SetPlatformWrapperHooks(
     dropped: *const fn (?*anyopaque, *WrapperCell) callconv(.c) void,
     changed: *const fn (?*anyopaque, *WrapperCell) callconv(.c) void,
 ) bool;
+/// Unwrapped-owner trace hook (lane rc9): invoked inside NodeWrapperRegistry::
+/// Trace during every full collection's atomic pause so unwrapped platform
+/// objects holding TracedHold values survive until wrapped.
+pub extern fn v8_Isolate_SetUnwrappedTracedHook(
+    isolate: *Isolate,
+    trace_unwrapped: ?*const fn (?*anyopaque, ?*anyopaque, ?*anyopaque) callconv(.c) void,
+) void;
 /// The realm's cache takes the wrapper in `box` by a weak handle
 /// (wrapper_cache.zig `heldByWeakHandle`): `cell`'s word becomes a v8::Global
 /// of the wrapper, in place and armed weak at once (`box` still holds the

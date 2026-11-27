@@ -39,6 +39,7 @@ const protocol_worlds = @import("protocol_worlds.zig");
 const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 
 const Instance = engine.Instance;
+const Context = engine.Context;
 const Tracer = @import("node_wrappers.zig").Tracer;
 const TracedSlot = engine.TracedSlot;
 
@@ -166,6 +167,43 @@ pub fn tracedValue(owner: *Instance, slot: TracedSlot) ?engine.Owned {
         },
         .none => return null,
     }
+}
+
+/// engine.keepValueTraced on V8 (lane rc9): inline primitives take no handle;
+/// heap values (.handle, .instance, .string) are kept in a HoldCell of the
+/// agent's hold slab (no root in a full collection, a root in a young one).
+pub fn keepValueTraced(realm: Context, value: engine.JSValue) engine.Error!engine.TracedValueHold {
+    switch (value) {
+        .undefined, .null, .boolean, .number => return .{ .inline_value = value },
+        else => {},
+    }
+    const entered = try support.enter(realm);
+    defer entered.leave();
+    // Fast path for an existing V8 handle: copy directly into a HoldCell
+    // without allocating an intermediate v8::Global.
+    if (support.handleOf(value)) |handle| {
+        const cell = ffi.v8_TracedHold_New(handle) orelse return error.OperationFailed;
+        return .{ .traced = .{ .handle = cell } };
+    }
+    // A .string or .instance: materialize as a temporary Global in its
+    // relevant realm, copy into a HoldCell, then dispose the temporary Global.
+    const global = try support.ownGlobal(entered, value);
+    defer ffi.v8_Global_Dispose(global);
+    const cell = ffi.v8_TracedHold_New(global) orelse return error.OperationFailed;
+    return .{ .traced = .{ .handle = cell } };
+}
+
+/// engine.noteUnwrappedTracedOwner on V8: register an unwrapped owner in its
+/// realm's wrapper cache so full collections trace its TracedHold values until
+/// it receives a wrapper.
+pub fn noteUnwrappedTracedOwner(owner: *Instance) void {
+    @import("wrapper_cache.zig").noteUnwrappedTracedOwner(owner);
+}
+
+/// engine.forgetUnwrappedTracedOwner on V8: remove a pending unwrapped-owner
+/// registration on unwrapped teardown.
+pub fn forgetUnwrappedTracedOwner(owner: *Instance) void {
+    @import("wrapper_cache.zig").forgetUnwrappedTracedOwner(owner);
 }
 
 /// engine.TracedHold's value on V8: the hold's cell read through the

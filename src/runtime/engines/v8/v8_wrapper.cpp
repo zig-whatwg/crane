@@ -4259,6 +4259,10 @@ struct IsolateData {
     /// V8 no longer drops it in a young collection: the cache holds it by a
     /// weak handle from here (wrapper_cache.zig `changed`).
     void (*platform_wrapper_changed)(void* data, CraneWrapperCell* cell) = nullptr;
+    /// Unwrapped owners holding TracedHold values until they receive a wrapper
+    /// (wrapper_cache.zig `traceUnwrapped`; lane rc9): called in every full
+    /// collection's atomic pause from NodeWrapperRegistry::Trace.
+    void (*platform_wrappers_trace_unwrapped)(void* data, void* node_wrappers, void* visitor) = nullptr;
     /// The dropped anchors freed so far, and the frees cppgc refused because
     /// its heap was collecting (one per anchor per refusal): diagnostics and
     /// tests/v8 (engine.diagnosticCounters).
@@ -4941,14 +4945,17 @@ static void traceHolderNodes(IsolateData* record, void* instance, uint64_t gener
 void NodeWrapperRegistry::Trace(cppgc::Visitor* visitor) const {
     visitor->RegisterWeakCallbackMethod<NodeWrapperRegistry, &NodeWrapperRegistry::ProcessWeak>(this);
     IsolateData* record = record_;
-    if (!record->node_wrappers || !record->node_wrapper_trace_keeps) return;
+    if (!record->node_wrappers) return;
     IsolateData* collecting = collectingRecord(this);
     if (!collecting) return;
     if (collecting != record) {
         fprintf(stderr, "v8_wrapper: an agent's node anchor registry was traced in another agent's collection\n");
         abort();
     }
-    record->node_wrapper_trace_keeps(record->node_wrappers, visitor);
+    if (record->node_wrapper_trace_keeps) record->node_wrapper_trace_keeps(record->node_wrappers, visitor);
+    if (record->platform_wrappers && record->platform_wrappers_trace_unwrapped) {
+        record->platform_wrappers_trace_unwrapped(record->platform_wrappers, record->node_wrappers, visitor);
+    }
 }
 
 void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
@@ -6265,6 +6272,16 @@ extern "C" bool v8_Isolate_SetPlatformWrapperHooks(Isolate* isolate, void* data,
     record->platform_wrapper_dropped = dropped;
     record->platform_wrapper_changed = changed;
     return true;
+}
+
+/// Unwrapped-owner trace hook for `TracedHold` values owned by platform objects
+/// with no wrapper yet (wrapper_cache.zig `traceUnwrapped`; lane rc9): runs
+/// inside NodeWrapperRegistry::Trace during every full collection's atomic pause.
+extern "C" void v8_Isolate_SetUnwrappedTracedHook(Isolate* isolate,
+                                                  void (*trace_unwrapped)(void*, void*, void*)) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    record->platform_wrappers_trace_unwrapped = trace_unwrapped;
 }
 
 /// A dead wrapper's finalizer joins `isolate`'s queue (IsolateData::
