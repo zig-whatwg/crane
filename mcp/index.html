@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crane MCP Differential Report</title>
+<meta name="description" content="Differential parity of Crane&#39;s built-in Chrome DevTools MCP server against chrome-devtools-mcp driving Chrome for Testing.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
+<link rel="preload" href="../fonts/source-serif-4-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/public-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../site.css">
+<link rel="icon" href="data:,">
+<script src="../site.js" defer></script>
+</head>
+<body>
+<div class="frame">
+<main class="doc" id="main">
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../">Crane WPT results</a></li><li aria-current="page">MCP differential report</li></ol></nav>
+<header class="head">
+<h1>Crane <span class="h1-rest">MCP Differential Report</span></h1>
+<div class="headline" role="group" aria-labelledby="hl-label">
+<p class="headline-figure"><span class="hl-pass">34</span><span class="hl-of"> / 39</span></p>
+<p class="headline-label" id="hl-label">differential cases equal against chrome-devtools-mcp v1.13.0</p>
+<dl class="headline-counts"><div><dt>Expected diffs</dt><dd>4</dd></div><div class="fail"><dt>Unexpected diffs</dt><dd>1</dd></div><div><dt>Tools equal</dt><dd>38</dd></div><div><dt>Tools expected diff</dt><dd>3</dd></div><div><dt>Needs renderer</dt><dd>8</dd></div><div><dt>Chrome-only</dt><dd>10</dd></div></dl>
+</div>
+<p class="subtitle">Same MCP tool calls sent over stdio to Google&rsquo;s <code>chrome-devtools-mcp</code> v1.13.0 (Chrome for Testing) and Crane&rsquo;s built-in <code>repl --mcp</code>, compared after origin normalisation.</p>
+</header>
+<section id="tools" aria-labelledby="tools-h">
+<h2 id="tools-h">Tools by classification</h2>
+<p>66 tools across all categories: 38 equal, 3 expected diff, 1 differs, 8 needs-renderer, 10 chrome-only, 6 not tested in this run.</p>
+<table class="listing">
+<thead><tr><th scope="col">Tool</th><th scope="col">Category</th><th scope="col">Status</th><th scope="col">Notes</th></tr></thead>
+<tbody>
+<tr><th scope="row"><code>click</code></th><td>input</td><td><span class="gate gate-clean">Equal</span></td><td>input: click, hover, drag, dialog</td></tr>
+<tr><th scope="row"><code>drag</code></th><td>input</td><td><span class="gate gate-clean">Equal</span></td><td>input: click, hover, drag, dialog</td></tr>
+<tr><th scope="row"><code>fill</code></th><td>input</td><td><span class="gate gate-clean">Equal</span></td><td>input: fill, fill_form, press_key snapshot, upload chooser</td></tr>
+<tr><th scope="row"><code>fill_form</code></th><td>input</td><td><span class="gate gate-clean">Equal</span></td><td>input: fill, fill_form, press_key snapshot, upload chooser</td></tr>
+<tr><th scope="row"><code>handle_dialog</code></th><td>input</td><td><span class="gate gate-clean">Equal</span></td><td>dialog: left open, then handled, input: click, hover, drag, dialog</td></tr>
+<tr><th scope="row"><code>hover</code></th><td>input</td><td><span class="gate gate-clean">Equal</span></td><td>input: click, hover, drag, dialog</td></tr>
+<tr><th scope="row"><code>press_key</code></th><td>input</td><td><span class="gate gate-clean">Equal</span></td><td>input: type and press, input: fill, fill_form, press_key snapshot, upload chooser</td></tr>
+<tr><th scope="row"><code>type_text</code></th><td>input</td><td><span class="gate gate-clean">Equal</span></td><td>input: type and press</td></tr>
+<tr><th scope="row"><code>upload_file</code></th><td>input</td><td><span class="gate gate-clean">Equal</span></td><td>refusals: a disabled tool, relative paths outside the roots, files: upload, input: fill, fill_form, press_key snapshot, upload chooser</td></tr>
+<tr><th scope="row"><code>click_at</code></th><td>input</td><td><span class="gate gate-exempt">Needs renderer</span></td><td>Coordinate-based clicks require a renderer/layout engine to hit-test screen coordinates.</td></tr>
+<tr><th scope="row"><code>close_page</code></th><td>navigation</td><td><span class="gate gate-clean">Equal</span></td><td>pages: new, select, close</td></tr>
+<tr><th scope="row"><code>list_pages</code></th><td>navigation</td><td><span class="gate gate-clean">Equal</span></td><td>pages: a fresh browser, pages: new, select, close, dialog: left open, then handled</td></tr>
+<tr><th scope="row"><code>navigate_page</code></th><td>navigation</td><td><span class="gate gate-exempt">Expected diff</span></td><td>Chrome navigates its startup URL (Puppeteer starts it with about:blank: an auto_toplevel entry), so its first navigation pushes and back reaches about:blank; Firefox 159 and Safari 27.2 keep the first tab&#39;s initial about:blank, which the first navigation replaces (WebDriver probe, chat.local 2026-11-24, tmp/probes/mcp1-startup/run.sh: history.length stays 1, back() stays), as Crane and HTML do: the browser majority (main&#39;s ruling, 2026-11-24).</td></tr>
+<tr><th scope="row"><code>new_page</code></th><td>navigation</td><td><span class="gate gate-clean">Equal</span></td><td>pages: new, select, close, pages: refused URLs and arguments</td></tr>
+<tr><th scope="row"><code>select_page</code></th><td>navigation</td><td><span class="gate gate-clean">Equal</span></td><td>pages: new, select, close</td></tr>
+<tr><th scope="row"><code>wait_for</code></th><td>navigation</td><td><span class="gate gate-exempt">Expected diff</span></td><td>visible: true asks whether the matched text is visible - a computed style and a non-empty bounding box (Puppeteer&#39;s checkVisibility) - and Crane has no layout (needs-renderer); Crane answers &quot;visible is not supported by Crane&#39;s MCP server: Crane has no layout to tell whether text is visible.&quot;</td></tr>
+<tr><th scope="row"><code>emulate</code></th><td>emulation</td><td><span class="gate gate-clean">Equal</span></td><td>emulate: user agent, media, viewport, emulate: network conditions, emulate: cpu throttling, emulate: geolocation</td></tr>
+<tr><th scope="row"><code>resize_page</code></th><td>emulation</td><td><span class="gate gate-clean">Equal</span></td><td>pages: resize</td></tr>
+<tr><th scope="row"><code>performance_start_trace</code></th><td>performance</td><td><span class="gate gate-exempt">Needs renderer</span></td><td>Performance traces require a rendering pipeline for frames, paint, LCP/CLS/INP, and trace screenshots.</td></tr>
+<tr><th scope="row"><code>performance_stop_trace</code></th><td>performance</td><td><span class="gate gate-exempt">Needs renderer</span></td><td>Performance traces require a rendering pipeline.</td></tr>
+<tr><th scope="row"><code>performance_analyze_insight</code></th><td>performance</td><td><span class="gate gate-exempt">Needs renderer</span></td><td>Performance trace insights require recorded renderer traces.</td></tr>
+<tr><th scope="row"><code>get_network_request</code></th><td>network</td><td><span class="gate gate-exempt">Expected diff</span></td><td>Request headers: Chrome sends its UA client hints (sec-ch-ua*, Chromium only) and its own user-agent; Crane&#39;s user-agent is Crane/0.1 (ruling 2026-11-21); the order of requestWillBeSent&#39;s headers is Blink&#39;s hash order. The response headers&#39; order is a CDP finding (Chrome&#39;s Headers are a sorted dictionary) for Crane&#39;s Network domain.</td></tr>
+<tr><th scope="row"><code>list_network_requests</code></th><td>network</td><td><span class="gate gate-clean">Equal</span></td><td>network: list, filter, details</td></tr>
+<tr><th scope="row"><code>mock_network</code></th><td>networkMocks</td><td><span class="gate gate-clean">Equal</span></td><td>refusals: a disabled tool, relative paths outside the roots</td></tr>
+<tr><th scope="row"><code>remove_network_mock</code></th><td>networkMocks</td><td><span class="gate gate-clean">Equal</span></td><td>refusals: disabled experimental tools</td></tr>
+<tr><th scope="row"><code>evaluate_script</code></th><td>debugging</td><td><span class="gate gate-clean">Equal</span></td><td>script: results and errors, script: dialogs and navigations, dialog: left open, then handled, console: preserved navigations, network: list, filter, details, input: type and press, snapshot: a page&#39;s tree and its uids, refusals: a disabled tool, relative paths outside the roots, files: snapshot and script output, files: script sources, files: upload, files: the client&#39;s roots, history: back and forward, pages: resize, emulate: user agent, media, viewport, emulate: network conditions, logpoints: script URLs, logpoints: lookups, documents, pauses, logpoints: source maps, logpoints: inline, same-url, indexed, and shared maps, logpoints: minified variable names, input: click, hover, drag, dialog, input: fill, fill_form, press_key snapshot, upload chooser</td></tr>
+<tr><th scope="row"><code>get_console_message</code></th><td>debugging</td><td><span class="gate gate-clean">Equal</span></td><td>console: list, filter, pages, details, console: source-mapped stack traces</td></tr>
+<tr><th scope="row"><code>get_css_styles</code></th><td>debugging</td><td><span class="gate gate-clean">Equal</span></td><td>css: get_css_styles</td></tr>
+<tr><th scope="row"><code>lighthouse_audit</code></th><td>debugging</td><td><span class="gate gate-empty">Chrome-only</span></td><td>Google&#39;s Lighthouse bundle is a Chrome product, not a web platform specification.</td></tr>
+<tr><th scope="row"><code>list_console_messages</code></th><td>debugging</td><td><span class="gate gate-clean">Equal</span></td><td>console: list, filter, pages, details, console: preserved navigations, emulate: user agent, media, viewport, emulate: network conditions, logpoints: script URLs, logpoints: lookups, documents, pauses, logpoints: source maps, logpoints: inline, same-url, indexed, and shared maps, logpoints: minified variable names, emulate: cpu throttling, emulate: geolocation, console: source-mapped stack traces</td></tr>
+<tr><th scope="row"><code>screencast_start</code></th><td>debugging</td><td><span class="gate gate-exempt">Needs renderer</span></td><td>Screencast recording requires a pixel renderer.</td></tr>
+<tr><th scope="row"><code>screencast_stop</code></th><td>debugging</td><td><span class="gate gate-exempt">Needs renderer</span></td><td>Screencast recording requires a pixel renderer.</td></tr>
+<tr><th scope="row"><code>set_logpoints</code></th><td>debugging</td><td><span class="gate gate-err g-block">Differs</span></td><td>logpoints: script URLs, logpoints: lookups, documents, pauses, logpoints: source maps, logpoints: inline, same-url, indexed, and shared maps, logpoints: minified variable names</td></tr>
+<tr><th scope="row"><code>take_screenshot</code></th><td>debugging</td><td><span class="gate gate-exempt">Needs renderer</span></td><td>Screenshots require a pixel renderer.</td></tr>
+<tr><th scope="row"><code>take_snapshot</code></th><td>debugging</td><td><span class="gate gate-clean">Equal</span></td><td>snapshot: a page&#39;s tree and its uids, refusals: a disabled tool, relative paths outside the roots, files: snapshot and script output, files: upload, files: the client&#39;s roots, css: get_css_styles, input: click, hover, drag, dialog, input: fill, fill_form, press_key snapshot, upload chooser</td></tr>
+<tr><th scope="row"><code>take_heapsnapshot</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: take_heapsnapshot</td></tr>
+<tr><th scope="row"><code>get_heapsnapshot_summary</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis</td></tr>
+<tr><th scope="row"><code>get_heapsnapshot_details</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis</td></tr>
+<tr><th scope="row"><code>get_heapsnapshot_class_nodes</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis</td></tr>
+<tr><th scope="row"><code>get_heapsnapshot_retainers</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis</td></tr>
+<tr><th scope="row"><code>close_heapsnapshot</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis</td></tr>
+<tr><th scope="row"><code>get_heapsnapshot_retaining_paths</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis advanced</td></tr>
+<tr><th scope="row"><code>get_heapsnapshot_edges</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis</td></tr>
+<tr><th scope="row"><code>get_heapsnapshot_dominators</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis</td></tr>
+<tr><th scope="row"><code>compare_heapsnapshots</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis advanced</td></tr>
+<tr><th scope="row"><code>get_heapsnapshot_duplicate_strings</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis advanced</td></tr>
+<tr><th scope="row"><code>get_heapsnapshot_object_details</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis</td></tr>
+<tr><th scope="row"><code>query_heapsnapshot_objects</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis advanced</td></tr>
+<tr><th scope="row"><code>analyze_heapsnapshot_contexts</code></th><td>memory</td><td><span class="gate gate-clean">Equal</span></td><td>memory: heapsnapshot analysis advanced</td></tr>
+<tr><th scope="row"><code>list_3p_developer_tools</code></th><td>thirdParty</td><td><span class="gate gate-clean">Equal</span></td><td>refusals: disabled experimental tools</td></tr>
+<tr><th scope="row"><code>execute_3p_developer_tool</code></th><td>thirdParty</td><td><span class="gate gate-unrun">Not tested</span></td><td><span class="quiet">&mdash;</span></td></tr>
+<tr><th scope="row"><code>list_webmcp_tools</code></th><td>webmcp</td><td><span class="gate gate-unrun">Not tested</span></td><td>Chrome 150+ experimental feature behind --enable-features=WebMCP.</td></tr>
+<tr><th scope="row"><code>execute_webmcp_tool</code></th><td>webmcp</td><td><span class="gate gate-unrun">Not tested</span></td><td>Chrome 150+ experimental feature behind --enable-features=WebMCP.</td></tr>
+<tr><th scope="row"><code>configure_webauthn</code></th><td>webauthn</td><td><span class="gate gate-unrun">Not tested</span></td><td>Requires WebAuthn behind navigator.credentials.</td></tr>
+<tr><th scope="row"><code>install_extension</code></th><td>extensions</td><td><span class="gate gate-empty">Chrome-only</span></td><td>Chrome&#39;s extension system has no web specification.</td></tr>
+<tr><th scope="row"><code>list_extensions</code></th><td>extensions</td><td><span class="gate gate-empty">Chrome-only</span></td><td>Chrome&#39;s extension system has no web specification.</td></tr>
+<tr><th scope="row"><code>reload_extension</code></th><td>extensions</td><td><span class="gate gate-empty">Chrome-only</span></td><td>Chrome&#39;s extension system has no web specification.</td></tr>
+<tr><th scope="row"><code>trigger_extension_action</code></th><td>extensions</td><td><span class="gate gate-empty">Chrome-only</span></td><td>Chrome&#39;s extension system has no web specification.</td></tr>
+<tr><th scope="row"><code>uninstall_extension</code></th><td>extensions</td><td><span class="gate gate-empty">Chrome-only</span></td><td>Chrome&#39;s extension system has no web specification.</td></tr>
+<tr><th scope="row"><code>get_os_app_state</code></th><td>pwa</td><td><span class="gate gate-empty">Chrome-only</span></td><td>OS app installation (CDP PWA domain) is a Chrome product feature, not a web specification.</td></tr>
+<tr><th scope="row"><code>install_pwa</code></th><td>pwa</td><td><span class="gate gate-empty">Chrome-only</span></td><td>OS app installation (CDP PWA domain) is a Chrome product feature, not a web specification.</td></tr>
+<tr><th scope="row"><code>launch_pwa</code></th><td>pwa</td><td><span class="gate gate-empty">Chrome-only</span></td><td>OS app installation (CDP PWA domain) is a Chrome product feature, not a web specification.</td></tr>
+<tr><th scope="row"><code>uninstall_pwa</code></th><td>pwa</td><td><span class="gate gate-empty">Chrome-only</span></td><td>OS app installation (CDP PWA domain) is a Chrome product feature, not a web specification.</td></tr>
+<tr><th scope="row"><code>navigate</code></th><td>slim</td><td><span class="gate gate-unrun">Not tested</span></td><td><span class="quiet">&mdash;</span></td></tr>
+<tr><th scope="row"><code>evaluate</code></th><td>slim</td><td><span class="gate gate-unrun">Not tested</span></td><td><span class="quiet">&mdash;</span></td></tr>
+<tr><th scope="row"><code>screenshot</code></th><td>slim</td><td><span class="gate gate-exempt">Needs renderer</span></td><td>Screenshots require a pixel renderer.</td></tr>
+</tbody>
+</table>
+</section>
+<section id="cases" aria-labelledby="cases-h">
+<h2 id="cases-h">Differential cases</h2>
+<table class="listing">
+<thead><tr><th scope="col">Case</th><th scope="col">Result</th><th scope="col">About</th></tr></thead>
+<tbody>
+<tr><th scope="row">pages: a fresh browser</th><td><span class="gate gate-clean">Equal</span></td><td>list_pages before anything: one blank page, selected.</td></tr>
+<tr><th scope="row">pages: new, select, close</th><td><span class="gate gate-clean">Equal</span></td><td>new_page with a title, select_page back, close_page, and the last page refused.</td></tr>
+<tr><th scope="row">pages: navigate, reload, back, forward</th><td><span class="gate gate-clean">Equal</span></td><td><span class="quiet">&mdash;</span></td></tr>
+<tr><th scope="row">pages: refused URLs and arguments</th><td><span class="gate gate-clean">Equal</span></td><td>validateUrl, a missing target, and the schema&#39;s strict checks.</td></tr>
+<tr><th scope="row">script: results and errors</th><td><span class="gate gate-clean">Equal</span></td><td><span class="quiet">&mdash;</span></td></tr>
+<tr><th scope="row">script: dialogs and navigations</th><td><span class="gate gate-clean">Equal</span></td><td><span class="quiet">&mdash;</span></td></tr>
+<tr><th scope="row">dialog: left open, then handled</th><td><span class="gate gate-clean">Equal</span></td><td><span class="quiet">&mdash;</span></td></tr>
+<tr><th scope="row">console: list, filter, pages, details</th><td><span class="gate gate-clean">Equal</span></td><td><span class="quiet">&mdash;</span></td></tr>
+<tr><th scope="row">console: preserved navigations</th><td><span class="gate gate-clean">Equal</span></td><td><span class="quiet">&mdash;</span></td></tr>
+<tr><th scope="row">network: list, filter, details</th><td><span class="gate gate-exempt">Expected diff</span></td><td><span class="quiet">&mdash;</span></td></tr>
+<tr><th scope="row">input: type and press</th><td><span class="gate gate-clean">Equal</span></td><td><span class="quiet">&mdash;</span></td></tr>
+<tr><th scope="row">snapshot: a page&#39;s tree and its uids</th><td><span class="gate gate-clean">Equal</span></td><td>take_snapshot of a page with landmarks, a form and an iframe; the same uids again; verbose; uids handed to evaluate_script, an unknown one, and one after a reload.</td></tr>
+<tr><th scope="row">wait_for: later text, names, timeouts</th><td><span class="gate gate-exempt">Expected diff</span></td><td>wait_for text that appears after 500 ms, an accessible name, a timeout with its advice, and the schema&#39;s checks.</td></tr>
+<tr><th scope="row">refusals: a disabled tool, relative paths outside the roots</th><td><span class="gate gate-clean">Equal</span></td><td>A disabled category&#39;s tool, then three file parameters given relative paths: under the working directory, outside the default root (the OS temp directory), refused by validateToolFiles before anything runs.</td></tr>
+<tr><th scope="row">files: snapshot and script output</th><td><span class="gate gate-clean">Equal</span></td><td>take_snapshot and evaluate_script filePath under --filesystemRoot: the extension replaced, the file owner-only; outside the roots, a URL, a path escaping the root refused.</td></tr>
+<tr><th scope="row">files: script sources</th><td><span class="gate gate-clean">Equal</span></td><td>evaluate_script sourcePath: a path, a file: URL, a missing file, a directory, a path through a file, both sources, and an https: URL - which v1.13.0 reads as a path under the working directory (resolveScriptSource), never fetching it.</td></tr>
+<tr><th scope="row">files: upload</th><td><span class="gate gate-clean">Equal</span></td><td>upload_file: one file, several without multiple, several with it, blank paths (the input emptied), an element that is no file input, a path outside the roots.</td></tr>
+<tr><th scope="row">files: network bodies</th><td><span class="gate gate-exempt">Expected diff</span></td><td>get_network_request requestFilePath and responseFilePath: a POST&#39;s body and its 405 answer saved, each section saying where.</td></tr>
+<tr><th scope="row">files: the client&#39;s roots</th><td><span class="gate gate-clean">Equal</span></td><td>No --filesystemRoot: the client advertises roots and answers roots/list with the directory; the first tool call waits for that answer.</td></tr>
+<tr><th scope="row">history: back right after the first navigation</th><td><span class="gate gate-exempt">Expected diff</span></td><td>Chrome navigates its startup URL first; Firefox, Safari and Crane replace the first tab&#39;s initial about:blank.</td></tr>
+<tr><th scope="row">history: back and forward</th><td><span class="gate gate-clean">Equal</span></td><td>navigate_page back and forward between documents, past the end, and across a pushState (a same-document traversal: no load to wait for).</td></tr>
+<tr><th scope="row">pages: resize</th><td><span class="gate gate-clean">Equal</span></td><td>resize_page: the window restored to normal when it is not, then Browser.setContentsSize; the page&#39;s innerWidth and innerHeight follow.</td></tr>
+<tr><th scope="row">emulate: user agent, media, viewport</th><td><span class="gate gate-clean">Equal</span></td><td>emulate applies every setting on every call and clears what a call leaves out, and a page tool&#39;s answer lists the page&#39;s emulation (McpResponse); the color scheme a clear leaves is the host&#39;s own (headless Chrome follows the OS appearance), compared with what the page saw before.</td></tr>
+<tr><th scope="row">emulate: network conditions</th><td><span class="gate gate-clean">Equal</span></td><td>emulate networkConditions: Offline flips navigator.onLine, fires trusted offline/online events, and fails fetch() with ERR_INTERNET_DISCONNECTED; Slow 3G, Fast 3G, Slow 4G, and Fast 4G set the expected default navigation timeout text and restore online; an emulate call without networkConditions clears it.</td></tr>
+<tr><th scope="row">logpoints: script URLs</th><td><span class="gate gate-clean">Equal</span></td><td>set_logpoints on served scripts and an inline script (no source maps): binding, a line with no code moving to the next possible location, a column, the console output, replacing the set, surviving a reload, the parse, compile and lookup errors, a location with no code, an expression that throws, and the empty set.</td></tr>
+<tr><th scope="row">logpoints: lookups, documents, pauses</th><td><span class="gate gate-clean">Equal</span></td><td>set_logpoints&#39; lookups: an ambiguous path suffix, no match with sources of the same file name, a document with no script, a script gone after a navigation; and a debugger statement that does not pause (the DevTools universe skips all pauses).</td></tr>
+<tr><th scope="row">logpoints: source maps</th><td><span class="gate gate-clean">Equal</span></td><td>set_logpoints through external source maps: binding an original source file by path suffix, moving a generated script location to its original source, deduplicating generated and original locations that normalize to one line, reporting an unmapped original line, logging on execution, and surviving a reload.</td></tr>
+<tr><th scope="row">logpoints: inline, same-url, indexed, and shared maps</th><td><span class="gate gate-err g-block">Differs</span></td><td>set_logpoints with inline data: source maps, a transpiled file served at its original source URL (source map preferred), an XSSI-prefixed index map with sections and sourceRoot, one original source mapped across two bundles, and a script whose source map returns 404.</td></tr>
+<tr><th scope="row">logpoints: minified variable names</th><td><span class="gate gate-clean">Equal</span></td><td>set_logpoints substituting original variable names in minified scripts: params and locals via V3 names, object shorthand expansion, non-shorthand keys and member properties untouched, template literals, arrow-param shadowing, closures with inner shadowing, destructuring and try/catch bindings, and findEntryRanges fallback without a names array.</td></tr>
+<tr><th scope="row">memory: take_heapsnapshot</th><td><span class="gate gate-clean">Equal</span></td><td>take_heapsnapshot under --filesystemRoot: .heapsnapshot saved, extension replaced or appended, valid V8 snapshot containing page objects; outside roots, URL, path escape, and missing page refused.</td></tr>
+<tr><th scope="row">memory: heapsnapshot analysis</th><td><span class="gate gate-clean">Equal</span></td><td>The 8 core --memoryDebugging heap snapshot analysis tools on a deterministic V8 .heapsnapshot fixture: summary (stats, staticData, nativeContexts, retainedByContextSummary), details (all + detached DOM + context + nativeContext filters + pagination), class nodes, object details (detached DOM, cons string, plain object), outgoing edges (sort + excludePrimitives + byte range), retainers, dominators, close, and extension/missing-node errors.</td></tr>
+<tr><th scope="row">memory: heapsnapshot analysis advanced</th><td><span class="gate gate-clean">Equal</span></td><td>The 5 advanced --memoryDebugging heap snapshot analysis tools on deterministic V8 fixtures (sample + sample_v2): retaining paths (full + depth limit + missing node), duplicate strings (normal + truncated), query objects (className regex, propertyName, nodeType, retainedSize/selfSize ranges, isDetached, sortBy), compare_heapsnapshots (summary + detailed classIndex + invalid classIndex), and analyze_heapsnapshot_contexts (live vs dead fields, scriptsWithoutScopes, retainedSize &amp; scopeInfoNodeId filters).</td></tr>
+<tr><th scope="row">css: get_css_styles</th><td><span class="gate gate-clean">Equal</span></td><td>get_css_styles before snapshot, on styled element with inline/matched/inherited/wrappers/pseudo/keyframes/property, pagination, plain element, and unknown uid.</td></tr>
+<tr><th scope="row">emulate: cpu throttling</th><td><span class="gate gate-clean">Equal</span></td><td>emulate cpuThrottlingRate: sets 4x and 2.5x slowdown lines, multiplies navigation timeout with networkConditions, persists across navigation, resets on rate 1 or omission, and validates schema bounds (1..20).</td></tr>
+<tr><th scope="row">input: click, hover, drag, dialog</th><td><span class="gate gate-clean">Equal</span></td><td>Batch 5 element-targeted trusted input: click (single, double, includeSnapshot), hover, drag (HTML5 DnD), and click opening a JS dialog.</td></tr>
+<tr><th scope="row">input: fill, fill_form, press_key snapshot, upload chooser</th><td><span class="gate gate-clean">Equal</span></td><td>Batch 5 form filling (text, textarea, combobox by label, fill_form with checkbox/radio, refusals), press_key includeSnapshot, and upload_file file-chooser fallback.</td></tr>
+<tr><th scope="row">emulate: geolocation</th><td><span class="gate gate-clean">Equal</span></td><td>emulate geolocation: sets latitude/longitude override, prints McpResponse line in Chrome order, persists on page tools, clears on empty string or omission, and validates format and [-90..90] / [-180..180] bounds.</td></tr>
+<tr><th scope="row">console: source-mapped stack traces</th><td><span class="gate gate-clean">Equal</span></td><td>Console stack traces resolved through Source Map V3 with ignoreList frames omitted in get_console_message and list_console_messages.</td></tr>
+<tr><th scope="row">refusals: disabled experimental tools</th><td><span class="gate gate-clean">Equal</span></td><td>Tools gated behind optional categories/flags (click_at, remove_network_mock, list_3p_developer_tools) report disabled with default flags.</td></tr>
+</tbody>
+</table>
+</section>
+<footer class="foot">
+<p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>
+</footer>
+</main>
+<nav class="toc" aria-labelledby="toc-title">
+<p class="toc-title" id="toc-title">Contents</p>
+<ol class="toc-list">
+<li class="toc-front"><a href="../"><span class="secno"></span><span class="toc-name">Subtest totals</span></a></li>
+<li class="toc-front"><a href="../#status"><span class="secno"></span><span class="toc-name">Status of this document</span></a></li>
+<li class="toc-front"><a href="../chrome.html"><span class="secno"></span><span class="toc-name">Crane and Chrome</span></a></li>
+<li class="toc-suite"><a href="../FileAPI/"><span class="secno">1</span><span class="toc-name">FileAPI/</span><span class="toc-count" title="72 test files">72</span></a></li>
+<li class="toc-suite"><a href="../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="228 test files">228</span></a></li>
+<li class="toc-suite"><a href="../WebCryptoAPI/"><span class="secno">3</span><span class="toc-name">WebCryptoAPI/</span><span class="toc-count" title="82 test files">82</span></a></li>
+<li class="toc-suite"><a href="../accname/"><span class="secno">4</span><span class="toc-name">accname/</span><span class="toc-count" title="17 test files">17</span></a></li>
+<li class="toc-suite"><a href="../beacon/"><span class="secno">5</span><span class="toc-name">beacon/</span><span class="toc-count" title="16 test files">16</span></a></li>
+<li class="toc-suite"><a href="../compression/"><span class="secno">6</span><span class="toc-name">compression/</span><span class="toc-count" title="19 test files">19</span></a></li>
+<li class="toc-suite"><a href="../console/"><span class="secno">7</span><span class="toc-name">console/</span><span class="toc-count" title="11 test files">11</span></a></li>
+<li class="toc-suite"><a href="../content-security-policy/"><span class="secno">8</span><span class="toc-name">content-security-policy/</span><span class="toc-count" title="883 test files">883</span></a></li>
+<li class="toc-suite"><a href="../cookies/"><span class="secno">9</span><span class="toc-name">cookies/</span><span class="toc-count" title="76 test files">76</span></a></li>
+<li class="toc-suite"><a href="../cookiestore/"><span class="secno">10</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
+<li class="toc-suite"><a href="../core-aam/"><span class="secno">11</span><span class="toc-name">core-aam/</span><span class="toc-count" title="1 test file">1</span></a></li>
+<li class="toc-suite"><a href="../cors/"><span class="secno">12</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
+<li class="toc-suite"><a href="../css/"><span class="secno">13</span><span class="toc-name">css/</span><span class="toc-count" title="2,323 test files">2,323</span></a></li>
+<li class="toc-suite"><a href="../custom-elements/"><span class="secno">14</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="191 test files">191</span></a></li>
+<li class="toc-suite"><a href="../dom/"><span class="secno">15</span><span class="toc-name">dom/</span><span class="toc-count" title="547 test files">547</span></a></li>
+<li class="toc-suite"><a href="../domparsing/"><span class="secno">16</span><span class="toc-name">domparsing/</span><span class="toc-count" title="88 test files">88</span></a></li>
+<li class="toc-suite"><a href="../domxpath/"><span class="secno">17</span><span class="toc-name">domxpath/</span><span class="toc-count" title="29 test files">29</span></a></li>
+<li class="toc-suite"><a href="../dpub-aam/"><span class="secno">18</span><span class="toc-name">dpub-aam/</span><span class="toc-count" title="1 test file">1</span></a></li>
+<li class="toc-suite"><a href="../ecmascript/"><span class="secno">19</span><span class="toc-name">ecmascript/</span><span class="toc-count" title="2 test files">2</span></a></li>
+<li class="toc-suite"><a href="../editing/"><span class="secno">20</span><span class="toc-name">editing/</span><span class="toc-count" title="127 test files">127</span></a></li>
+<li class="toc-suite"><a href="../encoding/"><span class="secno">21</span><span class="toc-name">encoding/</span><span class="toc-count" title="153 test files">153</span></a></li>
+<li class="toc-suite"><a href="../eventsource/"><span class="secno">22</span><span class="toc-name">eventsource/</span><span class="toc-count" title="67 test files">67</span></a></li>
+<li class="toc-suite"><a href="../fetch/"><span class="secno">23</span><span class="toc-name">fetch/</span><span class="toc-count" title="314 test files">314</span></a></li>
+<li class="toc-suite"><a href="../fullscreen/"><span class="secno">24</span><span class="toc-name">fullscreen/</span><span class="toc-count" title="83 test files">83</span></a></li>
+<li class="toc-suite"><a href="../geolocation/"><span class="secno">25</span><span class="toc-name">geolocation/</span><span class="toc-count" title="24 test files">24</span></a></li>
+<li class="toc-suite"><a href="../graphics-aria/"><span class="secno">26</span><span class="toc-name">graphics-aria/</span><span class="toc-count" title="1 test file">1</span></a></li>
+<li class="toc-suite"><a href="../hr-time/"><span class="secno">27</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
+<li class="toc-suite"><a href="../html-aam/"><span class="secno">28</span><span class="toc-name">html-aam/</span><span class="toc-count" title="26 test files">26</span></a></li>
+<li class="toc-suite"><a href="../html/"><span class="secno">29</span><span class="toc-name">html/</span><span class="toc-count" title="3,410 test files">3,410</span></a></li>
+<li class="toc-suite"><a href="../intersection-observer/"><span class="secno">30</span><span class="toc-name">intersection-observer/</span><span class="toc-count" title="6 test files">6</span></a></li>
+<li class="toc-suite"><a href="../mathml/"><span class="secno">31</span><span class="toc-name">mathml/</span><span class="toc-count" title="35 test files">35</span></a></li>
+<li class="toc-suite"><a href="../mimesniff/"><span class="secno">32</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
+<li class="toc-suite"><a href="../mixed-content/"><span class="secno">33</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
+<li class="toc-suite"><a href="../navigation-api/"><span class="secno">34</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="446 test files">446</span></a></li>
+<li class="toc-suite"><a href="../navigation-timing/"><span class="secno">35</span><span class="toc-name">navigation-timing/</span><span class="toc-count" title="59 test files">59</span></a></li>
+<li class="toc-suite"><a href="../page-visibility/"><span class="secno">36</span><span class="toc-name">page-visibility/</span><span class="toc-count" title="10 test files">10</span></a></li>
+<li class="toc-suite"><a href="../performance-timeline/"><span class="secno">37</span><span class="toc-name">performance-timeline/</span><span class="toc-count" title="44 test files">44</span></a></li>
+<li class="toc-suite"><a href="../permissions/"><span class="secno">38</span><span class="toc-name">permissions/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../quirks/"><span class="secno">39</span><span class="toc-name">quirks/</span><span class="toc-count" title="11 test files">11</span></a></li>
+<li class="toc-suite"><a href="../referrer-policy/"><span class="secno">40</span><span class="toc-name">referrer-policy/</span><span class="toc-count" title="1,478 test files">1,478</span></a></li>
+<li class="toc-suite"><a href="../resize-observer/"><span class="secno">41</span><span class="toc-name">resize-observer/</span><span class="toc-count" title="15 test files">15</span></a></li>
+<li class="toc-suite"><a href="../resource-timing/"><span class="secno">42</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="118 test files">118</span></a></li>
+<li class="toc-suite"><a href="../sanitizer-api/"><span class="secno">43</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="47 test files">47</span></a></li>
+<li class="toc-suite"><a href="../screen-orientation/"><span class="secno">44</span><span class="toc-name">screen-orientation/</span><span class="toc-count" title="8 test files">8</span></a></li>
+<li class="toc-suite"><a href="../selection/"><span class="secno">45</span><span class="toc-name">selection/</span><span class="toc-count" title="79 test files">79</span></a></li>
+<li class="toc-suite"><a href="../service-workers/"><span class="secno">46</span><span class="toc-name">service-workers/</span><span class="toc-count" title="277 test files">277</span></a></li>
+<li class="toc-suite"><a href="../shadow-dom/"><span class="secno">47</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="188 test files">188</span></a></li>
+<li class="toc-suite"><a href="../streams/"><span class="secno">48</span><span class="toc-name">streams/</span><span class="toc-count" title="85 test files">85</span></a></li>
+<li class="toc-suite"><a href="../subresource-integrity/"><span class="secno">49</span><span class="toc-name">subresource-integrity/</span><span class="toc-count" title="7 test files">7</span></a></li>
+<li class="toc-suite"><a href="../svg-aam/"><span class="secno">50</span><span class="toc-name">svg-aam/</span><span class="toc-count" title="5 test files">5</span></a></li>
+<li class="toc-suite"><a href="../trusted-types/"><span class="secno">51</span><span class="toc-name">trusted-types/</span><span class="toc-count" title="221 test files">221</span></a></li>
+<li class="toc-suite"><a href="../upgrade-insecure-requests/"><span class="secno">52</span><span class="toc-name">upgrade-insecure-requests/</span><span class="toc-count" title="194 test files">194</span></a></li>
+<li class="toc-suite"><a href="../url/"><span class="secno">53</span><span class="toc-name">url/</span><span class="toc-count" title="32 test files">32</span></a></li>
+<li class="toc-suite"><a href="../urlpattern/"><span class="secno">54</span><span class="toc-name">urlpattern/</span><span class="toc-count" title="6 test files">6</span></a></li>
+<li class="toc-suite"><a href="../user-timing/"><span class="secno">55</span><span class="toc-name">user-timing/</span><span class="toc-count" title="38 test files">38</span></a></li>
+<li class="toc-suite"><a href="../wai-aria/"><span class="secno">56</span><span class="toc-name">wai-aria/</span><span class="toc-count" title="21 test files">21</span></a></li>
+<li class="toc-suite"><a href="../wasm/"><span class="secno">57</span><span class="toc-name">wasm/</span><span class="toc-count" title="340 test files">340</span></a></li>
+<li class="toc-suite"><a href="../web-animations/"><span class="secno">58</span><span class="toc-name">web-animations/</span><span class="toc-count" title="134 test files">134</span></a></li>
+<li class="toc-suite"><a href="../web-locks/"><span class="secno">59</span><span class="toc-name">web-locks/</span><span class="toc-count" title="23 test files">23</span></a></li>
+<li class="toc-suite"><a href="../webidl/"><span class="secno">60</span><span class="toc-name">webidl/</span><span class="toc-count" title="45 test files">45</span></a></li>
+<li class="toc-suite"><a href="../webmessaging/"><span class="secno">61</span><span class="toc-name">webmessaging/</span><span class="toc-count" title="132 test files">132</span></a></li>
+<li class="toc-suite"><a href="../websockets/"><span class="secno">62</span><span class="toc-name">websockets/</span><span class="toc-count" title="202 test files">202</span></a></li>
+<li class="toc-suite"><a href="../webstorage/"><span class="secno">63</span><span class="toc-name">webstorage/</span><span class="toc-count" title="54 test files">54</span></a></li>
+<li class="toc-suite"><a href="../webvtt/"><span class="secno">64</span><span class="toc-name">webvtt/</span><span class="toc-count" title="75 test files">75</span></a></li>
+<li class="toc-suite"><a href="../workers/"><span class="secno">65</span><span class="toc-name">workers/</span><span class="toc-count" title="290 test files">290</span></a></li>
+<li class="toc-suite"><a href="../x-frame-options/"><span class="secno">66</span><span class="toc-name">x-frame-options/</span><span class="toc-count" title="6 test files">6</span></a></li>
+<li class="toc-suite"><a href="../xhr/"><span class="secno">67</span><span class="toc-name">xhr/</span><span class="toc-count" title="329 test files">329</span></a></li>
+<li class="toc-back"><a href="../#history"><span class="secno">68</span><span class="toc-name">Revision history</span></a></li>
+</ol>
+</nav>
+</div>
+</body>
+</html>
