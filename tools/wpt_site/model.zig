@@ -83,6 +83,9 @@ pub const Counts = struct {
     /// True when the journal record came from a WPT crashtest (`crashtest: true`),
     /// which reports 0 subtests and passes when its top-level status is OK.
     crashtest: bool = false,
+    /// True when the worklist's crashtest index (tests/wpt_0_1_crashtests.txt)
+    /// lists the file: the gate judges it by the crashtest rule (`gateOf`).
+    crashtest_indexed: bool = false,
 
     pub fn reported(c: Counts) u64 {
         return c.passed + c.failed + c.timed_out + c.notrun;
@@ -100,9 +103,16 @@ pub const Counts = struct {
 pub fn gateOf(status: ?[]const u8, c: Counts) Gate {
     const st = status orelse return .unrun;
     if (std.mem.eql(u8, st, "OK")) {
-        // WPT crashtests report 0 subtests: completing with status OK is a
-        // clean pass, never `empty` or `none_passed`.
-        if (c.crashtest) return .clean;
+        // A WPT crashtest is judged by its own rule (tools/wpt_progress.py
+        // crashtest_status, lane gate2): OK as a crashtest is clean, never
+        // `empty` or `none_passed`; an OK that the index and the run disagree
+        // on (run as testharness, or not indexed), or that reports subtests
+        // (a crashtest has none), is an error - never clean for reporting
+        // nothing.
+        if (c.crashtest or c.crashtest_indexed) {
+            if (!(c.crashtest and c.crashtest_indexed) or c.reported() > 0) return .err;
+            return .clean;
+        }
         if (c.reported() == 0) return .empty;
         if (c.passed == 0) return .none_passed;
         if (c.passed == c.reported()) return .clean;

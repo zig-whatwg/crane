@@ -173,6 +173,8 @@ pub const Site = struct {
     history: []const Generation,
     wpt: Revision,
     worklist_name: []const u8,
+    /// Of the worklist's files, the crashtests (generate.zig Summary).
+    crashtest_files: usize = 0,
     detail_files: usize,
     /// Absolute URL of the published site, with a trailing slash.
     site_url: []const u8,
@@ -932,7 +934,7 @@ fn writeSocial(w: W, site: *const Site, f: Figures) Error!void {
     try w.writeAll(" / ");
     try html.num(w, f.reported);
     try w.writeAll(" WPT subtests passing\">\n<meta property=\"og:description\" content=\"");
-    try writeSocialDescription(w, f);
+    try writeSocialDescription(w, f, site.crashtest_files > 0);
     try w.writeAll("\">\n<meta property=\"og:url\" content=\"");
     try html.text(w, site.site_url);
     try w.writeAll("\">\n<meta property=\"og:image\" content=\"");
@@ -947,14 +949,14 @@ fn writeSocial(w: W, site: *const Site, f: Figures) Error!void {
     try w.writeAll(" / ");
     try html.num(w, f.reported);
     try w.writeAll(" WPT subtests passing\">\n<meta name=\"twitter:description\" content=\"");
-    try writeSocialDescription(w, f);
+    try writeSocialDescription(w, f, site.crashtest_files > 0);
     try w.writeAll("\">\n<meta name=\"twitter:image\" content=\"");
     try html.text(w, site.site_url);
     try html.text(w, site.card_ref);
     try w.writeAll("\">\n");
 }
 
-fn writeSocialDescription(w: W, f: Figures) Error!void {
+fn writeSocialDescription(w: W, f: Figures, crashtests: bool) Error!void {
     try html.num(w, f.failed);
     try w.writeAll(" failed, ");
     try html.num(w, f.timed_out);
@@ -964,7 +966,10 @@ fn writeSocialDescription(w: W, f: Figures) Error!void {
     try html.num(w, f.files orelse 0);
     try w.writeAll(" test files, ");
     try html.num(w, f.blocking orelse 0);
-    try w.writeAll(" blocking. Crane is a headless web platform engine in Zig; testharness tests only, rendering and layout out of scope.");
+    try w.writeAll(if (crashtests)
+        " blocking. Crane is a headless web platform engine in Zig; testharness tests and crashtests, rendering and layout out of scope."
+    else
+        " blocking. Crane is a headless web platform engine in Zig; testharness tests only, rendering and layout out of scope.");
 }
 
 fn writeRuns(w: W, site: *const Site) Error!void {
@@ -1030,7 +1035,16 @@ fn writeRevision(w: W, r: Revision) Error!void {
 fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
     try w.writeAll("<section class=\"front\" id=\"status\" aria-labelledby=\"status-h\">\n<h2 id=\"status-h\">Status of this document</h2>\n<div class=\"front-prose\">\n<p>Crane is a web platform engine written in Zig: the browser, minus the pixels. This is its record of its own results on the <a href=\"" ++ links.wpt_docs ++ "\">web-platform-tests</a> (WPT), measured by its own runner and regenerated with every run. <strong>Scope:</strong> the ");
     try html.num(w, tot.files);
-    try w.writeAll(" testharness files of the 0.1 worklist, in ");
+    if (site.crashtest_files > 0) {
+        // The two kinds apart (lane gate2): the file total jumped when the
+        // crashtests joined; the history marks that generation.
+        try w.writeAll(" files of the 0.1 worklist &ndash; ");
+        const crashtests: u64 = @intCast(site.crashtest_files);
+        try html.plural(w, tot.files -| crashtests, "testharness file", "testharness files");
+        try w.writeAll(" and ");
+        try html.plural(w, crashtests, "crashtest", "crashtests");
+        try w.writeAll(" &ndash; in ");
+    } else try w.writeAll(" testharness files of the 0.1 worklist, in ");
     try html.plural(w, site.suites.len, "suite", "suites");
     try w.writeAll(". Reftests and tests that need rendering or layout (<code>html/rendering/</code>, <code>canvas</code>, scrolling, focus traversal) are out of scope by design, and every total describes this scope and nothing wider.</p>\n<p><strong>About the totals.</strong> Crane passes ");
     try html.num(w, tot.sub_pass);

@@ -41,6 +41,9 @@ pub const Inputs = struct {
     history_json: []const u8,
     worklist_text: []const u8,
     worklist_name: []const u8 = "tests/wpt_0_1_worklist.txt",
+    /// tests/wpt_0_1_crashtests.txt: which worklist files are crashtests,
+    /// judged by the crashtest rule (model.gateOf); "" lists none.
+    crashtests_text: []const u8 = "",
     /// wpt-results/: journals (to locate each record's run) and streams.
     results: Dir,
     /// tools/wpt_site/assets/ (the stylesheet and faces), copied verbatim;
@@ -164,6 +167,8 @@ pub fn parseRange(arena: Allocator, since: []const u8, head: []const u8, log: []
 
 pub const Summary = struct {
     files: usize = 0,
+    /// Of `files`, the crashtests (the crashtest index's worklist files).
+    crashtest_files: usize = 0,
     detail_files: usize = 0,
     dir_pages: usize = 0,
     /// Test files, each a section of its directory's page (or of a part page).
@@ -239,11 +244,13 @@ const Record = struct {
     timed_out: u64 = 0,
     notrun: u64 = 0,
     message: ?[]const u8 = null,
+    /// The runner ran the file as a WPT crashtest (journal.zig `crashtest`).
+    crashtest: bool = false,
     _journal: []const u8 = "",
     _mtime: f64 = 0,
 
     fn counts(r: Record) model.Counts {
-        return .{ .passed = r.passed, .failed = r.failed, .timed_out = r.timed_out, .notrun = r.notrun };
+        return .{ .passed = r.passed, .failed = r.failed, .timed_out = r.timed_out, .notrun = r.notrun, .crashtest = r.crashtest };
     }
 };
 
@@ -836,6 +843,9 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
 
     var known: std.StringHashMapUnmanaged(void) = .empty;
     for (worklist) |p| try known.put(arena, p, {});
+    // The worklist's crashtests (tools/wpt_subset.py writes the index with it).
+    var crashtests: std.StringHashMapUnmanaged(void) = .empty;
+    for (try parseWorklist(arena, in.crashtests_text)) |p| try crashtests.put(arena, p, {});
 
     // The gate's exemptions: invalid ones stop the site, never exempt silently.
     var local_diag: model.ExemptionDiag = .{};
@@ -853,7 +863,9 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
     var runs: std.StringArrayHashMapUnmanaged(pages_mod.RunInfo) = .empty;
     for (worklist, 0..) |p, i| {
         const rec: ?Record = if (state.map.get(p)) |r| (if (reference.isCrane(r.engine)) r else null) else null;
-        const c: model.Counts = if (rec) |r| r.counts() else .{};
+        var c: model.Counts = if (rec) |r| r.counts() else .{};
+        c.crashtest_indexed = crashtests.contains(p);
+        if (c.crashtest_indexed) summary.crashtest_files += 1;
         files[i] = .{
             .path = p,
             .status = if (rec) |r| r.status else null,
@@ -985,6 +997,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         .history = generations,
         .wpt = in.wpt,
         .worklist_name = in.worklist_name,
+        .crashtest_files = summary.crashtest_files,
         .detail_files = summary.detail_files,
         .site_url = in.site_url,
         .card_ref = card_ref,
@@ -1287,6 +1300,7 @@ pub fn main(init: std.process.Init) !void {
     var wpt_root: []const u8 = "tests/wpt";
     var site_url: []const u8 = default_site_url;
     var exemptions_path: []const u8 = "tools/wpt_gate_exemptions.txt";
+    var crashtests_path: []const u8 = "tests/wpt_0_1_crashtests.txt";
     var hosts_path: []const u8 = "tools/wpt_generation_hosts.txt";
     var reference_path: ?[]const u8 = null;
     var use_reference = true;
@@ -1320,7 +1334,7 @@ pub fn main(init: std.process.Init) !void {
         const eq = std.mem.indexOfScalar(u8, a, '=');
         const key = a[0 .. eq orelse a.len];
         const val = if (eq) |i| a[i + 1 ..] else "";
-        if (std.mem.eql(u8, key, "--no-commit")) commit = false else if (eq == null) usage() else if (std.mem.eql(u8, key, "--state")) state_path = val else if (std.mem.eql(u8, key, "--history")) history_path = val else if (std.mem.eql(u8, key, "--worklist")) worklist_path = val else if (std.mem.eql(u8, key, "--results")) results_path = val else if (std.mem.eql(u8, key, "--assets")) assets_path = val else if (std.mem.eql(u8, key, "--out")) out_path = val else if (std.mem.eql(u8, key, "--wpt-root")) wpt_root = val else if (std.mem.eql(u8, key, "--site-url")) site_url = val else if (std.mem.eql(u8, key, "--exemptions")) exemptions_path = val else if (std.mem.eql(u8, key, "--hosts")) hosts_path = val else usage();
+        if (std.mem.eql(u8, key, "--no-commit")) commit = false else if (eq == null) usage() else if (std.mem.eql(u8, key, "--state")) state_path = val else if (std.mem.eql(u8, key, "--history")) history_path = val else if (std.mem.eql(u8, key, "--worklist")) worklist_path = val else if (std.mem.eql(u8, key, "--results")) results_path = val else if (std.mem.eql(u8, key, "--assets")) assets_path = val else if (std.mem.eql(u8, key, "--out")) out_path = val else if (std.mem.eql(u8, key, "--wpt-root")) wpt_root = val else if (std.mem.eql(u8, key, "--site-url")) site_url = val else if (std.mem.eql(u8, key, "--exemptions")) exemptions_path = val else if (std.mem.eql(u8, key, "--crashtests")) crashtests_path = val else if (std.mem.eql(u8, key, "--hosts")) hosts_path = val else usage();
     }
 
     const cwd = Dir.cwd();
@@ -1328,6 +1342,7 @@ pub fn main(init: std.process.Init) !void {
     const history = try cwd.readFileAlloc(io, history_path, arena, .limited(1 << 31));
     const worklist = try cwd.readFileAlloc(io, worklist_path, arena, .limited(1 << 28));
     const exemptions = try cwd.readFileAlloc(io, exemptions_path, arena, .limited(1 << 24));
+    const crashtests = try cwd.readFileAlloc(io, crashtests_path, arena, .limited(1 << 24));
     const hosts = try cwd.readFileAlloc(io, hosts_path, arena, .limited(1 << 24));
     var results = try cwd.openDir(io, results_path, .{ .iterate = true });
     defer results.close(io);
@@ -1389,6 +1404,7 @@ pub fn main(init: std.process.Init) !void {
         .history_json = history,
         .worklist_text = worklist,
         .worklist_name = worklist_path,
+        .crashtests_text = crashtests,
         .results = results,
         .assets = assets,
         .wpt = detectRevision(arena, io, wpt_root),
