@@ -256,13 +256,27 @@ test "a CPU burn spends the CPU it is asked for, by the process's own clock" {
     try testing.expect(processCpuNs(io) - before >= 20 * std.time.ns_per_ms);
 }
 
+fn isVirtualizedMacOS() bool {
+    if (builtin.os.tag != .macos) return false;
+    var val: c_int = 0;
+    var len: usize = @sizeOf(c_int);
+    if (std.c.sysctlbyname("kern.hv_vmm_present", &val, &len, null, 0) != 0) return false;
+    return val != 0;
+}
+
 test "this process reads: CPU and a footprint, and instructions where the host counts them" {
     if (!supported) return error.SkipZigTest;
     const me: i32 = @intCast(std.c.getpid());
     const a = usageOf(me) orelse return error.TestUnexpectedResult;
     try testing.expect(a.footprint > 0);
     try testing.expect(a.resident > 0);
-    try testing.expectEqual(counts_instructions, a.instructions > 0);
+    // Apple Virtualization macOS VMs (e.g. GitHub Actions macos-15 runners)
+    // do not expose hardware PMU instruction counters to guest kernels, so
+    // proc_pid_rusage reports ri_instructions == 0 there while bare-metal
+    // Macs always report > 0.
+    if (!isVirtualizedMacOS()) {
+        try testing.expectEqual(counts_instructions, a.instructions > 0);
+    }
     // Burn CPU, a millisecond at a time, until the reading moves forward: at
     // once on macOS, within a clock tick or two (10 ms each) on Linux. The
     // wait is on the reading; two seconds of CPU - 200 Linux ticks - with
