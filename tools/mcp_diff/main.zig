@@ -102,6 +102,9 @@ pub const ToolClass = enum {
     needs_renderer,
     chrome_only,
     not_tested,
+    /// The engine feature the tool reads is not in Crane yet; the reason
+    /// names the lane that builds it.
+    not_implemented,
 
     pub fn word(self: ToolClass) []const u8 {
         return switch (self) {
@@ -111,6 +114,7 @@ pub const ToolClass = enum {
             .needs_renderer => "needs_renderer",
             .chrome_only => "chrome_only",
             .not_tested => "not_tested",
+            .not_implemented => "not_implemented",
         };
     }
 };
@@ -188,10 +192,10 @@ pub const tool_catalog = [_]CatalogEntry{
     .{ .name = "list_3p_developer_tools", .category = "thirdParty" },
     .{ .name = "execute_3p_developer_tool", .category = "thirdParty" },
     // WebMCP (2)
-    .{ .name = "list_webmcp_tools", .category = "webmcp", .reason = "Chrome 150+ experimental feature behind --enable-features=WebMCP." },
-    .{ .name = "execute_webmcp_tool", .category = "webmcp", .reason = "Chrome 150+ experimental feature behind --enable-features=WebMCP." },
+    .{ .name = "list_webmcp_tools", .category = "webmcp", .fixed = .not_implemented, .reason = "Not implemented: reads what the page registers through document.modelContext (WebMCP; Chrome exposes it only behind --enable-features=WebMCP or its origin trial) over CDP WebMCP - both built by lane webmcp1 (main, 5:52 PM ET 2026-11-27)." },
+    .{ .name = "execute_webmcp_tool", .category = "webmcp", .fixed = .not_implemented, .reason = "Not implemented: runs a page's document.modelContext tool through CDP WebMCP.invokeTool - lane webmcp1 (main, 5:52 PM ET 2026-11-27)." },
     // WebAuthn (1)
-    .{ .name = "configure_webauthn", .category = "webauthn", .reason = "Requires WebAuthn behind navigator.credentials." },
+    .{ .name = "configure_webauthn", .category = "webauthn", .fixed = .not_implemented, .reason = "Not implemented: needs WebAuthn (navigator.credentials.create/get), a virtual authenticator and CDP WebAuthn - lane webauthn1 (main, 5:45 PM ET 2026-11-27)." },
     // Extensions (5) - Chrome product
     .{ .name = "install_extension", .category = "extensions", .fixed = .chrome_only, .reason = "Chrome's extension system has no web specification." },
     .{ .name = "list_extensions", .category = "extensions", .fixed = .chrome_only, .reason = "Chrome's extension system has no web specification." },
@@ -237,6 +241,7 @@ pub const SummaryCounts = struct {
     tools_needs_renderer: usize = 0,
     tools_chrome_only: usize = 0,
     tools_not_tested: usize = 0,
+    tools_not_implemented: usize = 0,
 };
 
 pub fn classifyTools(arena: Allocator, cases: Cases, records: []const CaseRecord) !struct { summary: SummaryCounts, tools: []ToolSummaryRow } {
@@ -311,6 +316,7 @@ pub fn classifyTools(arena: Allocator, cases: Cases, records: []const CaseRecord
             .needs_renderer => summary.tools_needs_renderer += 1,
             .chrome_only => summary.tools_chrome_only += 1,
             .not_tested => summary.tools_not_tested += 1,
+            .not_implemented => summary.tools_not_implemented += 1,
         }
         rows[ti] = .{
             .name = entry.name,
@@ -328,7 +334,7 @@ pub fn writeResultsJson(w: *Io.Writer, summary: SummaryCounts, tools: []const To
         "{{\"version\":1,\"chromeMcpVersion\":{f},\"summary\":{{" ++
             "\"casesTotal\":{d},\"casesEqual\":{d},\"casesExpectedDiff\":{d},\"casesDiffers\":{d}," ++
             "\"toolsTotal\":{d},\"toolsEqual\":{d},\"toolsExpectedDiff\":{d},\"toolsDiffers\":{d}," ++
-            "\"toolsNeedsRenderer\":{d},\"toolsChromeOnly\":{d},\"toolsNotTested\":{d}}},\"tools\":[",
+            "\"toolsNeedsRenderer\":{d},\"toolsChromeOnly\":{d},\"toolsNotTested\":{d},\"toolsNotImplemented\":{d}}},\"tools\":[",
         .{
             std.json.fmt(chrome_mcp_version, .{}),
             summary.cases_total,
@@ -342,6 +348,7 @@ pub fn writeResultsJson(w: *Io.Writer, summary: SummaryCounts, tools: []const To
             summary.tools_needs_renderer,
             summary.tools_chrome_only,
             summary.tools_not_tested,
+            summary.tools_not_implemented,
         },
     );
     for (tools, 0..) |t, i| {
@@ -1027,6 +1034,9 @@ test "classifyTools and writeResultsJson produce valid structured summary JSON" 
     try std.testing.expectEqual(@as(usize, 0), res.summary.tools_differs);
     try std.testing.expectEqual(@as(usize, 8), res.summary.tools_needs_renderer);
     try std.testing.expectEqual(@as(usize, 10), res.summary.tools_chrome_only);
+    // configure_webauthn and the two WebMCP tools wait for lanes webauthn1
+    // and webmcp1.
+    try std.testing.expectEqual(@as(usize, 3), res.summary.tools_not_implemented);
 
     var out: Io.Writer.Allocating = .init(arena);
     try writeResultsJson(&out.writer, res.summary, res.tools, &recs);
@@ -1034,6 +1044,7 @@ test "classifyTools and writeResultsJson produce valid structured summary JSON" 
     try std.testing.expectEqual(@as(i64, 1), parsed.object.get("version").?.integer);
     try std.testing.expectEqual(@as(usize, 66), parsed.object.get("tools").?.array.items.len);
     try std.testing.expectEqual(@as(usize, 1), parsed.object.get("cases").?.array.items.len);
+    try std.testing.expectEqual(@as(i64, 3), parsed.object.get("summary").?.object.get("toolsNotImplemented").?.integer);
 }
 
 test {
