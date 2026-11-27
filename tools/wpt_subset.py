@@ -1851,6 +1851,8 @@ CRASHTEST_EXCLUDE = [
      'waits on borderBoxSize layout size change (needs-renderer)'),
     ('selection/crashtests/selectall-and-find-svg-text-on-selectstart.html',
      'calls non-standard window.find() in selectstart'),
+    ('html/semantics/embedded-content/the-audio-element/audio-with-replaced-after-pseudo-crash.html',
+     'waits on audio.play() of /media/sound_5 Ogg/MP3 (needs-decoder)'),
 ]
 
 
