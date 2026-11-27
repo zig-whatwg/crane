@@ -129,6 +129,7 @@ const stall_watchdog = @import("stall_watchdog.zig");
 const file_lock = @import("file_lock.zig");
 const work_queue = @import("work_queue.zig");
 const runner_allocator = @import("runner_allocator.zig");
+const handle_gate = @import("handle_gate.zig");
 const wpt_options = @import("wpt_options");
 /// Which of the WPT runner's two builds this binary is (build_mode.zig
 /// `RunnerBuild`; the user, 2026-11-09): `wpt_runner`, the PRODUCTION run -
@@ -894,8 +895,33 @@ pub fn executeTests(
         .max_files = if (options.queue_path != null) options.files_per_runner else 0,
     };
 
+    // Bug-finding per-file V8 handle-count delta gate (`handle_gate.zig`):
+    // compiled out in production so the production runner has zero extra GCs
+    // or `about:blank` navigations.
+    var handle_baseline: handle_gate.Baseline = handle_gate.Baseline.empty(allocator);
+    defer handle_baseline.deinit();
+    if (comptime !wpt_options.production) {
+        var hdiag: handle_gate.ParseDiagnostic = .{};
+        handle_baseline = handle_gate.Baseline.loadOptional(allocator, handle_gate.default_baseline_path, &hdiag) catch |err| {
+            print("warning(handle): could not load {s}:{d}: {s} ({})\n", .{
+                handle_gate.default_baseline_path,
+                hdiag.line,
+                hdiag.reason,
+                err,
+            });
+            return err;
+        };
+    }
+    var handle_before: ?handle_gate.Snapshot = null;
+
     while (try source.next()) |file_offset| {
         const test_file = discovery.test_files.items[file_offset];
+        if (comptime !wpt_options.production) {
+            if (handle_before == null) {
+                browser.wpt_browser.settleForHandleGate();
+                handle_before = readHandleSnapshot();
+            }
+        }
         var tally: FileTally = FileTally.start();
         tally.index = discovery.base_index + file_offset;
         deadline.mark(tally.index, test_file.path);
@@ -1118,6 +1144,29 @@ pub fn executeTests(
         if (result_stream) |*rs| try rs.writeResults(report.resultsSince(file_first));
         if (run_journal) |*j| try tally.record(j, test_file.path, currentAgent(browser));
 
+        // Bug-finding V8 handle-count delta check: close the file's page,
+        // force GC, and compare against the clean `about:blank` baseline
+        // captured before the file ran. Skip on TIMEOUT/ERROR since the
+        // Browser is discarded below anyway.
+        const will_restart = tally.status.restartsBrowser(browser.leftovers());
+        if (comptime !wpt_options.production) {
+            if (tally.status == .ok) {
+                browser.wpt_browser.settleForHandleGate();
+                if (readHandleSnapshot()) |after| {
+                    if (handle_before) |before| {
+                        const check = handle_baseline.check(test_file.path, before, after);
+                        if (check.leaked) {
+                            var diag_buf: [1024]u8 = undefined;
+                            var diag_writer: std.Io.Writer = .fixed(&diag_buf);
+                            handle_gate.writeDiagnostic(&diag_writer, test_file.path, check) catch {};
+                            print("warning(handle): {s}\n", .{diag_writer.buffered()});
+                        }
+                    }
+                    handle_before = after;
+                }
+            }
+        }
+
         // A file that timed out or errored may have left state behind that
         // the next file would run into - a service worker whose install never
         // settles holds its scope's job queue for the Browser's life. Do what
@@ -1126,9 +1175,10 @@ pub fn executeTests(
         // unexpected): end this Browser and start the next file with a fresh
         // one. The same after a file that left a service worker registration
         // behind, whatever its status (journal.Status.restartsBrowser).
-        if (tally.status.restartsBrowser(browser.leftovers())) {
+        if (will_restart) {
             browser.deinit();
             browser = try browser_adapter.BrowserAdapter.init(allocator, options.wpt_root, poisoning != null);
+            handle_before = null;
         }
     }
     if (source.end) |end| switch (end) {
@@ -1367,6 +1417,14 @@ fn readOwnership() ?Ownership {
         if (std.mem.eql(u8, counter.name, "ownership_violations")) violations = @intCast(counter.value);
     }
     return .{ .checks = checks orelse return null, .violations = violations orelse return null };
+}
+
+fn readHandleSnapshot() ?handle_gate.Snapshot {
+    if (engine.capabilities.diagnostic_counters == .unsupported) return null;
+    var buffer: [4096]u8 = undefined;
+    var fixed = std.heap.FixedBufferAllocator.init(&buffer);
+    const counters = engine.diagnosticCounters(fixed.allocator()) catch return null;
+    return handle_gate.extractSnapshot(counters);
 }
 
 /// The agent the current page's realm lives in - the page's Window's - read
