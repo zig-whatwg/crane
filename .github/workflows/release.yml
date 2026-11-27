@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+      - '!v8-prebuilt-*'
   workflow_dispatch:
     inputs:
       version:
