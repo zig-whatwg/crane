@@ -58,7 +58,25 @@ pub fn Definition(comptime runtime: type, comptime engine: type) type {
         };
 
         /// Takes constructor on success; other exits leave it with the caller.
-        pub fn init(allocator: Allocator, name: []const u8, local_name: []const u8, constructor: StoredCallback) !*Self {
+        /// Accepts a strong `engine.CallbackFunction` (converting to a
+        /// `TracedCallback` on tracing engines and releasing the input) so
+        /// engine-free unit tests construct definitions directly.
+        pub fn init(allocator: Allocator, name: []const u8, local_name: []const u8, constructor: engine.CallbackFunction) !*Self {
+            if (comptime @hasDecl(engine, "TracedCallback")) {
+                var traced = engine.keepCallbackFunctionTraced(.{ .function = constructor.function.value });
+                traced.context = constructor.context;
+                errdefer traced.release();
+                const def = try initTraced(allocator, name, local_name, traced);
+                constructor.release();
+                return def;
+            } else {
+                return initTraced(allocator, name, local_name, constructor);
+            }
+        }
+
+        /// Takes a `StoredCallback` (`engine.TracedCallback` on tracing
+        /// engines) directly; other exits leave it with the caller.
+        pub fn initTraced(allocator: Allocator, name: []const u8, local_name: []const u8, constructor: StoredCallback) !*Self {
             const definition = try allocator.create(Self);
             errdefer allocator.destroy(definition);
             const owned_name = try allocator.dupe(u8, name);

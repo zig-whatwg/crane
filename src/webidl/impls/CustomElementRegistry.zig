@@ -341,7 +341,7 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
     const traced_constructor = toTracedCallback(constructor);
     var def_owns_constructor = false;
     defer if (!def_owns_constructor) traced_constructor.release();
-    const def = CustomElementDefinition.init(allocator, name_str, local_name, traced_constructor) catch |err| {
+    const def = CustomElementDefinition.initTraced(allocator, name_str, local_name, traced_constructor) catch |err| {
         collected.freeAttributes(allocator);
         return err;
     };

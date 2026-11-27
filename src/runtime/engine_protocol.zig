@@ -2673,7 +2673,7 @@ pub inline fn keepValueTraced(realm: Context, value: JSValue) Error!TracedValueH
 /// an engine handle (`.traced`) and `owner` has no wrapper yet, registers
 /// `owner` via `noteUnwrappedTracedOwner` so the value survives full
 /// collections until `owner` is wrapped.
-pub inline fn keepValueTracedFor(owner: *Instance, realm: Context, value: JSValue) Error!TracedValueHold {
+pub fn keepValueTracedFor(owner: *Instance, realm: Context, value: JSValue) Error!TracedValueHold {
     const hold = try keepValueTraced(realm, value);
     if (hold == .traced) noteUnwrappedTracedOwner(owner);
     return hold;
