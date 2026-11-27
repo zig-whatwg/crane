@@ -24,6 +24,11 @@ pub const MediaType = enum { screen, print };
 pub const ColorScheme = enum { light, dark };
 pub const ReducedMotion = enum { no_preference, reduce };
 pub const Contrast = enum { no_preference, more, less, custom };
+pub const ReducedTransparency = enum { no_preference, reduce };
+pub const InvertedColors = enum { none, inverted };
+pub const ColorGamut = enum { srgb, p3, rec2020 };
+pub const DynamicRange = enum { standard, high };
+pub const ReducedData = enum { no_preference, reduce };
 
 /// The media a document's media queries are evaluated against (Media
 /// Queries 5): each null field answers as the platform does.
@@ -33,6 +38,11 @@ pub const Media = struct {
     reduced_motion: ?ReducedMotion = null,
     contrast: ?Contrast = null,
     forced_colors: ?bool = null,
+    reduced_transparency: ?ReducedTransparency = null,
+    inverted_colors: ?InvertedColors = null,
+    color_gamut: ?ColorGamut = null,
+    dynamic_range: ?DynamicRange = null,
+    reduced_data: ?ReducedData = null,
 };
 
 /// The screen an emulated device reports (CDP's
