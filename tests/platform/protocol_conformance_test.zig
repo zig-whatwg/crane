@@ -93,8 +93,11 @@ test "conformance: the bound platform matches every operation" {
     // names by path (6.10.3: userFile, userDirectory); 254 since lane mcp1
     // added the MCP server's file operations (6.5: writeFilePrivate,
     // realPath, tempDirectory); 255 since lane hard1-b added
-    // currentThreadToken (6.4: inline thread identity token for heap hot paths).
-    try testing.expectEqual(@as(usize, 255), count);
+    // currentThreadToken (6.4: inline thread identity token for heap hot paths);
+    // 262 since lane mcp-http1 added non-loopback listener and TLS server ops
+    // (6.12: devtoolsListenAddress, devtoolsTlsServerNew, devtoolsTlsServerClose,
+    // devtoolsTlsAccept, devtoolsTlsRead, devtoolsTlsWrite, devtoolsTlsClose).
+    try testing.expectEqual(@as(usize, 262), count);
 }
 
 test "address space (6.11): this platform reserves, commits, decommits and releases" {

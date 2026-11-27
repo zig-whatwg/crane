@@ -3751,6 +3751,86 @@ pub inline fn devtoolsOpenInheritedPipe(read_fd: i32, write_fd: i32) Error!Devto
     return impl.devtoolsOpenInheritedPipe(read_fd, write_fd);
 }
 
+/// An opaque TLS server configuration (certificate chain, private key, cipher
+/// policy), OWNED until `devtoolsTlsServerClose`.
+pub const DevtoolsTlsServer = opaque {};
+
+/// One accepted TLS connection wrapping a `DevtoolsStream`, OWNED until
+/// `devtoolsTlsClose`.
+pub const DevtoolsTlsStream = opaque {};
+
+/// Options for `devtoolsTlsServerNew`.
+pub const DevtoolsTlsOptions = extern struct {
+    /// Host-supplied PEM certificate (and optional chain). Empty: generate an
+    /// ephemeral self-signed ECDSA P-256 X.509 v3 certificate for this server.
+    cert_pem: Bytes = .empty,
+    /// Host-supplied PEM private key (required when `cert_pem` is non-empty).
+    key_pem: Bytes = .empty,
+    /// Optional host/IP literal to include in the ephemeral certificate's SAN
+    /// beside `localhost`, `127.0.0.1` and `::1`. Empty: `"localhost"`.
+    common_name: Str = .empty,
+};
+
+/// Result of `devtoolsTlsServerNew`: the server handle and the leaf
+/// certificate's raw DER SHA-256 fingerprint (for client pinning).
+pub const DevtoolsTlsServerInfo = extern struct {
+    handle: *DevtoolsTlsServer,
+    cert_sha256: [32]u8,
+};
+
+/// Listen on `host`:`port` (`host` empty, `"localhost"`, `"127.0.0.1"` or
+/// `"::1"` for loopback; any other IPv4/IPv6 literal such as `"0.0.0.0"` or a
+/// LAN interface IP for non-loopback; non-IP hostnames are refused with
+/// `error.AccessDenied` without DNS). `port` 0 picks any free port. Callers
+/// binding a non-loopback address MUST wrap accepted connections in TLS.
+pub inline fn devtoolsListenAddress(host: Str, port: u16) Error!DevtoolsListener {
+    comptime gate(.devtools_transport, "devtoolsListenAddress");
+    return impl.devtoolsListenAddress(host, port);
+}
+
+/// Create a TLS 1.2/1.3 server configuration with either host-supplied PEM
+/// cert/key or an ephemeral self-signed ECDSA P-256 certificate, returning its
+/// SHA-256 DER fingerprint. OWNED by the caller until `devtoolsTlsServerClose`.
+pub inline fn devtoolsTlsServerNew(allocator: std.mem.Allocator, options: *const DevtoolsTlsOptions) Error!DevtoolsTlsServerInfo {
+    comptime gate(.devtools_transport, "devtoolsTlsServerNew");
+    return impl.devtoolsTlsServerNew(allocator, options);
+}
+
+/// Release a TLS server configuration. No active `DevtoolsTlsStream` may still
+/// reference it.
+pub inline fn devtoolsTlsServerClose(server: *DevtoolsTlsServer) void {
+    comptime gate(.devtools_transport, "devtoolsTlsServerClose");
+    return impl.devtoolsTlsServerClose(server);
+}
+
+/// Wrap an accepted TCP `stream` in TLS and run the server handshake, aborting
+/// immediately (returning `null`) if `wake` is woken. The caller keeps
+/// ownership of the underlying `stream` and closes it after `devtoolsTlsClose`.
+pub inline fn devtoolsTlsAccept(allocator: std.mem.Allocator, server: *DevtoolsTlsServer, stream: DevtoolsStream, wake: DevtoolsWake) Error!?*DevtoolsTlsStream {
+    comptime gate(.devtools_transport, "devtoolsTlsAccept");
+    return impl.devtoolsTlsAccept(allocator, server, stream, wake);
+}
+
+/// Read decrypted bytes from `stream`, waiting until data arrives or `wake` is
+/// woken (`null` then). Returns `0` on orderly peer close (`close_notify`/EOF).
+pub inline fn devtoolsTlsRead(stream: *DevtoolsTlsStream, buffer: []u8, wake: DevtoolsWake) Error!?usize {
+    comptime gate(.devtools_transport, "devtoolsTlsRead");
+    return impl.devtoolsTlsRead(stream, buffer, wake);
+}
+
+/// Encrypt and write all of `bytes` to `stream`.
+pub inline fn devtoolsTlsWrite(stream: *DevtoolsTlsStream, bytes: Bytes) Error!void {
+    comptime gate(.devtools_transport, "devtoolsTlsWrite");
+    return impl.devtoolsTlsWrite(stream, bytes);
+}
+
+/// Send TLS `close_notify` (best-effort) and release `stream`. Does not close
+/// the underlying `DevtoolsStream`.
+pub inline fn devtoolsTlsClose(stream: *DevtoolsTlsStream) void {
+    comptime gate(.devtools_transport, "devtoolsTlsClose");
+    return impl.devtoolsTlsClose(stream);
+}
+
 // ============================================================================
 // 7. Platform events
 // ============================================================================

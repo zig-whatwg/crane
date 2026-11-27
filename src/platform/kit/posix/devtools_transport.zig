@@ -13,6 +13,14 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const platform = @import("platform");
+const tls_server = @import("tls_server.zig");
+
+pub const devtoolsTlsServerNew = tls_server.devtoolsTlsServerNew;
+pub const devtoolsTlsServerClose = tls_server.devtoolsTlsServerClose;
+pub const devtoolsTlsAccept = tls_server.devtoolsTlsAccept;
+pub const devtoolsTlsRead = tls_server.devtoolsTlsRead;
+pub const devtoolsTlsWrite = tls_server.devtoolsTlsWrite;
+pub const devtoolsTlsClose = tls_server.devtoolsTlsClose;
 
 const c = std.c;
 const Error = platform.Error;
@@ -70,6 +78,86 @@ pub fn devtoolsListen(port: u16) Error!platform.DevtoolsListener {
     var length: c.socklen_t = @sizeOf(c.sockaddr.in);
     if (c.getsockname(fd, @ptrCast(&bound), &length) != 0) return mapError(lastError());
     return .{ .handle = fd, .port = std.mem.bigToNative(u16, bound.port) };
+}
+
+/// Parse an IPv4 dotted-quad literal (`a.b.c.d`) into 4 network-order bytes.
+pub fn parseIpv4(text: []const u8) ?[4]u8 {
+    var out: [4]u8 = undefined;
+    var it = std.mem.splitScalar(u8, text, '.');
+    var i: usize = 0;
+    while (it.next()) |part| {
+        if (i >= 4 or part.len == 0 or part.len > 3) return null;
+        if (part.len > 1 and part[0] == '0') return null;
+        out[i] = std.fmt.parseUnsigned(u8, part, 10) catch return null;
+        i += 1;
+    }
+    return if (i == 4) out else null;
+}
+
+extern "c" fn inet_pton(af: c_int, src: [*:0]const u8, dst: *anyopaque) c_int;
+
+/// Parse an IPv6 literal (with or without surrounding `[...]`) into 16
+/// network-order bytes via POSIX `inet_pton(AF_INET6, ...)`.
+pub fn parseIpv6(text: []const u8) ?[16]u8 {
+    var inner = text;
+    if (inner.len >= 2 and inner[0] == '[' and inner[inner.len - 1] == ']') {
+        inner = inner[1 .. inner.len - 1];
+    }
+    if (inner.len == 0 or inner.len >= 64) return null;
+    if (std.mem.indexOfScalar(u8, inner, ':') == null) return null;
+    var buf: [64]u8 = undefined;
+    @memcpy(buf[0..inner.len], inner);
+    buf[inner.len] = 0;
+    var out: [16]u8 = undefined;
+    if (inet_pton(c.AF.INET6, @ptrCast(&buf), &out) != 1) return null;
+    return out;
+}
+
+pub fn devtoolsListenAddress(host: platform.Str, port: u16) Error!platform.DevtoolsListener {
+    const raw = std.mem.trim(u8, host.slice(), " \t");
+    if (raw.len == 0 or std.ascii.eqlIgnoreCase(raw, "localhost")) {
+        return devtoolsListen(port);
+    }
+    if (parseIpv4(raw)) |octets| {
+        const fd = c.socket(c.AF.INET, c.SOCK.STREAM, 0);
+        if (fd < 0) return mapError(lastError());
+        errdefer _ = c.close(fd);
+        setCloseOnExec(fd);
+        const one: c_int = 1;
+        _ = c.setsockopt(fd, c.SOL.SOCKET, c.SO.REUSEADDR, &one, @sizeOf(c_int));
+        var address: c.sockaddr.in = .{
+            .port = std.mem.nativeToBig(u16, port),
+            .addr = @bitCast(octets),
+        };
+        if (c.bind(fd, @ptrCast(&address), @sizeOf(c.sockaddr.in)) != 0) return mapError(lastError());
+        if (c.listen(fd, 64) != 0) return mapError(lastError());
+        var bound: c.sockaddr.in = undefined;
+        var length: c.socklen_t = @sizeOf(c.sockaddr.in);
+        if (c.getsockname(fd, @ptrCast(&bound), &length) != 0) return mapError(lastError());
+        return .{ .handle = fd, .port = std.mem.bigToNative(u16, bound.port) };
+    }
+    if (parseIpv6(raw)) |octets| {
+        const fd = c.socket(c.AF.INET6, c.SOCK.STREAM, 0);
+        if (fd < 0) return mapError(lastError());
+        errdefer _ = c.close(fd);
+        setCloseOnExec(fd);
+        const one: c_int = 1;
+        _ = c.setsockopt(fd, c.SOL.SOCKET, c.SO.REUSEADDR, &one, @sizeOf(c_int));
+        _ = c.setsockopt(fd, c.IPPROTO.IPV6, c.IPV6.V6ONLY, &one, @sizeOf(c_int));
+        var address: c.sockaddr.in6 = .{
+            .port = std.mem.nativeToBig(u16, port),
+            .flowinfo = 0,
+            .addr = octets,
+            .scope_id = 0,
+        };
+        if (c.bind(fd, @ptrCast(&address), @sizeOf(c.sockaddr.in6)) != 0) return mapError(lastError());
+        if (c.listen(fd, 64) != 0) return mapError(lastError());
+        var bound: c.sockaddr.in6 = undefined;
+        var length: c.socklen_t = @sizeOf(c.sockaddr.in6);
+        if (c.getsockname(fd, @ptrCast(&bound), &length) != 0) return mapError(lastError());
+        return .{ .handle = fd, .port = std.mem.bigToNative(u16, bound.port) };
+    }
+    return error.AccessDenied;
 }
 
 pub fn devtoolsWakeNew() Error!platform.DevtoolsWake {
@@ -216,4 +304,8 @@ test "devtoolsListen binds a free loopback port when asked for 0; a woken wake e
     devtoolsWake(wake);
     try std.testing.expect((try devtoolsAccept(listener, wake)) == null);
     try std.testing.expect((try devtoolsAccept(listener, wake)) == null);
+}
+
+test {
+    _ = tls_server;
 }

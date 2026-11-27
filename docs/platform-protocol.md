@@ -798,6 +798,25 @@ on aarch64-linux). Any thread; a range is its owner's.
 kit/posix implements the group for darwin and Linux, by the target it is built for; darwin, linux and testing
 alias it. kit/headless answers NotSupported, and a Browser on such a platform fails `Browser.init` cleanly.
 
+### 6.12 Remote debugging and MCP transport [devtools_transport]
+
+TCP listeners, accepted streams, inherited pipes (`--remote-debugging-pipe` / `--mcp` stdio) and server-side
+TLS 1.2/1.3 for CDP and Streamable HTTP MCP (src/devtools; tmp/plans/mcp1-design.md section 3). Blocking calls
+made from the remote end's own threads; waits take a `DevtoolsWake` so shutdown wakes them without polling.
+
+| Operation | Signature | Notes |
+|---|---|---|
+| `devtoolsWakeNew` / `devtoolsWake` / `devtoolsWakeClose` | `() Error!DevtoolsWake`, `(wake) void`, `(wake) void` | Cross-thread wake pipe ending `devtoolsAccept`, `devtoolsReadOrWake`, `devtoolsTlsAccept` and `devtoolsTlsRead`. |
+| `devtoolsListen` | `(port: u16) Error!DevtoolsListener` | Binds `127.0.0.1:port` (0: any free port). CDP's loopback-only listener. |
+| `devtoolsListenAddress` | `(host: Str, port: u16) Error!DevtoolsListener` | Binds loopback (`""`, `"localhost"`, `"127.0.0.1"`, `"::1"`) or an explicit IPv4/IPv6 literal (`"0.0.0.0"`, `"::"`, interface IP); refuses non-IP hostnames (`AccessDenied`, no DNS). Non-loopback callers MUST wrap accepted streams in TLS. |
+| `devtoolsAccept` / `devtoolsCloseListener` | `(listener, wake) Error!?DevtoolsStream`, `(listener) void` | Wakeable accept (`null` when woken) and close. |
+| `devtoolsRead` / `devtoolsReadOrWake` / `devtoolsWrite` / `devtoolsShutdown` / `devtoolsClose` | plain stream I/O | Blocking socket/pipe I/O with wakeable read and cross-thread `SHUT_RDWR`. |
+| `devtoolsOpenInheritedPipe` | `(read_fd: i32, write_fd: i32) Error!DevtoolsPipe` | Inherited pipe pair (`--remote-debugging-pipe` fds 3/4; `--mcp` fds 0/1). |
+| `devtoolsTlsServerNew` / `devtoolsTlsServerClose` | `(allocator, options: *const DevtoolsTlsOptions) Error!DevtoolsTlsServerInfo`, `(server) void` | TLS 1.2/1.3 server config (kit/posix over the kit's bundled mbedTLS): loads host-supplied PEM cert/key or generates an ephemeral self-signed ECDSA P-256 X.509 v3 cert with SANs (`localhost`, `127.0.0.1`, `::1`, requested IP) and returns the leaf cert's 32-byte SHA-256 DER fingerprint. |
+| `devtoolsTlsAccept` / `devtoolsTlsRead` / `devtoolsTlsWrite` / `devtoolsTlsClose` | `(allocator, server, stream, wake) Error!?*DevtoolsTlsStream`, `(stream, buf, wake) Error!?usize`, `(stream, bytes) Error!void`, `(stream) void` | Wakeable TLS server handshake and encrypted record I/O; caller owns the underlying `DevtoolsStream`. |
+
+kit/posix implements the group for macOS and Linux; iOS and `-Dcdp=false` alias kit/headless (`NotSupported`).
+
 ## 7. Platform events
 
 What the platform reports unasked - a screen change, a revoked permission, a camera unplugged, a

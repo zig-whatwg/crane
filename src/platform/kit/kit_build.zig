@@ -347,6 +347,31 @@ pub fn modules(b: *std.Build, target: std.Build.ResolvedTarget, prepare: ?Prepar
     // and reads the local time zone through <time.h> (localtime_r, tzset).
     const c_time = cImport(b, "c_time", target, prepare, .{ .includes = &.{"time.h"} });
     kit_modules[0].addImport("c_time", c_time);
+    // kit/posix's TLS server (tls_server.zig, devtools_transport capability)
+    // shares the kit's bundled mbedTLS when libcurl is the bundled one.
+    const kit_posix_options = b.addOptions();
+    kit_posix_options.addOption(bool, "mbedtls_tls_server", request.libraries.linkedTls() != null);
+    kit_modules[0].addOptions("kit_posix_options", kit_posix_options);
+    if (request.libraries.linkedTls()) |mbedtls| {
+        kit_modules[0].linkLibrary(mbedtls);
+        kit_modules[0].addImport("mbedtls_c", cImport(b, "mbedtls_posix_tls_c", target, prepare, .{
+            .includes = &.{
+                "psa/crypto.h",
+                "mbedtls/ssl.h",
+                "mbedtls/x509_crt.h",
+                "mbedtls/x509.h",
+                "mbedtls/pk.h",
+                "mbedtls/ecp.h",
+                "mbedtls/oid.h",
+                "mbedtls/md.h",
+                "mbedtls/net_sockets.h",
+                "mbedtls/error.h",
+            },
+            .libs = &.{mbedtls},
+            .macros = &mbedtls_threading_macros,
+        }));
+        if (prepare) |p| p.module(kit_modules[0]);
+    }
     // kit/browser_state keeps a Browser's stores in kit/memory_store.
     kit_modules[6].addImport("kit_memory_store", kit_modules[2]);
     // kit/curl's connection share, its own module (see Modules).

@@ -40,6 +40,13 @@ pub const devtoolsShutdown = devtools_transport.devtoolsShutdown;
 pub const devtoolsClose = devtools_transport.devtoolsClose;
 pub const devtoolsCloseListener = devtools_transport.devtoolsCloseListener;
 pub const devtoolsOpenInheritedPipe = devtools_transport.devtoolsOpenInheritedPipe;
+pub const devtoolsListenAddress = devtools_transport.devtoolsListenAddress;
+pub const devtoolsTlsServerNew = devtools_transport.devtoolsTlsServerNew;
+pub const devtoolsTlsServerClose = devtools_transport.devtoolsTlsServerClose;
+pub const devtoolsTlsAccept = devtools_transport.devtoolsTlsAccept;
+pub const devtoolsTlsRead = devtools_transport.devtoolsTlsRead;
+pub const devtoolsTlsWrite = devtools_transport.devtoolsTlsWrite;
+pub const devtoolsTlsClose = devtools_transport.devtoolsTlsClose;
 
 const log = std.log.scoped(.platform);
 
