@@ -2762,7 +2762,10 @@ pub const WrapperCache = struct {
         // wrapping an instance of another realm in its group (e.g. an isolated
         // world wrapping a main-realm object), inherit the canonical count from
         // its own realm's cache without removing `pending_before_wrap` there.
-        const own_cache = cacheOf(instance);
+        // Only read `instance.ctx` for real agent/world caches (`self.world or
+        // self.registered`); synthetic WrapperCache unit tests pass mock
+        // instances with uninitialized `ctx`.
+        const own_cache: ?*Self = if (self.world or self.registered) cacheOf(instance) else self;
         if (own_cache != null and own_cache.? != self) {
             entry.bits.pending_activity = own_cache.?.pendingActivityCount(instance, entry.stamp.generation);
         } else if (self.pending_before_wrap.fetchRemove(instance)) |held| {
