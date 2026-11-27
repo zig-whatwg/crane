@@ -183,6 +183,18 @@ pub const instance_fill_bytes: usize = 24;
 /// An Instance slot: the Instance and its stamp.
 pub const instance_slot_bytes: usize = 32;
 
+/// Leading bytes of a `.node` State block skipped by zero/poison-on-free and
+/// verify-on-issue (allocator-hardening design §4.4, N11/H3 preparation):
+/// 0 until N11 moves the Instance header/stamp inside the node block, leaving
+/// the stamp readable after free while filling and verifying the rest.
+pub const node_stamp_skip_bytes: usize = 0;
+
+/// Fill `[skip..fill_len]` of a freed block with `fill_byte`, leaving any
+/// leading stamp bytes (`[0..skip]`) untouched (design §4.4, N11/H3).
+pub inline fn fillFreedBytes(block: [*]u8, fill_len: usize, comptime skip: usize, fill_byte: u8) void {
+    if (fill_len > skip) @memset(block[skip..fill_len], fill_byte);
+}
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -1758,6 +1770,8 @@ pub const Engine = struct {
                 const cap = @min(checked, general_objects_zero_cap);
                 self.verifyZeroSlice(block[0..cap]);
                 if (!fresh and checked > general_objects_zero_cap) @memset(block[general_objects_zero_cap..checked], 0);
+            } else if (p.id == .node) {
+                self.verifyAndZeroBlock(block, checked, node_stamp_skip_bytes, fresh);
             } else {
                 self.verifyFreed(block[0..checked], fresh);
             }
@@ -1786,6 +1800,14 @@ pub const Engine = struct {
             self.violation(.write_after_free, @intFromPtr(block.ptr));
             @memset(block, 0);
         }
+    }
+
+    /// Verify `[skip..checked]` of a block being issued against its expected
+    /// fill (zero or poison) and zero it on reissue, leaving any leading stamp
+    /// bytes (`[0..skip]`) intact (design §4.4, N11/H3 preparation).
+    pub fn verifyAndZeroBlock(self: *Engine, block: [*]u8, checked: usize, comptime skip: usize, fresh: bool) void {
+        if (checked <= skip) return;
+        self.verifyFreed(block[skip..checked], fresh);
     }
 
     fn verifyFreed(self: *Engine, block: []u8, fresh: bool) void {
@@ -3039,11 +3061,15 @@ pub const Engine = struct {
         // general objects zero up to the first 1 KiB on free (remainder zeroed
         // on reissue).
         if (self.fills(p)) {
-            const fill_len = if (b.general and p.id == .objects and self.config.fill == .zero)
-                @min(b.fill_bytes, general_objects_zero_cap)
-            else
-                b.fill_bytes;
-            @memset(block[0..fill_len], self.config.fillByte());
+            if (p.id == .node) {
+                fillFreedBytes(block, b.fill_bytes, node_stamp_skip_bytes, self.config.fillByte());
+            } else {
+                const fill_len = if (b.general and p.id == .objects and self.config.fill == .zero)
+                    @min(b.fill_bytes, general_objects_zero_cap)
+                else
+                    b.fill_bytes;
+                @memset(block[0..fill_len], self.config.fillByte());
+            }
         }
         b.live -= 1;
         b.requested -|= size;
@@ -3133,7 +3159,12 @@ pub const Engine = struct {
         b.requested_total += size;
         const block: [*]u8 = @ptrFromInt(self.heap.window_base + offset);
         const checked = if (b.kind == .instance) instance_fill_bytes else size;
-        if (self.fills(p)) self.verifyFreed(block[0..checked], false);
+        if (self.fills(p)) {
+            if (p.id == .node)
+                self.verifyAndZeroBlock(block, checked, node_stamp_skip_bytes, false)
+            else
+                self.verifyFreed(block[0..checked], false);
+        }
         const e = self.entry(index);
         if (e.sites != 0) {
             const sites: [*]usize = @ptrFromInt(self.heap.window_base + self.meta_pool_base + (@as(usize, e.sites) - 1) * @sizeOf(Chunk));
@@ -3862,6 +3893,83 @@ pub const Engine = struct {
         return .{ .engine = self, .chunk_id = self.objects_buckets[instance_bucket].first };
     }
 
+    /// Iterator over every active non-empty span in the `.node` partition,
+    /// across all `(class, kind, random_bucket)` buckets and large-run buckets.
+    /// Window agent's thread only (or teardown when no other thread touches
+    /// `.node`); callers must not open new `.node` spans during the walk.
+    pub const NodeSpans = struct {
+        engine: *Engine,
+        bucket_idx: usize = 0,
+        chunk_id: u32 = no_chunk,
+        at: u32 = 0,
+
+        pub fn next(it: *NodeSpans) ?NodeSpan {
+            const e = it.engine;
+            const p = &e.node;
+            while (true) {
+                while (it.chunk_id != no_chunk) {
+                    const c = e.chunk(p, it.chunk_id);
+                    const bi = it.bucket_idx - 1;
+                    const b = &e.node_buckets[bi];
+                    while (it.at < c.count) {
+                        const index = c.spans[it.at];
+                        it.at += 1;
+                        const span = e.entry(index);
+                        if (span.state == .active and span.used != 0) {
+                            const is_large = b.kind == .large;
+                            const kind: ?NodeKind = if (is_large)
+                                null
+                            else
+                                @fromBackingInt(@intCast(bi / Classes.count / random_buckets));
+                            return .{
+                                .span_index = index,
+                                .address = e.spanAddress(index),
+                                .block_bytes = b.block_bytes,
+                                .slots = span.slots,
+                                .used = span.used,
+                                .kind = kind,
+                                .is_large = is_large,
+                            };
+                        }
+                    }
+                    it.chunk_id = c.next;
+                    it.at = 0;
+                }
+                if (it.bucket_idx >= node_bucket_count) return null;
+                it.chunk_id = e.node_buckets[it.bucket_idx].first;
+                it.bucket_idx += 1;
+                it.at = 0;
+            }
+        }
+    };
+
+    /// Iterate active non-empty `.node` partition spans (N11/H3 preparation).
+    pub fn nodeSpans(self: *Engine) NodeSpans {
+        return .{ .engine = self };
+    }
+
+    /// Visit every live (`.allocated`) node State block across all `.node`
+    /// partition spans, skipping `.free`, `.cached` (magazine), and
+    /// `.quarantined` slots (allocator-hardening design §4.4, N11/H3).
+    /// Returns the number of live node blocks visited.
+    pub fn forEachLiveNode(self: *Engine, context: anytype, comptime visit: fn (@TypeOf(context), LiveNode) void) usize {
+        var count: usize = 0;
+        var it = self.nodeSpans();
+        while (it.next()) |ns| {
+            const map = self.slotMap(ns.span_index);
+            for (0..ns.slots) |slot| {
+                if (slotGet(map, slot) != .allocated) continue;
+                visit(context, .{
+                    .ptr = @ptrFromInt(ns.address + slot * ns.block_bytes),
+                    .block_bytes = ns.block_bytes,
+                    .kind = ns.kind,
+                });
+                count += 1;
+            }
+        }
+        return count;
+    }
+
     /// The leak report: every block alive now, by bucket - and by site,
     /// where the heap records sites. `report(context, line)` for each.
     pub fn leakReport(self: *Engine, context: anytype, comptime report: fn (@TypeOf(context), LeakLine) void) usize {
@@ -4162,6 +4270,26 @@ pub fn freeAligned(source: anytype, memory: anytype, comptime alignment: std.mem
     }
     @compileError("heap.freeAligned expects *heap.Engine, *heap.AgentCache, or std.mem.Allocator");
 }
+
+/// One active `.node` partition span yielded by `Engine.nodeSpans`
+/// (allocator-hardening design §4.4, N11/H3 preparation).
+pub const NodeSpan = struct {
+    span_index: u32,
+    address: usize,
+    block_bytes: usize,
+    slots: u16,
+    used: u16,
+    kind: ?NodeKind,
+    is_large: bool,
+};
+
+/// One live (`.allocated`) block yielded by `Engine.forEachLiveNode`
+/// (design §4.4, N11/H3 preparation).
+pub const LiveNode = struct {
+    ptr: [*]u8,
+    block_bytes: usize,
+    kind: ?NodeKind,
+};
 
 test {
     _ = classes;

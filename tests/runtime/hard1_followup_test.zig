@@ -287,3 +287,120 @@ test "item 6: free_bytes_in_active_spans and classStats track exact active-span 
     eng.free(n2, 112, 8);
     eng.endTask();
 }
+
+// ============================================================================
+// Item 7 (§4.4): N11/H3 preparation — stamp skip & nodeSpans / forEachLiveNode
+// ============================================================================
+
+test "item 7: node_stamp_skip_bytes defaults to 0 and fillFreedBytes/verifyAndZeroBlock preserve leading stamp" {
+    if (Heap.profile != .full) return error.SkipZigTest;
+
+    // Pinned default until N11 moves the Instance header/stamp into the node block.
+    try testing.expectEqual(@as(usize, 0), heap.node_stamp_skip_bytes);
+
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const eng = try scope.heapEngine();
+    eng.configureForTest(.debug_default);
+    eng.checks = .report;
+
+    // Simulate a 64-byte node block with an 8-byte stamp at offset 0.
+    var block: [64]u8 align(8) = @splat(0x42);
+    const stamp: u64 = 0xDEAD_BEEF_CAFE_BABE;
+    std.mem.writeInt(u64, block[0..8], stamp, .little);
+
+    // Fill on free with skip = 8: stamp stays intact, payload [8..64] poisoned.
+    heap.fillFreedBytes(&block, block.len, 8, heap.poison_byte);
+    try testing.expectEqual(stamp, std.mem.readInt(u64, block[0..8], .little));
+    for (block[8..]) |b| try testing.expectEqual(heap.poison_byte, b);
+
+    // Verify + zero on reissue with skip = 8: stamp stays intact, payload zeroed, no violation.
+    eng.verifyAndZeroBlock(&block, block.len, 8, false);
+    try testing.expectEqual(@as(?heap.Violation, null), eng.takeViolation());
+    try testing.expectEqual(stamp, std.mem.readInt(u64, block[0..8], .little));
+    for (block[8..]) |b| try testing.expectEqual(@as(u8, 0), b);
+
+    // Write-after-free in payload [8..64] is caught even with skip = 8.
+    heap.fillFreedBytes(&block, block.len, 8, heap.poison_byte);
+    block[24] = 0x99;
+    eng.verifyAndZeroBlock(&block, block.len, 8, false);
+    try testing.expectEqual(@as(?heap.Violation, .write_after_free), eng.takeViolation());
+    try testing.expectEqual(stamp, std.mem.readInt(u64, block[0..8], .little));
+}
+
+test "item 7: nodeSpans and forEachLiveNode walk all live node blocks and skip freed/quarantined slots" {
+    if (Heap.profile != .full) return error.SkipZigTest;
+
+    var scope = BrowserScope.init(testing.allocator);
+    defer scope.deinit();
+    const eng = try scope.heapEngine();
+
+    // Allocate across all three NodeKinds plus a large node block.
+    const el1 = try eng.alloc(.{ .node = .element }, 112, 8, heap.Site.of(u64), @returnAddress());
+    const el2 = try eng.alloc(.{ .node = .element }, 112, 8, heap.Site.of(u32), @returnAddress());
+    const cd1 = try eng.alloc(.{ .node = .character_data }, 96, 8, heap.Site.of(u16), @returnAddress());
+    const oth1 = try eng.alloc(.{ .node = .other }, 256, 8, heap.Site.of(u8), @returnAddress());
+    const large1 = try eng.alloc(.{ .node = .other }, heap.span_bytes + 4096, 8, heap.Site.of(usize), @returnAddress());
+
+    // Free el2 outside a task (magazine/cached) and quarantine oth1 during a task.
+    eng.free(el2, 112, 8);
+    eng.beginTask();
+    eng.free(oth1, 256, 8);
+
+    // Check nodeSpans finds active spans.
+    var span_count: usize = 0;
+    var saw_large_span = false;
+    var spans = eng.nodeSpans();
+    while (spans.next()) |ns| {
+        span_count += 1;
+        if (ns.is_large) saw_large_span = true;
+    }
+    try testing.expect(span_count >= 3);
+    try testing.expect(saw_large_span);
+
+    // forEachLiveNode must visit ONLY the 3 live blocks (el1, cd1, large1),
+    // skipping freed el2 and quarantined oth1, matching stats().node.live_blocks.
+    const Walk = struct {
+        saw_el1: bool = false,
+        saw_cd1: bool = false,
+        saw_large1: bool = false,
+        saw_el2: bool = false,
+        saw_oth1: bool = false,
+        el1: [*]u8,
+        cd1: [*]u8,
+        large1: [*]u8,
+        el2: [*]u8,
+        oth1: [*]u8,
+
+        fn visit(self: *@This(), n: heap.LiveNode) void {
+            if (n.ptr == self.el1) {
+                self.saw_el1 = true;
+                std.debug.assert(n.kind == .element and n.block_bytes == 112);
+            } else if (n.ptr == self.cd1) {
+                self.saw_cd1 = true;
+                std.debug.assert(n.kind == .character_data and n.block_bytes == 96);
+            } else if (n.ptr == self.large1) {
+                self.saw_large1 = true;
+                std.debug.assert(n.kind == null and n.block_bytes == heap.span_bytes * 2);
+            } else if (n.ptr == self.el2) {
+                self.saw_el2 = true;
+            } else if (n.ptr == self.oth1) {
+                self.saw_oth1 = true;
+            }
+        }
+    };
+    var walk: Walk = .{ .el1 = el1, .cd1 = cd1, .large1 = large1, .el2 = el2, .oth1 = oth1 };
+    const visited = eng.forEachLiveNode(&walk, Walk.visit);
+    try testing.expectEqual(@as(usize, 3), visited);
+    try testing.expectEqual(eng.stats().node.live_blocks, visited);
+    try testing.expect(walk.saw_el1 and walk.saw_cd1 and walk.saw_large1);
+    try testing.expect(!walk.saw_el2 and !walk.saw_oth1);
+
+    eng.free(el1, 112, 8);
+    eng.free(cd1, 96, 8);
+    eng.free(large1, heap.span_bytes + 4096, 8);
+    eng.endTask();
+
+    const after = eng.forEachLiveNode(&walk, Walk.visit);
+    try testing.expectEqual(@as(usize, 0), after);
+}
