@@ -50,8 +50,10 @@ jobs:
         os: [ubuntu-24.04, macos-15]
 
     steps:
-      - name: Checkout code
+      - name: Checkout code (with WPT fixtures submodule)
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Zig (the pinned 0.17)
         uses: ./.github/actions/setup-zig-pinned
@@ -61,9 +63,16 @@ jobs:
         with:
           link: static
 
+      - name: Link prebuilt V8 at default path for build.zig sub-builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p jsengines/v8
+          ln -sfn "$CRANE_V8_DIR" jsengines/v8/15.7.112.43-icu
+
       - name: Run unit & integration tests (includes lints and codegen-check)
         shell: bash
-        run: zig build test -j2 -Dv8-dir="$CRANE_V8_DIR"
+        run: zig build test -j2 -Dtest-binaries=engine -Dv8-dir="$CRANE_V8_DIR"
 
       - name: Run browser initialization tests
         shell: bash
