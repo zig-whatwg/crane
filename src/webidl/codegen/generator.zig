@@ -3035,9 +3035,9 @@ fn dictionaryMemberKeepsPresence(dictionary_name: []const u8, member: types.Dict
     // null: the object script gets has the property, valued null (WebIDL
     // 3.2.18 converts every present member). getComputedTiming() (Web
     // Animations 1 6.5.5) sets progress, currentIteration and localTime.
-    // TODO(anim1): the general rule - every optional nullable member with no
-    // default keeps its presence - reaches 82 members of 50 dictionaries and
-    // their impls; queued in tmp/plans/lane-anim1-handoff.md.
+    // All other optional nullable members without a non-null default stay plain
+    // `?T = null` (explicit allowlist pinned by
+    // tests/codegen/anim1_returned_presence_test.zig).
     if (std.mem.eql(u8, dictionary_name, "ComputedEffectTiming")) return true;
     // A dictionary whose steps ask whether a nullable member EXISTS: Fetch's
     // Request constructor, "If init["signal"] exists, then set signal to it"

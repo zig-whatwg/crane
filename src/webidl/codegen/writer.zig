@@ -3555,7 +3555,10 @@ fn writeOperationDelegate(
                 }
                 continue; // Skip rest of type processing
             }
-            // TODO: Handle other union types (TrustedType or DOMString, etc.)
+            // All other inline unions (including Trusted Types) are named as
+            // typedefs by argument_unions.nameTrustedTypeUnions / nameEveryUnion
+            // before writer.zig runs; direct writer unit tests without those
+            // passes fall through to mapWebIDLTypeWithRegistry -> runtime.JSValue.
         }
 
         // Check if parameter type is an interface - if so, use *runtime.Instance
