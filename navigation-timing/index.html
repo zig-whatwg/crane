@@ -22,7 +22,7 @@
 <h1 class="page-title"><span class="secno">35</span><code>navigation-<wbr>timing/</code></h1>
 <div class="figures" role="group" aria-label="navigation-timing/">
 <p class="figures-main"><span class="fg-pass">454</span><span class="fg-of"> / 462</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>59</dd></div><div class="blk"><dt>Blocking files</dt><dd>1</dd></div></dl>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>59</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>459</b> / 462 WPT subtests passing on the same files, <span class="blk">2 blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of navigation-timing/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">59 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="55 clean, 2 with failures, 1 blocking, 0 with no subtests, 0 not run, 1 exempt, of 59 files"><span class="m-clean" style="width:93.220%"></span><span class="m-partial" style="width:3.390%"></span><span class="m-exempt" style="width:1.695%"></span><span class="m-blocking" style="width:1.695%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>55</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>2</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>1</dd></div><p class="kinds"><b>1</b> NONE-PASSED</p><div><dt><span class="key key-exempt"></span>Exempt</dt><dd>1</dd></div></dl>
+<div class="meter" role="img" aria-label="55 clean, 2 with failures, 0 blocking, 0 with no subtests, 0 not run, 2 exempt, of 59 files"><span class="m-clean" style="width:93.220%"></span><span class="m-partial" style="width:3.390%"></span><span class="m-exempt" style="width:3.390%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>55</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>2</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div><div><dt><span class="key key-exempt"></span>Exempt</dt><dd>2</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -377,13 +377,17 @@
 <p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 1 passed, 0 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
 </div>
 </details>
-<details class="tf" id="secure-connection-start-non-zero.https.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>secure-<wbr>connection-<wbr>start-<wbr>non-<wbr>zero.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="secure-connection-start-non-zero.https.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>secure-<wbr>connection-<wbr>start-<wbr>non-<wbr>zero.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/2358bd48357992d5f3f9d6aaa2040aa018aaa093/navigation-timing/secure-connection-start-non-zero.https.html"><code>navigation-<wbr>timing/<wbr>secure-<wbr>connection-<wbr>start-<wbr>non-<wbr>zero.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate: Crane follows the browser majority</p>
+<p>on a connection reused from an earlier https file in the runner process, every connection time is fetchStart (Fetch &quot;clamp and coarsen connection timing info&quot; step 1; Blink, Gecko and WebKit return fetchStart too), so secureConnectionStart &gt; 0 holds only when the navigation&#39;s fetch starts in a later 125 us tick than navigation_start; Crane&#39;s sub-tick gap is 24-91 us (p50 33 us; 11/30 pass, 19/30 fail on reuse, tools/wpt_loss_dispositions.txt generation 237 timing-bound), while Chrome and Safari pass through multi-millisecond process hops and Firefox fails on wpt.fyi</p>
+<dl class="evidence"><div><dt>Crane matches</dt><dd>none - the spec (see the ruling)</dd></div><div><dt>Chrome</dt><dd>wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)</dd></div><div><dt>Firefox</dt><dd>wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)</dd></div><div><dt>Safari</dt><dd>wpt.fyi run 6479119966273536: 1/1 (Safari 27.2, 2358bd4835)</dd></div><div><dt>Ruling</dt><dd>golden rule 2, timing-bound (the user, 2026-11-27 1:23 AM ET: option 1): on reused HTTPS connections, the sub-tick gap between navigation_start and fetchStart is shorter than the 125 us coarsening tick (tools/wpt_loss_dispositions.txt kind = timing-bound)</dd></div><div><dt>Revisit</dt><dd>when the test compares coarsened marks with &gt;= upstream, or Crane&#39;s navigation-to-fetch gap changes</dd></div></dl>
+</div>
 <p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run recorded counts only: 0 passed, 1 failed, 0 timed out and 0 did not run. Subtest names and failure messages arrive with the first run that writes result streams.</p>
 </div>
 </details>
