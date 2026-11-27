@@ -607,6 +607,30 @@ pub const PartitionStats = struct {
     /// bytes. Counted in the live figures by `Engine.stats`.
     huge_blocks: usize = 0,
     huge_bytes: usize = 0,
+    /// Free slot bytes inside non-empty committed (`.active`, `used > 0`)
+    /// spans of this partition (active-span slack, design §5.1 & §7 A.1):
+    /// summed as `(slots - used) * block_bytes` per non-empty active span.
+    free_bytes_in_active_spans: usize = 0,
+};
+
+/// Per-class (per-bucket) statistics (allocator-hardening design §5.1 & §7 A.1):
+/// active, empty, decommitted, and retired span counts, VA assigned, live and
+/// quarantined blocks/bytes, and active-span slack (`free_bytes_in_active_spans`).
+pub const ClassStats = struct {
+    partition: PartitionId,
+    bucket: u16,
+    block_bytes: usize,
+    general: bool,
+    spans_active: usize = 0,
+    spans_empty: usize = 0,
+    spans_decommitted: usize = 0,
+    spans_retired: usize = 0,
+    va_assigned: usize = 0,
+    live_blocks: usize = 0,
+    live_bytes: usize = 0,
+    quarantined_blocks: usize = 0,
+    quarantined_bytes: usize = 0,
+    free_bytes_in_active_spans: usize = 0,
 };
 
 /// A free span run inside the `bytes` partition's coalescing large-run pool
@@ -3629,11 +3653,11 @@ pub const Engine = struct {
             .quarantine_total_held = self.quarantine.total_held,
             .quarantine_total_evicted = self.quarantine.total_evicted,
         };
-        sumBuckets(&s.node, &self.node_buckets);
-        sumBuckets(&s.satellite, &self.satellite_buckets);
-        sumBuckets(&s.objects, self.objects_buckets[0..general_objects_base]);
-        sumBuckets(&s.general_objects, self.objects_buckets[general_objects_base..]);
-        sumBuckets(&s.bytes, &self.bytes_buckets);
+        self.sumBuckets(&self.node, &s.node, &self.node_buckets);
+        self.sumBuckets(&self.satellite, &s.satellite, &self.satellite_buckets);
+        self.sumBuckets(&self.objects, &s.objects, self.objects_buckets[0..general_objects_base]);
+        self.sumBuckets(&self.objects, &s.general_objects, self.objects_buckets[general_objects_base..]);
+        self.sumBuckets(&self.bytes, &s.bytes, &self.bytes_buckets);
         // `bytes` coalescing large runs (M8-3) track their live bytes on the partition.
         s.bytes.live_bytes += self.bytes.bytes_large_live_bytes;
         // Huge blocks are counted in their partition's live figures.
@@ -3670,7 +3694,7 @@ pub const Engine = struct {
         return s;
     }
 
-    fn sumBuckets(ps: *PartitionStats, bs: []const Bucket) void {
+    fn sumBuckets(self: *Engine, p: *const Partition, ps: *PartitionStats, bs: []const Bucket) void {
         for (bs) |*b| {
             ps.live_blocks += b.live;
             ps.live_bytes += @as(usize, b.live) * b.block_bytes;
@@ -3678,6 +3702,94 @@ pub const Engine = struct {
             ps.total_allocations += b.issued;
             ps.total_requested_bytes += b.requested_total;
             ps.total_reissued += b.issued - b.fresh;
+            if (b.spans != 0) ps.free_bytes_in_active_spans += self.bucketSlack(p, b);
+        }
+    }
+
+    fn bucketSlack(self: *Engine, p: *const Partition, b: *const Bucket) usize {
+        var slack: usize = 0;
+        var id = b.first;
+        while (id != no_chunk) : (id = self.chunk(p, id).next) {
+            const c = self.chunk(p, id);
+            for (c.spans[0..c.count]) |index| {
+                const e = self.entry(index);
+                if (e.state == .active and e.used > 0) {
+                    slack += (@as(usize, e.slots) - e.used) * b.block_bytes;
+                }
+            }
+        }
+        return slack;
+    }
+
+    /// Iterate per-class statistics for every active/allocated bucket in `pid`
+    /// (allocator-hardening design §5.1 & §7 A.1). Takes `p.mutex` for shared
+    /// partitions (`.objects`, `.bytes`).
+    pub fn classStats(self: *Engine, pid: PartitionId, context: anytype, comptime visit: fn (@TypeOf(context), ClassStats) void) void {
+        const p = self.partition(pid);
+        if (isSharedPartition(pid)) std.Io.Threaded.mutexLockUncancelable(&p.mutex);
+        defer if (isSharedPartition(pid)) std.Io.Threaded.mutexUnlock(&p.mutex);
+
+        for (self.buckets(pid), 0..) |*b, bi| {
+            if (pid == .bytes and bi == bytes_large_bucket) {
+                if (b.live == 0 and p.bytes_runs_len == 0) continue;
+                var cs: ClassStats = .{
+                    .partition = .bytes,
+                    .bucket = @intCast(bi),
+                    .block_bytes = if (b.live > 0) p.bytes_large_live_bytes / b.live else 0,
+                    .general = true,
+                    .live_blocks = b.live,
+                    .live_bytes = p.bytes_large_live_bytes,
+                };
+                const live_spans = p.bytes_large_live_bytes / span_bytes;
+                cs.spans_active = live_spans;
+                if (p.bytes_runs_len > 0) {
+                    const runs = self.bytesRunsPtr(p);
+                    for (0..p.bytes_runs_len) |i| {
+                        if (runs[i].committed) {
+                            cs.spans_active += runs[i].len;
+                            cs.spans_empty += runs[i].len;
+                        } else {
+                            cs.spans_decommitted += runs[i].len;
+                        }
+                    }
+                }
+                cs.va_assigned = (cs.spans_active + cs.spans_decommitted) * span_bytes;
+                visit(context, cs);
+                continue;
+            }
+            if (b.spans == 0) continue;
+            var cs: ClassStats = .{
+                .partition = pid,
+                .bucket = @intCast(bi),
+                .block_bytes = b.block_bytes,
+                .general = b.general,
+                .va_assigned = @as(usize, b.spans) * b.run * span_bytes,
+                .live_blocks = b.live,
+                .live_bytes = @as(usize, b.live) * b.block_bytes,
+            };
+            var id = b.first;
+            while (id != no_chunk) : (id = self.chunk(p, id).next) {
+                const c = self.chunk(p, id);
+                for (c.spans[0..c.count]) |index| {
+                    const e = self.entry(index);
+                    switch (e.state) {
+                        .active => {
+                            cs.spans_active += 1;
+                            if (e.used == 0) {
+                                cs.spans_empty += 1;
+                            } else {
+                                cs.free_bytes_in_active_spans += (@as(usize, e.slots) - e.used) * b.block_bytes;
+                            }
+                            cs.quarantined_blocks += e.quarantined;
+                            cs.quarantined_bytes += @as(usize, e.quarantined) * b.block_bytes;
+                        },
+                        .decommitted => cs.spans_decommitted += 1,
+                        .retired => cs.spans_retired += 1,
+                        else => {},
+                    }
+                }
+            }
+            visit(context, cs);
         }
     }
 
