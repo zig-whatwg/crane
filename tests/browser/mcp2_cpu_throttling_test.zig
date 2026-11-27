@@ -198,11 +198,24 @@ const ThrottledWork = struct {
     spin_ns: i64,
     done_at: std.atomic.Value(i64) = .init(0),
 
-    fn run(ctx: ?*anyopaque, b: *Browser) void {
+    /// The rate, set by a task of its own: the loop decides whether a posted
+    /// task is throttled before it runs it (runOnePosted), so the work must
+    /// come in the next one.
+    fn setRate(ctx: ?*anyopaque, b: *Browser) void {
         const self: *ThrottledWork = @ptrCast(@alignCast(ctx.?));
         if (b.event_loop) |loop| loop.setCpuThrottlingRate(self.rate);
+    }
+
+    fn run(ctx: ?*anyopaque, b: *Browser) void {
+        _ = b;
+        const self: *ThrottledWork = @ptrCast(@alignCast(ctx.?));
         spinNs(self.spin_ns);
         self.done_at.store(realNs(), .release);
+    }
+
+    /// Post the rate, then the work.
+    fn post(self: *ThrottledWork, host: *browser_mod.BrowserHost) bool {
+        return host.post(self, setRate, drop) and host.post(self, run, drop);
     }
 
     fn drop(ctx: ?*anyopaque) void {
@@ -226,7 +239,7 @@ test "CPU throttling: a session message posted while the loop pays a 3.8 s debt 
     defer host.stop();
     // 200 ms of work at 20x: 3.8 s owed.
     var work: ThrottledWork = .{ .rate = 20.0, .spin_ns = 200 * std.time.ns_per_ms };
-    try testing.expect(host.post(&work, ThrottledWork.run, ThrottledWork.drop));
+    try testing.expect(work.post(host));
     try work.waitDone();
 
     const Message = struct {
@@ -255,7 +268,7 @@ test "CPU throttling: a session message posted while the loop pays a 3.8 s debt 
 test "CPU throttling: stopping the host while the loop pays a 3.8 s debt returns at once" {
     const host = try browser_mod.BrowserHost.start(testing.allocator, .{ .snapshot_path = "" });
     var work: ThrottledWork = .{ .rate = 20.0, .spin_ns = 200 * std.time.ns_per_ms };
-    try testing.expect(host.post(&work, ThrottledWork.run, ThrottledWork.drop));
+    try testing.expect(work.post(host));
     work.waitDone() catch |err| {
         host.stop();
         return err;
