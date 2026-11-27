@@ -950,6 +950,34 @@ progress = [
   status = "done"
 
 [[infra]]
+id = "mcp-push"
+title = "MCP server-initiated push notifications and event subscriptions (0.2)"
+why = """The user, 2026-11-27 4:07 AM ET ("add this to 0.2"): allow Crane's built-in MCP server to push \
+unsolicited updates (service responses, incoming WebSocket/SSE/fetch events, console/page updates, or \
+periodic updates) to connected clients without waiting for a tool call, plus a blocking wait/watch tool \
+for LLM hosts that do not wake turns on MCP notifications. The transport plumbing already exists in \
+src/devtools/mcp/http.zig (HttpSession.sse_queue + sse_wake on GET /mcp SSE streams) and \
+src/devtools/mcp/server.zig (full-duplex stdio)."""
+done_when = """Crane's MCP server advertises resources (subscribe: true) and logging capabilities, \
+pushes notifications/resources/updated and notifications/message over both stdio and Streamable HTTP \
+GET /mcp SSE streams when subscribed browser events or periodic updates fire, and offers a blocking \
+wait/watch tool for clients whose agent loop does not wake on unsolicited notifications; covered by \
+unit and integration tests over both transports."""
+progress = []
+
+  [[infra.items]]
+  name = "Design: resource URIs, subscription lifecycle, logging notifications, and client-compat wait/watch tool"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Wire resources/subscribe + notifications/resources/updated and notifications/message onto stdio and HttpSession.sse_queue"
+  status = "todo"
+
+  [[infra.items]]
+  name = "End-to-end tests over both stdio and Streamable HTTP GET /mcp SSE"
+  status = "todo"
+
+[[infra]]
 id = "approx-layout"
 title = "Approximate geometry: an emulated layout renderer (0.2)"
 why = """The user, 2026-11-23 12:48 PM ET: "we should do a geometry approximation, can you scope this out? I \
