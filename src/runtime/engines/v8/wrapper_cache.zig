@@ -726,9 +726,11 @@ pub fn holdForPendingActivity(instance: *runtime.Instance) void {
     // wrapper is.
     if (instance.vtable.counted != null) return node_wrappers.keep(instance);
     const cache = cacheOf(instance) orelse return;
+    const protocol_worlds = @import("protocol_worlds.zig");
     if (cache.cache.get(instance)) |entry| {
         entry.bits.pending_activity +|= 1;
         syncEntry(entry);
+        if (protocol_worlds.realmMayHaveWorlds(instance.ctx)) protocol_worlds.holdPendingActivityInOtherWorlds(instance, cache);
         return;
     }
     const generation = runtime.SlabAllocator.generationOf(instance);
@@ -737,6 +739,11 @@ pub fn holdForPendingActivity(instance: *runtime.Instance) void {
     // A dead instance's keeps at a reissued address are not the newcomer's.
     if (!gop.found_existing or gop.value_ptr.generation != generation) gop.value_ptr.* = .{ .generation = generation, .count = 0 };
     gop.value_ptr.count +|= 1;
+    // An isolated world may ALREADY have wrapped `instance` while its own
+    // realm has not: keep every world wrapper alive too, while leaving the
+    // canonical count in `pending_before_wrap` until its own realm wraps or
+    // releases it (lane rc9 Part B.2).
+    if (protocol_worlds.realmMayHaveWorlds(instance.ctx)) protocol_worlds.holdPendingActivityInOtherWorlds(instance, cache);
 }
 
 /// End one keep `holdForPendingActivity` took: when it was the last, the
@@ -748,11 +755,13 @@ pub fn holdForPendingActivity(instance: *runtime.Instance) void {
 pub fn releasePendingActivity(instance: *runtime.Instance) void {
     if (instance.vtable.counted != null) return node_wrappers.release(instance);
     const cache = cacheOf(instance) orelse return;
+    const protocol_worlds = @import("protocol_worlds.zig");
     if (cache.cache.get(instance)) |entry| {
         if (entry.bits.pending_activity == 0) return cache.unmatchedRelease(instance);
         // A count that saturated stays: its keeps can no longer be told apart.
         if (entry.bits.pending_activity != std.math.maxInt(u20)) entry.bits.pending_activity -= 1;
         if (entry.bits.pending_activity == 0) syncEntry(entry);
+        if (protocol_worlds.realmMayHaveWorlds(instance.ctx)) protocol_worlds.releasePendingActivityInOtherWorlds(instance, cache);
         return;
     }
     const waiting = cache.pending_before_wrap.getPtr(instance) orelse return cache.unmatchedRelease(instance);
@@ -764,6 +773,7 @@ pub fn releasePendingActivity(instance: *runtime.Instance) void {
     if (waiting.count == 0) {
         if (cache.pending_before_wrap.remove(instance)) cache.pending_guard.noteRemoval(&cache.pending_before_wrap);
     }
+    if (protocol_worlds.realmMayHaveWorlds(instance.ctx)) protocol_worlds.releasePendingActivityInOtherWorlds(instance, cache);
 }
 
 /// `instance`'s realm's cache, or null when it has none or it is being torn
@@ -2682,8 +2692,14 @@ pub const WrapperCache = struct {
         }
         if (entry.bits.boxed) entry.wrapper = @ptrCast(wrapper);
 
-        // Pending-activity keeps placed before the wrapper existed.
-        if (self.pending_before_wrap.fetchRemove(instance)) |held| {
+        // Pending-activity keeps placed before the wrapper existed. When
+        // wrapping an instance of another realm in its group (e.g. an isolated
+        // world wrapping a main-realm object), inherit the canonical count from
+        // its own realm's cache without removing `pending_before_wrap` there.
+        const own_cache = cacheOf(instance);
+        if (own_cache != null and own_cache.? != self) {
+            entry.bits.pending_activity = own_cache.?.pendingActivityCount(instance, entry.stamp.generation);
+        } else if (self.pending_before_wrap.fetchRemove(instance)) |held| {
             self.pending_guard.noteRemoval(&self.pending_before_wrap);
             if (held.value.generation == entry.stamp.generation) entry.bits.pending_activity = @intCast(@min(held.value.count, std.math.maxInt(u20)));
         }
@@ -2887,6 +2903,43 @@ pub const WrapperCache = struct {
         if (!bits.in_use or !bits.world_counted or bits.boxed or bits.weak_handle or bits.collected) return;
         if (entry.wrapper == null) return;
         v8.v8_NodeWrapper_KeepInYoungCollections(isolate, @ptrCast(entry));
+    }
+
+    /// The canonical pending-activity keep count for `instance` on its own
+    /// realm's cache (lane rc9 Part B.2): read by another world's `set` when
+    /// it wraps an already-kept instance.
+    pub fn pendingActivityCount(self: *const Self, instance: *runtime.Instance, generation: u64) u20 {
+        if (self.is_tearing_down) return 0;
+        if (self.cache.get(instance)) |entry| {
+            if (entry.stamp.generation == generation) return entry.bits.pending_activity;
+        }
+        if (self.pending_before_wrap.get(instance)) |held| {
+            if (held.generation == generation) return @intCast(@min(held.count, std.math.maxInt(u20)));
+        }
+        return 0;
+    }
+
+    /// engine.keepPlatformObjectAlive, another world's half
+    /// (protocol_worlds.holdPendingActivityInOtherWorlds): increment the keep
+    /// count on this world cache's wrapper of `instance`, if it has one.
+    pub fn holdWorldEntryPendingActivity(self: *Self, instance: *runtime.Instance) void {
+        if (self.is_tearing_down) return;
+        const entry = self.cache.get(instance) orelse return;
+        if (entry.stamp.generation != runtime.SlabAllocator.generationOf(instance)) return;
+        entry.bits.pending_activity +|= 1;
+        syncEntry(entry);
+    }
+
+    /// engine.releasePlatformObject, another world's half
+    /// (protocol_worlds.releasePendingActivityInOtherWorlds): decrement one
+    /// keep on this world cache's wrapper of `instance`, if it has one.
+    pub fn releaseWorldEntryPendingActivity(self: *Self, instance: *runtime.Instance) void {
+        if (self.is_tearing_down) return;
+        const entry = self.cache.get(instance) orelse return;
+        if (entry.stamp.generation != runtime.SlabAllocator.generationOf(instance)) return;
+        if (entry.bits.pending_activity == 0) return;
+        if (entry.bits.pending_activity != std.math.maxInt(u20)) entry.bits.pending_activity -= 1;
+        if (entry.bits.pending_activity == 0) syncEntry(entry);
     }
 
     /// `instance`, a node, was torn down whatever its counts said (a forced
