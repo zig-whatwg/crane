@@ -10,7 +10,9 @@
 # SHA256SUMS, ninja-tail.txt, rust.txt and smoke.txt. The plan: tmp/plans/v8-update-plan.md (lane
 # v8up). V8's sources are never patched.
 #
-#   scripts/build-v8-15.7.sh <step>...   (in this order the first time; `all` runs them all)
+#   scripts/build-v8-15.7.sh [--static|--dynamic] <step>...   (in this order the first time; `all` runs them all)
+#     --static   (default; or V8_LINK=static) static monolith under $CRANE_V8/$V8_TAG-icu/out/static/obj/
+#     --dynamic  (or V8_LINK=dynamic) component shared libraries under $CRANE_V8/$V8_TAG-icu/out/dynamic/
 #     deps       the commands needed, the pinned Zig, free disk (needs ~25 GB: checkout ~10, out ~10)
 #     checkout   V8 at the pinned commit in a gclient root of its own ($V8_ROOT, default
 #                ~/v8-15.7.112.43), at that tag's DEPS: V8's clang (llvmorg-24-init-7747), gn, ninja,
@@ -30,7 +32,10 @@
 #                past main (ELF RELOCATIONS)
 #     install    copy everything to $CRANE_V8/$V8_TAG.new/, write and check SHA256SUMS, then swap it in;
 #                a replaced install's SHA256SUMS is kept as $CRANE_V8/$V8_TAG.SHA256SUMS.replaced-<UTC>
-#                (a pinned artifact is never rewritten in place)
+#                (a pinned artifact is never rewritten in place). In --dynamic mode, installs atomically
+#                into $CRANE_V8/$V8_TAG-icu/out/dynamic/ without touching out/static/.
+#     tarball    pack a clean relocatable tarball ($TARBALL_OUT/crane-v8-$V8_TAG-icu-$V8_LINK-$HOST_OS-$TARGET_CPU.tar.gz
+#                and .sha256) matching -Dv8-dir=<unpacked> -Dv8-link=$V8_LINK
 #     clean      delete the build directory (intermediates) after install; the checkout stays
 #
 # THE C++ LIBRARY. V8 15.7 refuses to build its sandbox without libc++ hardening: BUILD.gn:896
@@ -107,11 +112,26 @@
 #    uses no glib, and without the sysroot pkg-config would ask the host for one), as at 13.1.
 #
 # Environment: V8_ROOT (gclient root), CRANE_V8 (install root, default ~/projects/crane/jsengines/v8),
+# V8_LINK (static [default] or dynamic), TARBALL_OUT (output directory for step `tarball`, default $CRANE_V8),
 # ZIG (the pinned Zig), JOBS (ninja -j; default the CPU count), STOP (a file whose existence stops the
 # script between steps; default $V8_ROOT/STOP; a TERM to the pid in $V8_ROOT/build.pid stops ninja
-# too), OUT (the build directory under $V8, default out/static-15.7-icu), DEVELOPER_DIR (macOS: an Xcode;
+# too), OUT (the build directory under $V8, default out/${V8_LINK}-15.7-icu), DEVELOPER_DIR (macOS: an Xcode;
 # Chromium's build/ asks xcodebuild for the SDK, which the Command Line Tools cannot answer).
 set -euo pipefail
+
+V8_LINK="${V8_LINK:-static}"
+STEPS=()
+for arg in "$@"; do
+  case "$arg" in
+    --static) V8_LINK=static ;;
+    --dynamic) V8_LINK=dynamic ;;
+    *) STEPS+=("$arg") ;;
+  esac
+done
+case "$V8_LINK" in
+  static|dynamic) ;;
+  *) echo "build-v8-15.7: invalid V8_LINK='$V8_LINK' (expected static or dynamic)" >&2; exit 2 ;;
+esac
 
 V8_TAG=15.7.112.43
 # refs/tags/15.7.112.43, "Version 15.7.112.43", 2026-11-10 17:33 UTC - resolved 2026-11-10 20:47 UTC as
@@ -122,19 +142,20 @@ V8_COMMIT=307108153d1e35e6e74528ee55f97b0cd59bf182
 V8_ROOT="${V8_ROOT:-$HOME/v8-$V8_TAG}"
 V8="$V8_ROOT/v8"
 CRANE_V8="${CRANE_V8:-$HOME/projects/crane/jsengines/v8}"
+TARBALL_OUT="${TARBALL_OUT:-$CRANE_V8}"
 # The install's name: the tag and what sets this archive apart from the first 15.7 build, ICU (the
 # "-icu" directory sits beside 15.7.112.43/, which builds of an older Crane still link).
 INSTALL_NAME="$V8_TAG-icu"
 DEST="$CRANE_V8/$INSTALL_NAME"
 ZIG="${ZIG:-$HOME/crane-toolchains/zig-0.17.1-dev+77c319a0f0/bin/zig}"
 ZIG_VERSION=0.17.1-dev+77c319a0f0
-OUT="${OUT:-out/static-15.7-icu}"
+OUT="${OUT:-out/${V8_LINK}-15.7-icu}"
 STOP="${STOP:-$V8_ROOT/STOP}"
 LLVM="$V8/third_party/llvm-build/Release+Asserts"
 case "$(uname -s)" in
-  Darwin) HOST_OS=mac; GN_DIR=mac; TARGET_CPU=arm64; NCPU=$(sysctl -n hw.ncpu)
+  Darwin) HOST_OS=mac; GN_DIR=mac; TARGET_CPU=arm64; SHARED_EXT=dylib; NCPU=$(sysctl -n hw.ncpu)
           export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" ;;
-  Linux) HOST_OS=linux; GN_DIR=linux64; TARGET_CPU=x64; NCPU=$(nproc) ;;
+  Linux) HOST_OS=linux; GN_DIR=linux64; TARGET_CPU=x64; SHARED_EXT=so; NCPU=$(nproc) ;;
   *) echo "build-v8-15.7: unsupported host $(uname -s)" >&2; exit 1 ;;
 esac
 JOBS="${JOBS:-$NCPU}"
@@ -169,6 +190,47 @@ static_args() {
 # v8_enable_i18n_support (ICU, Chrome's setting: the script's header, "ICU")
 is_component_build = false
 v8_monolithic = true
+v8_use_external_startup_data = false
+is_debug = false
+symbol_level = 0
+v8_enable_sandbox = true
+v8_enable_pointer_compression = true
+v8_enable_gdbjit = false
+v8_enable_disassembler = false
+v8_enable_object_print = false
+v8_enable_verify_heap = false
+v8_enable_trace_maps = false
+v8_enable_test_features = false
+v8_enable_v8_checks = false
+v8_enable_i18n_support = true
+clang_use_chrome_plugins = false
+treat_warnings_as_errors = false
+use_custom_libcxx = true
+target_cpu = "$TARGET_CPU"
+# + V8 15.7 (the header of scripts/build-v8-15.7.sh says why, one by one)
+use_siso = false
+v8_enable_partition_alloc = false
+v8_enable_temporal_support = true
+v8_generate_external_defines_header = true
+cppgc_enable_object_names = false
+cppgc_enable_object_section_gcinfo = false
+icu_use_data_file = false
+ARGS
+  if [ "$HOST_OS" = linux ]; then
+    cat <<ARGS
+use_sysroot = false
+use_glib = false
+ARGS
+  fi
+}
+
+dynamic_args() {
+  cat <<ARGS
+# V8 $V8_TAG for Crane ($HOST_OS $TARGET_CPU, scripts/build-v8-15.7.sh --dynamic):
+# component build producing shared libraries (libv8, libv8_libplatform, libv8_libbase,
+# Chromium's libc++, libicuuc, libicui18n) with ICU data linked in and Temporal enabled.
+is_component_build = true
+v8_monolithic = false
 v8_use_external_startup_data = false
 is_debug = false
 symbol_level = 0
@@ -281,11 +343,31 @@ libcxx_targets() {
 }
 
 archives() { echo libv8_monolith.a libv8_libplatform_fat.a libv8_libbase_fat.a libc++_chromium.a librust_v8.a; }
+dynamic_libs() { echo "libv8.$SHARED_EXT" "libv8_libplatform.$SHARED_EXT" "libv8_libbase.$SHARED_EXT" "libc++.$SHARED_EXT" "libicuuc.$SHARED_EXT" "libicui18n.$SHARED_EXT"; }
 
 step_build() {
   check_stop build
   cd "$V8"
   mkdir -p "$OUT"
+  if [ "$V8_LINK" = dynamic ]; then
+    dynamic_args > "$OUT/args.gn"
+    log "gn gen $OUT (dynamic)"
+    "buildtools/$GN_DIR/gn" gen "$OUT" > "$OUT/gn-gen.txt" 2>&1 || { cat "$OUT/gn-gen.txt"; die "gn gen failed"; }
+    check_stop "ninja"
+    log "ninja -C $OUT -j $JOBS v8 v8_libplatform v8_libbase gen/include/v8-gn.h (log: $V8/$OUT/ninja.log.txt)"
+    local start; start=$(date +%s)
+    run_long third_party/ninja/ninja -C "$OUT" -j "$JOBS" v8 v8_libplatform v8_libbase gen/include/v8-gn.h \
+      > "$OUT/ninja.log.txt" 2>&1 || { tail -60 "$OUT/ninja.log.txt"; die "ninja failed"; }
+    log "ninja took $(( $(date +%s) - start )) s"
+    tail -3 "$OUT/ninja.log.txt"
+    [ -s "$OUT/gen/include/v8-gn.h" ] || die "the build wrote no gen/include/v8-gn.h"
+    local lib
+    for lib in $(dynamic_libs); do
+      [ -f "$OUT/$lib" ] || die "expected shared library $OUT/$lib was not produced by component build"
+    done
+    ( cd "$OUT" && ls -la lib*."$SHARED_EXT" )
+    return
+  fi
   static_args > "$OUT/args.gn"
   log "gn gen $OUT"
   "buildtools/$GN_DIR/gn" gen "$OUT" > "$OUT/gn-gen.txt" 2>&1 || { cat "$OUT/gn-gen.txt"; die "gn gen failed"; }
@@ -385,6 +467,46 @@ icu_major() {
 
 step_verify() {
   check_stop verify
+  if [ "$V8_LINK" = dynamic ]; then
+    cd "$V8/$OUT"
+    local nm="$LLVM/bin/llvm-nm" a std1 cr cxx11 gnu crel bad=0 crel_bad=0
+    for a in lib*."$SHARED_EXT"; do
+      [ -f "$a" ] || continue
+      std1=$("$nm" -D "$a" 2>/dev/null | grep -c 'St3__1' || true)
+      cr=$("$nm" -D "$a" 2>/dev/null | grep -c 'St4__Cr' || true)
+      cxx11=$("$nm" -D "$a" 2>/dev/null | grep -c '_ZNSt7__cxx11\|_ZNKSt7__cxx11' || true)
+      gnu=$("$nm" -D "$a" 2>/dev/null | grep -c '__gnu_cxx' || true)
+      echo "   $a: std::__Cr $cr | std::__1 $std1 | std::__cxx11 $cxx11 | __gnu_cxx $gnu"
+      [ "$std1" = 0 ] && [ "$cxx11" = 0 ] && [ "$gnu" = 0 ] || bad=1
+      if [ "$HOST_OS" = linux ]; then
+        crel=$("$LLVM/bin/llvm-readelf" -S -W "$a" 2> /dev/null | grep -c -E '\] \.crel\.' || true)
+        echo "   $a: CREL relocation sections $crel"
+        [ "$crel" = 0 ] || crel_bad=1
+      fi
+    done
+    [ "$crel_bad" = 0 ] || die "a shared library carries CREL relocations"
+    [ "$bad" = 0 ] || die "a shared library names another C++ library than Chromium's std::__Cr"
+    libcxx_consumer_flags > "$V8/$OUT/libcxx-flags.txt"
+    log "libc++ consumer flags ($(wc -l < "$V8/$OUT/libcxx-flags.txt" | tr -d ' ') lines):"
+    sed 's/^/   /' "$V8/$OUT/libcxx-flags.txt"
+    grep -q -x -- '-nostdinc++' "$V8/$OUT/libcxx-flags.txt" || die "no -nostdinc++ in the consumer flags"
+    local major uloc data
+    major=$(icu_major)
+    [ -n "$major" ] || die "no U_ICU_VERSION_MAJOR_NUM in third_party/icu/source/common/unicode/uvernum.h"
+    uloc=$("$nm" --defined-only "libicuuc.$SHARED_EXT" 2>/dev/null | grep -c -E " [TtSs] _?uloc_setDefault_$major\$" || true)
+    data=$("$nm" --defined-only "libicuuc.$SHARED_EXT" 2>/dev/null | grep -c -E " [A-Za-z] _?icudt${major}_dat\$" || true)
+    echo "   ICU $major in libicuuc.$SHARED_EXT: uloc_setDefault_$major defined $uloc, icudt${major}_dat defined $data"
+    [ "$uloc" -ge 1 ] || die "libicuuc.$SHARED_EXT does not carry ICU's code (no uloc_setDefault_$major)"
+    [ "$data" -ge 1 ] || die "libicuuc.$SHARED_EXT does not carry ICU's data (no icudt${major}_dat): is icu_use_data_file false?"
+    icu_consumer_flags > "$V8/$OUT/icu-flags.txt"
+    log "ICU consumer defines ($(wc -l < "$V8/$OUT/icu-flags.txt" | tr -d ' ') lines):"
+    sed 's/^/   /' "$V8/$OUT/icu-flags.txt"
+    grep -q -x -- '-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC' "$V8/$OUT/icu-flags.txt" \
+      || die "ICU's consumers are not compiled for linked-in data (-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC)"
+    echo "component build: Temporal Rust linked into libv8.$SHARED_EXT" > "$V8/$OUT/rust.txt"
+    log "verify (dynamic): one C++ library (Chromium's std::__Cr)"
+    return
+  fi
   cd "$V8/$OUT/obj"
   local nm="$LLVM/bin/llvm-nm" a std1 cr cxx11 gnu crel bad=0 crel_bad=0
   for a in $(archives); do
@@ -485,6 +607,7 @@ PYIN
   log "d8's link: $(grep -c '^rlib ' "$OUT/d8-link-inputs.txt") rlibs, $(grep -c '^rustobj ' "$OUT/d8-link-inputs.txt" || true) Rust objects/archives, frameworks: $(grep '^framework ' "$OUT/d8-link-inputs.txt" | cut -d' ' -f2 | tr '\n' ' '), libs: $(grep '^lib ' "$OUT/d8-link-inputs.txt" | cut -d' ' -f2 | tr '\n' ' ')"
   # (Everything else d8 links is V8 itself as objects - the monolith's content - and d8's own files.)
   log "d8's other inputs (V8's and d8's own objects): $(grep -c '^other ' "$OUT/d8-link-inputs.txt" || true)"
+  if [ "$V8_LINK" = static ]; then
   # One archive of the rlibs' and shims' objects (an rlib is an ar archive: its objects plus lib.rmeta).
   local w="$OUT/rust-objs" n=0 f
   rm -rf "$w"; mkdir -p "$w"
@@ -511,6 +634,7 @@ PYIN
   rm -f "$OUT/obj/librust_v8.a"
   ( cd "$w" && find . -name '*.o' | LC_ALL=C sort | xargs "$LLVM/bin/llvm-ar" rcs "$V8/$OUT/obj/librust_v8.a" )
   rm -rf "$w"
+  fi
   # The system libraries and frameworks, as link flags.
   # (grep finding nothing is no failure here: Linux names no framework, macOS no -l library.)
   { { grep '^framework ' "$OUT/d8-link-inputs.txt" || true; } | while read -r _ f; do echo "-framework $f"; done
@@ -520,7 +644,11 @@ PYIN
     # -nostdlib++ leaves in; use_custom_libunwind is off on Linux), so the response file does not
     # name it. Zig's link adds no unwinder unless it links its own libc++, which this one must not.
     [ "$HOST_OS" != linux ] || echo "-lgcc_s"; } > "$OUT/system-libs.txt"
-  log "librust_v8.a: $(ls -la "$OUT/obj/librust_v8.a" | awk '{print $5}') bytes, $("$LLVM/bin/llvm-ar" t "$OUT/obj/librust_v8.a" | wc -l | tr -d ' ') objects; system libs: $(tr '\n' ' ' < "$OUT/system-libs.txt")"
+  if [ "$V8_LINK" = static ]; then
+    log "librust_v8.a: $(ls -la "$OUT/obj/librust_v8.a" | awk '{print $5}') bytes, $("$LLVM/bin/llvm-ar" t "$OUT/obj/librust_v8.a" | wc -l | tr -d ' ') objects; system libs: $(tr '\n' ' ' < "$OUT/system-libs.txt")"
+  else
+    log "dynamic mode: Temporal Rust linked in libv8.$SHARED_EXT; system libs: $(tr '\n' ' ' < "$OUT/system-libs.txt")"
+  fi
   local rc=0
   "$OUT/d8" -e "print(1 + 1, Temporal.PlainDate.from('2026-11-10').add({ days: 1 }).toString())" > "$OUT/d8-smoke.txt" 2>&1 || rc=$?
   log "d8: $(cat "$OUT/d8-smoke.txt") (rc $rc)"
@@ -654,9 +782,18 @@ step_smoke() {
   local extra=()
   # shellcheck disable=SC2207
   extra=($(cat "$V8/$OUT/system-libs.txt"))
-  # `zig cc` links no C++ library of its own: Chromium's (libc++_chromium.a) is the only one.
-  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc "$t/smoke.o" "$o/libv8_monolith.a" "$o/libv8_libplatform_fat.a" \
-    "$o/libv8_libbase_fat.a" "$o/libc++_chromium.a" "$o/librust_v8.a" ${extra[@]+"${extra[@]}"} -o "$t/smoke" > "$t/link.txt" 2>&1 || rc=$?
+  local link_inputs=()
+  local zig_link_extra=()
+  if [ "$V8_LINK" = dynamic ]; then
+    local l
+    for l in $(dynamic_libs); do link_inputs+=("$V8/$OUT/$l"); done
+    extra=("-L$V8/$OUT" "-Wl,-rpath,$V8/$OUT" ${extra[@]+"${extra[@]}"})
+    zig_link_extra=("-L$V8/$OUT" "-rpath" "$V8/$OUT")
+  else
+    link_inputs=("$o/libv8_monolith.a" "$o/libv8_libplatform_fat.a" "$o/libv8_libbase_fat.a" "$o/libc++_chromium.a" "$o/librust_v8.a")
+  fi
+  # `zig cc` links no C++ library of its own: Chromium's is the only one.
+  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc "$t/smoke.o" "${link_inputs[@]}" ${extra[@]+"${extra[@]}"} -o "$t/smoke" > "$t/link.txt" 2>&1 || rc=$?
   if [ "$rc" != 0 ]; then
     {
       echo "LINK FAILED (rc $rc). Undefined symbols (Rust std/temporal ones mean Crane's link must add Rust):"
@@ -687,9 +824,11 @@ step_smoke() {
   printf '%s\n' 'extern fn crane_v8_smoke_main() c_int;' \
     'pub fn main() u8 {' '    return @intCast(crane_v8_smoke_main());' '}' > "$t/smoke_main.zig"
   rc=0
-  ( cd "$t" && ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" build-exe smoke_main.zig smoke-zig.o "$o/libv8_monolith.a" \
-      "$o/libv8_libplatform_fat.a" "$o/libv8_libbase_fat.a" "$o/libc++_chromium.a" "$o/librust_v8.a" \
-      ${extra[@]+"${extra[@]}"} -lc -O Debug -fno-lld --name smoke-zig ) > "$t/link-zig.txt" 2>&1 || rc=$?
+  local zig_sys=()
+  # shellcheck disable=SC2207
+  zig_sys=($(cat "$V8/$OUT/system-libs.txt"))
+  ( cd "$t" && ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" build-exe smoke_main.zig smoke-zig.o "${link_inputs[@]}" \
+      ${zig_link_extra[@]+"${zig_link_extra[@]}"} ${zig_sys[@]+"${zig_sys[@]}"} -lc -O Debug -fno-lld --name smoke-zig ) > "$t/link-zig.txt" 2>&1 || rc=$?
   [ "$rc" = 0 ] || { head -40 "$t/link-zig.txt"; rm -rf "$t"; die "the Zig-linker smoke link failed (rc $rc)"; }
   rc=0
   "$t/smoke-zig" > "$V8/$OUT/smoke-zig.txt" 2>&1 || rc=$?
@@ -703,6 +842,60 @@ step_smoke() {
 
 step_install() {
   check_stop install
+  if [ "$V8_LINK" = dynamic ]; then
+    # Dynamic build installs atomically into $DEST/out/dynamic/ without touching out/static/.
+    local DYN_FINAL="$DEST/out/dynamic" DYN_NEW="$DEST/out/dynamic.new"
+    rm -rf "$DYN_NEW"
+    mkdir -p "$DEST/out" "$DYN_NEW/libcxx"
+    cd "$V8"
+    # Copy all component shared libraries produced in $OUT (direct and transitive).
+    local f
+    for f in "$OUT"/lib*."$SHARED_EXT" "$OUT"/lib*."$SHARED_EXT".*; do
+      [ -e "$f" ] || continue
+      cp -P "$f" "$DYN_NEW/"
+    done
+    local lib
+    for lib in $(dynamic_libs); do
+      [ -f "$DYN_NEW/$lib" ] || die "dynamic install missing $lib"
+    done
+    cp -R include "$DYN_NEW/include"
+    cp "$OUT/gen/include/v8-gn.h" "$DYN_NEW/include/v8-gn.h"
+    cp -R third_party/libc++/src/include "$DYN_NEW/libcxx/include"
+    cp -R third_party/libc++abi/src/include "$DYN_NEW/libcxx/abi-include"
+    mkdir -p "$DYN_NEW/libcxx/config"
+    cp buildtools/third_party/libc++/__config_site buildtools/third_party/libc++/__assertion_handler "$DYN_NEW/libcxx/config/"
+    sed -e "s#^$V8/third_party/libc++/src/include\$#$DYN_FINAL/libcxx/include#" \
+        -e "s#^$V8/third_party/libc++abi/src/include\$#$DYN_FINAL/libcxx/abi-include#" \
+        -e "s#^$V8/buildtools/third_party/libc++\$#$DYN_FINAL/libcxx/config#" \
+        "$OUT/libcxx-flags.txt" > "$DYN_NEW/libcxx/flags.txt"
+    ! grep -q "$V8_ROOT" "$DYN_NEW/libcxx/flags.txt" || die "out/dynamic/libcxx/flags.txt still names the checkout"
+    install_icu_headers "$DYN_NEW/icu/include"
+    cp "$OUT/icu-flags.txt" "$DYN_NEW/icu/flags.txt"
+    cp "$OUT/args.gn" "$DYN_NEW/args.gn"
+    tail -40 "$OUT/ninja.log.txt" > "$DYN_NEW/ninja-tail.txt"
+    cp "$OUT/rust.txt" "$OUT/smoke.txt" "$OUT/system-libs.txt" "$OUT/d8-link-inputs.txt" "$OUT/d8-smoke.txt" "$DYN_NEW/"
+    {
+      echo "V8 $V8_TAG ($(git rev-parse HEAD)) dynamic component build for $HOST_OS $TARGET_CPU, built $(date -u +%FT%TZ) on $(hostname) by scripts/build-v8-15.7.sh --dynamic"
+      echo "ICU: $(icu_major) (third_party/icu at this tag's DEPS, $(git -C third_party/icu rev-parse --short=12 HEAD 2> /dev/null || echo '?')); data linked in (icu_use_data_file = false)"
+      echo "clang: $("$LLVM/bin/clang" --version | head -1)"
+      echo "rustc: $("$V8/third_party/rust-toolchain/bin/rustc" --version)"
+      echo "libc++: Chromium's (third_party/libc++ at this tag's DEPS, std::__Cr, hardened); libc++.$SHARED_EXT"
+      [ "$HOST_OS" != mac ] || echo "SDK: macOS $(xcrun --sdk macosx --show-sdk-version)"
+      [ -z "${PROVENANCE_NOTE:-}" ] || echo "$PROVENANCE_NOTE"
+    } > "$DYN_NEW/PROVENANCE"
+    ( cd "$DYN_NEW" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs $SHA256 > SHA256SUMS && $SHA256 -c SHA256SUMS > /dev/null ) \
+      || die "the new dynamic install's SHA256SUMS does not check"
+    if [ -e "$DYN_FINAL" ]; then
+      local kept
+      kept="$DYN_FINAL.SHA256SUMS.replaced-$(date -u +%Y%m%dT%H%M%SZ)"
+      [ ! -s "$DYN_FINAL/SHA256SUMS" ] || cp -p "$DYN_FINAL/SHA256SUMS" "$kept"
+      log "install (dynamic): replacing $DYN_FINAL (its SHA256SUMS kept as $kept)"
+      rm -rf "$DYN_FINAL"
+    fi
+    mv "$DYN_NEW" "$DYN_FINAL"
+    log "installed dynamic V8 to $DYN_FINAL ($(du -sh "$DYN_FINAL" | cut -f1)); SHA256SUMS sha256 $($SHA256 "$DYN_FINAL/SHA256SUMS" | cut -c1-64)"
+    return
+  fi
   # Built beside the installed one, checked, then swapped in: a pinned artifact is never rewritten in place.
   local FINAL="$DEST" DEST="$DEST.new"
   rm -rf "$DEST"
@@ -756,21 +949,44 @@ step_install() {
   log "installed to $DEST ($(du -sh "$DEST" | cut -f1)); SHA256SUMS sha256 $($SHA256 "$DEST/SHA256SUMS" | cut -c1-64); archives: $(cd "$DEST/out/static/obj" && ls -la $(archives) | awk '{printf "%s %s; ", $NF, $5}')"
 }
 
+step_tarball() {
+  check_stop tarball
+  mkdir -p "$TARBALL_OUT"
+  local archive="$TARBALL_OUT/crane-v8-$V8_TAG-icu-$V8_LINK-$HOST_OS-$TARGET_CPU.tar.gz"
+  if [ "$V8_LINK" = dynamic ]; then
+    [ -s "$DEST/out/dynamic/SHA256SUMS" ] || die "dynamic build not installed at $DEST/out/dynamic; run 'install' first"
+    tar -C "$DEST" -czf "$archive" out/dynamic
+  else
+    [ -s "$DEST/SHA256SUMS" ] || die "static build not installed at $DEST; run 'install' first"
+    local items=() f
+    for f in out/static include libcxx icu system-libs.txt args.gn PROVENANCE SHA256SUMS; do
+      [ -e "$DEST/$f" ] && items+=("$f")
+    done
+    tar -C "$DEST" -czf "$archive" "${items[@]}"
+  fi
+  ( cd "$TARBALL_OUT" && $SHA256 "$(basename "$archive")" > "$(basename "$archive").sha256" )
+  log "tarball: $archive ($(du -sh "$archive" | cut -f1)); sha256 $(cat "$archive.sha256")"
+}
+
 step_clean() {
   check_stop clean
-  [ -s "$DEST/SHA256SUMS" ] || die "not installed yet; refusing to delete the build directory"
+  if [ "$V8_LINK" = dynamic ]; then
+    [ -s "$DEST/out/dynamic/SHA256SUMS" ] || die "dynamic build not installed yet; refusing to delete the build directory"
+  else
+    [ -s "$DEST/SHA256SUMS" ] || die "not installed yet; refusing to delete the build directory"
+  fi
   log "clean: $V8/$OUT ($(du -sh "$V8/$OUT" | cut -f1)); the checkout stays ($(du -sh "$V8_ROOT" | cut -f1) before)"
   rm -rf "${V8:?}/${OUT:?}"
   log "clean: checkout now $(du -sh "$V8_ROOT" | cut -f1); free $(df -Ph "$V8_ROOT" | awk 'NR == 2 {print $4}')"
 }
 
-[ "$#" -gt 0 ] || { sed -n '2,30p' "$0"; exit 2; }
+[ "${#STEPS[@]}" -gt 0 ] || { sed -n '2,36p' "$0"; exit 2; }
 mkdir -p "$V8_ROOT"
 echo "$$ $0 $*" > "$PIDFILE"
-for step in "$@"; do
+for step in "${STEPS[@]}"; do
   case "$step" in
     all) for s in deps checkout build rust verify smoke install; do "step_$s"; done ;;
-    deps|checkout|build|verify|rust|smoke|install|clean) "step_$step" ;;
+    deps|checkout|build|verify|rust|smoke|install|tarball|clean) "step_$step" ;;
     *) die "unknown step: $step" ;;
   esac
 done
