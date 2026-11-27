@@ -136,15 +136,6 @@ jobs:
           xcode-select -p
           xcodebuild -version
 
-      - name: Install qemu-user for linux-arm64 smoke verification
-        if: matrix.target == 'linux-arm64'
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-user
-          qemu-aarch64 --version
-
       - name: Setup Zig (the pinned 0.17)
         uses: ./.github/actions/setup-zig-pinned
 
@@ -296,9 +287,98 @@ jobs:
             ${{ runner.temp }}/v8-${{ env.V8_VERSION }}-${{ matrix.target }}-${{ matrix.link }}.tar.gz.sha256
           if-no-files-found: error
 
+  verify-linux-arm64:
+    name: Native Smoke Verify (linux-arm64)
+    needs: [plan, build]
+    if: contains(needs.plan.outputs.matrix, 'linux-arm64')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig (the pinned 0.17)
+        uses: ./.github/actions/setup-zig-pinned
+
+      - name: Download linux-arm64 V8 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: v8-linux-arm64-*
+          merge-multiple: true
+          path: dist
+
+      - name: Compile, link, and run V8 smoke natively on ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -lh dist
+          for tb in dist/v8-${V8_VERSION}-linux-arm64-*.tar.gz; do
+            [ -f "$tb" ] || continue
+            echo "=== Native ARM64 smoke: $tb ==="
+            work="$RUNNER_TEMP/arm64-smoke"
+            rm -rf "$work"
+            mkdir -p "$work"
+            tar -xzf "$tb" -C "$work"
+            root="$(find "$work" -mindepth 1 -maxdepth 1 -type d | head -1)"
+
+            if [[ "$tb" == *-static.tar.gz ]]; then
+              meta="$root"
+              link_inputs=(
+                "$root/out/static/obj/libv8_monolith.a"
+                "$root/out/static/obj/libv8_libplatform_fat.a"
+                "$root/out/static/obj/libv8_libbase_fat.a"
+                "$root/out/static/obj/libc++_chromium.a"
+                "$root/out/static/obj/librust_v8.a"
+              )
+              extra_link=()
+            else
+              meta="$root/out/dynamic"
+              link_inputs=(
+                "$meta/libv8.so"
+                "$meta/libv8_libplatform.so"
+                "$meta/libv8_libbase.so"
+                "$meta/libc++.so"
+                "$meta/libicuuc.so"
+                "$meta/libthird_party_icu_icui18n.so"
+              )
+              extra_link=("-L$meta" "-Wl,-rpath,$meta")
+            fi
+
+            # Extract smoke_source from scripts/build-v8-15.7.sh and compile+run natively.
+            awk '/cat <<'\''CC'\''$/{flag=1;next}/^CC$/{flag=0}flag' scripts/build-v8-15.7.sh > "$work/smoke.cc"
+            test -s "$work/smoke.cc"
+            flags=()
+            while IFS= read -r line; do
+              case "$line" in
+                -D*|-nostdinc++) flags+=("$line") ;;
+              esac
+            done < "$meta/libcxx/flags.txt"
+            icu_flags=()
+            while IFS= read -r line; do
+              case "$line" in
+                -D*) icu_flags+=("$line") ;;
+              esac
+            done < "$meta/icu/flags.txt"
+            sys_libs=($(cat "$meta/system-libs.txt"))
+
+            zig cc -x c++ -std=c++20 -fno-exceptions -fno-rtti \
+              "${flags[@]}" -DV8_GN_HEADER \
+              -I "$meta/libcxx/config" -I "$meta/libcxx/include" -I "$meta/libcxx/abi-include" \
+              -I "$meta/include" -I "$meta/icu/include" \
+              ${icu_flags[@]+"${icu_flags[@]}"} \
+              -c "$work/smoke.cc" -o "$work/smoke.o"
+            zig cc "$work/smoke.o" "${link_inputs[@]}" \
+              ${extra_link[@]+"${extra_link[@]}"} \
+              ${sys_libs[@]+"${sys_libs[@]}"} \
+              -o "$work/smoke"
+            "$work/smoke"
+            rm -rf "$work"
+          done
+
   publish:
     name: Publish Prebuilt V8 Pre-release
-    needs: build
+    needs: [build, verify-linux-arm64]
+    if: always() && needs.build.result == 'success' && (needs.verify-linux-arm64.result == 'success' || needs.verify-linux-arm64.result == 'skipped')
     runs-on: ubuntu-24.04
     steps:
       - name: Download built V8 artifacts
