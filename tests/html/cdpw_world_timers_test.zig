@@ -84,7 +84,7 @@ test "a world's timers are its Window's: one map of ids, cleared from either wor
     try expect(world, "String(globalThis.ran === true)", "false");
 }
 
-test "a world realm's end takes its timers and leaves the page's" {
+test "a world realm's end on navigation takes its timers and leaves the new page's" {
     const browser = try makeBrowser(testing.allocator);
     defer browser.deinit();
     const ctx = browser.current_context orelse return error.NoContext;
@@ -92,8 +92,11 @@ test "a world realm's end takes its timers and leaves the page's" {
     const world = try browser_mod.isolated_worlds.createIsolatedWorld(page, 1, "__timers__", false);
 
     try expect(world, "setTimeout(() => {}, 100000); setInterval(() => {}, 100000); 'ok'", "ok");
-    try expect(page, "globalThis.pageRan = false; setTimeout(() => { globalThis.pageRan = true; }, 0); 'ok'", "ok");
-    engine.detachWindowRealm(page);
+    // Navigating ends the old realm and its world realms (Blink ClearForNavigation),
+    // cancelling the old world's timers cleanly while the new page's timers run.
+    try ctx.loadHTML("<!doctype html><body>next</body>", .{ .base_url = "about:blank" });
+    const next_page = ctx.realm orelse return error.NoRealm;
+    try expect(next_page, "globalThis.pageRan = false; setTimeout(() => { globalThis.pageRan = true; }, 0); 'ok'", "ok");
     _ = try browser.runEventLoopBlocking(100);
-    try expect(page, "String(pageRan)", "true");
+    try expect(next_page, "String(pageRan)", "true");
 }
