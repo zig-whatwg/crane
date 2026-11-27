@@ -3987,11 +3987,111 @@ pub fn build(b: *std.Build) void {
         .root_module = crane_mod,
     });
 
+    if (platform_build.prepareC(target)) |prepare| prepare.module(crane_lib.root_module);
+
     // The engine: its adapter's sources, its archives and their C++ runtime.
     engine.link(b, crane_lib.root_module, .{});
 
     // What a finished program or library links on the target's OS.
     platform_build.linkArtifact(crane_lib.root_module, target);
+
+    // Expose include/crane.h alongside libcrane.a for both `zig build crane-lib`
+    // and downstream Zig packages linking `crane.artifact("crane")`.
+    crane_lib.installHeader(b.path("include/crane.h"), "crane.h");
+    b.installArtifact(crane_lib);
+
+    const crane_lib_step = b.step("crane-lib", "Build Crane C-ABI static library (zig-out/lib/libcrane.a + zig-out/include/crane.h)");
+    const install_crane_lib_only = b.addInstallArtifact(crane_lib, .{});
+    crane_lib_step.dependOn(&install_crane_lib_only.step);
+
+    // ---- Crane Release Static Library (crane-lib-release) ----
+    // Uses production_graph (ReleaseSafe throughout, static external libraries,
+    // CDP on by default) with unstripped symbols (strip = false).
+    const crane_release_mod = b.createModule(.{
+        .root_source_file = b.path("src/lib_exports.zig"),
+        .target = target,
+        .optimize = production_build.modes.root,
+        .strip = false,
+    });
+    if (production_build.modes.sanitize_c) |sanitizer| crane_release_mod.sanitize_c = sanitizer;
+    crane_release_mod.addImport("runtime", production_graph.runtime);
+    crane_release_mod.addImport("webidl", production_graph.webidl);
+    crane_release_mod.addImport("infra", production_graph.infra);
+    crane_release_mod.addImport("engine", production_graph.engine);
+    crane_release_mod.addImport("interfaces", production_graph.interfaces);
+    crane_release_mod.addImport("namespaces", production_graph.namespaces);
+    crane_release_mod.addImport("dictionaries", production_graph.dictionaries);
+    crane_release_mod.addImport("typedefs", production_graph.typedefs);
+    crane_release_mod.addImport("enums", production_graph.enums);
+    crane_release_mod.addImport("callbacks", production_graph.callbacks);
+    crane_release_mod.addImport("mixins", production_graph.mixins);
+    crane_release_mod.addImport("browser", production_graph.browser);
+    crane_release_mod.addImport("devtools", production_graph.devtools);
+    crane_release_mod.addImport("dom", production_graph.dom);
+    crane_release_mod.addImport("encoding", production_graph.encoding);
+    crane_release_mod.addImport("url", production_graph.url);
+    crane_release_mod.addImport("console", production_graph.console);
+    crane_release_mod.addImport("streams", production_graph.streams);
+    crane_release_mod.addImport("mimesniff", production_graph.mimesniff);
+    crane_release_mod.addImport("fetch", production_graph.fetch);
+    crane_release_mod.addImport("html_core", production_graph.html_core);
+    crane_release_mod.addImport("html", production_graph.html);
+    crane_release_mod.addImport("storage", production_graph.storage);
+    crane_release_mod.addImport("trusted_types", production_graph.trusted_types);
+    crane_release_mod.addImport("csp", production_graph.csp);
+    crane_release_mod.addImport("hr_time", production_graph.hr_time);
+    crane_release_mod.addImport("websocket", production_graph.websocket);
+    crane_release_mod.addImport("permissions", production_graph.permissions);
+    crane_release_mod.addImport("intl", production_graph.intl);
+    crane_release_mod.addImport("platform", production_graph.platform);
+
+    const crane_lib_release = b.addLibrary(.{
+        .linkage = .static,
+        .name = "crane",
+        .root_module = crane_release_mod,
+    });
+    if (platform_build.prepareC(target)) |prepare| prepare.module(crane_lib_release.root_module);
+    engine.link(b, crane_lib_release.root_module, .{});
+    platform_build.linkArtifact(crane_lib_release.root_module, target);
+    crane_lib_release.installHeader(b.path("include/crane.h"), "crane.h");
+
+    const crane_lib_release_step = b.step("crane-lib-release", "Build ReleaseSafe unstripped Crane C-ABI static library (zig-out/lib/libcrane.a + zig-out/include/crane.h)");
+    const install_crane_lib_release = b.addInstallArtifact(crane_lib_release, .{});
+    crane_lib_release_step.dependOn(&install_crane_lib_release.step);
+
+    // ---- Crane Public High-Level Zig Module (dep.module("crane")) ----
+    // Exported for downstream Zig packages (`exe.root_module.addImport("crane", dep.module("crane"))`).
+    // Carries the engine and target platform link inputs so consumers link cleanly
+    // without duplicating adapter wiring.
+    const crane_api_mod = b.addModule("crane", .{
+        .root_source_file = b.path("src/crane.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    crane_api_mod.addImport("browser", browser_mod);
+    crane_api_mod.addImport("devtools", crane_graph.devtools);
+    crane_api_mod.addImport("engine", engine_mod);
+    crane_api_mod.addImport("platform", platform_mod);
+    if (platform_build.prepareC(target)) |prepare| prepare.module(crane_api_mod);
+    engine.link(b, crane_api_mod, .{});
+    platform_build.linkArtifact(crane_api_mod, target);
+
+    // Unit tests for src/crane.zig run with test-browser (and satisfy check-src-tests).
+    // Uses its own module over testing_graph so tests_engine_link applies cleanly
+    // (including -Dsanitize-thread) without conflicting with crane_api_mod's product link.
+    const crane_api_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/crane.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    crane_api_test_mod.addImport("browser", testing_graph.browser);
+    crane_api_test_mod.addImport("devtools", testing_graph.devtools);
+    crane_api_test_mod.addImport("engine", testing_graph.engine);
+    crane_api_test_mod.addImport("platform", testing_graph.platform);
+    const crane_api_test = addModuleTestWithEngine(b, crane_api_test_mod, target, tests_engine_link);
+    const run_crane_api_test = addSuiteRun(b, launch, crane_api_test, "crane-api", "lib-exports");
+    test_browser_step.dependOn(&run_crane_api_test.step);
+    b.step("test-crane-api", "Run src/crane.zig public Zig API unit tests").dependOn(&run_crane_api_test.step);
 
     // ---- Crane Executable (crane) ----
     // WebDriver browser for wptrunner integration
