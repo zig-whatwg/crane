@@ -57,9 +57,12 @@ pub const facts: platform_build.Facts = .{
 pub const Options = struct {
     /// -Dios-sdk: the iPhoneOS SDK root, used instead of xcrun's.
     ios_sdk: ?[]const u8,
+    /// -Dmacos-sdk: the MacOSX SDK root for cross-compiling macOS targets (e.g. x86_64-macos on arm64).
+    macos_sdk: ?[]const u8,
 };
 
 const sdk_option_name = "ios-sdk";
+const macos_sdk_option_name = "macos-sdk";
 
 /// Zig 0.16 resolves the macOS SDK for Darwin targets, but NOT the iOS one: a
 /// trivial `#include <stdio.h>` for aarch64-ios fails with 'stdio.h' file not
@@ -73,14 +76,23 @@ const sdk_option_name = "ios-sdk";
 /// -Dios-sdk: the SDK root used instead of xcrun's (declared here once;
 /// check-ios passes it to its sub-build).
 pub fn declareOptions(b: *std.Build) Options {
-    return .{ .ios_sdk = b.option([]const u8, sdk_option_name, "The iPhoneOS SDK root for an aarch64-ios build (default: xcrun --sdk iphoneos)") };
+    return .{
+        .ios_sdk = b.option([]const u8, sdk_option_name, "The iPhoneOS SDK root for an aarch64-ios build (default: xcrun --sdk iphoneos)"),
+        .macos_sdk = b.option([]const u8, macos_sdk_option_name, "The MacOSX SDK root for cross-compiling a macOS target (e.g. x86_64-macos on arm64)"),
+    };
 }
 
 /// What darwin reads of the machine for `target`, once: an iOS target's SDK
-/// root, recorded for the C preparation (`prepareC`) - asked at make time by
-/// `probe`, the root build's tools/build_probe.zig.
+/// root, or `-Dmacos-sdk` on a cross-compiled macOS target, recorded for the
+/// C preparation (`prepareC`) and final link (`linkArtifact`).
 pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options, probe: *std.Build.Step.Compile) void {
-    if (target.result.os.tag == .ios) _ = recordSdkRoot(b, target, options.ios_sdk, sdk_option_name, probe);
+    if (target.result.os.tag == .ios) {
+        _ = recordSdkRoot(b, target, options.ios_sdk, sdk_option_name, probe);
+    } else if (target.result.os.tag == .macos) {
+        if (options.macos_sdk) |sdk| {
+            b.addNamedLazyPath(sdk_root_name, .{ .cwd_relative = sdk });
+        }
+    }
 }
 
 /// What a sub-build of the root build for another darwin target takes from
@@ -173,11 +185,11 @@ fn addIosSdkPaths(module: *std.Build.Module, sdk: ?std.Build.LazyPath) void {
 }
 
 /// What the kit's C needs for `target` beyond what Zig finds by itself
-/// (kit_build.PrepareC): the iOS SDK's paths, for an iOS target, whose SDK
-/// root `resolve` recorded (recordSdkRoot); nothing for macOS, whose SDK Zig
-/// finds.
+/// (kit_build.PrepareC): the SDK's paths when `resolve` recorded one (always
+/// for iOS, and for macOS when `--sysroot` is passed for cross-compilation);
+/// a no-op when no SDK root was recorded (native macOS).
 pub fn prepareC(target: std.Build.ResolvedTarget) ?kit_build.PrepareC {
-    return if (target.result.os.tag == .ios) sdk_prepare_c else null;
+    return if (target.result.os.tag.isDarwin()) sdk_prepare_c else null;
 }
 const sdk_prepare_c: kit_build.PrepareC = .{ .module = sdkModule, .graph = sdkGraph, .translate = sdkTranslate };
 fn sdkModule(module: *std.Build.Module) void {
@@ -193,8 +205,12 @@ fn sdkTranslate(translate: *std.Build.Step.TranslateC) void {
 
 /// What a finished program or library links on darwin's systems (crane's
 /// library and executable): macOS's CoreFoundation, CoreServices and
-/// SystemConfiguration.
+/// SystemConfiguration, plus explicit SDK search paths when `--sysroot` was
+/// supplied for cross-compilation.
 pub fn linkArtifact(module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    if (target.result.os.tag.isDarwin()) {
+        addIosSdkPaths(module, iosSdkPath(module.owner));
+    }
     // System frameworks (macOS)
     if (target.result.os.tag == .macos) {
         module.linkFramework("CoreFoundation", .{});

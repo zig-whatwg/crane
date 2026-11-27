@@ -4426,8 +4426,17 @@ pub fn build(b: *std.Build) void {
     engine.link(b, crane_exe.root_module, .{});
     platform_build.linkArtifact(crane_exe.root_module, target);
 
+    // Cross-compiled builds cannot generate target-architecture engine startup
+    // data on the host (the startup generator runs on b.graph.host and the
+    // serialized blob is architecture-specific). Crane boots cleanly without
+    // prebuilt startup data via fresh isolate initialization.
+    const is_cross_target = !target.query.isNativeOs() or
+        target.result.cpu.arch != b.graph.host.result.cpu.arch;
+
     const install_crane_exe = b.addInstallArtifact(crane_exe, .{});
-    if (engine_startup_install) |startup_install| install_crane_exe.step.dependOn(startup_install);
+    if (!is_cross_target) {
+        if (engine_startup_install) |startup_install| install_crane_exe.step.dependOn(startup_install);
+    }
     browser_step.dependOn(&install_crane_exe.step);
 
     const crane_step = b.step("crane", "Build Crane headless browser CLI (zig-out/bin/crane)");
@@ -4469,7 +4478,9 @@ pub fn build(b: *std.Build) void {
     platform_build.linkArtifact(crane_release_exe.root_module, target);
 
     const install_crane_release = b.addInstallArtifact(crane_release_exe, .{});
-    if (engine_startup_install) |startup_install| install_crane_release.step.dependOn(startup_install);
+    if (!is_cross_target) {
+        if (engine_startup_install) |startup_install| install_crane_release.step.dependOn(startup_install);
+    }
 
     const crane_release_step = b.step("crane-release", "Build Crane release CLI (ReleaseSafe, debug symbols preserved, static libs, CDP+MCP enabled)");
     crane_release_step.dependOn(&install_crane_release.step);
