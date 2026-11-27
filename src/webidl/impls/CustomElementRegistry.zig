@@ -118,9 +118,19 @@ pub const InternalState = struct {
     pub fn getDefinitionByConstructor(self: *InternalState, realm: runtime.Context, constructor: runtime.JSValue) ?*CustomElementDefinition {
         var it = self.definitions.valueIterator();
         while (it.next()) |def| {
-            if (engine.sameValue(realm, def.*.constructor.function.value, constructor)) return def.*;
+            if (engine.sameValue(realm, def.*.constructorValue(), constructor)) return def.*;
         }
         return null;
+    }
+
+    /// VTable.trace_held_nodes (lane rc9 items 17-26): trace every registered
+    /// definition's constructor and nine lifecycle callbacks from this
+    /// registry's wrapper so scoped registries with self-referential
+    /// definitions collect cleanly.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const internal = getInternal(instance) orelse return;
+        var it = internal.definitions.valueIterator();
+        while (it.next()) |def| def.*.trace(tracer);
     }
 
     /// Check if a name is already defined
@@ -210,6 +220,7 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
+    engine.forgetUnwrappedTracedOwner(instance);
     if (state.own._internal) |internal| {
         internal.deinit();
     }
@@ -231,11 +242,11 @@ pub fn call_constructor(instance: *runtime.Instance) !void {
 ///
 /// Defines a new custom element, mapping the given name to the given constructor.
 pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constructor_data: callbacks.CustomElementConstructor, options: webidl.Opt(dictionaries.ElementDefinitionOptions)) anyerror!void {
-    // The constructor is BORROWED for the call: kept before anything can
-    // fail. The definition keeps it; every other way out releases it.
+    // The constructor is BORROWED for the call: kept strongly across step 14
+    // (where user getters may run GC) and step 19 (`when_defined`), then
+    // released on exit once the definition's TracedCallback is registered.
     const constructor = constructor_data.keep();
-    var kept = false;
-    defer if (!kept) constructor.release();
+    defer constructor.release();
 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const allocator = internal.allocator;
@@ -307,6 +318,7 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
     // Steps 10-13: formAssociated, disableInternals and disableShadow false,
     // observedAttributes empty.
     var collected: Collected = .{};
+    defer collected.releaseCallbacks();
 
     // Step 14: "Run the following steps while catching any exceptions" ...
     const read = readDefinitionSteps(realm, allocator, constructor_value, &collected);
@@ -315,7 +327,7 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
     internal.element_definition_is_running = false;
     // "Finally, if the steps threw an exception, rethrow that exception."
     read catch |err| {
-        collected.deinit(allocator);
+        collected.freeAttributes(allocator);
         return err;
     };
 
@@ -324,13 +336,23 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
     // attributes observedAttributes, lifecycle callbacks lifecycleCallbacks,
     // form-associated formAssociated, disable internals disableInternals,
     // and disable shadow disableShadow."
-    const def = CustomElementDefinition.init(allocator, name_str, local_name, constructor) catch |err| {
-        collected.deinit(allocator);
+    // Convert the strong step-14 holds to TracedCallbacks now that no more
+    // user getters run before step 16 attaches the definition to the registry.
+    const traced_constructor = toTracedCallback(constructor);
+    var def_owns_constructor = false;
+    defer if (!def_owns_constructor) traced_constructor.release();
+    const def = CustomElementDefinition.initTraced(allocator, name_str, local_name, traced_constructor) catch |err| {
+        collected.freeAttributes(allocator);
         return err;
     };
-    kept = true;
+    def_owns_constructor = true;
     def.observed_attributes = collected.observed_attributes;
-    def.lifecycle_callbacks = collected.lifecycle_callbacks;
+    collected.observed_attributes = &.{};
+    inline for (comptime std.meta.fieldNames(CustomElementDefinition.LifecycleCallbacks)) |field_name| {
+        if (@field(collected.lifecycle_callbacks, field_name)) |cb| {
+            @field(def.lifecycle_callbacks, field_name) = toTracedCallback(cb);
+        }
+    }
     def.form_associated = collected.form_associated;
     def.disable_internals = collected.disable_internals;
     def.disable_shadow = collected.disable_shadow;
@@ -340,6 +362,7 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
     // Step 16: "Append definition to this's custom element definition set."
     try internal.addDefinition(def);
     registered = true;
+    engine.noteUnwrappedTracedOwner(instance);
     def.setRegistry(instance);
     if (@import("html").custom_elements.stateForRealm(instance.ctx)) |agent_state| {
         def.agent_definition_count = &agent_state.definition_count;
@@ -375,16 +398,48 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
     }
 }
 
+/// Convert a strong CallbackFunction held during step 14 into a TracedCallback
+/// preserving the callback context captured when it was read.
+fn toTracedCallback(cb: engine.CallbackFunction) engine.TracedCallback {
+    var traced = engine.keepCallbackFunctionTraced(.{ .function = cb.function.value });
+    traced.context = cb.context;
+    return traced;
+}
+
+/// Strong lifecycle callback holds collected during step 14 (while arbitrary
+/// user getters may trigger GC before the definition is added to the registry).
+const CollectedLifecycleCallbacks = struct {
+    connectedCallback: ?engine.CallbackFunction = null,
+    disconnectedCallback: ?engine.CallbackFunction = null,
+    adoptedCallback: ?engine.CallbackFunction = null,
+    connectedMoveCallback: ?engine.CallbackFunction = null,
+    attributeChangedCallback: ?engine.CallbackFunction = null,
+    formAssociatedCallback: ?engine.CallbackFunction = null,
+    formResetCallback: ?engine.CallbackFunction = null,
+    formDisabledCallback: ?engine.CallbackFunction = null,
+    formStateRestoreCallback: ?engine.CallbackFunction = null,
+
+    fn release(self: *CollectedLifecycleCallbacks) void {
+        inline for (comptime std.meta.fieldNames(CollectedLifecycleCallbacks)) |field_name| {
+            if (@field(self, field_name)) |callback| callback.release();
+            @field(self, field_name) = null;
+        }
+    }
+};
+
 /// What define()'s step 14 reads off the constructor and its prototype.
 const Collected = struct {
-    lifecycle_callbacks: CustomElementDefinition.LifecycleCallbacks = .{},
+    lifecycle_callbacks: CollectedLifecycleCallbacks = .{},
     observed_attributes: []const []const u8 = &.{},
     form_associated: bool = false,
     disable_internals: bool = false,
     disable_shadow: bool = false,
 
-    fn deinit(self: *Collected, allocator: Allocator) void {
-        self.lifecycle_callbacks.deinit(allocator);
+    fn releaseCallbacks(self: *Collected) void {
+        self.lifecycle_callbacks.release();
+    }
+
+    fn freeAttributes(self: *Collected, allocator: Allocator) void {
         freeStrings(allocator, self.observed_attributes);
         self.observed_attributes = &.{};
     }
@@ -487,7 +542,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!t
     // The union's callback function member is BORROWED, as an EventHandler
     // getter's is (conv.unionReturnIsOwned): the definition keeps it.
     if (internal.getDefinitionByName(name_str)) |def| {
-        return .{ .custom_element_constructor = .{ .function = def.constructor.function.borrow() } };
+        return .{ .custom_element_constructor = .{ .function = def.constructorValue() } };
     }
 
     // Step 2: no definition matches, so return undefined.
@@ -590,7 +645,7 @@ pub fn call_whenDefined(instance: *runtime.Instance, name: runtime.DOMString) an
     // name name, then return a promise resolved with that item's
     // constructor."
     if (internal.getDefinitionByName(name_str)) |def| {
-        return (try engine.createResolvedPromise(realm, def.constructor.function.value)).take();
+        return (try engine.createResolvedPromise(realm, def.constructorValue())).take();
     }
 
     // Step 3: "If this's when-defined promise map[name] does not exist, then

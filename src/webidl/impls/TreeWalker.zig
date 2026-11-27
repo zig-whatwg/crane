@@ -96,6 +96,15 @@ pub const InternalState = struct {
         // No cleanup needed - we don't own the nodes
         _ = self;
     }
+
+    /// VTable.trace_held_nodes (lane rc9, item 15): trace the walker's
+    /// NodeFilter callback hold from the walker's wrapper.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const state = instance.stateAs(State) orelse return;
+        const raw = state.own._internal orelse return;
+        const internal: *const InternalState = @ptrCast(@alignCast(raw));
+        node_filter.trace(tracer, internal.filter);
+    }
 };
 
 /// Helper to access internal state from instance
@@ -167,6 +176,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // one freed unwrapped lets go of what waits for its wrapper.
         if (internal.root_traced) engine.forgetTracedChild(instance, root_slot);
         if (internal.traced_current != null) engine.forgetTracedChild(instance, current_slot);
+        engine.forgetUnwrappedTracedOwner(instance);
         internal.root_hold.release();
         internal.current_hold.release();
         node_filter.release(internal.filter);
@@ -196,7 +206,7 @@ fn setUp(
     // Step 4: Set walker's filter to filter.
     node_filter.release(internal.filter);
     internal.filter = null;
-    internal.filter = try node_filter.store(internal.allocator, filter);
+    internal.filter = try node_filter.store(internal.allocator, instance, filter);
 }
 
 // ============================================================================

@@ -227,7 +227,6 @@ pub fn worldInfoOf(_: Context) ?engine.WorldInfo {
 pub fn worldRealmsOf(_: Context, _: []Context) usize {
     return 0;
 }
-pub fn destroyWorldRealms(_: Context) void {}
 pub fn installWorldObserver(_: *Agent, _: ?*const engine.WorldObserver, _: ?*anyopaque) void {}
 // [inspector_protocol] (engine section 4.2b): unsupported - no inspector, no
 // JavaScript domains of CDP.
@@ -762,6 +761,14 @@ pub fn keepCallbackFunctionTraced(_: engine.BorrowedCallbackFunction) engine.Tra
 pub fn keepCallbackInterfaceTraced(_: engine.BorrowedCallbackInterface) engine.TracedCallback {
     return .{ .hold = .{}, .context = null };
 }
+pub fn keepValueTraced(_: Context, value: JSValue) Error!engine.TracedValueHold {
+    return switch (value) {
+        .undefined, .null, .boolean, .number => .{ .inline_value = value },
+        else => error.NotSupported,
+    };
+}
+pub fn noteUnwrappedTracedOwner(_: *Instance) void {}
+pub fn forgetUnwrappedTracedOwner(_: *Instance) void {}
 pub fn tracedHoldValue(_: engine.TracedHold) JSValue {
     return JSValue.jsUndefined;
 }

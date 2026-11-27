@@ -249,9 +249,9 @@ fn worldContexts() !void {
     testing.allocator.free(page_global);
     engine.inspectorDispatch(session, request);
     try received.expectFound(&.{ "\"id\":2", "\"value\":\"undefined:BODY\"" });
-    // The world's end tells the session.
+    // The world's end (with its main realm's detach) tells the session.
     received.clear();
-    engine.destroyWorldRealms(page.realm);
+    engine.detachWindowRealm(page.realm);
     try received.expectFound(&.{"Runtime.executionContextDestroyed"});
 }
 

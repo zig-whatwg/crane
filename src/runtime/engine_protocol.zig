@@ -1694,8 +1694,9 @@ pub const WorldObserver = struct {
 /// navigation), or the one already made. Its settings object, event loop,
 /// Browser, origin and document are `main`'s. It is not entered for its
 /// life; it is entered for each call that runs in it. OWNED by `main`: it
-/// ends with it (`destroyWorldRealms`). Fails when `main` is no live
-/// Window realm, or with error.NotSupported on an engine without worlds.
+/// ends with `main` (`destroyWindowRealm` / `detachWindowRealm`). Fails when
+/// `main` is no live Window realm, or with error.NotSupported on an engine
+/// without worlds.
 pub inline fn createWorldRealm(main: Context, options: *const WorldRealmOptions) Error!Context {
     return impl.createWorldRealm(main, options);
 }
@@ -1727,13 +1728,6 @@ pub inline fn worldInfoOf(realm: Context) ?WorldInfo {
 /// Answers how many there are.
 pub inline fn worldRealmsOf(main: Context, out: []Context) usize {
     return impl.worldRealmsOf(main, out);
-}
-
-/// End every world realm of `main` (the observer told first). Implied by
-/// `destroyWindowRealm` of `main` - and by the detach it may make - so a
-/// host calls it only to drop its worlds while `main` lives on.
-pub inline fn destroyWorldRealms(main: Context) void {
-    impl.destroyWorldRealms(main);
 }
 
 /// Install (or, with null, remove) `agent`'s world observer. `observer` and
@@ -2616,6 +2610,92 @@ pub inline fn keepCallbackInterfaceTraced(callback: BorrowedCallbackInterface) T
 /// As `keepCallbackInterfaceTraced`, for a callback function value.
 pub inline fn keepCallbackFunctionTraced(callback: BorrowedCallbackFunction) TracedCallback {
     return impl.keepCallbackFunctionTraced(callback);
+}
+
+/// An owner's traced hold of an arbitrary JavaScript value (lane rc9):
+/// inline primitives (.undefined, .null, .boolean, .number) carry no engine
+/// handle and need no tracing; heap values (objects, strings, symbols,
+/// bigints, platform wrappers) are kept as a `TracedHold` traced from the
+/// owner's `VTable.trace_held_nodes` hook via `trace`. OWNED: `release`
+/// exactly once.
+pub const TracedValueHold = union(enum) {
+    inline_value: JSValue,
+    traced: TracedHold,
+
+    pub const empty: TracedValueHold = .{ .inline_value = JSValue.jsUndefined };
+
+    /// The held value, or undefined once the collector took an untraced hold.
+    /// BORROWED.
+    pub fn value(self: TracedValueHold) JSValue {
+        return switch (self) {
+            .inline_value => |v| v,
+            .traced => |h| h.value(),
+        };
+    }
+
+    /// Whether the hold carries no live value (an inline primitive is never
+    /// cleared by the collector).
+    pub fn isEmpty(self: TracedValueHold) bool {
+        return switch (self) {
+            .inline_value => false,
+            .traced => |h| h.isEmpty(),
+        };
+    }
+
+    /// End the hold.
+    pub fn release(self: TracedValueHold) void {
+        switch (self) {
+            .inline_value => {},
+            .traced => |h| h.release(),
+        }
+    }
+
+    /// Trace the held value from its owner's `VTable.trace_held_nodes` hook.
+    pub fn trace(self: TracedValueHold, tracer: *Tracer) void {
+        switch (self) {
+            .inline_value => {},
+            .traced => |h| traceHeld(tracer, h),
+        }
+    }
+};
+
+/// Keep a plain JavaScript value as a `TracedValueHold` its owner traces at
+/// collection time (lane rc9). Inline primitives (.undefined, .null, .boolean,
+/// .number) allocate no engine handle; heap values (.handle, .instance,
+/// .string) are kept in a `TracedHold` (V8: a TracedReference in the agent's
+/// hold slab, no root in a full collection, a root in a young one). A platform
+/// object is wrapped in its relevant realm first.
+pub inline fn keepValueTraced(realm: Context, value: JSValue) Error!TracedValueHold {
+    return impl.keepValueTraced(realm, value);
+}
+
+/// Keep `value` as a `TracedValueHold` owned by `owner`: if the hold carries
+/// an engine handle (`.traced`) and `owner` has no wrapper yet, registers
+/// `owner` via `noteUnwrappedTracedOwner` so the value survives full
+/// collections until `owner` is wrapped.
+pub fn keepValueTracedFor(owner: *Instance, realm: Context, value: JSValue) Error!TracedValueHold {
+    const hold = try keepValueTraced(realm, value);
+    if (hold == .traced) noteUnwrappedTracedOwner(owner);
+    return hold;
+}
+
+/// Note that `owner` currently holds one or more `TracedHold` values while it
+/// has NO wrapper yet (lane rc9: e.g. a Zig-made event before dispatch, a
+/// constructor before the binding caches `this`, or a deserialized object).
+/// Full collections trace `owner` via its `VTable.trace_held_nodes` hook while
+/// unwrapped; the instant `owner` receives a wrapper in any world, the
+/// registration ends and the wrapper's anchor takes over tracing so cycles
+/// collect cleanly. No-op if `owner` already has a wrapper, or on an engine
+/// without wrapper tracing.
+pub inline fn noteUnwrappedTracedOwner(owner: *Instance) void {
+    impl.noteUnwrappedTracedOwner(owner);
+}
+
+/// End any pending unwrapped-owner trace registration for `owner` when `owner`
+/// is torn down without ever having been wrapped. Safe to call even if `owner`
+/// was already wrapped or never registered.
+pub inline fn forgetUnwrappedTracedOwner(owner: *Instance) void {
+    impl.forgetUnwrappedTracedOwner(owner);
 }
 
 // ============================================================================

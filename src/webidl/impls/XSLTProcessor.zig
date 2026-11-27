@@ -36,12 +36,10 @@ pub const InternalState = struct {
     /// The imported stylesheet (as a Node)
     stylesheet: ?*runtime.Instance,
     /// Parameters set via setParameter, by `parameterKey` - the processor's
-    /// own copy of the namespace and local name - each value held by the
-    /// processor (engine.retainValue) until it is replaced, removed or
-    /// cleared, or the processor goes. The arguments are the binding's,
-    /// borrowed for the call: stored as they came, the names were freed bytes
-    /// once setParameter returned and the value was the argument's handle.
-    parameters: std.StringHashMapUnmanaged(engine.Owned) = .empty,
+    /// own copy of the namespace and local name - each value kept traced from
+    /// this processor's wrapper (`traceHeldNodes`; lane rc9 item 16) until it
+    /// is replaced, removed or cleared, or the processor goes.
+    parameters: std.StringHashMapUnmanaged(engine.TracedValueHold) = .empty,
     /// Allocator for this instance
     allocator: std.mem.Allocator,
 
@@ -50,6 +48,15 @@ pub const InternalState = struct {
             .stylesheet = null,
             .allocator = allocator,
         };
+    }
+
+    /// VTable.trace_held_nodes (lane rc9 item 16): trace every stored
+    /// parameter value from this processor's wrapper.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const state = instance.stateAs(State) orelse return;
+        const internal = state.own._internal orelse return;
+        var it = internal.parameters.valueIterator();
+        while (it.next()) |held| held.trace(tracer);
     }
 
     /// Release every parameter: its key and its value.
@@ -96,6 +103,7 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
+    engine.forgetUnwrappedTracedOwner(instance);
     if (state.own._internal) |internal| {
         internal.deinit();
         state.own._internal = null;
@@ -169,8 +177,8 @@ pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
     const internal = state.own._internal orelse return error.InvalidState;
 
     // The value is the binding's, borrowed for this call: the processor
-    // keeps a hold of its own.
-    const held = try engine.retainValue(instance.ctx, value);
+    // keeps a traced hold of its own so parameter cycles collect cleanly.
+    const held = try engine.keepValueTracedFor(instance, instance.ctx, value);
     errdefer held.release();
     const key = try parameterKey(internal.allocator, namespaceURI, localName);
     errdefer internal.allocator.free(key);
@@ -193,7 +201,7 @@ pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
     if (internal.parameters.get(key)) |held| {
         // The processor keeps its hold; the result is a hold of the
         // binding's own.
-        return (try engine.retainValue(instance.ctx, held.value)).take();
+        return (try engine.retainValue(instance.ctx, held.value())).take();
     }
 
     // Return undefined if parameter not found

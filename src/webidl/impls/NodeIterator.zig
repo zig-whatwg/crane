@@ -139,6 +139,15 @@ pub const InternalState = struct {
         // No cleanup needed - we don't own the nodes
         _ = self;
     }
+
+    /// VTable.trace_held_nodes (lane rc9, item 15): trace the iterator's
+    /// NodeFilter callback hold from the iterator's wrapper.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const state = instance.stateAs(State) orelse return;
+        const raw = state.own._internal orelse return;
+        const internal: *const InternalState = @ptrCast(@alignCast(raw));
+        node_filter.trace(tracer, internal.filter);
+    }
 };
 
 /// Helper to access internal state from instance
@@ -237,6 +246,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         if (internal.root_traced) engine.forgetTracedChild(instance, root_slot);
         if (internal.traced_reference != null) engine.forgetTracedChild(instance, reference_slot);
         if (internal.traced_candidate != null) engine.forgetTracedChild(instance, candidate_slot);
+        engine.forgetUnwrappedTracedOwner(instance);
         internal.root_hold.release();
         internal.reference_hold.release();
         internal.candidate_hold.release();
@@ -271,7 +281,7 @@ fn setUp(
     // Step 5: Set iterator's filter to filter.
     node_filter.release(internal.filter);
     internal.filter = null;
-    internal.filter = try node_filter.store(internal.allocator, filter);
+    internal.filter = try node_filter.store(internal.allocator, instance, filter);
     internal.active_flag = false;
     // Recorded so the iterator can leave the document's list when freed.
     internal.document = document;

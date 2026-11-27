@@ -413,10 +413,6 @@ pub fn worldRealmsOf(main: Context, out: []Context) usize {
     return protocol_worlds.worldRealmsOf(main, out);
 }
 
-pub fn destroyWorldRealms(main: Context) void {
-    protocol_worlds.destroyWorldRealms(main);
-}
-
 pub fn installWorldObserver(agent: *Agent, observer: ?*const engine.WorldObserver, host: ?*anyopaque) void {
     protocol_worlds.installWorldObserver(agent, observer, host);
 }
@@ -699,6 +695,9 @@ pub const keepCallbackFunction = protocol_callbacks.keepCallbackFunction;
 pub const keepCallbackInterface = protocol_callbacks.keepCallbackInterface;
 pub const keepCallbackFunctionTraced = protocol_callbacks.keepCallbackFunctionTraced;
 pub const keepCallbackInterfaceTraced = protocol_callbacks.keepCallbackInterfaceTraced;
+pub const keepValueTraced = protocol_tracing.keepValueTraced;
+pub const noteUnwrappedTracedOwner = protocol_tracing.noteUnwrappedTracedOwner;
+pub const forgetUnwrappedTracedOwner = protocol_tracing.forgetUnwrappedTracedOwner;
 pub const tracedHoldValue = protocol_tracing.tracedHoldValue;
 pub const tracedHoldIsEmpty = protocol_tracing.tracedHoldIsEmpty;
 pub const releaseTracedHold = protocol_tracing.releaseTracedHold;

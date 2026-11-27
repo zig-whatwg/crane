@@ -1169,3 +1169,37 @@ pub fn hasWrapperInOtherWorld(instance: *engine.Instance) bool {
     eachOtherWrapper(instance, own, &found, Found.visit);
     return found.found;
 }
+
+/// Apply `op` to every live WrapperCache in `instance`'s realm group other
+/// than `except` (the instance's own realm's cache). Used by
+/// `holdForPendingActivity` / `releasePendingActivity` so pending activity
+/// keeps every world's wrapper of `instance`, not only its own realm's
+/// (lane rc9 Part B.2; lesson
+/// architecture-a-has-script-seen-it-check-must-ask-every-world.md).
+fn forEachOtherWorldCache(instance: *engine.Instance, except: *const WrapperCache, comptime op: fn (*WrapperCache, *engine.Instance) void) void {
+    if (std.mem.eql(u8, instance.vtable.name, "Window")) return;
+    const worlds = worldsOfRealm(instance.ctx) orelse return;
+    if (!worlds.active) return;
+    const main = mainRealmOf(instance.ctx);
+    if (cacheOf(main)) |cache| {
+        if (!isCache(cache, except) and !cache.is_tearing_down) op(cache, instance);
+    }
+    const list = worlds.by_main.get(main) orelse return;
+    for (list.items) |w| {
+        const cache = cacheOf(w.realm) orelse continue;
+        if (isCache(cache, except) or cache.is_tearing_down) continue;
+        op(cache, instance);
+    }
+}
+
+/// engine.keepPlatformObjectAlive, the other worlds' half: hold every wrapper
+/// of `instance` already cached in another realm of its group.
+pub fn holdPendingActivityInOtherWorlds(instance: *engine.Instance, except: *const WrapperCache) void {
+    forEachOtherWorldCache(instance, except, WrapperCache.holdWorldEntryPendingActivity);
+}
+
+/// engine.releasePlatformObject, the other worlds' half: release one keep on
+/// every wrapper of `instance` cached in another realm of its group.
+pub fn releasePendingActivityInOtherWorlds(instance: *engine.Instance, except: *const WrapperCache) void {
+    forEachOtherWorldCache(instance, except, WrapperCache.releaseWorldEntryPendingActivity);
+}

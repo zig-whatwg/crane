@@ -41,26 +41,37 @@ pub const InternalState = struct {
     origin_record: ?*@import("dom").origin_record.OriginRecord = null,
     /// Whether we own the origin string (should free on deinit)
     owns_origin: bool = false,
-    /// The event's own hold on `data` when it is a script value: `data` is a
-    /// view of it. Released on deinit.
-    data_hold: ?engine.Owned = null,
-    /// The frozen array `get_ports` made for this event: `ports` is a view of
-    /// it. Released on deinit.
-    ports_hold: ?engine.Owned = null,
+    /// The event's own traced hold on `data` when it is a script value:
+    /// traced from this event's wrapper (`traceHeldNodes`; lane rc9 items 1-3).
+    /// Released on deinit.
+    data_hold: ?engine.TracedValueHold = null,
+    /// The frozen array `get_ports` made for this event: traced from this
+    /// event's wrapper. Released on deinit.
+    ports_hold: ?engine.TracedValueHold = null,
     /// The event's ports, as the MessagePort instances they are: the frozen
     /// array `ports` returns is made from them on first read. Owned slice
     /// (ctx.allocator); the ports themselves are not.
     ports: []*runtime.Instance = &.{},
-    /// The event's hold on `source`'s wrapper, when the constructor was
+    /// The event's traced hold on `source`'s wrapper, when the constructor was
     /// given one: the event may be all that refers to it. Released on deinit.
     /// Not for a WindowProxy of another realm (`source_window`).
-    source_hold: ?engine.Owned = null,
+    source_hold: ?engine.TracedValueHold = null,
     /// A source that is another realm's WindowProxy: the Window it named
     /// when set, held with its generation (runtime.window_holders.Link), and
     /// a traced edge from this event to the proxy itself (`source_slot`).
     /// The source getter answers the proxy - whatever document its browsing
     /// context shows now - and the Link only when there is no edge to read.
     source_window: ?runtime.window_holders.Link = null,
+
+    /// VTable.trace_held_nodes (lane rc9 items 1-3): trace data, ports and
+    /// source holds from this event's wrapper (or unwrapped-owner registry).
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const state = instance.stateAs(State) orelse return;
+        const internal = state.own._internal orelse return;
+        if (internal.data_hold) |h| h.trace(tracer);
+        if (internal.ports_hold) |h| h.trace(tracer);
+        if (internal.source_hold) |h| h.trace(tracer);
+    }
 };
 
 /// The member a MessageEvent keeps another realm's WindowProxy source in
@@ -89,7 +100,7 @@ fn holdSource(instance: *runtime.Instance, internal: *InternalState, source: typ
             internal.source_window = runtime.window_holders.Link.of(window);
             engine.traceValue(instance, .{ .instance = window }, source_slot);
         },
-        inline else => |object| internal.source_hold = engine.retainValue(instance.ctx, .{ .instance = object }) catch null,
+        inline else => |object| internal.source_hold = engine.keepValueTracedFor(instance, instance.ctx, .{ .instance = object }) catch null,
     }
 }
 
@@ -169,6 +180,7 @@ pub fn initOwn(
 /// Release only this interface's own part; the generated chain ends Event's.
 pub fn deinitOwn(instance: *runtime.Instance) void {
     var state = instance.getState(State);
+    engine.forgetUnwrappedTracedOwner(instance);
 
     // The handles this event owns: a deserialized postMessage payload, and
     // the frozen ports array.
@@ -276,9 +288,9 @@ fn keepData(ctx: runtime.Context, instance: *runtime.Instance, data: runtime.JSV
     switch (data) {
         .handle, .instance => {
             const internal = instance.getState(State).own._internal orelse return data.clone(ctx.allocator);
-            const held = try engine.retainValue(ctx, data);
+            const held = try engine.keepValueTracedFor(instance, ctx, data);
             internal.data_hold = held;
-            return held.value;
+            return held.value();
         },
         else => return data.clone(ctx.allocator),
     }
@@ -296,6 +308,15 @@ pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // The event keeps what it holds: a handle goes to the binding as a hold
     // of its own, and a string as a reference - the binding frees a string
     // result handed over owned, and this one is the event's (keepData's copy).
+    if (state.own._internal) |internal| {
+        if (internal.data_hold) |held| {
+            const v = held.value();
+            return switch (v) {
+                .handle => (try engine.retainValue(instance.ctx, v)).take(),
+                else => v,
+            };
+        }
+    }
     return switch (state.own.data) {
         .handle => (try engine.retainValue(instance.ctx, state.own.data)).take(),
         .string => |text| runtime.JSValue.fromStringRef(text.data),
@@ -364,13 +385,17 @@ pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSo
 /// in deinit.
 pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-    if (state.own._internal == null) return runtime.JSValue.jsUndefined;
+    const internal = state.own._internal orelse return runtime.JSValue.jsUndefined;
     try makePortsArray(instance);
     // The event keeps its array; the binding gets a hold of its own.
-    return switch (state.own.ports) {
-        .handle => (try engine.retainValue(instance.ctx, state.own.ports)).take(),
-        else => state.own.ports,
-    };
+    if (internal.ports_hold) |held| {
+        const v = held.value();
+        return switch (v) {
+            .handle => (try engine.retainValue(instance.ctx, v)).take(),
+            else => v,
+        };
+    }
+    return runtime.JSValue.jsUndefined;
 }
 
 /// The event's frozen ports array, made once and kept (`ports_hold`). The
@@ -385,8 +410,10 @@ fn makePortsArray(instance: *runtime.Instance) !void {
     defer allocator.free(values);
     for (internal.ports, values) |port, *value| value.* = .{ .instance = port };
     const ports = try engine.createFrozenArray(instance.ctx, values);
-    internal.ports_hold = ports;
-    state.own.ports = ports.value;
+    defer ports.release();
+    const traced = try engine.keepValueTracedFor(instance, instance.ctx, ports.value);
+    internal.ports_hold = traced;
+    state.own.ports = traced.value();
 }
 
 /// Operation: initMessageEvent (legacy)

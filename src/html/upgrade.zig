@@ -118,7 +118,8 @@ fn constructForUpgrade(element: *runtime.Instance, definition: *ce.Definition, a
     // Step 10.2–10.4: Construct, not Call; the binding's HTMLConstructor uses
     // this definition's construction stack and installs the custom prototype.
     ce.setState(element, .precustomized);
-    const result = callbacks.call.CustomElementConstructor.construct(element.ctx, &definition.constructor, .{}, element.ctx.allocator) catch |err| {
+    const ctor = definition.constructorCallback();
+    const result = callbacks.call.CustomElementConstructor.construct(element.ctx, &ctor, .{}, element.ctx.allocator) catch |err| {
         if (state.active_constructors.get(state.active_constructors.len - 1).?.registry == null) alive.* = false;
         return err;
     };

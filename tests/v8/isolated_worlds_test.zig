@@ -368,20 +368,17 @@ test "a world realm ends with its main realm, before it, and the shared Window i
     try testing.expectEqual(@as(?runtime.Context, null), engine.worldRealmFor(page.realm, 1));
 }
 
-test "destroyWorldRealms ends a main realm's worlds while it lives on; a new one can be made after" {
+test "detachWindowRealm ends a main realm's worlds with its frame" {
     var page = try Page.make();
     defer page.end();
     const world = try page.world(1);
     try expect(world, "document.body.worldExpando = 1; 'ok'", "ok");
-    engine.destroyWorldRealms(page.realm);
+    // The page never sees the world's expando while both live.
+    try expect(page.realm, "String(document.body !== null) + ' ' + String(document.body.worldExpando)", "true undefined");
+    engine.detachWindowRealm(page.realm);
     var out: [2]runtime.Context = undefined;
     try testing.expectEqual(@as(usize, 0), engine.worldRealmsOf(page.realm, &out));
     try testing.expectEqual(@as(?runtime.Context, null), engine.worldRealmFor(page.realm, 1));
-    // The page is untouched.
-    try expect(page.realm, "String(document.body !== null) + ' ' + String(document.body.worldExpando)", "true undefined");
-    // The world again: a new realm, with no expando of the old one.
-    const again = try page.world(1);
-    try expect(again, "String(document.body.worldExpando)", "undefined");
 }
 
 test "two worlds and the main world: three wrappers of one node, each with its own expandos" {
@@ -425,7 +422,7 @@ test "the world observer is told each world realm's making and end" {
     const world = try page.world(1);
     try testing.expectEqual(@as(usize, 1), seen.created);
     try testing.expectEqual(@as(?runtime.Context, world), seen.last);
-    engine.destroyWorldRealms(page.realm);
+    engine.detachWindowRealm(page.realm);
     try testing.expectEqual(@as(usize, 1), seen.destroyed);
 }
 
@@ -629,12 +626,14 @@ test "event handler attributes are per world: a world's onclick never replaces t
     try expect(page.realm, "String(window.onmessage === pageOnMessage)", "true");
 }
 
-test "a world's event handler outlives its world realm as the world's: the page never reads it" {
+test "a world's event handler is isolated from the page and tears down with its main realm's detach" {
     var page = try Page.make();
     defer page.end();
     const world = try page.world(1);
     try expect(world, "document.body.onclick = () => {}; 'ok'", "ok");
-    engine.destroyWorldRealms(page.realm);
     try expect(page.realm, "String(document.body.onclick)", "null");
     try expect(page.realm, "globalThis.pageHandler = () => {}; document.body.onclick = pageHandler; String(document.body.onclick === pageHandler)", "true");
+    engine.detachWindowRealm(page.realm);
+    var out: [2]runtime.Context = undefined;
+    try testing.expectEqual(@as(usize, 0), engine.worldRealmsOf(page.realm, &out));
 }

@@ -25,7 +25,7 @@ pub fn pushConstructor(realm: runtime.Context, definition: *Definition) !*AgentS
     // A definition that outlived its registry has none to construct with
     // (Definition.setRegistry: teardown order only).
     const registry = definition.liveRegistry() orelse return error.InvalidStateError;
-    const constructor = try engine.retainValue(realm, definition.constructor.function.value);
+    const constructor = try engine.retainValue(realm, definition.constructorValue());
     errdefer constructor.release();
     const registry_root = try engine.retainValue(realm, .{ .instance = registry });
     errdefer registry_root.release();
@@ -158,7 +158,7 @@ pub fn enqueueCallback(element: *runtime.Instance, definition: *Definition, kind
         try enqueueCallback(element, definition, .disconnected, .none);
         return enqueueCallback(element, definition, .connected, .none);
     }
-    const callback = switch (kind) {
+    const traced_callback = switch (kind) {
         .connected => definition.lifecycle_callbacks.connectedCallback,
         .disconnected => definition.lifecycle_callbacks.disconnectedCallback,
         .connected_move => definition.lifecycle_callbacks.connectedMoveCallback,
@@ -169,6 +169,8 @@ pub fn enqueueCallback(element: *runtime.Instance, definition: *Definition, kind
         .form_disabled => definition.lifecycle_callbacks.formDisabledCallback,
         .form_state_restore => definition.lifecycle_callbacks.formStateRestoreCallback,
     } orelse return;
+    if (traced_callback.hold.isEmpty()) return;
+    const callback = traced_callback.asFunction();
     // Step 3: attributeChangedCallback observes local names, in every namespace.
     if (kind == .attribute_changed) {
         const attribute = args.attribute_changed;

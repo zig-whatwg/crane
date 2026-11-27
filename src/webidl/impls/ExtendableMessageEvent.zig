@@ -40,7 +40,7 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
     /// data: an inline value, or a view of `data_hold`.
     data: runtime.JSValue = runtime.JSValue.jsNull,
-    data_hold: ?engine.Owned = null,
+    data_hold: ?engine.TracedValueHold = null,
     /// A string data's own copy (`data` borrows it).
     data_string: ?[]u8 = null,
     /// The event's origin when it is an origin (a user agent's event): its
@@ -52,9 +52,19 @@ pub const InternalState = struct {
     last_event_id: []u8 = &.{},
     /// source, held: the event may be all that refers to it.
     source: ?*runtime.Instance = null,
-    source_hold: ?engine.Owned = null,
+    source_hold: ?engine.TracedValueHold = null,
     /// The ports array, made at construction: it is what holds the ports.
-    ports_hold: ?engine.Owned = null,
+    ports_hold: ?engine.TracedValueHold = null,
+
+    /// VTable.trace_held_nodes (lane rc9 items 4-6): trace data, source and
+    /// ports holds from this event's wrapper (or unwrapped-owner registry).
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const state = instance.stateAs(State) orelse return;
+        const internal = state.own._internal orelse return;
+        if (internal.data_hold) |h| h.trace(tracer);
+        if (internal.source_hold) |h| h.trace(tracer);
+        if (internal.ports_hold) |h| h.trace(tracer);
+    }
 };
 
 pub fn installHooks() void {
@@ -82,15 +92,15 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     internal.* = .{ .allocator = allocator };
     instance.getState(State).own._internal = internal;
     if (!@hasField(@TypeOf(args), "message")) return;
-    errdefer releaseAll(internal);
+    errdefer releaseAll(instance, internal);
     const init: service_worker.objects.ExtendableMessageInit = args.message;
     const ctx = instance.ctx;
-    try keepData(ctx, internal, init.data);
+    try keepData(instance, ctx, internal, init.data);
     // Its origin is an origin - made on this thread from its serialization
     // (an opaque origin's identity does not cross threads).
     internal.origin_record = try OriginRecord.create(allocator, init.origin);
-    try keepSource(ctx, internal, init.source);
-    try keepPorts(ctx, internal, init.ports);
+    try keepSource(instance, ctx, internal, init.source);
+    try keepPorts(instance, ctx, internal, init.ports);
 }
 
 /// ExtendableMessageEvent's own teardown: the generated chain runs
@@ -98,12 +108,13 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
-    releaseAll(internal);
+    releaseAll(instance, internal);
     internal.allocator.destroy(internal);
     state.own._internal = null;
 }
 
-fn releaseAll(internal: *InternalState) void {
+fn releaseAll(instance: *runtime.Instance, internal: *InternalState) void {
+    engine.forgetUnwrappedTracedOwner(instance);
     const allocator = internal.allocator;
     if (internal.data_hold) |hold| hold.release();
     internal.data_hold = null;
@@ -123,14 +134,14 @@ fn releaseAll(internal: *InternalState) void {
     internal.ports_hold = null;
 }
 
-/// The event's own hold on `data` (borrowed): a script value is retained,
-/// a string copied, anything else kept as it is.
-fn keepData(ctx: runtime.Context, internal: *InternalState, data: runtime.JSValue) !void {
+/// The event's own traced hold on `data` (borrowed): a script value is kept
+/// traced, a string copied, anything else kept as it is.
+fn keepData(owner: *runtime.Instance, ctx: runtime.Context, internal: *InternalState, data: runtime.JSValue) !void {
     switch (data) {
         .handle, .instance => {
-            const hold = try engine.retainValue(ctx, data);
+            const hold = try engine.keepValueTracedFor(owner, ctx, data);
             internal.data_hold = hold;
-            internal.data = hold.value;
+            internal.data = hold.value();
         },
         .string => |text| {
             const copy = try internal.allocator.dupe(u8, text.data);
@@ -143,18 +154,20 @@ fn keepData(ctx: runtime.Context, internal: *InternalState, data: runtime.JSValu
     }
 }
 
-fn keepSource(ctx: runtime.Context, internal: *InternalState, source: ?*runtime.Instance) !void {
-    const instance = source orelse return;
-    internal.source_hold = try engine.retainValue(ctx, runtime.JSValue.fromInstance(instance));
-    internal.source = instance;
+fn keepSource(owner: *runtime.Instance, ctx: runtime.Context, internal: *InternalState, source: ?*runtime.Instance) !void {
+    const src = source orelse return;
+    internal.source_hold = try engine.keepValueTracedFor(owner, ctx, runtime.JSValue.fromInstance(src));
+    internal.source = src;
 }
 
 /// The frozen ports array, made now: it is what keeps the ports.
-fn keepPorts(ctx: runtime.Context, internal: *InternalState, ports: []const *runtime.Instance) !void {
+fn keepPorts(owner: *runtime.Instance, ctx: runtime.Context, internal: *InternalState, ports: []const *runtime.Instance) !void {
     const values = try internal.allocator.alloc(runtime.JSValue, ports.len);
     defer internal.allocator.free(values);
     for (ports, values) |port, *value| value.* = runtime.JSValue.fromInstance(port);
-    internal.ports_hold = try engine.createFrozenArray(ctx, values);
+    const array = try engine.createFrozenArray(ctx, values);
+    defer array.release();
+    internal.ports_hold = try engine.keepValueTracedFor(owner, ctx, array.value);
 }
 
 /// new ExtendableMessageEvent(type, eventInitDict): DOM's inner event
@@ -164,16 +177,16 @@ pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString,
     const given: dictionaries.ExtendableMessageEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{} } };
     try dom.event_construction.innerEventCreationSteps(instance, @"type", dom.event_construction.eventInitFrom(given.base.base));
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
-    try keepData(ctx, internal, given.data orelse runtime.JSValue.jsNull);
+    try keepData(instance, ctx, internal, given.data orelse runtime.JSValue.jsNull);
     if (given.origin) |origin| internal.origin_string = try internal.allocator.dupe(u8, origin);
     if (given.lastEventId) |id| internal.last_event_id = try internal.allocator.dupe(u8, id.asSlice());
     // source: (Client or ServiceWorker or MessagePort)?, converted by the
     // binding - a value that is none of the three threw a TypeError there,
     // before this ran; null and a missing member are both null.
     if (given.source) |value| switch (value) {
-        inline else => |source| try keepSource(ctx, internal, source),
+        inline else => |source| try keepSource(instance, ctx, internal, source),
     };
-    try keepPorts(ctx, internal, given.ports orelse &.{});
+    try keepPorts(instance, ctx, internal, given.ports orelse &.{});
 }
 
 fn internalOf(instance: *runtime.Instance) !*InternalState {
@@ -183,6 +196,13 @@ fn internalOf(instance: *runtime.Instance) !*InternalState {
 /// Getter for data (4.7.1): the value it was initialized to.
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = try internalOf(instance);
+    if (internal.data_hold) |hold| {
+        const v = hold.value();
+        return switch (v) {
+            .handle => (try engine.retainValue(instance.ctx, v)).take(),
+            else => v,
+        };
+    }
     return switch (internal.data) {
         // The event keeps its own; the binding gets a hold of its own.
         .handle => (try engine.retainValue(instance.ctx, internal.data)).take(),
@@ -218,6 +238,6 @@ pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.ClientOrServic
 /// Getter for ports (4.7.5): the frozen array it was initialized to.
 pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = try internalOf(instance);
-    if (internal.ports_hold == null) try keepPorts(instance.ctx, internal, &.{});
-    return (try engine.retainValue(instance.ctx, internal.ports_hold.?.value)).take();
+    if (internal.ports_hold == null) try keepPorts(instance, instance.ctx, internal, &.{});
+    return (try engine.retainValue(instance.ctx, internal.ports_hold.?.value())).take();
 }
