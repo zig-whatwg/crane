@@ -2813,3 +2813,73 @@ why       = waits for a video resource to load and seek via timeout_on_seek.py; 
 media     = /media/movie_5.mp4 (video/mp4)
 assertion = TIMEOUT: Test timed out
 
+[dom/nodes/crashtests/multiple-append-mutated-in-unload.https.html]
+kind            = follows-majority
+why             = the iframe's load handler calls runTest, which re-appends the div holding the iframe; each re-insertion makes a new navigable and a new srcdoc load (HTML iframe insertion steps) that delays the parent's load again, so the page never reaches "complete" and the crashtest never reaches its wait (probe: runTest ran 3,548 times in 3 s, readyState stays "interactive"); Firefox and Safari time out the same way, Chrome passes
+chrome.result   = wpt.fyi run 4786307730243584: 0/0 (crashtest PASS, Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/0 (crashtest TIMEOUT, Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/0 (crashtest TIMEOUT, Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+ruling          = the integrator, 2026-11-27 6:11 PM ET, under the user's standing instruction of 2026-11-27 ("always go with all of your recommendations"), on lane gate2's evidence (wpt.fyi at Crane's WPT revision 2358bd4835 and a release-console probe)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[service-workers/cache-storage/crashtests/cache-response-clone.https.html]
+kind            = follows-majority
+why             = Fetch "clone a body" tees the body's stream and gives the response the new branch, so the stream the page captured before clone() is locked by the tee and its getReader() throws (Streams AcquireReadableStreamDefaultReader: a locked stream throws TypeError; probe: new Response("x"), s = r.body, r.clone(), s.getReader() -> TypeError); the module script rejects and test-wait is never removed - the spec's result, Chrome's and Safari's; Firefox passes
+chrome.result   = wpt.fyi run 4786307730243584: 0/0 (crashtest TIMEOUT, Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/0 (crashtest PASS, Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/0 (crashtest TIMEOUT, Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+ruling          = the integrator, 2026-11-27 6:11 PM ET, under the user's standing instruction of 2026-11-27 ("always go with all of your recommendations"), on lane gate2's evidence (wpt.fyi at Crane's WPT revision 2358bd4835 and a release-console probe)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[editing/crashtests/inserthorizontalrule-in-textarea-in-editor-and-undo-on-error-events.html]
+kind            = follows-majority
+why             = the test finishes from the third error event of an <object> with no data attribute; HTML 4.8.7's object steps go to fallback with no error event (step 3 fetches, and can fire error, only when data is present and not empty), so no error fires (probe: 0 error events, test-wait stays) - the spec's result, Chrome's and Safari's; Firefox fires error and passes
+chrome.result   = wpt.fyi run 4786307730243584: 0/0 (crashtest TIMEOUT, Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/0 (crashtest PASS, Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/0 (crashtest TIMEOUT, Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+ruling          = the integrator, 2026-11-27 6:11 PM ET, under the user's standing instruction of 2026-11-27 ("always go with all of your recommendations"), on lane gate2's evidence (wpt.fyi at Crane's WPT revision 2358bd4835 and a release-console probe)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[dom/nodes/moveBefore/moveBefore-range-iframe-crash.html]
+kind            = needs-renderer
+why             = the test ends only in the slider's input event, which a test_driver pointer drag from 40% of the <input type=range>'s width (origin: slider, its in-view center point) fires only by changing the value; the value a drag sets comes from the pointer's position along the range's track box, which no renderer answers (getBoundingClientRect is 0x0), so no input event and the crashtest never finishes (Chrome PASS, Firefox PASS, Safari TIMEOUT at 2358bd4835)
+assertion       = TIMEOUT: Crashtest did not finish (load, then test-wait) within 10000ms
+
+[resize-observer/multiple-observers-with-mutation-crash.html]
+kind            = needs-renderer
+why             = Crane delivers each ResizeObserver's initial observation (0x0 without a layout box; probe: ["0x0"]); the test then waits for a second observation of the iframe's inner_element after its body's width changes to 200px - a change of the element's box size that only layout computes - so the crashtest never finishes (Chrome, Firefox and Safari PASS at 2358bd4835)
+assertion       = TIMEOUT: Crashtest did not finish (load, then test-wait) within 10000ms
+
+[html/semantics/embedded-content/the-audio-element/audio-with-replaced-after-pseudo-crash.html]
+kind            = needs-decoder
+why             = getAudioURI (/common/media.js) picks sound_5.mp3 because canPlayType('audio/ogg') answers "", and the test's `await audio.play()` never settles without an MP3 decoder (the default platform decodes WAV only), so the crashtest never finishes (Chrome, Firefox and Safari PASS at 2358bd4835)
+media           = /media/sound_5.mp3 (audio/mpeg)
+assertion       = TIMEOUT: Crashtest did not finish (load, then test-wait) within 10000ms
+
+[html/semantics/embedded-content/the-audio-element/audio-loading-lazy-in-viewport.html]
+kind            = needs-decoder
+why             = the subtest passes at loadeddata (after the window's load event); Crane loads the lazy audio at once and the window's load fires first, but loadeddata needs a decoded frame of /media/sine440.mp3 and the default platform decodes WAV only (Chrome, Firefox and Safari 1/1 at 2358bd4835)
+media           = /media/sine440.mp3?pipe=trickle(d2) (audio/mpeg)
+assertion       = TIMEOUT: In-viewport audio with loading='lazy' does not block window load - Test timed out
+
+[html/semantics/embedded-content/the-audio-element/audio-loading-lazy-in-scroller.html]
+kind            = needs-decoder
+why             = the subtest passes at loadeddata within 5 s; Crane loads the lazy audio at once, but loadeddata needs a decoded frame of /media/sine440.mp3 and the default platform decodes WAV only (Chrome, Firefox and Safari 1/1 at 2358bd4835). Re-check when lazy media loading lands (main's queue): the load then waits for the scroll container's scrollTop to bring the element into view, a geometry read, and the file needs a renderer as well
+media           = /media/sine440.mp3 (audio/mpeg)
+assertion       = assert_unreached: Timed out while waiting for audio to load. Reached unreachable code
+
+[html/semantics/embedded-content/the-video-element/video-loading-lazy-in-viewport.html]
+kind            = needs-decoder
+why             = the subtest passes at loadeddata (after the window's load event); Crane loads the lazy video at once and the window's load fires first, but loadeddata needs a decoded frame of /media/A4.webm and the default platform decodes WAV only (Chrome, Firefox and Safari 1/1 at 2358bd4835)
+media           = /media/A4.webm?pipe=trickle(d2) (video/webm)
+assertion       = TIMEOUT: In-viewport video with loading='lazy' does not block window load - Test timed out
+
+[html/semantics/embedded-content/the-video-element/video-loading-lazy-in-scroller.html]
+kind            = needs-decoder
+why             = the subtest passes at loadeddata within 5 s; Crane loads the lazy video at once, but loadeddata needs a decoded frame of /media/A4.webm and the default platform decodes WAV only (Chrome, Firefox and Safari 1/1 at 2358bd4835). Re-check when lazy media loading lands (main's queue): the load then waits for the scroll container's scrollTop to bring the element into view, a geometry read, and the file needs a renderer as well
+media           = /media/A4.webm (video/webm)
+assertion       = assert_unreached: Timed out while waiting for video to load. Reached unreachable code
+
