@@ -299,7 +299,7 @@ pub const Browser = struct {
     /// level is never written (docs/lessons/debugging-a-diagnostic-below-the-
     /// consumer-s-log-level-does.md): the WPT runner asserts at compile time
     /// that it logs this level (tests/wpt_runner/main.zig).
-    pub const heap_rung_log_level: std.log.Level = .info;
+    pub const heap_rung_log_level: std.log.Level = .warn;
 
     /// Initialize a new Browser instance
     ///
