@@ -1984,6 +1984,30 @@ pub const Engine = struct {
     // Agent caches (allocator-hardening batch B, design 3.7)
     // ------------------------------------------------------------------
 
+    /// Summary of currently attached `AgentCache`s (thread-safe snapshot under
+    /// `objects.mutex`, reading atomic `owner` and `held` counters).
+    pub const AttachedCacheSummary = struct {
+        total: usize = 0,
+        non_window: usize = 0,
+        non_window_held: usize = 0,
+    };
+
+    pub fn attachedCacheSummary(self: *Engine, window_thread: usize) AttachedCacheSummary {
+        std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+        var summary: AttachedCacheSummary = .{};
+        var at = self.caches;
+        while (at) |cache| : (at = cache.next) {
+            summary.total += 1;
+            const owner = cache.owner.load(.monotonic);
+            if (owner != 0 and owner != window_thread) {
+                summary.non_window += 1;
+                summary.non_window_held += cache.held[0].load(.monotonic) + cache.held[1].load(.monotonic);
+            }
+        }
+        return summary;
+    }
+
     /// A cache for the agent whose thread calls this (the window agent's,
     /// or a worker's): its allocator (AgentCache.allocator) takes and gives
     /// back general class blocks without a lock on that thread. Detach it
@@ -1991,25 +2015,34 @@ pub const Engine = struct {
     pub fn attachAgent(self: *Engine) Error!*AgentCache {
         std.Io.Threaded.mutexLockUncancelable(&self.objects.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.objects.mutex);
+        const token = platform.currentThreadToken();
         const cache: *AgentCache = if (self.free_caches) |reused| reused: {
             self.free_caches = reused.next;
+            // Immutable geometry fields (`engine`, `window_base`, etc.) were
+            // written before this cache was ever published and must NOT be
+            // overwritten on reuse: another thread holding an `Allocator` from
+            // an ended agent reads `cache.owner` (atomic) and `cache.engine`
+            // (immutable) without locking (`detachAgent`'s contract).
+            reused.seen_frontier = .{ 0, 0 };
+            reused.owner.store(token, .monotonic);
             break :reused reused;
         } else made: {
             const id = try self.poolAlloc(&self.objects, @sizeOf(AgentCache));
-            break :made @ptrFromInt(self.heap.window_base + self.meta_pool_base + @as(usize, id) * @sizeOf(Chunk));
-        };
-        cache.* = .{
-            .engine = self,
-            .owner = .init(platform.currentThreadToken()),
-            .window_base = self.heap.window_base,
-            .reserved_base = self.heap.reserved.base,
-            .reserved_size = self.heap.reserved.size,
-            .bitmaps_base = self.heap.at(layout.bitmaps.offset),
-            .span_table_base = self.heap.at(layout.span_table.offset),
-            .part_lo = .{ self.objects.lo, self.bytes.lo },
-            .part_size = .{ self.objects.hi - self.objects.lo, self.bytes.hi - self.bytes.lo },
-            .poison = self.config.fill == .poison,
-            .record_sites = self.config.record_sites,
+            const fresh: *AgentCache = @ptrFromInt(self.heap.window_base + self.meta_pool_base + @as(usize, id) * @sizeOf(Chunk));
+            fresh.* = .{
+                .engine = self,
+                .owner = .init(token),
+                .window_base = self.heap.window_base,
+                .reserved_base = self.heap.reserved.base,
+                .reserved_size = self.heap.reserved.size,
+                .bitmaps_base = self.heap.at(layout.bitmaps.offset),
+                .span_table_base = self.heap.at(layout.span_table.offset),
+                .part_lo = .{ self.objects.lo, self.bytes.lo },
+                .part_size = .{ self.objects.hi - self.objects.lo, self.bytes.hi - self.bytes.lo },
+                .poison = self.config.fill == .poison,
+                .record_sites = self.config.record_sites,
+            };
+            break :made fresh;
         };
         cache.next = self.caches;
         self.caches = cache;
