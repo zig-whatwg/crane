@@ -195,3 +195,234 @@ test "undefined remains absent and nullable members accept null" {
     try testing.expect(parsed.nullable_cb == null);
     try testing.expect(parsed.nullable_obj == null);
 }
+
+// ============================================================================
+// Item 2: Union `bigint` arm — WebIDL 3.2.25 steps 16 & 19 + zero handle leaks
+// ============================================================================
+
+const BigintOrDouble = union(enum) {
+    bigint: runtime.JSValue,
+    double: f64,
+    pub const arms = [_]webidl.UnionArm{
+        .{ .field = "bigint", .kind = .bigint },
+        .{ .field = "double", .kind = .numeric },
+    };
+};
+
+/// A union with `bigint` and NO numeric arm (WebIDL 3.2.25 step 19).
+const BigintOrBoolean = union(enum) {
+    bigint: runtime.JSValue,
+    boolean: bool,
+    pub const arms = [_]webidl.UnionArm{
+        .{ .field = "bigint", .kind = .bigint },
+        .{ .field = "boolean", .kind = .boolean },
+    };
+};
+
+fn convertArgCatching(comptime T: type, value: *ffi.Value) struct { result: anyerror!T, thrown: ?*ffi.Value } {
+    const e = test_env.?;
+    const Body = struct {
+        isolate: *ffi.Isolate,
+        context: *ffi.Context,
+        value: *ffi.Value,
+        result: anyerror!T = error.NotRun,
+        fn call(data: ?*anyopaque) callconv(.c) void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.result = iface.convertArgReleasing(T, testing.allocator, self.isolate, self.context, self.value);
+        }
+    };
+    var body = Body{ .isolate = e.isolate, .context = e.context, .value = value };
+    var thrown: ?*ffi.Value = null;
+    _ = ffi.v8_RunCatching(e.isolate, Body.call, &body, &thrown);
+    return .{ .result = body.result, .thrown = thrown };
+}
+
+fn handleToString(e: Env, js: runtime.JSValue) ![]u8 {
+    try testing.expect(js == .handle);
+    const val: *ffi.Value = @ptrCast(@alignCast(js.handle.ptr));
+    const str = ffi.v8_Value_ToString(val, e.context) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(str);
+    const len: usize = @intCast(ffi.v8_String_Utf8Length(str));
+    const buf = try testing.allocator.alloc(u8, len);
+    _ = ffi.v8_String_WriteUtf8(str, buf.ptr, @intCast(len));
+    return buf;
+}
+
+test "WebIDL 3.2.25 step 16: ToNumeric runs valueOf once for BigInt and Number results, and propagates throws" {
+    defer test_agent.close();
+    const e = try env();
+
+    // Object whose valueOf returns a BigInt -> bigint arm, valueOf runs once.
+    {
+        const obj = try eval("globalThis._calls = 0; ({ valueOf() { globalThis._calls++; return 7n; } })");
+        const outcome = convertArgCatching(BigintOrDouble, obj);
+        try testing.expect(outcome.thrown == null);
+        const converted = try outcome.result;
+        defer iface.freeArgument(BigintOrDouble, testing.allocator, converted);
+        try testing.expect(converted == .bigint);
+        const text = try handleToString(e, converted.bigint);
+        defer testing.allocator.free(text);
+        try testing.expectEqualStrings("7", text);
+        const calls_val = try eval("globalThis._calls");
+        defer ffi.v8_Value_Dispose(calls_val);
+        try testing.expectEqual(@as(i32, 1), ffi.v8_Value_Int32Value(calls_val, e.context));
+    }
+
+    // Object whose valueOf returns a Number -> numeric arm, valueOf runs once.
+    {
+        const obj = try eval("globalThis._calls = 0; ({ valueOf() { globalThis._calls++; return 3.5; } })");
+        const outcome = convertArgCatching(BigintOrDouble, obj);
+        try testing.expect(outcome.thrown == null);
+        const converted = try outcome.result;
+        defer iface.freeArgument(BigintOrDouble, testing.allocator, converted);
+        try testing.expect(converted == .double);
+        try testing.expectEqual(@as(f64, 3.5), converted.double);
+        const calls_val = try eval("globalThis._calls");
+        defer ffi.v8_Value_Dispose(calls_val);
+        try testing.expectEqual(@as(i32, 1), ffi.v8_Value_Int32Value(calls_val, e.context));
+    }
+
+    // Throwing valueOf propagates the pending exception.
+    {
+        const obj = try eval("({ valueOf() { throw new RangeError('boom'); } })");
+        const outcome = convertArgCatching(BigintOrDouble, obj);
+        try testing.expectError(error.ExceptionPending, outcome.result);
+        const thrown = outcome.thrown orelse return error.ExpectedThrow;
+        ffi.v8_Value_Dispose(thrown);
+    }
+
+    // Symbol throws TypeError from ToNumeric.
+    {
+        const sym = try eval("Symbol()");
+        const outcome = convertArgCatching(BigintOrDouble, sym);
+        try testing.expectError(error.ExceptionPending, outcome.result);
+        const thrown = outcome.thrown orelse return error.ExpectedThrow;
+        ffi.v8_Value_Dispose(thrown);
+    }
+}
+
+test "WebIDL 3.2.25 step 19: union with bigint and no numeric arm converts via ToBigInt" {
+    defer test_agent.close();
+    const e = try env();
+
+    // Step 12 (Boolean) runs before step 19.
+    {
+        const val = try eval("true");
+        const outcome = convertArgCatching(BigintOrBoolean, val);
+        try testing.expect(outcome.thrown == null);
+        const converted = try outcome.result;
+        defer iface.freeArgument(BigintOrBoolean, testing.allocator, converted);
+        try testing.expect(converted == .boolean and converted.boolean == true);
+    }
+
+    // Step 14 (direct BigInt).
+    {
+        const val = try eval("9n");
+        const outcome = convertArgCatching(BigintOrBoolean, val);
+        try testing.expect(outcome.thrown == null);
+        const converted = try outcome.result;
+        defer iface.freeArgument(BigintOrBoolean, testing.allocator, converted);
+        try testing.expect(converted == .bigint);
+        const text = try handleToString(e, converted.bigint);
+        defer testing.allocator.free(text);
+        try testing.expectEqualStrings("9", text);
+    }
+
+    // Step 18 (boolean) runs BEFORE step 19 (bigint)!
+    // So test a union with bigint and NO boolean/numeric/string arms: (bigint or object) -> string '42' reaches step 19.
+    const BigintOrArrayBuffer = union(enum) {
+        bigint: runtime.JSValue,
+        array_buffer: runtime.JSValue,
+        pub const arms = [_]webidl.UnionArm{
+            .{ .field = "bigint", .kind = .bigint },
+            .{ .field = "array_buffer", .kind = .array_buffer },
+        };
+    };
+
+    // String '42' reaches step 19 -> ToBigInt('42') = 42n.
+    {
+        const val = try eval("'42'");
+        const outcome = convertArgCatching(BigintOrArrayBuffer, val);
+        try testing.expect(outcome.thrown == null);
+        const converted = try outcome.result;
+        defer iface.freeArgument(BigintOrArrayBuffer, testing.allocator, converted);
+        try testing.expect(converted == .bigint);
+        const text = try handleToString(e, converted.bigint);
+        defer testing.allocator.free(text);
+        try testing.expectEqualStrings("42", text);
+    }
+
+    // Object with valueOf returning BigInt reaches step 19 -> 123n.
+    {
+        const val = try eval("({ valueOf() { return 123n; } })");
+        const outcome = convertArgCatching(BigintOrArrayBuffer, val);
+        try testing.expect(outcome.thrown == null);
+        const converted = try outcome.result;
+        defer iface.freeArgument(BigintOrArrayBuffer, testing.allocator, converted);
+        try testing.expect(converted == .bigint);
+        const text = try handleToString(e, converted.bigint);
+        defer testing.allocator.free(text);
+        try testing.expectEqualStrings("123", text);
+    }
+
+    // Invalid string, number, and null throw in ToBigInt (ExceptionPending).
+    inline for (.{ "'not-a-bigint'", "3.5", "null" }) |code| {
+        const val = try eval(code);
+        const outcome = convertArgCatching(BigintOrArrayBuffer, val);
+        try testing.expectError(error.ExceptionPending, outcome.result);
+        const thrown = outcome.thrown orelse return error.ExpectedThrow;
+        ffi.v8_Value_Dispose(thrown);
+    }
+}
+
+test "union bigint steps 14/16/19 leak zero V8 Global handles through convertArgReleasing + freeArgument" {
+    defer test_agent.close();
+    const e = try env();
+
+    const BigintOrArrayBuffer = union(enum) {
+        bigint: runtime.JSValue,
+        array_buffer: runtime.JSValue,
+        pub const arms = [_]webidl.UnionArm{
+            .{ .field = "bigint", .kind = .bigint },
+            .{ .field = "array_buffer", .kind = .array_buffer },
+        };
+    };
+
+    // Warm up once before measuring.
+    {
+        const warm = try eval("5n");
+        const out = convertArgCatching(BigintOrDouble, warm);
+        iface.freeArgument(BigintOrDouble, testing.allocator, try out.result);
+    }
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(e.isolate);
+
+    for (0..100) |_| {
+        // Step 14: direct BigInt (input handle kept & released by freeArgument).
+        {
+            const v = try eval("5n");
+            const r = try convertArgCatching(BigintOrDouble, v).result;
+            iface.freeArgument(BigintOrDouble, testing.allocator, r);
+        }
+        // Step 16 BigInt: new handle created; input disposed immediately, BigInt disposed by freeArgument.
+        {
+            const v = try eval("({ valueOf() { return 7n; } })");
+            const r = try convertArgCatching(BigintOrDouble, v).result;
+            iface.freeArgument(BigintOrDouble, testing.allocator, r);
+        }
+        // Step 16 Number: numeric handle disposed internally; input disposed immediately.
+        {
+            const v = try eval("({ valueOf() { return 3.5; } })");
+            const r = try convertArgCatching(BigintOrDouble, v).result;
+            iface.freeArgument(BigintOrDouble, testing.allocator, r);
+        }
+        // Step 19 BigInt: new handle created; input disposed immediately, BigInt disposed by freeArgument.
+        {
+            const v = try eval("'999'");
+            const r = try convertArgCatching(BigintOrArrayBuffer, v).result;
+            iface.freeArgument(BigintOrArrayBuffer, testing.allocator, r);
+        }
+    }
+
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(e.isolate);
+    try testing.expectEqual(before, after);
+}
