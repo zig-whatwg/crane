@@ -51,6 +51,11 @@ pub const Options = struct {
     build: archives.Build,
     /// `-Dv8`: which V8 to link (archives.Version).
     version: archives.Version,
+    /// `-Dv8-dir`: override the default V8 archive root directory (`jsengines/v8/15.7.112.43-icu`),
+    /// accepting either an absolute path or a path relative to the caller's working directory.
+    dir: ?[]const u8,
+    /// `-Dv8-link`: whether to link V8 statically (`static`, default) or dynamically (`dynamic`).
+    link_mode: archives.LinkMode,
     /// `-Djitless`: V8 without its JIT compilers.
     jitless: bool,
     /// `-Dv8-compilation-cache`: start V8 WITH its compilation cache.
@@ -118,6 +123,21 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
         // deleted): `zig build` itself refuses -Dv8=13.1 as it refuses any
         // value an option does not list.
         .version = b.option(archives.Version, "v8", "The V8 to link: 15.7 (15.7.112.43, Chrome 157's, with ICU - jsengines/v8/15.7.112.43-icu, scripts/build-v8-15.7.sh)") orelse archives.Version.default,
+        // -Dv8-dir: override the default jsengines/v8/15.7.112.43-icu root so CI,
+        // release builds, and downstream Zig packages can point directly at an
+        // extracted V8 archive tarball anywhere on disk (absolute or CWD-relative).
+        .dir = b.option(
+            []const u8,
+            "v8-dir",
+            "Path to extracted V8 archive directory (default: jsengines/v8/15.7.112.43-icu)",
+        ),
+        // -Dv8-link: static monolith (default) or dynamic component shared libraries
+        // (scripts/build-v8-15.7.sh --dynamic, under <v8-dir>/out/dynamic/).
+        .link_mode = b.option(
+            archives.LinkMode,
+            "v8-link",
+            "How to link V8: static (default, <v8-dir>/out/static/obj/) or dynamic (shared libraries under <v8-dir>/out/dynamic/)",
+        ) orelse archives.LinkMode.default,
         // Phase 8 (mobile): iOS forbids JIT outright - no W^X exception for third-party
         // apps - so V8 must run in its interpreter-only mode there or the process is
         // killed on first code generation. Defaults ON for iOS targets and OFF everywhere
@@ -221,7 +241,7 @@ pub fn isDefaultFor(target: std.Target) bool {
 /// the system libraries its own link names in three files. Resolved once,
 /// so every artifact links the same V8.
 pub const Resolved = struct {
-    archives: archives.Archives,
+    archives: archives.ResolvedArchives,
     /// libcxx/flags.txt's -D defines and -nostdinc++ (its directories are
     /// added by `addSourceTo`, relative and as -I).
     libcxx_flags: []const []const u8,
@@ -241,7 +261,7 @@ pub const Resolved = struct {
 /// and d8's own link). A host without the archive gets the reason and how
 /// to get it as this build's answer.
 ///
-/// The two files are read at configure time, so the configuration depends
+/// The three files are read at configure time, so the configuration depends
 /// on them: each is a TRACKED input of the configure
 /// (`b.dependOnFileContents`, std/Build.zig - Zig re-runs the configure
 /// when its contents change), not a reason to poison the configuration
@@ -251,16 +271,23 @@ pub const Resolved = struct {
 /// of its nearest existing directory, which the archive's arrival changes
 /// (lane cfg1). Only a file that is there and cannot be read still poisons.
 pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) engine_build.Resolution(Resolved) {
-    const selected = archives.select(options.version, options.build, target.result.os.tag) catch |err| return .{
+    const selected = archives.selectResolved(b.allocator, .{
+        .version = options.version,
+        .build = options.build,
+        .link_mode = options.link_mode,
+        .custom_dir = options.dir,
+        .os = target.result.os.tag,
+    }) catch |err| return .{
         .unavailable = switch (err) {
             error.NoOfficialBuild => "-Dv8=15.7 has no official build: out/official is retired until roadmap item v8-pgo (the user, 2026-11-10); drop -Dv8-build",
             error.NoV8ForIos => "an iOS target builds nothing yet: iOS uses JavaScriptCore, never V8 (the user, 2026-11-10), and iOS builds wait for the JavaScriptCore adapter (src/runtime/engines/jsc/)",
+            error.OutOfMemory => @panic("OOM"),
         },
     };
     const chromium = selected.chromium;
-    const flags_text = readTracked(b, chromium.libcxx_flags) catch |err| return .{ .unavailable = noArchive(b, chromium.libcxx_flags, err) };
-    const libs_text = readTracked(b, chromium.system_libs) catch |err| return .{ .unavailable = noArchive(b, chromium.system_libs, err) };
-    const icu_text = readTracked(b, selected.icu.flags) catch |err| return .{ .unavailable = noArchive(b, selected.icu.flags, err) };
+    const flags_text = readTracked(b, chromium.libcxx_flags, selected.cwd_relative) catch |err| return .{ .unavailable = noArchive(b, chromium.libcxx_flags, err) };
+    const libs_text = readTracked(b, chromium.system_libs, selected.cwd_relative) catch |err| return .{ .unavailable = noArchive(b, chromium.system_libs, err) };
+    const icu_text = readTracked(b, selected.icu.flags, selected.cwd_relative) catch |err| return .{ .unavailable = noArchive(b, selected.icu.flags, err) };
     var flags: std.ArrayList([]const u8) = .empty;
     var lines = std.mem.tokenizeScalar(u8, flags_text, '\n');
     while (lines.next()) |line| {
@@ -284,37 +311,46 @@ pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options
     return .{ .ready = .{ .archives = selected, .libcxx_flags = flags.items, .icu_flags = icu_flags.items, .frameworks = frameworks.items, .system_libs = system_libs.items } };
 }
 
-/// `path` (relative to the build root) read at configure time as a tracked
-/// input of the configuration (`resolve` says why). A missing file is
-/// tracked through `dependOnAbsence`; a file that is there and cannot be
-/// read is the one answer nothing can track - Zig's cache would fail on it
-/// too - so that alone poisons the configuration cache.
-fn readTracked(b: *std.Build, path: []const u8) ![]u8 {
-    const text = b.root.root_dir.handle.readFileAlloc(b.graph.io, path, b.allocator, .limited(1 << 16)) catch |err| {
-        if (err == error.FileNotFound) dependOnAbsence(b, path) else b.graph.poisonCache();
+fn archiveLazyPath(b: *std.Build, path: []const u8, cwd_relative: bool) std.Build.LazyPath {
+    return if (cwd_relative) .{ .cwd_relative = path } else b.path(path);
+}
+
+/// `path` read at configure time as a tracked input of the configuration
+/// (`resolve` says why). When `cwd_relative` is true (`-Dv8-dir`), `path` is
+/// resolved against the process working directory (supporting both absolute
+/// and CWD-relative overrides); otherwise it is relative to Crane's package
+/// root (`b.root.root_dir`). A missing file is tracked through
+/// `dependOnAbsence`; a file that is there and cannot be read is the one
+/// answer nothing can track - Zig's cache would fail on it too - so that
+/// alone poisons the configuration cache.
+fn readTracked(b: *std.Build, path: []const u8, cwd_relative: bool) ![]u8 {
+    const dir_handle = if (cwd_relative) std.Io.Dir.cwd() else b.root.root_dir.handle;
+    const text = dir_handle.readFileAlloc(b.graph.io, path, b.allocator, .limited(1 << 16)) catch |err| {
+        if (err == error.FileNotFound) dependOnAbsence(b, path, cwd_relative) else b.graph.poisonCache();
         return err;
     };
-    b.dependOnFileContents(b.path(path));
+    b.dependOnFileContents(archiveLazyPath(b, path, cwd_relative));
     return text;
 }
 
 /// The configure found nothing at `path`: the listing of its nearest
 /// existing directory - names and kinds, `dependOnDirectoryContents` - is
 /// what the path's arrival changes, so it is the configuration's input.
-fn dependOnAbsence(b: *std.Build, path: []const u8) void {
+fn dependOnAbsence(b: *std.Build, path: []const u8, cwd_relative: bool) void {
+    const dir_handle = if (cwd_relative) std.Io.Dir.cwd() else b.root.root_dir.handle;
     var dir = path;
     while (std.fs.path.dirnamePosix(dir)) |parent| {
         dir = parent;
-        const stat = b.root.root_dir.handle.statFile(b.graph.io, dir, .{}) catch continue;
-        if (stat.kind == .directory) return b.dependOnDirectoryContents(b.path(dir));
+        const stat = dir_handle.statFile(b.graph.io, dir, .{}) catch continue;
+        if (stat.kind == .directory) return b.dependOnDirectoryContents(archiveLazyPath(b, dir, cwd_relative));
     }
-    b.dependOnDirectoryContents(b.path("."));
+    b.dependOnDirectoryContents(archiveLazyPath(b, ".", cwd_relative));
 }
 
 /// Why a host that lacks `path`, a file the archive keeps beside itself, can
 /// link no V8, and how to get the archive.
 fn noArchive(b: *std.Build, path: []const u8, err: anyerror) []const u8 {
-    return b.fmt("-Dv8=15.7 needs {s} ({s}) on this host: build the archive with scripts/build-v8-15.7.sh, or copy jsengines/v8/15.7.112.43-icu from a host of the same OS and check it with its SHA256SUMS", .{ path, @errorName(err) });
+    return b.fmt("-Dv8=15.7 needs {s} ({s}) on this host: pass -Dv8-dir=<path> to an extracted V8 archive, build with scripts/build-v8-15.7.sh (or --dynamic for -Dv8-link=dynamic), or copy jsengines/v8/15.7.112.43-icu from a host of the same OS and check it with its SHA256SUMS", .{ path, @errorName(err) });
 }
 
 /// The adapter's V8-facing C++, relative to the build root.
@@ -376,7 +412,7 @@ fn wrapperFlags(b: *std.Build, resolved: *const Resolved, extra: []const []const
 pub fn link(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved, request: engine_build.LinkRequest) void {
     const extra: []const []const u8 = if (request.handle_accounting) &.{"-DCRANE_TRACK_GLOBALS=1"} else &.{};
     addSource(b, module, resolved, request.thread_sanitized, extra);
-    if (request.link) addArchives(module, resolved);
+    if (request.link) addLinkInputs(b, module, resolved);
 }
 
 /// The V8 wrapper's source and headers on `module`: v8_wrapper.cpp with
@@ -434,27 +470,46 @@ fn addSource(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved
 
 /// `addSource`'s compile of v8_wrapper.cpp into `module`.
 fn addSourceTo(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved, extra: []const []const u8) void {
+    const cwd_rel = resolved.archives.cwd_relative;
     module.addCSourceFile(.{
         .file = b.path(wrapper_source),
         .flags = wrapperFlags(b, resolved, extra),
     });
-    for (resolved.archives.chromium.libcxx_include) |dir| module.addIncludePath(.{ .cwd_relative = dir });
-    module.addIncludePath(.{ .cwd_relative = resolved.archives.include });
-    module.addIncludePath(.{ .cwd_relative = resolved.archives.icu.include });
+    for (resolved.archives.chromium.libcxx_include) |dir| module.addIncludePath(archiveLazyPath(b, dir, cwd_rel));
+    module.addIncludePath(archiveLazyPath(b, resolved.archives.include, cwd_rel));
+    module.addIncludePath(archiveLazyPath(b, resolved.archives.icu.include, cwd_rel));
     module.link_libc = true;
 }
 
-/// V8's archives on `module`, and the C++ runtime and system libraries they
-/// need: Chromium's libc++ (libc++_chromium.a), Temporal's Rust
-/// (librust_v8.a) and the archive's frameworks and libraries. The archives'
-/// libplatform and libbase are regular ("fat") archives: GN's thin ones
-/// cannot be read by Zig's linker.
-fn addArchives(module: *std.Build.Module, resolved: *const Resolved) void {
-    module.addObjectFile(.{ .cwd_relative = resolved.archives.monolith });
-    module.addObjectFile(.{ .cwd_relative = resolved.archives.libplatform });
-    module.addObjectFile(.{ .cwd_relative = resolved.archives.libbase });
-    module.addObjectFile(.{ .cwd_relative = resolved.archives.chromium.libcxx });
-    module.addObjectFile(.{ .cwd_relative = resolved.archives.chromium.rust });
+/// V8's link inputs on `module`, and the C++ runtime and system libraries they
+/// need:
+///   - `static` (default): `libv8_monolith.a`, `libv8_libplatform_fat.a`,
+///     `libv8_libbase_fat.a`, Chromium's `libc++_chromium.a`, and Temporal's
+///     `librust_v8.a`.
+///   - `dynamic`: shared libraries under `<v8-dir>/out/dynamic/` (`libv8`,
+///     `libv8_libplatform`, `libv8_libbase`, Chromium's `libc++`, `libicuuc`,
+///     `libicui18n`) linked by explicit path (so Chromium's libc++ and ICU are
+///     selected over any system copies), plus library search path and RPATH so
+///     linked binaries locate both direct and transitive `.dylib`/`.so` files.
+fn addLinkInputs(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved) void {
+    const cwd_rel = resolved.archives.cwd_relative;
+    switch (resolved.archives.link_inputs) {
+        .static => |s| {
+            module.addObjectFile(archiveLazyPath(b, s.monolith, cwd_rel));
+            module.addObjectFile(archiveLazyPath(b, s.libplatform, cwd_rel));
+            module.addObjectFile(archiveLazyPath(b, s.libbase, cwd_rel));
+            module.addObjectFile(archiveLazyPath(b, s.libcxx, cwd_rel));
+            module.addObjectFile(archiveLazyPath(b, s.rust, cwd_rel));
+        },
+        .dynamic => |d| {
+            const dir_path = archiveLazyPath(b, resolved.archives.dir, cwd_rel);
+            module.addLibraryPath(dir_path);
+            module.addRPath(dir_path);
+            for (d.all()) |lib_path| {
+                module.addObjectFile(archiveLazyPath(b, lib_path, cwd_rel));
+            }
+        },
+    }
     for (resolved.frameworks) |framework| module.linkFramework(framework, .{});
     for (resolved.system_libs) |library| module.linkSystemLibrary(library, .{});
 }
