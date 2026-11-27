@@ -73,6 +73,10 @@ pub const Inputs = struct {
     reference_diag: ?*reference.Diag = null,
     /// How much HTML one page may carry (pages.Budget).
     budget: pages_mod.Budget = .{},
+    /// Optional MCP differential results JSON (`tools/mcp_diff/main.zig`
+    /// `results.json`): when present, generates `mcp/index.html` and links it
+    /// from `index.html`.
+    mcp_json: ?[]const u8 = null,
 };
 
 /// The Crane commits from one generation's head to the next's:
@@ -698,6 +702,86 @@ fn compareLists(arena: Allocator, files: []const pages_mod.FileView) !CompareLis
     return .{ .crane = crane, .ref = ref, .both = both, .ahead_ref = ahead_ref.items, .ahead_crane = ahead_crane.items, .only_ref = only_ref.items, .only_crane = only_crane.items };
 }
 
+fn parseMcpReport(arena: Allocator, raw: []const u8) !pages_mod.McpReport {
+    const JsonSummary = struct {
+        casesTotal: u64 = 0,
+        casesEqual: u64 = 0,
+        casesExpectedDiff: u64 = 0,
+        casesDiffers: u64 = 0,
+        toolsTotal: u64 = 0,
+        toolsEqual: u64 = 0,
+        toolsExpectedDiff: u64 = 0,
+        toolsDiffers: u64 = 0,
+        toolsNeedsRenderer: u64 = 0,
+        toolsChromeOnly: u64 = 0,
+        toolsNotTested: u64 = 0,
+    };
+    const JsonTool = struct {
+        name: []const u8,
+        category: []const u8 = "",
+        status: []const u8 = "not_tested",
+        cases: []const []const u8 = &.{},
+        reason: []const u8 = "",
+    };
+    const JsonSide = struct {
+        failure: ?[]const u8 = null,
+    };
+    const JsonCase = struct {
+        name: []const u8,
+        about: []const u8 = "",
+        equal: bool = false,
+        onlyExpectedDifferences: bool = false,
+        chrome: JsonSide = .{},
+        crane: JsonSide = .{},
+    };
+    const JsonReport = struct {
+        chromeMcpVersion: []const u8 = "1.13.0",
+        summary: JsonSummary = .{},
+        tools: []const JsonTool = &.{},
+        cases: []const JsonCase = &.{},
+    };
+    const parsed = try std.json.parseFromSliceLeaky(JsonReport, arena, raw, parse_options);
+    const tools = try arena.alloc(pages_mod.McpTool, parsed.tools.len);
+    for (parsed.tools, tools) |t, *dst| {
+        dst.* = .{
+            .name = t.name,
+            .category = t.category,
+            .status = t.status,
+            .cases = t.cases,
+            .reason = t.reason,
+        };
+    }
+    const cases = try arena.alloc(pages_mod.McpCase, parsed.cases.len);
+    for (parsed.cases, cases) |c, *dst| {
+        dst.* = .{
+            .name = c.name,
+            .about = c.about,
+            .equal = c.equal,
+            .only_expected = c.onlyExpectedDifferences,
+            .chrome_failure = c.chrome.failure,
+            .crane_failure = c.crane.failure,
+        };
+    }
+    return .{
+        .chrome_mcp_version = parsed.chromeMcpVersion,
+        .summary = .{
+            .cases_total = parsed.summary.casesTotal,
+            .cases_equal = parsed.summary.casesEqual,
+            .cases_expected_diff = parsed.summary.casesExpectedDiff,
+            .cases_differs = parsed.summary.casesDiffers,
+            .tools_total = parsed.summary.toolsTotal,
+            .tools_equal = parsed.summary.toolsEqual,
+            .tools_expected_diff = parsed.summary.toolsExpectedDiff,
+            .tools_differs = parsed.summary.toolsDiffers,
+            .tools_needs_renderer = parsed.summary.toolsNeedsRenderer,
+            .tools_chrome_only = parsed.summary.toolsChromeOnly,
+            .tools_not_tested = parsed.summary.toolsNotTested,
+        },
+        .tools = tools,
+        .cases = cases,
+    };
+}
+
 // ============================================================================
 // generate
 // ============================================================================
@@ -886,6 +970,12 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         break :blk p;
     } else null;
 
+    const mcp_ptr: ?*const pages_mod.McpReport = if (in.mcp_json) |mj| blk: {
+        const p = try arena.create(pages_mod.McpReport);
+        p.* = try parseMcpReport(arena, mj);
+        break :blk p;
+    } else null;
+
     const site: pages_mod.Site = .{
         .files = files,
         .dirs = &dirs,
@@ -908,6 +998,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         .ahead_crane = cmp.ahead_crane,
         .only_ref = cmp.only_ref,
         .only_crane = cmp.only_crane,
+        .mcp = mcp_ptr,
     };
 
     var o: Output = .{ .gpa = gpa, .io = io, .dir = out, .arena = arena, .summary = &summary };
@@ -925,6 +1016,12 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         aw.clearRetainingCapacity();
         try pages_mod.writeComparePage(&aw.writer, &site);
         try o.put(try std.fmt.allocPrint(arena, "{s}.html", .{r.engine}), aw.written());
+    }
+
+    if (site.mcp != null) {
+        aw.clearRetainingCapacity();
+        try pages_mod.writeMcpPage(&aw.writer, &site);
+        try o.put("mcp/index.html", aw.written());
     }
 
     aw.clearRetainingCapacity();
@@ -1193,6 +1290,8 @@ pub fn main(init: std.process.Init) !void {
     var hosts_path: []const u8 = "tools/wpt_generation_hosts.txt";
     var reference_path: ?[]const u8 = null;
     var use_reference = true;
+    var mcp_path: ?[]const u8 = null;
+    var use_mcp = true;
     var commit = true;
 
     var args = try init.minimal.args.iterateAllocator(arena);
@@ -1208,6 +1307,14 @@ pub fn main(init: std.process.Init) !void {
         }
         if (std.mem.startsWith(u8, a, "--reference=")) {
             reference_path = a["--reference=".len..];
+            continue;
+        }
+        if (std.mem.eql(u8, a, "--no-mcp")) {
+            use_mcp = false;
+            continue;
+        }
+        if (std.mem.startsWith(u8, a, "--mcp=")) {
+            mcp_path = a["--mcp=".len..];
             continue;
         }
         const eq = std.mem.indexOfScalar(u8, a, '=');
@@ -1255,6 +1362,17 @@ pub fn main(init: std.process.Init) !void {
         } else std.debug.print("wpt-site: no reference run under {s}/{s}/; no comparison\n", .{ results_path, reference.dir_name });
     }
 
+    var mcp_json: ?[]const u8 = null;
+    if (use_mcp) {
+        if (mcp_path) |mp| {
+            mcp_json = try cwd.readFileAlloc(io, mp, arena, .limited(1 << 28));
+            std.debug.print("wpt-site: generating MCP differential report from {s}\n", .{mp});
+        } else if (results.readFileAlloc(io, "mcp/results.json", arena, .limited(1 << 28))) |bytes| {
+            mcp_json = bytes;
+            std.debug.print("wpt-site: generating MCP differential report from {s}/mcp/results.json\n", .{results_path});
+        } else |_| {}
+    }
+
     var diag: model.ExemptionDiag = .{};
     var hdiag: model.ExemptionDiag = .{};
     var rdiag: reference.Diag = .{};
@@ -1263,6 +1381,7 @@ pub fn main(init: std.process.Init) !void {
         .hosts_diag = &hdiag,
         .reference_json = reference_json,
         .reference_diag = &rdiag,
+        .mcp_json = mcp_json,
         .exemptions_text = exemptions,
         .exemption_diag = &diag,
         .ranges = ranges.items,
@@ -1837,6 +1956,53 @@ test "site: the index links to /frameworks/, beside /performance/" {
     const page = try readOut(gpa, &f, "out/dom/index.html");
     defer gpa.free(page);
     try testing.expect(std.mem.indexOf(u8, page, "frameworks/") == null);
+}
+
+test "site: MCP differential report page is generated and linked from index only when mcp_json is present" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+
+    // Without mcp_json: no mcp/index.html and no mcp/ link on index.
+    _ = try runFixture(gpa, &f, "out-no-mcp", fixture_worklist);
+    try testing.expect(!exists(&f, "out-no-mcp/mcp/index.html"));
+    const index_no_mcp = try readOut(gpa, &f, "out-no-mcp/index.html");
+    defer gpa.free(index_no_mcp);
+    try testing.expect(std.mem.indexOf(u8, index_no_mcp, "<dt>MCP</dt>") == null);
+
+    // With mcp_json: generates mcp/index.html, links from index only, passes no-script rule.
+    const sample_mcp_json =
+        \\{"version":1,"chromeMcpVersion":"1.13.0","summary":{"casesTotal":2,"casesEqual":1,"casesExpectedDiff":1,"casesDiffers":0,"toolsTotal":4,"toolsEqual":1,"toolsExpectedDiff":1,"toolsDiffers":0,"toolsNeedsRenderer":1,"toolsChromeOnly":1,"toolsNotTested":0},"tools":[{"name":"list_pages","category":"navigation","status":"equal","cases":["pages: a fresh browser"],"reason":""},{"name":"wait_for","category":"navigation","status":"expected_diff","cases":["wait_for: later text"],"reason":"visible needs layout"},{"name":"take_screenshot","category":"debugging","status":"needs_renderer","cases":[],"reason":"Screenshots require a pixel renderer."},{"name":"lighthouse_audit","category":"debugging","status":"chrome_only","cases":[],"reason":"Chrome product."}],"cases":[{"name":"pages: a fresh browser","about":"Lists initial tab","equal":true,"onlyExpectedDifferences":false,"chrome":{"answers":[]},"crane":{"answers":[]}},{"name":"wait_for: later text","about":"Waits for text <escaped>","equal":false,"onlyExpectedDifferences":true,"chrome":{"answers":[]},"crane":{"answers":[]}}]}
+    ;
+    const state = try f.state(gpa);
+    defer gpa.free(state);
+    var out = try f.tmp.dir.createDirPathOpen(testing.io, "out-mcp", .{ .open_options = .{ .iterate = true } });
+    defer out.close(testing.io);
+    _ = try generate(gpa, testing.io, .{
+        .state_json = state,
+        .history_json = fixture_history,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .mcp_json = sample_mcp_json,
+    }, out);
+
+    try testing.expect(exists(&f, "out-mcp/mcp/index.html"));
+    const index = try readOut(gpa, &f, "out-mcp/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<div><dt>MCP</dt><dd><a href=\"mcp/\">Chrome DevTools MCP v1.13.0 parity: 1 / 2 cases equal (+1 expected)</a></dd></div>");
+    const dom_page = try readOut(gpa, &f, "out-mcp/dom/index.html");
+    defer gpa.free(dom_page);
+    try testing.expect(std.mem.indexOf(u8, dom_page, "href=\"mcp/\"") == null);
+
+    const mcp_page = try readOut(gpa, &f, "out-mcp/mcp/index.html");
+    defer gpa.free(mcp_page);
+    try testing.expectEqual(@as(?[]const u8, null), pages_mod.needsScript(mcp_page));
+    try expectHas(mcp_page, "Crane <span class=\"h1-rest\">MCP Differential Report</span>");
+    try expectHas(mcp_page, "<code>list_pages</code>");
+    try expectHas(mcp_page, "Needs renderer");
+    try expectHas(mcp_page, "Chrome-only");
+    try expectHas(mcp_page, "Waits for text &lt;escaped&gt;");
 }
 
 test "site: index.html carries the social card's tags, and the card is a 1200x630 PNG" {

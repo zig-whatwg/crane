@@ -119,6 +119,47 @@ pub const RunInfo = struct {
     files: u64 = 0,
 };
 
+/// Structured summary of an MCP differential suite run (`tools/mcp_diff/main.zig`
+/// `results.json`): per-tool classification (`equal`, `expected_diff`, `differs`,
+/// `needs_renderer`, `chrome_only`, `not_tested`) and per-case verdicts.
+pub const McpReport = struct {
+    chrome_mcp_version: []const u8 = "1.13.0",
+    summary: McpSummary = .{},
+    tools: []const McpTool = &.{},
+    cases: []const McpCase = &.{},
+};
+
+pub const McpSummary = struct {
+    cases_total: u64 = 0,
+    cases_equal: u64 = 0,
+    cases_expected_diff: u64 = 0,
+    cases_differs: u64 = 0,
+    tools_total: u64 = 0,
+    tools_equal: u64 = 0,
+    tools_expected_diff: u64 = 0,
+    tools_differs: u64 = 0,
+    tools_needs_renderer: u64 = 0,
+    tools_chrome_only: u64 = 0,
+    tools_not_tested: u64 = 0,
+};
+
+pub const McpTool = struct {
+    name: []const u8,
+    category: []const u8,
+    status: []const u8,
+    cases: []const []const u8 = &.{},
+    reason: []const u8 = "",
+};
+
+pub const McpCase = struct {
+    name: []const u8,
+    about: []const u8 = "",
+    equal: bool = false,
+    only_expected: bool = false,
+    chrome_failure: ?[]const u8 = null,
+    crane_failure: ?[]const u8 = null,
+};
+
 pub const Site = struct {
     files: []const FileView,
     dirs: *const std.StringArrayHashMapUnmanaged(DirView),
@@ -157,6 +198,8 @@ pub const Site = struct {
     ahead_crane: []const usize = &.{},
     only_ref: []const usize = &.{},
     only_crane: []const usize = &.{},
+    /// Optional MCP differential report (`tools/mcp_diff/results.json`).
+    mcp: ?*const McpReport = null,
 
     pub fn root(s: *const Site) *const DirView {
         return s.dirs.getPtr("").?;
@@ -839,7 +882,23 @@ pub fn writeIndex(w: W, site: *const Site) Error!void {
     // only, so the frame every page carries stays as it was.
     // The JS framework compatibility matrix (tools/fw_matrix) beside it,
     // also on the index only.
-    try w.writeAll("</dd></div>\n<div><dt>Performance</dt><dd><a href=\"performance/\">Crane beside Chrome, Firefox, Safari, Lightpanda and Ladybird</a></dd></div>\n<div><dt>Frameworks</dt><dd><a href=\"frameworks/\">jQuery, htmx, React, Vue, Svelte and Angular in Crane</a></dd></div>\n<div class=\"head-history\"><dt>History</dt><dd><a class=\"spark-link\" href=\"#history\">");
+    try w.writeAll("</dd></div>\n<div><dt>Performance</dt><dd><a href=\"performance/\">Crane beside Chrome, Firefox, Safari, Lightpanda and Ladybird</a></dd></div>\n<div><dt>Frameworks</dt><dd><a href=\"frameworks/\">jQuery, htmx, React, Vue, Svelte and Angular in Crane</a></dd></div>\n");
+    if (site.mcp) |m| {
+        try w.writeAll("<div><dt>MCP</dt><dd><a href=\"mcp/\">Chrome DevTools MCP v");
+        try html.text(w, m.chrome_mcp_version);
+        try w.writeAll(" parity: ");
+        try html.num(w, m.summary.cases_equal);
+        try w.writeAll(" / ");
+        try html.num(w, m.summary.cases_total);
+        try w.writeAll(" cases equal");
+        if (m.summary.cases_expected_diff > 0) {
+            try w.writeAll(" (+");
+            try html.num(w, m.summary.cases_expected_diff);
+            try w.writeAll(" expected)");
+        }
+        try w.writeAll("</a></dd></div>\n");
+    }
+    try w.writeAll("<div class=\"head-history\"><dt>History</dt><dd><a class=\"spark-link\" href=\"#history\">");
     try chart.draw(w, site.history, .{ .width = 168, .height = 30, .spark = true, .class = "spark" });
     try w.writeAll("<span class=\"spark-text\">");
     try html.plural(w, site.history.len, "generation", "generations");
@@ -2464,6 +2523,134 @@ pub fn writeComparePage(w: W, site: *const Site) Error!void {
     try writeOnlyList(w, site, site.only_crane, false);
     try w.writeAll("</section>\n");
     try writeClose(w, site, "", null);
+}
+
+// ============================================================================
+// mcp/index.html — Chrome DevTools MCP differential parity report
+// ============================================================================
+
+fn mcpStatusLabel(status: []const u8) []const u8 {
+    if (std.mem.eql(u8, status, "equal")) return "Equal";
+    if (std.mem.eql(u8, status, "expected_diff")) return "Expected diff";
+    if (std.mem.eql(u8, status, "differs")) return "Differs";
+    if (std.mem.eql(u8, status, "needs_renderer")) return "Needs renderer";
+    if (std.mem.eql(u8, status, "chrome_only")) return "Chrome-only";
+    return "Not tested";
+}
+
+fn mcpStatusClass(status: []const u8) []const u8 {
+    if (std.mem.eql(u8, status, "equal")) return "gate gate-clean";
+    if (std.mem.eql(u8, status, "expected_diff")) return "gate gate-exempt";
+    if (std.mem.eql(u8, status, "differs")) return "gate gate-err g-block";
+    if (std.mem.eql(u8, status, "needs_renderer")) return "gate gate-exempt";
+    if (std.mem.eql(u8, status, "chrome_only")) return "gate gate-empty";
+    return "gate gate-unrun";
+}
+
+pub fn writeMcpPage(w: W, site: *const Site) Error!void {
+    const m = site.mcp.?;
+    const s = m.summary;
+    try writeHead(w, .{
+        .root = "../",
+        .title = "Crane MCP Differential Report",
+        .description = "Differential parity of Crane's built-in Chrome DevTools MCP server against chrome-devtools-mcp driving Chrome for Testing.",
+    });
+    try w.writeAll("</head>\n<body>\n<div class=\"frame\">\n<main class=\"doc\" id=\"main\">\n");
+    try w.writeAll("<nav class=\"crumbs\" aria-label=\"Breadcrumb\"><ol><li><a href=\"../\">Crane WPT results</a></li><li aria-current=\"page\">MCP differential report</li></ol></nav>\n");
+    try w.writeAll("<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">MCP Differential Report</span></h1>\n");
+    try w.writeAll("<div class=\"headline\" role=\"group\" aria-labelledby=\"hl-label\">\n<p class=\"headline-figure\"><span class=\"hl-pass\">");
+    try html.num(w, s.cases_equal);
+    try w.writeAll("</span><span class=\"hl-of\"> / ");
+    try html.num(w, s.cases_total);
+    try w.writeAll("</span></p>\n<p class=\"headline-label\" id=\"hl-label\">differential cases equal against chrome-devtools-mcp v");
+    try html.text(w, m.chrome_mcp_version);
+    try w.writeAll("</p>\n<dl class=\"headline-counts\">");
+    try w.writeAll("<div><dt>Expected diffs</dt><dd>");
+    try html.num(w, s.cases_expected_diff);
+    try w.writeAll("</dd></div>");
+    try w.print("<div{s}><dt>Unexpected diffs</dt><dd>", .{if (s.cases_differs > 0) " class=\"fail\"" else ""});
+    try html.num(w, s.cases_differs);
+    try w.writeAll("</dd></div>");
+    try w.writeAll("<div><dt>Tools equal</dt><dd>");
+    try html.num(w, s.tools_equal);
+    try w.writeAll("</dd></div>");
+    try w.writeAll("<div><dt>Tools expected diff</dt><dd>");
+    try html.num(w, s.tools_expected_diff);
+    try w.writeAll("</dd></div>");
+    try w.writeAll("<div><dt>Needs renderer</dt><dd>");
+    try html.num(w, s.tools_needs_renderer);
+    try w.writeAll("</dd></div>");
+    try w.writeAll("<div><dt>Chrome-only</dt><dd>");
+    try html.num(w, s.tools_chrome_only);
+    try w.writeAll("</dd></div>");
+    try w.writeAll("</dl>\n</div>\n");
+    try w.writeAll("<p class=\"subtitle\">Same MCP tool calls sent over stdio to Google&rsquo;s <code>chrome-devtools-mcp</code> v");
+    try html.text(w, m.chrome_mcp_version);
+    try w.writeAll(" (Chrome for Testing) and Crane&rsquo;s built-in <code>repl --mcp</code>, compared after origin normalisation.</p>\n</header>\n");
+
+    try w.writeAll("<section id=\"tools\" aria-labelledby=\"tools-h\">\n<h2 id=\"tools-h\">Tools by classification</h2>\n");
+    try w.writeAll("<p>");
+    try html.plural(w, s.tools_total, "tool", "tools");
+    try w.writeAll(" across all categories: ");
+    try html.num(w, s.tools_equal);
+    try w.writeAll(" equal, ");
+    try html.num(w, s.tools_expected_diff);
+    try w.writeAll(" expected diff, ");
+    try html.num(w, s.tools_differs);
+    try w.writeAll(" differs, ");
+    try html.num(w, s.tools_needs_renderer);
+    try w.writeAll(" needs-renderer, ");
+    try html.num(w, s.tools_chrome_only);
+    try w.writeAll(" chrome-only, ");
+    try html.num(w, s.tools_not_tested);
+    try w.writeAll(" not tested in this run.</p>\n");
+    try w.writeAll("<table class=\"listing\">\n<thead><tr><th scope=\"col\">Tool</th><th scope=\"col\">Category</th><th scope=\"col\">Status</th><th scope=\"col\">Notes</th></tr></thead>\n<tbody>\n");
+    for (m.tools) |t| {
+        try w.writeAll("<tr><th scope=\"row\"><code>");
+        try html.text(w, t.name);
+        try w.writeAll("</code></th><td>");
+        try html.text(w, t.category);
+        try w.print("</td><td><span class=\"{s}\">", .{mcpStatusClass(t.status)});
+        try html.text(w, mcpStatusLabel(t.status));
+        try w.writeAll("</span></td><td>");
+        if (t.reason.len != 0) {
+            try html.text(w, t.reason);
+        } else if (t.cases.len > 0) {
+            for (t.cases, 0..) |c, i| {
+                if (i > 0) try w.writeAll(", ");
+                try html.text(w, c);
+            }
+        } else {
+            try w.writeAll("<span class=\"quiet\">&mdash;</span>");
+        }
+        try w.writeAll("</td></tr>\n");
+    }
+    try w.writeAll("</tbody>\n</table>\n</section>\n");
+
+    try w.writeAll("<section id=\"cases\" aria-labelledby=\"cases-h\">\n<h2 id=\"cases-h\">Differential cases</h2>\n");
+    try w.writeAll("<table class=\"listing\">\n<thead><tr><th scope=\"col\">Case</th><th scope=\"col\">Result</th><th scope=\"col\">About</th></tr></thead>\n<tbody>\n");
+    for (m.cases) |c| {
+        const status_key = if (c.equal) "equal" else if (c.only_expected) "expected_diff" else "differs";
+        try w.writeAll("<tr><th scope=\"row\">");
+        try html.text(w, c.name);
+        try w.print("</th><td><span class=\"{s}\">", .{mcpStatusClass(status_key)});
+        try html.text(w, mcpStatusLabel(status_key));
+        try w.writeAll("</span></td><td>");
+        if (c.chrome_failure) |f| {
+            try w.writeAll("Chrome failed: ");
+            try html.text(w, f);
+        } else if (c.crane_failure) |f| {
+            try w.writeAll("Crane failed: ");
+            try html.text(w, f);
+        } else if (c.about.len != 0) {
+            try html.text(w, c.about);
+        } else {
+            try w.writeAll("<span class=\"quiet\">&mdash;</span>");
+        }
+        try w.writeAll("</td></tr>\n");
+    }
+    try w.writeAll("</tbody>\n</table>\n</section>\n");
+    try writeClose(w, site, "../", null);
 }
 
 // ============================================================================
