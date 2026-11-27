@@ -7,7 +7,7 @@ on:
 jobs:
   build-macos:
     name: Build on macOS
-    runs-on: macos-14
+    runs-on: macos-15
     
     steps:
       - name: Checkout code
@@ -38,7 +38,7 @@ jobs:
 
   build-ios:
     name: Build for iOS
-    runs-on: macos-14
+    runs-on: macos-15
     
     steps:
       - name: Checkout code
@@ -88,7 +88,7 @@ jobs:
 
   lint:
     name: Swift Lint
-    runs-on: macos-14
+    runs-on: macos-15
     
     steps:
       - name: Checkout code

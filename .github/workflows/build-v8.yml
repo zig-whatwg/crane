@@ -50,7 +50,7 @@ jobs:
           import json, os, sys
 
           runners = {
-              "macos-arm64":  ("macos-14",       "arm64"),
+              "macos-arm64":  ("macos-15",       "arm64"),
               "macos-x86_64": ("macos-15-intel", "x64"),
               "linux-x86_64": ("ubuntu-24.04",   "x64"),
               # V8 DEPS ships Linux prebuilt clang/rustc/gn for x64 hosts only;
@@ -151,7 +151,7 @@ jobs:
       - name: Build and verify V8 via scripts/build-v8-15.7.sh
         shell: bash
         env:
-          TARGET: ${{ matrix.target }}
+          V8_BUILD_TARGET: ${{ matrix.target }}
           TARGET_CPU: ${{ matrix.target_cpu }}
           V8_LINK: ${{ matrix.link }}
         run: |
@@ -160,7 +160,7 @@ jobs:
           export ZIG="$(command -v zig)"
           export V8_ROOT="$RUNNER_TEMP/v8-${V8_VERSION}"
           export CRANE_V8="$RUNNER_TEMP/crane-v8-install"
-          export PROVENANCE_NOTE="CI: GitHub Actions run ${GITHUB_RUN_ID} (${TARGET}, host=${RUNNER_OS}/${RUNNER_ARCH}, link=${V8_LINK}, ref=${GITHUB_SHA})"
+          export PROVENANCE_NOTE="CI: GitHub Actions run ${GITHUB_RUN_ID} (${V8_BUILD_TARGET}, host=${RUNNER_OS}/${RUNNER_ARCH}, link=${V8_LINK}, ref=${GITHUB_SHA})"
 
           if [ "${RUNNER_OS}" = "macOS" ]; then
             export DEVELOPER_DIR="$(xcode-select -p)"
@@ -255,7 +255,7 @@ jobs:
           rm -rf "$V8_ROOT"
 
           # Package under top-level directory v8-15.7.112.43-<target>-<link>/.
-          pkg_name="v8-${V8_VERSION}-${TARGET}-${V8_LINK}"
+          pkg_name="v8-${V8_VERSION}-${V8_BUILD_TARGET}-${V8_LINK}"
           tarball="${pkg_name}.tar.gz"
           stage="$RUNNER_TEMP/v8-stage"
           rm -rf "$stage"

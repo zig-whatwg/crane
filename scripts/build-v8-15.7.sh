@@ -118,6 +118,9 @@
 # too), OUT (the build directory under $V8, default out/${V8_LINK}-15.7-icu), DEVELOPER_DIR (macOS: an Xcode;
 # Chromium's build/ asks xcodebuild for the SDK, which the Command Line Tools cannot answer).
 set -euo pipefail
+# Chromium's Rust build scripts refuse to run if TARGET is set in the environment
+# (avoids confusing bindgen with Cargo's TARGET variable).
+unset TARGET
 
 V8_LINK="${V8_LINK:-static}"
 STEPS=()
