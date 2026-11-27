@@ -181,3 +181,90 @@ test "Browser JS setTimeout chain slows under EventLoop CPU throttling and resto
     const rst_ms = try std.fmt.parseFloat(f64, rst_str);
     try testing.expect(rst_ms < thr_ms * 0.75);
 }
+
+// Lane mcp3, batch B (audit report C, M5): the throttle's debt is no longer
+// one blocking sleep of up to 10 s on the Browser's thread. It is a wait in
+// which other threads' posts - a DevTools session's message, the host's
+// stop - are served, the rest of the debt carried to the next task: Chrome's
+// ThreadCPUThrottler suspends the renderer's main thread in slices while
+// V8 still serves the inspector's interrupting tasks
+// (third_party/blink/renderer/platform/scheduler/common/thread_cpu_throttler.cc;
+// core/inspector/inspector_task_runner.cc).
+
+/// A task that turns the throttle to `rate` and runs `spin_ns` of work: the
+/// loop then owes (rate - 1) x spin_ns.
+const ThrottledWork = struct {
+    rate: f64,
+    spin_ns: i64,
+    done_at: std.atomic.Value(i64) = .init(0),
+
+    fn run(ctx: ?*anyopaque, b: *Browser) void {
+        const self: *ThrottledWork = @ptrCast(@alignCast(ctx.?));
+        if (b.event_loop) |loop| loop.setCpuThrottlingRate(self.rate);
+        spinNs(self.spin_ns);
+        self.done_at.store(realNs(), .release);
+    }
+
+    fn drop(ctx: ?*anyopaque) void {
+        _ = ctx;
+    }
+
+    /// Wait (on this thread) until the work has run, then a little more, so
+    /// the Browser's thread is paying the debt.
+    fn waitDone(self: *ThrottledWork) !void {
+        const deadline = realNs() + 5 * std.time.ns_per_s;
+        while (self.done_at.load(.acquire) == 0) {
+            if (realNs() > deadline) return error.WorkNeverRan;
+            platform.sleepThread(std.time.ns_per_ms);
+        }
+        platform.sleepThread(50 * std.time.ns_per_ms);
+    }
+};
+
+test "CPU throttling: a session message posted while the loop pays a 3.8 s debt runs at once, not after the debt" {
+    const host = try browser_mod.BrowserHost.start(testing.allocator, .{ .snapshot_path = "" });
+    defer host.stop();
+    // 200 ms of work at 20x: 3.8 s owed.
+    var work: ThrottledWork = .{ .rate = 20.0, .spin_ns = 200 * std.time.ns_per_ms };
+    try testing.expect(host.post(&work, ThrottledWork.run, ThrottledWork.drop));
+    try work.waitDone();
+
+    const Message = struct {
+        ran_at: std.atomic.Value(i64) = .init(0),
+        fn run(ctx: ?*anyopaque, b: *Browser) void {
+            _ = b;
+            const self: *@This() = @ptrCast(@alignCast(ctx.?));
+            self.ran_at.store(realNs(), .release);
+        }
+        fn drop(ctx: ?*anyopaque) void {
+            _ = ctx;
+        }
+    };
+    var message: Message = .{};
+    const posted_at = realNs();
+    try testing.expect(host.postSessionMessage(&message, Message.run, Message.drop));
+    const deadline = posted_at + 5 * std.time.ns_per_s;
+    while (message.ran_at.load(.acquire) == 0 and realNs() < deadline) platform.sleepThread(std.time.ns_per_ms);
+    const latency_ms = @divTrunc(message.ran_at.load(.acquire) - posted_at, std.time.ns_per_ms);
+    if (message.ran_at.load(.acquire) == 0 or latency_ms > 1_000) {
+        std.debug.print("session message ran {d} ms after it was posted (debt 3,800 ms)\n", .{latency_ms});
+        return error.SessionMessageWaitedForTheDebt;
+    }
+}
+
+test "CPU throttling: stopping the host while the loop pays a 3.8 s debt returns at once" {
+    const host = try browser_mod.BrowserHost.start(testing.allocator, .{ .snapshot_path = "" });
+    var work: ThrottledWork = .{ .rate = 20.0, .spin_ns = 200 * std.time.ns_per_ms };
+    try testing.expect(host.post(&work, ThrottledWork.run, ThrottledWork.drop));
+    work.waitDone() catch |err| {
+        host.stop();
+        return err;
+    };
+    const t0 = realNs();
+    host.stop();
+    const stop_ms = @divTrunc(realNs() - t0, std.time.ns_per_ms);
+    if (stop_ms > 1_000) {
+        std.debug.print("host.stop() took {d} ms during a 3,800 ms debt\n", .{stop_ms});
+        return error.StopWaitedForTheDebt;
+    }
+}
