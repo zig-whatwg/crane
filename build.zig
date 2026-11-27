@@ -4426,6 +4426,8 @@ pub fn build(b: *std.Build) void {
         addTestFilesFromDir(b, test_step, "tests/repl", target, &console_test_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add repl test files: {}\n", .{err});
         };
+        const repl_unit_tests = addModuleTestWithEngine(b, repl_test_mod, target, tests_engine_link);
+        test_step.dependOn(&addSuiteRun(b, launch, repl_unit_tests, "tools-repl", null).step);
     }
 
     // ========================================================================
