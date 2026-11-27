@@ -302,7 +302,8 @@ pub fn disabled(context: *anyopaque, name: []const u8) bool {
 /// `disabled` under `flags`: a tool Crane implements but does not offer
 /// under them, or one Google's server has and Crane leaves off.
 pub fn disabledWith(flags: ListOptions, name: []const u8) bool {
-    if (find(name)) |tool| if (!offered(tool, flags)) return true;
+    // A tool Crane implements: disabled exactly when its flags leave it out.
+    if (find(name)) |tool| return !offered(tool, flags);
     for (default_tools) |d| if (std.mem.eql(u8, d, name)) return false;
     var buffer: [128]u8 = undefined;
     const needle = std.fmt.bufPrint(&buffer, "\"name\": \"{s}\"", .{name}) catch return false;
