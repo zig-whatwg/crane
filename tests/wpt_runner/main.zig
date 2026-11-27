@@ -1187,17 +1187,26 @@ pub fn executeTests(
         if (comptime !wpt_options.production) {
             if (tally.status == .ok) {
                 browser.wpt_browser.settleForHandleGate();
+                // One line per OK file, written as it ends: a runner process
+                // that dies later keeps every check it made (handle_gate.zig).
                 const after = readHandleSnapshot();
+                var line_buf: [1024]u8 = undefined;
+                var line: std.Io.Writer = .fixed(&line_buf);
                 if (after != null and handle_before != null) {
                     const check = handle_baseline.check(test_file.path, handle_before.?, after.?);
                     handle_tally.record(check);
                     if (check.leaked) {
-                        var diag_buf: [1024]u8 = undefined;
-                        var diag_writer: std.Io.Writer = .fixed(&diag_buf);
-                        handle_gate.writeDiagnostic(&diag_writer, test_file.path, check) catch {};
-                        print("warning(handle): {s}\n", .{diag_writer.buffered()});
+                        handle_gate.writeDiagnostic(&line, test_file.path, check) catch {};
+                        print("warning(handle): {s}\n", .{line.buffered()});
+                    } else {
+                        handle_gate.writeChecked(&line, test_file.path) catch {};
+                        print("{s}\n", .{line.buffered()});
                     }
-                } else handle_tally.unread += 1;
+                } else {
+                    handle_tally.unread += 1;
+                    handle_gate.writeUnread(&line, test_file.path) catch {};
+                    print("{s}\n", .{line.buffered()});
+                }
                 if (after) |a| handle_before = a;
             }
         }

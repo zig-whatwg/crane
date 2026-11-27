@@ -313,15 +313,56 @@ pub const summary_prefix = "handle gate: ";
 /// Whether `line` is one file's leak line (`writeDiagnostic`'s text, after
 /// whatever prefix the log puts before it).
 pub fn isLeakLine(line: []const u8) bool {
-    const at = std.mem.indexOf(u8, line, leak_line_marker) orelse return false;
-    return std.mem.indexOf(u8, line[at..], ": live_object_globals ") != null;
+    return leakPath(line) != null;
+}
+
+/// The file a leak line names, or null when `line` is not one.
+pub fn leakPath(line: []const u8) ?[]const u8 {
+    const at = std.mem.indexOf(u8, line, leak_line_marker) orelse return null;
+    const rest = line[at + leak_line_marker.len ..];
+    const end = std.mem.indexOf(u8, rest, ": live_object_globals ") orelse return null;
+    return rest[0..end];
+}
+
+/// Each OK file's check is a line of its own, printed as the file ends: a
+/// leak line (`writeDiagnostic`), or one of these. wpt_build_compare holds
+/// the run's OK files to them, so a runner process that dies mid-run - a
+/// stall ends it, a crash kills it - loses no file it checked (its end
+/// summary, `Tally.writeSummary`, it does lose).
+pub const checked_line_marker = "handle checked: ";
+/// An OK file whose handles could not be read (the engine gave no counters).
+pub const unread_line_marker = "handle unread: ";
+
+pub fn writeChecked(w: *std.Io.Writer, path: []const u8) std.Io.Writer.Error!void {
+    try w.print(checked_line_marker ++ "{s}", .{path});
+}
+
+pub fn writeUnread(w: *std.Io.Writer, path: []const u8) std.Io.Writer.Error!void {
+    try w.print(unread_line_marker ++ "{s}", .{path});
+}
+
+fn pathAfter(line: []const u8, marker: []const u8) ?[]const u8 {
+    const at = std.mem.indexOf(u8, line, marker) orelse return null;
+    const path = std.mem.trim(u8, line[at + marker.len ..], " \t\r");
+    return if (path.len == 0) null else path;
+}
+
+/// The file a clean check line names, or null.
+pub fn checkedPath(line: []const u8) ?[]const u8 {
+    return pathAfter(line, checked_line_marker);
+}
+
+/// The file an unread line names, or null.
+pub fn unreadPath(line: []const u8) ?[]const u8 {
+    return pathAfter(line, unread_line_marker);
 }
 
 /// One runner process's handle gate: what it checked, and the summary line it
-/// prints when its files are done, which wpt_build_compare reconciles with the
-/// run's OK files and its leak lines (a check must say how much it compared:
-/// docs/lessons/testing-a-check-that-reads-a-list-filtered-for-another-reader-
-/// cannot-see-what-the-filter-dropped.md).
+/// prints when its files are done, for the log's reader (a check says how much
+/// it compared: docs/lessons/testing-a-check-that-reads-a-list-filtered-for-
+/// another-reader-cannot-see-what-the-filter-dropped.md). wpt_build_compare
+/// reconciles the run's OK files with the per-file lines, which a process that
+/// dies keeps; the summary is evidence beside them.
 pub const Tally = struct {
     /// OK files whose handles were compared with the baseline.
     checked: usize = 0,
@@ -543,4 +584,23 @@ test "the checked-in handle baseline only goes down: at most the 5 entries lane 
     var base = try Baseline.parse(testing.allocator, text, &diag);
     defer base.deinit();
     try testing.expect(base.entries.len <= max_baseline_entries);
+}
+
+test "each OK file's check line round-trips its path: clean, unread, or a leak" {
+    var buf: [256]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try writeChecked(&w, "dom/nodes/a.html");
+    try testing.expectEqualStrings("dom/nodes/a.html", checkedPath(w.buffered()).?);
+    try testing.expect(unreadPath(w.buffered()) == null);
+    w = .fixed(&buf);
+    try writeUnread(&w, "dom/nodes/b.html");
+    try testing.expectEqualStrings("dom/nodes/b.html", unreadPath(w.buffered()).?);
+    try testing.expect(checkedPath(w.buffered()) == null);
+    var base = Baseline.empty(testing.allocator);
+    defer base.deinit();
+    w = .fixed(&buf);
+    try writeDiagnostic(&w, "dom/nodes/c.html", base.check("dom/nodes/c.html", .{}, .{ .live_object_globals = 1 }));
+    try testing.expectEqualStrings("dom/nodes/c.html", leakPath(w.buffered()).?);
+    // The run's summary is none of them.
+    try testing.expect(checkedPath("handle gate: checked 2 file(s), 0 handle leak(s) over the baseline, 0 OK file(s) unread (no counters); baseline none (every file held to 0 / 0)") == null);
 }
