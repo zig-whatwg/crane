@@ -331,9 +331,10 @@ test "step 14: a BigInt is the bigint member; a Number the numeric one" {
 /// unannounced (lesson testing-a-red-test-for-an-unlanded-step-asserts-that-
 /// it-is-still-red.md; tests/html/refcount_probe.zig's `knownRed`).
 const landed = struct {
-    /// B1: a union's bigint member is a copied value, so step 16's BigInt
-    /// result - a value of the conversion's own - can be held.
-    const bigint_member_copied_b1 = false;
+    /// Step 16/19: a union's bigint member can hold a newly allocated BigInt
+    /// handle from ToNumeric / ToBigInt (released by releaseAnyArgument while
+    /// conversionLeavesInputHandle disposes the input handle).
+    const bigint_member_copied_b1 = true;
 };
 
 /// Assert `holds`, or - while `step_landed` is false - that it does not.
@@ -352,16 +353,19 @@ fn knownRed(comptime step_landed: bool, holds: bool, what: []const u8) !void {
     std.debug.print("known red until its step: {s}\n", .{what});
 }
 
-test "step 16: an object whose valueOf answers a BigInt is the bigint member (knownRed until B1)" {
+test "step 16: an object whose valueOf answers a BigInt is the bigint member" {
     defer test_agent.close();
     // WebIDL 3.2.25 step 16: ToNumeric(V) is 7n, so V converts to bigint.
-    // Until B1 the conversion takes ToNumber's TypeError instead (conversions
-    // unionFromValue, "TODO(bind1 B1)"; main, 2026-11-23 8:47 AM ET).
     const value = try eval("({ valueOf() { return 7n } })");
     defer ffi.v8_Value_Dispose(value);
     const outcome = convertCatching(BigintOrDouble, value);
     if (outcome.thrown) |thrown| ffi.v8_Value_Dispose(thrown);
-    const holds = if (outcome.result) |result| result == .bigint else |_| false;
+    const holds = if (outcome.result) |result| blk: {
+        defer if (result == .bigint and result.bigint == .handle and result.bigint.handle.ptr != @as(*anyopaque, @ptrCast(value))) {
+            ffi.v8_Value_Dispose(@ptrCast(@alignCast(result.bigint.handle.ptr)));
+        };
+        break :blk result == .bigint and result.bigint == .handle;
+    } else |_| false;
     try knownRed(landed.bigint_member_copied_b1, holds, "step 16: ToNumeric's BigInt is the bigint member");
 }
 

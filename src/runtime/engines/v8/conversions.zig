@@ -611,9 +611,7 @@ fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
 ///
 /// False by default: a required member (it converts null by its type
 /// already), a nullable member, `any`, a `webidl.Opt` member (its presence
-/// is its own), and a type this converter leaves to the impl - a
-/// dictionary, a callback, a buffer source, a union with no arms table -
-/// which keeps reading a present null as not present.
+/// is its own), and an unknown type with no conversion rule here.
 pub fn presentNullConvertsByType(comptime T: type, comptime field: Zig017Field) bool {
     comptime {
         const info = @typeInfo(field.type);
@@ -627,14 +625,23 @@ pub fn presentNullConvertsByType(comptime T: type, comptime field: Zig017Field) 
         const Payload = info.optional.child;
         if (Payload == runtime.DOMString or Payload == runtime.USVString or Payload == runtime.ByteString) return true;
         if (Payload == *runtime.Instance) return true;
+        // Buffer sources (WebIDL 3.2.26): null is not a buffer source -> TypeError.
+        if (Payload == typedefs.BufferSource or Payload == typedefs.AllowSharedBufferSource or Payload == typedefs.ArrayBufferView) return true;
+        // Callbacks (WebIDL 3.2.16 / 3.2.19): null is neither callable nor an object -> TypeError.
+        if (Payload == runtime.BorrowedCallbackFunction or Payload == runtime.BorrowedCallbackInterface) return true;
+        // Nested dictionary (WebIDL 3.2.18 step 1): null converts to an empty
+        // dictionary (or throws TypeError if it has a required member).
+        if (interface_mod.isDictionaryType(Payload)) return true;
+        // Non-nullable `object` member (listed in `object_members`, not `any`):
+        // null is not an Object -> requireObject throws TypeError.
+        if (Payload == runtime.JSValue and isObjectMember(T, field.name)) return true;
         // A union codegen describes (one with an arms table): null converts
         // by WebIDL 3.2.25 - step 4 to its dictionary member, 15 to its
         // string member ("null"), 17 to its numeric member (0), 18 to
         // boolean (false), else step 20's TypeError (`unionFromValue`;
         // HeadersInit's own converter throws it for a non-Object).
         // hasdecl: every union codegen emits declares `pub const arms`
-        // (union_arms.writeArms); runtime.JSValue, a DOMString and the
-        // buffer source unions declare none and keep the default.
+        // (union_arms.writeArms).
         if (@typeInfo(Payload) == .@"union" and @hasDecl(Payload, "arms")) return true;
         return switch (@typeInfo(Payload)) {
             .bool, .int, .float, .@"enum" => true,
@@ -816,7 +823,7 @@ pub fn fromV8Sequence(
 fn releaseElementHandle(comptime T: type, element: T, handle: *v8.Value) void {
     if (comptime interface_mod.argHandleIsCopied(T)) {
         v8.v8_Value_Dispose(handle);
-    } else if (interface_mod.conversionLeavesHandle(T, element)) {
+    } else if (interface_mod.conversionLeavesInputHandle(T, element, handle)) {
         v8.v8_Value_Dispose(handle);
     }
 }
@@ -1177,7 +1184,7 @@ fn recordFrom(comptime Entry: type, comptime Interface: ?type, allocator: std.me
                 v8.v8_Value_Dispose(item_value);
                 return err;
             };
-            if (interface_mod.conversionLeavesHandle(V, converted_value)) v8.v8_Value_Dispose(item_value);
+            if (interface_mod.conversionLeavesInputHandle(V, converted_value, item_value)) v8.v8_Value_Dispose(item_value);
             break :converted converted_value;
         };
         //    4. Set result[typedKey] to typedValue. Two keys give one typedKey
@@ -1281,9 +1288,9 @@ const buffer_sources = @import("webidl").buffer_sources;
 /// here (`js` the buffer, no bytes), freed with the argument
 /// (`interface.freeConvertedArg`), which also releases the handle.
 ///
-/// null and undefined still read as no bytes (`.byte_slice`, empty, no
-/// handle), as before, rather than WebIDL's TypeError: an omitted optional
-/// argument reaches here as undefined.
+/// null and undefined throw TypeError per WebIDL 3.2.25/3.2.26 (omitted
+/// optional arguments are handled by `webidl.Opt` before reaching here, and
+/// nullable types by the optional branch).
 fn convertAllowSharedBufferSource(
     allocator: std.mem.Allocator,
     value: *v8.Value,
@@ -1315,7 +1322,6 @@ fn convertAllowSharedBufferSource(
         buffer.* = .{ .data = &[_]u8{}, .allocator = allocator, .js = @ptrCast(value) };
         return .{ .shared_array_buffer = buffer };
     }
-    if (v8.v8_Value_IsNullOrUndefined(value)) return .{ .byte_slice = &[_]u8{} };
     // Step 20.
     return ConversionError.TypeError;
 }
@@ -2198,19 +2204,22 @@ fn unionFromValue(
     if (comptime unionIncludes(T, .string)) return convertToUnionMember(T, .string, allocator, isolate, context, value);
     if (comptime unionIncludes(T, .enumeration)) return convertToUnionMember(T, .enumeration, allocator, isolate, context, value);
     // 16. If types includes a numeric type and bigint, then return the
-    //     result of converting V to either that numeric type or bigint:
-    //     ToNumeric(V). A Number is the numeric member's - ToNumber of V
-    //     gives that Number, so the numeric conversion of V is the same,
-    //     valueOf run once.
-    //     TODO(bind1 B1): step 16's BigInt result - an object whose valueOf
-    //     answers a BigInt - is the bigint member's per WebIDL 3.2.25 step 16
-    //     ("converted to a numeric type or bigint"). It would be a value of
-    //     the conversion's own, which a runtime.JSValue member cannot hold
-    //     apart from the argument's handle the binding releases, so ToNumber
-    //     throws its TypeError for it, as before the arms tables: a temporary
-    //     deviation (main, 2026-11-23 8:47 AM ET) until B1 makes the bigint
-    //     member a copied value. Pinned red by tests/v8/
-    //     union_conversion_steps_test.zig ("step 16 ... knownRed").
+    //     result of converting V to either that numeric type or bigint
+    //     (WebIDL 3.2.25 step 16):
+    //     1. Let x be ? ToNumeric(V).
+    //     2. If x is a BigInt, return the bigint member (owning x's handle;
+    //        callers release V via conversionLeavesInputHandle since x != V,
+    //        and release x via releaseAnyArgument).
+    //     3. Otherwise, return the result of converting x (a Number) to the
+    //        numeric member (valueOf ran once).
+    if (comptime unionIncludes(T, .numeric) and unionIncludes(T, .bigint)) {
+        const numeric = v8.v8_Value_ToNumeric(value, context) orelse return ConversionError.ExceptionPending;
+        if (v8.v8_Value_IsBigInt(numeric)) {
+            return convertToUnionMember(T, .bigint, allocator, isolate, context, numeric);
+        }
+        defer v8.v8_Value_Dispose(numeric);
+        return convertToUnionMember(T, .numeric, allocator, isolate, context, numeric);
+    }
     // 17. If types includes a numeric type, then return the result of
     //     converting V to that numeric type.
     if (comptime unionIncludes(T, .numeric)) return convertToUnionMember(T, .numeric, allocator, isolate, context, value);
@@ -2218,10 +2227,13 @@ fn unionFromValue(
     //     to boolean.
     if (comptime unionIncludes(T, .boolean)) return convertToUnionMember(T, .boolean, allocator, isolate, context, value);
     // 19. If types includes bigint, then return the result of converting V
-    //     to bigint: ToBigInt(V), a BigInt of the conversion's own - no union
-    //     codegen describes has bigint without a numeric type (step 16), and
-    //     the member becomes a copied value in B1.
-    if (comptime unionIncludes(T, .bigint)) @compileError("a union with bigint and no numeric type: ToBigInt's value needs a member that owns it (WebIDL 3.2.25 step 19)");
+    //     to bigint (WebIDL 3.2.10: ? ToBigInt(V)). Owns the returned BigInt
+    //     handle (callers release V via conversionLeavesInputHandle and the
+    //     BigInt via releaseAnyArgument).
+    if (comptime unionIncludes(T, .bigint)) {
+        const bigint_val = v8.v8_Value_ToBigInt(value, context) orelse return ConversionError.ExceptionPending;
+        return convertToUnionMember(T, .bigint, allocator, isolate, context, bigint_val);
+    }
     // 20. Throw a TypeError.
     return ConversionError.TypeError;
 }
@@ -2837,7 +2849,7 @@ fn convertValueAs(
                         v8.v8_Value_Dispose(field_v8);
                         return err;
                     };
-                    if (interface_mod.keptArgumentHandle(field.type, member) == null) v8.v8_Value_Dispose(field_v8);
+                    if (interface_mod.keptArgumentHandle(field.type, member) != @as(?*anyopaque, @ptrCast(field_v8))) v8.v8_Value_Dispose(field_v8);
                     @field(result, field.name) = member;
                 } else if (comptime memberIntegerConversion(T, field.name) != .modulo) {
                     // An [EnforceRange] or [Clamp] member: its branch of
@@ -2873,7 +2885,7 @@ fn convertValueAs(
                     // referred to by nothing (`conversionLeavesHandle`):
                     // QueuingStrategy's absent `size` kept one per strategy.
                     // A handle the copied rule releases is never released here.
-                    if (!member_handle_released and interface_mod.conversionLeavesHandle(field.type, member)) v8.v8_Value_Dispose(field_v8);
+                    if (!member_handle_released and interface_mod.conversionLeavesInputHandle(field.type, member, field_v8)) v8.v8_Value_Dispose(field_v8);
                     @field(result, field.name) = member;
                 }
                 converted += 1;

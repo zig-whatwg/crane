@@ -3,12 +3,12 @@
 //! fix, and the lifetime it must keep, measured as live instances after the
 //! page settles (tests/html/refcount_probe.zig).
 //!
-//! RED today (known red until their step, see the probe's `knownRed`):
-//! - a never-wrapped detached subtree is freed by nothing before its realm
-//!   ends (RETENTION; the 45,000-node control of lane nodeholds);
-//! - a closure over its own detached target pins the target's tree through the
-//!   listener's or observer callback's strong root (decision D7).
-//! GREEN today, must stay green:
+//! Required GREEN (both migration steps have landed in `refcount_probe.zig`):
+//! - a never-wrapped detached subtree is freed by the deferred teardown queue
+//!   (step 7, RETENTION; the 45,000-node control of lane nodeholds);
+//! - a closure over its own detached target (or observer) does not pin the
+//!   target's tree through a listener, handler, or observer callback
+//!   (step 8, decision D7: EventTarget, MutationObserver, ResizeObserver);
 //! - a held node keeps its whole tree and the tree goes when the hold ends
 //!   (decision D1, script-held and natively held);
 //! - a windowless document is kept through a node of it and freed after
@@ -143,6 +143,29 @@ fn observerSelfCycle() !void {
         \\  mo.observe(root, { attributes: true, subtree: true });
     , "a MutationObserver callback closing over its observer and its detached target");
 }
+fn resizeObserverSelfCycle() !void {
+    try cycleCollected(
+        \\  const root = document.createElement('div');
+        \\  root.appendChild(document.createElement('span'));
+        \\  const ro = new ResizeObserver(() => [ro, root]);
+        \\  ro.observe(root);
+        \\  ro.disconnect();
+    , "a ResizeObserver callback closing over its observer and its detached target");
+}
+fn resizeObserverLiveCallbackSurvivesGC() !void {
+    const page = try Page.open("<div id=target></div>");
+    defer page.close();
+    try page.run(
+        \\globalThis.fired = 0;
+        \\globalThis.target = document.getElementById('target');
+        \\globalThis.ro = new ResizeObserver((entries) => { globalThis.fired += entries.length; });
+        \\ro.observe(target);
+    );
+    try page.run("TestUtils.gc(); TestUtils.gc();");
+    _ = try page.browser.runEventLoopBlocking(50);
+    try page.expect("String(globalThis.fired)", "1");
+    try page.run("ro.disconnect(); globalThis.ro = null; globalThis.target = null;");
+}
 fn plainTargetCycle() !void {
     try cycleCollected(
         \\  const target = new EventTarget();
@@ -155,6 +178,12 @@ test "a handler on a removed node that closes over the node does not pin it (D7)
 }
 test "a MutationObserver callback that captures its observer and its target does not pin either (D7)" {
     try probe.onFreshThread(observerSelfCycle);
+}
+test "a ResizeObserver callback that captures its observer and its target does not pin either (D7)" {
+    try probe.onFreshThread(resizeObserverSelfCycle);
+}
+test "a live ResizeObserver keeps its traced callback across GC and delivers observations" {
+    try probe.onFreshThread(resizeObserverLiveCallbackSurvivesGC);
 }
 test "a listener that closes over its non-node EventTarget does not pin it (D7)" {
     try probe.onFreshThread(plainTargetCycle);

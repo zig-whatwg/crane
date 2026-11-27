@@ -4,6 +4,8 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const typedefs = @import("typedefs");
+const dictionaries = @import("dictionaries");
 const WebAssembly_impl = @import("impls").WebAssembly;
 
 pub const WebAssembly = struct {
@@ -41,11 +43,11 @@ pub const WebAssembly = struct {
 
     pub const State = struct {};
 
-    pub fn call_instantiate(ctx: runtime.Context, bytes: runtime.JSValue, importObject: webidl.Opt(runtime.JSValue), options: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+    pub fn call_instantiate(ctx: runtime.Context, bytes: typedefs.AllowSharedBufferSource, importObject: webidl.Opt(runtime.JSValue), options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) anyerror!runtime.JSValue {
         return try WebAssembly_impl.call_instantiate(ctx, bytes, importObject, options);
     }
 
-    pub fn call_instantiate__1(ctx: runtime.Context, moduleObject: runtime.JSValue, importObject: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+    pub fn call_instantiate__1(ctx: runtime.Context, moduleObject: *runtime.Instance, importObject: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         if (comptime @hasDecl(WebAssembly_impl, "call_instantiate__1")) {
             return try WebAssembly_impl.call_instantiate__1(ctx, moduleObject, importObject);
         } else {
@@ -53,19 +55,19 @@ pub const WebAssembly = struct {
         }
     }
 
-    pub fn call_compileStreaming(ctx: runtime.Context, source: runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+    pub fn call_compileStreaming(ctx: runtime.Context, source: runtime.JSValue, options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) anyerror!runtime.JSValue {
         return try WebAssembly_impl.call_compileStreaming(ctx, source, options);
     }
 
-    pub fn call_instantiateStreaming(ctx: runtime.Context, source: runtime.JSValue, importObject: webidl.Opt(runtime.JSValue), options: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+    pub fn call_instantiateStreaming(ctx: runtime.Context, source: runtime.JSValue, importObject: webidl.Opt(runtime.JSValue), options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) anyerror!runtime.JSValue {
         return try WebAssembly_impl.call_instantiateStreaming(ctx, source, importObject, options);
     }
 
-    pub fn call_compile(ctx: runtime.Context, bytes: runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
+    pub fn call_compile(ctx: runtime.Context, bytes: typedefs.AllowSharedBufferSource, options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) anyerror!runtime.JSValue {
         return try WebAssembly_impl.call_compile(ctx, bytes, options);
     }
 
-    pub fn call_validate(ctx: runtime.Context, bytes: runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!bool {
+    pub fn call_validate(ctx: runtime.Context, bytes: typedefs.AllowSharedBufferSource, options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) anyerror!bool {
         return try WebAssembly_impl.call_validate(ctx, bytes, options);
     }
 
@@ -75,12 +77,12 @@ pub const WebAssembly = struct {
     /// overload and forwards to the one the arguments select.
     pub const overloads = .{
         .{ "instantiate", &[_]webidl.overload_resolution.Overload{
-            .{ .function = "call_instantiate", .args = &.{ .{ .kinds = &.{ .array_buffer, .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.object}, .optionality = .optional }, .{ .kinds = &.{.other}, .optionality = .optional } } },
-            .{ .function = "call_instantiate__1", .implemented = @hasDecl(WebAssembly_impl, "call_instantiate__1"), .args = &.{ .{ .kinds = &.{.other} }, .{ .kinds = &.{.object}, .optionality = .optional } } },
+            .{ .function = "call_instantiate", .args = &.{ .{ .kinds = &.{ .array_buffer, .{ .typed_array = "Int8Array" }, .{ .typed_array = "Int16Array" }, .{ .typed_array = "Int32Array" }, .{ .typed_array = "Uint8Array" }, .{ .typed_array = "Uint16Array" }, .{ .typed_array = "Uint32Array" }, .{ .typed_array = "Uint8ClampedArray" }, .{ .typed_array = "BigInt64Array" }, .{ .typed_array = "BigUint64Array" }, .{ .typed_array = "Float16Array" }, .{ .typed_array = "Float32Array" }, .{ .typed_array = "Float64Array" }, .data_view } }, .{ .kinds = &.{.object}, .optionality = .optional }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+            .{ .function = "call_instantiate__1", .implemented = @hasDecl(WebAssembly_impl, "call_instantiate__1"), .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Module")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Module.State) } else .other)} }, .{ .kinds = &.{.object}, .optionality = .optional } } },
         } },
     };
 
-    pub fn get_JSTag(ctx: runtime.Context) anyerror!runtime.JSValue {
+    pub fn get_JSTag(ctx: runtime.Context) anyerror!*runtime.Instance {
         if (comptime @hasDecl(WebAssembly_impl, "get_JSTag")) {
             return try WebAssembly_impl.get_JSTag(ctx);
         } else {

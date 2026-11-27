@@ -8996,6 +8996,30 @@ bool v8_Value_ToNumber(Global<Value>* value, Global<Context>* context, double* o
     return true;
 }
 
+// ToNumeric(V) (ECMA-262 7.1.3) for WebIDL 3.2.25 step 16 (numeric or bigint):
+// returns an owned Global<Value>* holding a Number or BigInt, or nullptr with
+// the exception left pending when ToPrimitive / ToNumber throws.
+Global<Value>* v8_Value_ToNumeric(Global<Value>* value, Global<Context>* context) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    MaybeLocal<Numeric> maybe_numeric = value->Get(isolate)->ToNumeric(ctx);
+    if (maybe_numeric.IsEmpty()) return nullptr;
+    return trackHandle(new Global<Value>(isolate, maybe_numeric.ToLocalChecked()));
+}
+
+// ToBigInt(V) (ECMA-262 7.1.15) for WebIDL 3.2.10 / 3.2.25 step 19 (bigint):
+// returns an owned Global<Value>* holding a BigInt, or nullptr with the
+// exception left pending when ToBigInt throws.
+Global<Value>* v8_Value_ToBigInt(Global<Value>* value, Global<Context>* context) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    MaybeLocal<BigInt> maybe_bigint = value->Get(isolate)->ToBigInt(ctx);
+    if (maybe_bigint.IsEmpty()) return nullptr;
+    return trackHandle(new Global<Value>(isolate, maybe_bigint.ToLocalChecked()));
+}
+
 uint32_t v8_Value_Uint32Value(Global<Value>* value, Global<Context>* context) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

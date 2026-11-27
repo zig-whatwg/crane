@@ -34,7 +34,7 @@ test "a namespace attribute is a getter delegate with the current realm, listed 
         "pub const attributes = .{",
         ".{ \"moon\", \"get_moon\", @hasDecl(Orbit_impl, \"get_moon\") },",
         ".{ \"name\", \"get_name\", @hasDecl(Orbit_impl, \"get_name\") },",
-        "pub fn get_moon(ctx: runtime.Context) anyerror!runtime.JSValue {",
+        "pub fn get_moon(ctx: runtime.Context) anyerror!*runtime.Instance {",
         "if (comptime @hasDecl(Orbit_impl, \"get_moon\")) {",
         "return try Orbit_impl.get_moon(ctx);",
         "return error.NotImplemented;",

@@ -720,6 +720,19 @@ pub fn conversionLeavesHandle(comptime T: type, value: T) bool {
     return false;
 }
 
+/// Like `conversionLeavesHandle`, but also returns true when a conversion
+/// accepted by `argumentHandleIsKeptInValue` produced a NEW handle distinct
+/// from `input` (e.g. WebIDL 3.2.25 steps 16/19 converting an object or string
+/// to a newly allocated BigInt Global): `value` owns its own handle (released
+/// by `releaseAnyArgument`), so `input` is left behind and must be disposed.
+pub fn conversionLeavesInputHandle(comptime T: type, value: T, input: *v8.Value) bool {
+    if (comptime argHandleIsCopied(T)) return false;
+    if (comptime argumentHandleIsKeptInValue(T)) {
+        return keptArgumentHandle(T, value) != @as(?*anyopaque, @ptrCast(input));
+    }
+    return conversionLeavesHandle(T, value);
+}
+
 /// Does an attribute setter whose value is a `T` BORROW the value for the
 /// call, so that the binding releases the handle `info.get(0)` made once the
 /// setter has returned - or failed, or its conversion failed?
@@ -1066,9 +1079,10 @@ pub fn convertArgReleasingWith(
         return err;
     };
     // A value that refers to nothing - an `any`'s primitive, a null optional
-    // callback, an optional argument not passed - leaves the handle to the
-    // binding (`conversionLeavesHandle`).
-    if (conversionLeavesHandle(T, value)) v8.v8_Value_Dispose(arg);
+    // callback, an optional argument not passed - or holds a newly allocated
+    // handle distinct from `arg` (WebIDL 3.2.25 steps 16/19 BigInt) leaves
+    // `arg` to the binding (`conversionLeavesInputHandle`).
+    if (conversionLeavesInputHandle(T, value, arg)) v8.v8_Value_Dispose(arg);
     return value;
 }
 
@@ -1247,7 +1261,7 @@ fn isObjectArm(comptime T: type, comptime name: []const u8) bool {
     if (@FieldType(T, name) != runtime.JSValue) return false;
     const kind = comptime conv.describedUnionArmKind(T, name) orelse return false;
     return switch (kind) {
-        .object, .typed_array, .bigint => true,
+        .object, .typed_array, .bigint, .array_buffer, .shared_array_buffer, .data_view => true,
         else => false,
     };
 }
@@ -8870,6 +8884,17 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     };
                     defer freeConvertedValue(ValueType, allocator, zig_value);
+                    // If a borrowed conversion produced a newly allocated handle
+                    // distinct from the input (e.g. union bigint steps 16/19),
+                    // release that handle once the setter finishes (the input
+                    // handle is released by binding_plumbing).
+                    defer if (comptime value_is_borrowed and anyHandleIsKeptOnlyAsHandle(ValueType)) {
+                        if (anyArgumentHandle(ValueType, zig_value)) |kept| {
+                            if (kept != @as(*anyopaque, @ptrCast(value.get()))) {
+                                v8.v8_Value_Dispose(@ptrCast(@alignCast(kept)));
+                            }
+                        }
+                    };
                     // A value that does not refer to the handle it was
                     // converted from - a null, a primitive `any` - leaves it
                     // to no one: release it here. Kept, `el.onclick = null`

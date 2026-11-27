@@ -1562,6 +1562,12 @@ pub extern fn v8_Value_Int32Value(value: *Value, context: *Context) i32;
 /// pending, so a native callback returning at once rethrows it to script.
 pub extern fn v8_Value_ToInt32(value: *Value, context: *Context, out: *i32) bool;
 pub extern fn v8_Value_ToNumber(value: *Value, context: *Context, out: *f64) bool;
+/// ToNumeric (ECMA-262 7.1.3): returns an owned Global holding a Number or BigInt,
+/// or null with the exception left pending.
+pub extern fn v8_Value_ToNumeric(value: *Value, context: *Context) ?*Value;
+/// ToBigInt (ECMA-262 7.1.15): returns an owned Global holding a BigInt,
+/// or null with the exception left pending.
+pub extern fn v8_Value_ToBigInt(value: *Value, context: *Context) ?*Value;
 pub extern fn v8_Value_Uint32Value(value: *Value, context: *Context) u32;
 pub extern fn v8_Value_IntegerValue(value: *Value, context: *Context) i64;
 pub extern fn v8_Value_ToString(value: *Value, context: *Context) ?*String;

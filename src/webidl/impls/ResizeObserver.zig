@@ -58,8 +58,12 @@ const Observation = struct {
 
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    /// [[callback]], OWNED.
-    callback: ?engine.CallbackFunction = null,
+    /// [[callback]], OWNED - released in deinit - a TRACED hold
+    /// (engine.TracedHold; refcount step 8, decision D7): the observer's holder
+    /// anchor keeps it (`traceHeldNodes`), so a callback that closes over its
+    /// observer or its target pins neither past the observer's own lifetime.
+    /// Strong on an engine with no traced values.
+    callback: ?engine.TracedCallback = null,
     /// [[observationTargets]].
     observations: std.ArrayListUnmanaged(Observation) = .empty,
     /// [[activeTargets]]: the targets, looked up again at the broadcast
@@ -81,10 +85,11 @@ pub const InternalState = struct {
         self.active.deinit(self.allocator);
     }
 
-    /// runtime.VTable.trace_held_nodes: entries being wrapped reach their
-    /// targets through their own trace.
+    /// runtime.VTable.trace_held_nodes: trace the callback and entries being
+    /// wrapped (each entry reaches its target through its own trace).
     pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
         const self = Accessor.get(instance) orelse return;
+        if (self.callback) |callback| engine.traceHeld(tracer, callback.hold);
         for (self.delivering) |entry| {
             const trace = entry.vtable.trace_held_nodes orelse continue;
             trace(entry, tracer);
@@ -138,7 +143,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn call_constructor(instance: *runtime.Instance, callback: callbacks.ResizeObserverCallback) !void {
     const internal = getInternal(instance);
     internal.self_instance = instance;
-    internal.callback = callback.keep();
+    internal.callback = callback.keepTraced();
 }
 
 /// observe(target, options)
@@ -412,10 +417,16 @@ fn createEntry(realm: runtime.Context, target: *runtime.Instance) ?MadeEntry {
 /// 3.4.5 step 2.4: invoke the callback with the entries as a sequence.
 fn invokeCallback(observer: *runtime.Instance, internal: *InternalState, entries: []const *runtime.Instance) !void {
     if (entries.len == 0) return;
-    const callback = internal.callback orelse {
+    const traced = internal.callback orelse {
         for (entries) |entry| runtime.Instance.deinit(entry);
         return;
     };
+    // A collected callback (no trace reached its observer) delivers nothing.
+    if (traced.hold.isEmpty()) {
+        for (entries) |entry| runtime.Instance.deinit(entry);
+        return;
+    }
+    const callback = traced.asFunction();
     const realm = observer.ctx;
     // The sequence is made in the callback's realm and world (WebIDL invoke
     // steps 5 and 10: dom.callback_sequences). Wrapping hands each entry to

@@ -1,9 +1,9 @@
 //! Namespace operations are named and bound as an interface's are.
 //!
-//! A namespace operation's typedefs resolve to the types they name, so
-//! CSS.escape(CSSOMString) takes and returns a string, not a raw JSValue.
-//! (Namespaces do not import the typedefs module, so a typedef of a simple
-//! type is written as that type; a typedef of a union stays a JSValue.)
+//! A namespace operation's typedefs resolve to the types they name: simple
+//! typedefs inline to their target type (`CSS.escape(CSSOMString)` takes and
+//! returns `runtime.DOMString`), and union/complex typedefs resolve through
+//! `type_registry` to `typedefs.<Name>`.
 
 const std = @import("std");
 const codegen = @import("codegen");
@@ -32,7 +32,7 @@ test "namespace operations write a typedef of a simple type as that type, throug
             return err;
         };
         try testing.expect(contains(out, "call_check(ctx: runtime.Context, property: runtime.DOMString, value: webidl.Opt(runtime.DOMString)) anyerror!bool"));
-        try testing.expect(contains(out, "call_take(ctx: runtime.Context, either: runtime.JSValue)"));
+        try testing.expect(contains(out, "call_take(ctx: runtime.Context, either: typedefs.Either)"));
     }
 }
 
