@@ -2,142 +2,82 @@ name: WPT Tests
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
   schedule:
     - cron: '0 0 * * 0'  # Weekly on Sunday
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: 'WPT scope directory or test path (default: url/)'
+        required: false
+        default: 'url/'
+        type: string
 
 jobs:
-  # The harness's own logic: argument parsing, manifest reading, test selection,
-  # the journal and the baseline comparison. Pure std, no V8, no WPT checkout,
-  # so it finishes in seconds and catches a broken gate before the gate runs.
+  # The WPT runner's own unit and harness tests (all harness_sources modules
+  # wired through build.zig with their host/clock/xml/poisoning imports, plus
+  # ar3-command-lifetime and crashtest-execution).
   harness:
-    runs-on: macos-latest
+    name: WPT Harness Unit Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Install Zig (the pinned 0.17)
+      - name: Setup Zig (the pinned 0.17)
         uses: ./.github/actions/setup-zig-pinned
 
-      # The module list is DERIVED from build.zig's `harness_sources`
-      # (build.zig:2792, the source of truth) instead of being re-typed here.
-      # A hand-copied list drifts silently and did: this file listed 8 modules
-      # while build.zig listed 10, so test_parser.zig (45 test blocks) and
-      # output.zig were never run by this job. Nothing reported that gap,
-      # because a list that is too short still exits 0.
-      #
-      # A failed parse must FAIL, not quietly run zero modules - hence
-      # pipefail plus the empty check. If build.zig's declaration ever moves or
-      # changes shape, this step goes red and someone fixes it on purpose.
-      - name: Test harness modules (list derived from build.zig:2792)
-        run: |
-          set -euo pipefail
-          modules="$(
-            sed -n '/const harness_sources = \[_\]\[\]const u8{/,/};/p' build.zig \
-              | grep -o '"tests/wpt_runner/[A-Za-z0-9_]*\.zig"' \
-              | tr -d '"'
-          )"
-          if [ -z "$modules" ]; then
-            echo "::error file=build.zig,line=2792::could not parse harness_sources out of build.zig. The declaration moved or changed shape. Fix this workflow - do NOT let it pass having tested nothing."
-            exit 1
-          fi
-          echo "Harness modules derived from build.zig:"
-          echo "$modules"
-          for m in $modules; do
-            echo "--- zig test $m"
-            zig test "$m"
-          done
+      - name: Setup prebuilt V8 15.7.112.43 (static)
+        uses: ./.github/actions/setup-v8-prebuilt
+        with:
+          link: static
 
-  # The scoreboard. Runs a slice of WPT and compares it against the recorded
-  # expectations in tests/wpt_expectations.jsonl. A test that used to pass and
-  # now does not fails this job.
+      - name: Run WPT harness tests
+        shell: bash
+        run: zig build test -j2 -Dspec=wpt_runner -Dv8-dir="$CRANE_V8_DIR"
+
+  # Runs a baselined WPT slice using Crane's production wpt_runner binary and
+  # compares it against tests/wpt_expectations.jsonl. Any regression fails the job.
   #
-  # WARNING - THIS GATE HAS NEVER ACTUALLY RUN, AND IS LEFT FAILING ON PURPOSE.
-  #
-  # build.zig links jsengines/v8/out/static/obj/{libv8_monolith,
-  # libv8_libplatform_fat,libv8_libbase_fat}.a by hard-coded relative path
-  # (35 references). jsengines/v8/ is gitignored (.gitignore:47) and is not a
-  # submodule, so a fresh CI checkout never contains it, and `brew install v8`
-  # installs to /opt/homebrew/opt/v8 - a path build.zig never reads. The Build
-  # step below therefore cannot succeed here, which means every "WPT Tests"
-  # success this workflow has ever reported came from the harness job alone.
-  #
-  # It is NOT disabled and NOT given a fallback: a skipped job or a build
-  # against some other V8 would keep laundering "WPT verified" into the log for
-  # a gate that measured nothing. It fails until CI provisions or caches the
-  # archives that scripts/build-v8-static.sh produces.
-  #
-  # Also unprovisioned, and masked behind the V8 failure: build.zig links
-  # /opt/homebrew/opt/sqlite (build.zig:63) and /opt/homebrew/opt/leveldb
-  # (build.zig:69) on macOS, and this workflow installs neither.
-  #
-  # Deliberately no `|| true`, no `continue-on-error`, and no pipe into `head`:
-  # all three swallow the exit code, which is the only thing here that carries
-  # the result.
-  #
-  # To accept new numbers on purpose:
-  #   zig build wpt -- url/ --baseline=tests/wpt_expectations.jsonl --update-baseline
-  # and commit the diff. Recording a subset leaves the rest of the file alone.
+  # To accept updated numbers intentionally:
+  #   ./zig-out/bin/wpt_runner url/ --baseline=tests/wpt_expectations.jsonl --update-baseline
+  # and commit the diff.
   wpt:
-    runs-on: macos-latest
+    name: WPT Baseline (${{ inputs.scope || 'url/' }})
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code (with WPT submodule)
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install Zig (the pinned 0.17)
+      - name: Setup Zig (the pinned 0.17)
         uses: ./.github/actions/setup-zig-pinned
 
-      # libuv is real: build.zig links /opt/homebrew/opt/libuv (build.zig:265).
-      # Homebrew's v8 is theatre - nothing in build.zig reads it. The install is
-      # kept rather than deleted so the mismatch stays visible right next to the
-      # preflight that fails on it.
-      - name: Install libuv (linked) and Homebrew v8 (NOT what build.zig links)
+      - name: Setup prebuilt V8 15.7.112.43 (static)
+        uses: ./.github/actions/setup-v8-prebuilt
+        with:
+          link: static
+
+      - name: Build production wpt_runner
+        shell: bash
+        run: zig build wpt-runner -j2 -Dv8-dir="$CRANE_V8_DIR"
+
+      - name: Run WPT against baseline
+        shell: bash
+        env:
+          WPT_SCOPE: ${{ inputs.scope || 'url/' }}
         run: |
           set -euo pipefail
-          brew install libuv
-          brew install v8
-
-      # Fails early and with a reason instead of letting the linker emit 35
-      # "file not found" lines that read like a code bug. No fallback: the only
-      # correct outcome when V8 is absent is a red job.
-      - name: Preflight - V8 static archives (EXPECTED TO FAIL - V8 is not provisioned in CI)
-        run: |
-          set -euo pipefail
-          missing=0
-          for a in libv8_monolith.a libv8_libplatform_fat.a libv8_libbase_fat.a; do
-            if [ ! -f "jsengines/v8/out/static/obj/$a" ]; then
-              echo "::error file=build.zig::missing jsengines/v8/out/static/obj/$a - build.zig links it by hard-coded relative path"
-              missing=$((missing + 1))
-            fi
-          done
-          if [ "$missing" -ne 0 ]; then
-            echo "::error::$missing of 3 V8 static archives are absent, so the WPT gate cannot run. jsengines/v8/ is gitignored (.gitignore:47) and is not a submodule, so a fresh checkout never has it; 'brew install v8' installs to /opt/homebrew/opt/v8, which build.zig never reads. Only scripts/build-v8-static.sh produces these (~15GB, 30-60 min) and this workflow does not run or cache it. Until CI provisions V8, this job must fail rather than report a WPT result it never measured."
-            exit 1
-          fi
-
-      - name: Build (links jsengines/v8/out/static/obj/*.a - see preflight above)
-        run: zig build
-
-      # `zig build wpt` runs the binary through addRunArtifact, which expects
-      # exit 0 and fails the step otherwise, so the gate's exit code survives.
-      - name: Run WPT
-        run: |
-          zig build wpt -- ${WPT_SCOPE} \
+          ./zig-out/bin/wpt_runner "${WPT_SCOPE}" \
+            --output=wpt-results \
             --quiet \
             --baseline=tests/wpt_expectations.jsonl
-        env:
-          # Kept narrow on purpose: the whole in-scope corpus is 4,107 source
-          # files and does not fit in a pull request's patience. Widen this as
-          # categories are baselined.
-          WPT_SCOPE: url/
 
-      # wpt-results/wptreport.json is the gate's evidence and the runner writes
-      # it by default. Tolerating its absence is legitimate only when the run
-      # already failed for a reported reason; if `Run WPT` reported success and
-      # produced no report, the success is unsupported and that IS a failure.
-      # So: error on a green job, warn on a red one - never silent.
       - name: Upload Results
         uses: actions/upload-artifact@v4
         if: always()

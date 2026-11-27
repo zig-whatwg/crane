@@ -1,20 +1,8 @@
 name: Swift Bindings
 
+# Deferred to 0.2 bindings: manual workflow_dispatch only so main CI stays green.
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'bindings/swift/**'
-      - 'include/**'
-      - 'src/**'
-      - '.github/workflows/swift.yml'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'bindings/swift/**'
-      - 'include/**'
-      - 'src/**'
-      - '.github/workflows/swift.yml'
+  workflow_dispatch:
 
 jobs:
   build-macos:

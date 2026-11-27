@@ -1,0 +1,363 @@
+name: Build Prebuilt V8
+
+# Builds V8 15.7.112.43 (with ICU, Chromium libc++, and Temporal Rust) in static
+# and dynamic link modes across all 4 targets using scripts/build-v8-15.7.sh,
+# verifies every tarball, and uploads them with a merged SHA256SUMS to the
+# v8-prebuilt-15.7.112.43 GitHub pre-release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'Comma-separated targets: all, macos-arm64, macos-x86_64, linux-x86_64, linux-arm64'
+        required: false
+        default: 'all'
+        type: string
+      link_modes:
+        description: 'Comma-separated link modes: static, dynamic, or static,dynamic'
+        required: false
+        default: 'static,dynamic'
+        type: string
+      dry_run:
+        description: 'Build, verify, and upload workflow artifacts only (do not publish to GitHub Release)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  V8_VERSION: 15.7.112.43
+  V8_RELEASE_TAG: v8-prebuilt-15.7.112.43
+
+jobs:
+  plan:
+    name: Plan V8 Build Matrix
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Build target x link_mode matrix
+        id: set-matrix
+        shell: bash
+        env:
+          INPUT_TARGETS: ${{ inputs.targets }}
+          INPUT_LINK_MODES: ${{ inputs.link_modes }}
+        run: |
+          set -euo pipefail
+          matrix="$(python3 - <<'PY'
+          import json, os, sys
+
+          runners = {
+              "macos-arm64": "macos-14",
+              "macos-x86_64": "macos-15-intel",
+              "linux-x86_64": "ubuntu-24.04",
+              "linux-arm64": "ubuntu-24.04-arm",
+          }
+          allowed_modes = ("static", "dynamic")
+
+          raw_targets = os.environ.get("INPUT_TARGETS", "all").strip()
+          if not raw_targets or raw_targets == "all":
+              targets = list(runners.keys())
+          else:
+              targets = [t.strip() for t in raw_targets.split(",") if t.strip()]
+          bad_targets = [t for t in targets if t not in runners]
+          if bad_targets:
+              print(f"::error::unknown target(s): {', '.join(bad_targets)} (allowed: all, {', '.join(runners)})", file=sys.stderr)
+              sys.exit(1)
+
+          raw_modes = os.environ.get("INPUT_LINK_MODES", "static,dynamic").strip()
+          if not raw_modes or raw_modes == "all":
+              modes = list(allowed_modes)
+          else:
+              modes = [m.strip() for m in raw_modes.split(",") if m.strip()]
+          bad_modes = [m for m in modes if m not in allowed_modes]
+          if bad_modes:
+              print(f"::error::unknown link_mode(s): {', '.join(bad_modes)} (allowed: static, dynamic)", file=sys.stderr)
+              sys.exit(1)
+
+          include = []
+          seen = set()
+          for t in targets:
+              for m in modes:
+                  key = (t, m)
+                  if key not in seen:
+                      seen.add(key)
+                      include.append({"target": t, "os": runners[t], "link": m})
+
+          if not include:
+              print("::error::empty build matrix", file=sys.stderr)
+              sys.exit(1)
+
+          print(json.dumps({"include": include}))
+          PY
+          )"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Selected matrix: $matrix"
+
+  build:
+    name: Build V8 15.7 (${{ matrix.target }}, ${{ matrix.link }})
+    needs: plan
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Free disk space (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost
+          df -h
+
+      - name: Show disk space and Xcode (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h
+          xcode-select -p
+          xcodebuild -version
+
+      - name: Setup Zig (the pinned 0.17)
+        uses: ./.github/actions/setup-zig-pinned
+
+      - name: Build and verify V8 via scripts/build-v8-15.7.sh
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          V8_LINK: ${{ matrix.link }}
+        run: |
+          set -euo pipefail
+
+          export ZIG="$(command -v zig)"
+          export V8_ROOT="$RUNNER_TEMP/v8-${V8_VERSION}"
+          export CRANE_V8="$RUNNER_TEMP/crane-v8-install"
+          export PROVENANCE_NOTE="CI: GitHub Actions run ${GITHUB_RUN_ID} (${RUNNER_OS} ${RUNNER_ARCH}, link=${V8_LINK}, ref=${GITHUB_SHA})"
+
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            export DEVELOPER_DIR="$(xcode-select -p)"
+          fi
+
+          rm -rf "$CRANE_V8"
+          mkdir -p "$CRANE_V8"
+
+          if [ "$V8_LINK" = "dynamic" ]; then
+            bash scripts/build-v8-15.7.sh --dynamic all
+          else
+            bash scripts/build-v8-15.7.sh all
+          fi
+
+          # Locate the installed V8 directory created by scripts/build-v8-15.7.sh.
+          install_dir=""
+          for candidate in \
+            "$CRANE_V8/${V8_VERSION}-icu-${V8_LINK}" \
+            "$CRANE_V8/${V8_VERSION}-icu"
+          do
+            if [ -f "$candidate/PROVENANCE" ] && [ -f "$candidate/SHA256SUMS" ]; then
+              install_dir="$candidate"
+              break
+            fi
+          done
+          if [ -z "$install_dir" ]; then
+            found="$(find "$CRANE_V8" -maxdepth 2 -name PROVENANCE -type f | head -1 || true)"
+            if [ -n "$found" ]; then
+              install_dir="$(dirname "$found")"
+            fi
+          fi
+          if [ -z "$install_dir" ] || [ ! -d "$install_dir" ]; then
+            echo "::error::could not locate installed V8 directory under $CRANE_V8"
+            ls -la "$CRANE_V8"
+            exit 1
+          fi
+          echo "Installed V8 directory: $install_dir"
+
+          if command -v sha256sum >/dev/null 2>&1; then
+            SHA256_CMD=(sha256sum)
+          else
+            SHA256_CMD=(shasum -a 256)
+          fi
+
+          # Validate expected layout before packaging.
+          for req in \
+            include/v8.h \
+            include/v8-gn.h \
+            libcxx/flags.txt \
+            icu/flags.txt \
+            system-libs.txt \
+            PROVENANCE \
+            SHA256SUMS
+          do
+            if [ ! -f "$install_dir/$req" ]; then
+              echo "::error::missing required file $req in $install_dir"
+              exit 1
+            fi
+          done
+
+          if [ "$V8_LINK" = "static" ]; then
+            for a in \
+              out/static/obj/libv8_monolith.a \
+              out/static/obj/libv8_libplatform_fat.a \
+              out/static/obj/libv8_libbase_fat.a \
+              out/static/obj/libc++_chromium.a \
+              out/static/obj/librust_v8.a
+            do
+              if [ ! -f "$install_dir/$a" ]; then
+                echo "::error::missing static archive $a in $install_dir"
+                exit 1
+              fi
+            done
+          else
+            if [ ! -d "$install_dir/out/dynamic" ]; then
+              echo "::error::missing out/dynamic/ directory in $install_dir"
+              exit 1
+            fi
+            if [ "${RUNNER_OS}" = "macOS" ]; then
+              shlib_count="$(find "$install_dir/out/dynamic" -maxdepth 2 -name '*.dylib' | wc -l | tr -d ' ')"
+            else
+              shlib_count="$(find "$install_dir/out/dynamic" -maxdepth 2 -name '*.so*' | wc -l | tr -d ' ')"
+            fi
+            if [ "$shlib_count" -lt 1 ]; then
+              echo "::error::expected shared libraries in $install_dir/out/dynamic/"
+              ls -la "$install_dir/out/dynamic"
+              exit 1
+            fi
+          fi
+
+          ( cd "$install_dir" && "${SHA256_CMD[@]}" -c SHA256SUMS >/dev/null )
+
+          # Free build intermediates before tarring so the runner has ample disk space.
+          rm -rf "$V8_ROOT"
+
+          # Package under top-level directory v8-15.7.112.43-<target>-<link>/.
+          pkg_name="v8-${V8_VERSION}-${TARGET}-${V8_LINK}"
+          tarball="${pkg_name}.tar.gz"
+          stage="$RUNNER_TEMP/v8-stage"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          mv "$install_dir" "$stage/$pkg_name"
+
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs -czf "$RUNNER_TEMP/$tarball" -C "$stage" "$pkg_name"
+          else
+            tar -czf "$RUNNER_TEMP/$tarball" -C "$stage" "$pkg_name"
+          fi
+          rm -rf "$stage"
+
+          # Round-trip verify: extract the tarball into a clean dir and re-check internal SHA256SUMS.
+          verify_dir="$RUNNER_TEMP/v8-verify"
+          rm -rf "$verify_dir"
+          mkdir -p "$verify_dir"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$verify_dir"
+          ( cd "$verify_dir/$pkg_name" && "${SHA256_CMD[@]}" -c SHA256SUMS >/dev/null )
+          rm -rf "$verify_dir"
+
+          ( cd "$RUNNER_TEMP" && "${SHA256_CMD[@]}" "$tarball" > "${tarball}.sha256" )
+          ls -lh "$RUNNER_TEMP/$tarball"
+          cat "$RUNNER_TEMP/${tarball}.sha256"
+
+      - name: Upload V8 tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8-${{ matrix.target }}-${{ matrix.link }}
+          path: |
+            ${{ runner.temp }}/v8-${{ env.V8_VERSION }}-${{ matrix.target }}-${{ matrix.link }}.tar.gz
+            ${{ runner.temp }}/v8-${{ env.V8_VERSION }}-${{ matrix.target }}-${{ matrix.link }}.tar.gz.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish Prebuilt V8 Pre-release
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download built V8 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: v8-*
+          merge-multiple: true
+          path: dist
+
+      - name: Merge SHA256SUMS and upload to pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          ls -lh dist
+
+          # Verify every downloaded tarball against its companion .sha256.
+          ( cd dist && for s in *.tar.gz.sha256; do sha256sum -c "$s"; done )
+
+          # Load existing SHA256SUMS from the pre-release if it already exists, so partial
+          # rebuilds preserve checksums for untouched targets/modes.
+          mkdir -p existing
+          release_exists=0
+          if gh release view "$V8_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            release_exists=1
+            if gh release download "$V8_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "SHA256SUMS" --dir existing --clobber 2>/dev/null; then
+              echo "Loaded existing SHA256SUMS from $V8_RELEASE_TAG"
+            else
+              : > existing/SHA256SUMS
+            fi
+          else
+            : > existing/SHA256SUMS
+          fi
+
+          python3 - <<'PY'
+          import glob, os
+
+          entries = {}
+          if os.path.exists("existing/SHA256SUMS"):
+              with open("existing/SHA256SUMS", "r", encoding="utf-8") as fh:
+                  for line in fh:
+                      parts = line.strip().split()
+                      if len(parts) >= 2:
+                          entries[parts[1].lstrip("*")] = parts[0]
+
+          for path in sorted(glob.glob("dist/*.tar.gz.sha256")):
+              with open(path, "r", encoding="utf-8") as fh:
+                  for line in fh:
+                      parts = line.strip().split()
+                      if len(parts) >= 2:
+                          entries[parts[1].lstrip("*")] = parts[0]
+
+          with open("dist/SHA256SUMS", "w", encoding="utf-8") as fh:
+              for name in sorted(entries):
+                  fh.write(f"{entries[name]}  {name}\n")
+          PY
+
+          echo "=== Merged SHA256SUMS ==="
+          cat dist/SHA256SUMS
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "dry_run=true: skipping publish to $V8_RELEASE_TAG"
+            exit 0
+          fi
+
+          if [ "$release_exists" -eq 0 ]; then
+            gh release create "$V8_RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --prerelease \
+              --title "Prebuilt V8 ${V8_VERSION} (with ICU)" \
+              --notes "Prebuilt V8 ${V8_VERSION} archives (with ICU, Chromium libc++, and Temporal Rust) built by scripts/build-v8-15.7.sh for Crane CI and releases. Static and dynamic tarballs across macos-arm64, macos-x86_64, linux-x86_64, and linux-arm64. Verify downloads against SHA256SUMS." \
+              dist/*.tar.gz dist/SHA256SUMS
+          else
+            gh release upload "$V8_RELEASE_TAG" dist/*.tar.gz dist/SHA256SUMS \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          fi
+          echo "Published prebuilt V8 tarballs and updated SHA256SUMS on $V8_RELEASE_TAG"
