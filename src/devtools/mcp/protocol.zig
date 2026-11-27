@@ -318,12 +318,12 @@ pub const Protocol = struct {
     }
 };
 
-fn isSupported(version: []const u8) bool {
+pub fn isSupported(version: []const u8) bool {
     for (supported_versions) |v| if (std.mem.eql(u8, v, version)) return true;
     return false;
 }
 
-fn unsupportedVersion(arena: Allocator, id: json.Value, requested: []const u8) Allocator.Error![]u8 {
+pub fn unsupportedVersion(arena: Allocator, id: json.Value, requested: []const u8) Allocator.Error![]u8 {
     var data: std.Io.Writer.Allocating = .init(arena);
     const w = &data.writer;
     w.writeAll("{\"supported\":[") catch return error.OutOfMemory;

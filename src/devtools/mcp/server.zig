@@ -38,6 +38,11 @@ pub const Options = struct {
     /// Enable heap snapshot analysis tools (chrome-devtools-mcp's
     /// `--memoryDebugging` / `--memory-debugging`).
     memory_debugging: bool = false,
+    /// Enable network mocking tools (`--categoryNetworkMocks` /
+    /// `--category-network-mocks`).
+    category_network_mocks: bool = false,
+    /// Expose only the slim tool set (`--slim`: navigate, evaluate, screenshot).
+    slim: bool = false,
 };
 
 pub const McpServer = struct {
