@@ -47,6 +47,15 @@ pub const Call = struct {
     /// The arguments; "{fixture}" in a string is the fixture server's origin.
     args: std.json.Value = .null,
     sleep_ms: u32 = 0,
+    /// Instead of a tool call: tools/list, its answer the definitions of
+    /// these tools in this order (null for one not listed) - how a case's
+    /// flags shape the schemas both servers list (lane mcp3, audit M2).
+    list_tools: []const []const u8 = &.{},
+
+    /// Whether the call has an answer (a tool call or a tools/list).
+    pub fn answered(self: Call) bool {
+        return self.tool.len != 0 or self.list_tools.len != 0;
+    }
 };
 
 pub const Case = struct {
@@ -70,6 +79,9 @@ pub const Case = struct {
     slim: bool = false,
     /// Fixture files (under --fixtures) copied into each server's `{files}` dir.
     copy_fixtures: []const []const u8 = &.{},
+    /// More flags given to both servers, as chrome-devtools-mcp spells them
+    /// ("--no-page-id-routing", "--maxNavigationSaved=2").
+    flags: []const []const u8 = &.{},
 };
 
 pub const chrome_mcp_version = "1.13.0";
@@ -240,7 +252,7 @@ pub fn classifyTools(arena: Allocator, cases: Cases, records: []const CaseRecord
             var call_idx: usize = 0;
             var case_used = false;
             for (rec.case.calls) |c| {
-                if (c.tool.len == 0) continue;
+                if (!c.answered()) continue;
                 defer call_idx += 1;
                 if (!std.mem.eql(u8, c.tool, entry.name)) continue;
                 seen_any = true;
@@ -386,7 +398,7 @@ pub fn checkCases(cases: Cases) ![]const u8 {
         for (cases.cases[0..i]) |other| if (std.mem.eql(u8, other.name, c.name)) return "two cases share a name";
         if (c.calls.len == 0) return "a case has no calls";
         for (c.calls) |call| {
-            if (call.tool.len == 0 and call.sleep_ms == 0) return "a call names no tool and no sleep";
+            if (!call.answered() and call.sleep_ms == 0) return "a call names no tool, no tools/list and no sleep";
             if (call.tool.len != 0 and call.args != .object and call.args != .null) return "a call's args are not an object";
         }
     }
@@ -396,7 +408,7 @@ pub fn checkCases(cases: Cases) ![]const u8 {
         } else return "an expected difference names no case";
         var tools: u32 = 0;
         for (case.calls) |call| {
-            if (call.tool.len != 0) tools += 1;
+            if (call.answered()) tools += 1;
         }
         if (e.call == 0 or e.call > tools) return "an expected difference names no call of its case";
         if (e.reason.len == 0) return "an expected difference gives no reason";
@@ -461,6 +473,14 @@ fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, l
     };
     server.notify(arena, "notifications/initialized", null) catch {};
     for (case.calls) |call| {
+        if (call.list_tools.len != 0) {
+            const message = server.request(arena, "tools/list", "{}", call_timeout_ms) catch |err| {
+                return .{ .answers = answers.items, .failure = std.fmt.allocPrint(arena, "tools/list: {t}", .{err}) catch "tools/list failed" };
+            };
+            const text = listedDefinitions(arena, message, call.list_tools) catch "unreadable tools/list";
+            answers.append(arena, .{ .text = normalize(arena, text, places) catch text, .is_error = false }) catch return .{ .answers = answers.items, .failure = "out of memory" };
+            continue;
+        }
         if (call.tool.len == 0) {
             Io.sleep(io, .fromMilliseconds(call.sleep_ms), .awake) catch {};
             continue;
@@ -484,6 +504,24 @@ fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, l
         answers.append(arena, .{ .text = normalize(arena, listing, places) catch listing, .is_error = false }) catch return .{ .answers = answers.items, .failure = "out of memory" };
     }
     return .{ .answers = answers.items };
+}
+
+/// A tools/list answer's definitions of `names`, in that order, as indented
+/// JSON (null for a tool not listed).
+fn listedDefinitions(arena: Allocator, message: std.json.Value, names: []const []const u8) ![]const u8 {
+    const result = message.object.get("result") orelse return error.NoResult;
+    const tools = result.object.get("tools") orelse return error.NoTools;
+    var out: Io.Writer.Allocating = .init(arena);
+    try out.writer.writeAll("[");
+    for (names, 0..) |name, i| {
+        if (i != 0) try out.writer.writeAll(",");
+        const definition: std.json.Value = for (tools.array.items) |d| {
+            if (d == .object) if (d.object.get("name")) |n| if (n == .string and std.mem.eql(u8, n.string, name)) break d;
+        } else .null;
+        try std.json.Stringify.value(definition, .{ .whitespace = .indent_1 }, &out.writer);
+    }
+    try out.writer.writeAll("]");
+    return out.written();
 }
 
 /// Every regular file under `dir`, by path: "<path> <mode>" then its bytes.
@@ -745,6 +783,10 @@ pub fn main(init: std.process.Init) !void {
             try chrome_argv.append(arena, "--slim");
             try crane_argv.append(arena, "--slim");
         }
+        for (case.flags) |flag| {
+            try chrome_argv.append(arena, flag);
+            try crane_argv.append(arena, flag);
+        }
         if (case.files or case.client_roots) {
             chrome_places.files = try filesDirectory(arena, io, options, slug, "chrome");
             crane_places.files = try filesDirectory(arena, io, options, slug, "crane");
@@ -836,7 +878,7 @@ fn caseSection(arena: Allocator, cases: Cases, case: Case, chrome: Outcome, cran
     if (equal) return out.written();
     var index: usize = 0;
     for (case.calls) |call| {
-        if (call.tool.len == 0) continue;
+        if (!call.answered()) continue;
         defer index += 1;
         const a: ?client.Answer = if (index < chrome.answers.len) chrome.answers[index] else null;
         const b: ?client.Answer = if (index < crane.answers.len) crane.answers[index] else null;
@@ -844,8 +886,8 @@ fn caseSection(arena: Allocator, cases: Cases, case: Case, chrome: Outcome, cran
         const why = if (expectedFor(cases, case.name, index + 1)) |e| try std.fmt.allocPrint(arena, " (expected: {s})", .{e.reason}) else "";
         try w.print("### call {d}: {s} {s}{s}\n\nChrome{s}{s}:\n\n```\n{s}\n```\n\nCrane{s}:\n\n```\n{s}\n```\n\n", .{
             index + 1,
-            call.tool,
-            try std.json.Stringify.valueAlloc(arena, call.args, .{}),
+            if (call.tool.len != 0) call.tool else "tools/list",
+            if (call.tool.len != 0) try std.json.Stringify.valueAlloc(arena, call.args, .{}) else try std.json.Stringify.valueAlloc(arena, call.list_tools, .{}),
             why,
             if (a != null and a.?.is_error) " (isError)" else "",
             if (a != null and a.?.note.len != 0) try std.fmt.allocPrint(arena, " ({s})", .{a.?.note}) else "",
@@ -895,6 +937,27 @@ test "cases: parsed, checked, their arguments made with the fixture origin and a
         \\{"cases":[{"name":"a","calls":[{"tool":"list_pages"}]},{"name":"a","calls":[{"tool":"list_pages"}]}]}
     );
     try std.testing.expectEqualStrings("two cases share a name", try checkCases(twice));
+}
+
+test "cases: a tools/list call and a case's flags; the list call has an answer an expected difference can name" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const cases = try parseCases(arena,
+        \\{"cases":[{"name":"l","flags":["--no-page-id-routing"],"calls":[{"list_tools":["click","nope"]},{"tool":"list_pages"}]}],
+        \\ "expected":[{"case":"l","call":2,"reason":"r"}]}
+    );
+    try std.testing.expectEqualStrings("", try checkCases(cases));
+    try std.testing.expectEqualStrings("--no-page-id-routing", cases.cases[0].flags[0]);
+    try std.testing.expect(cases.cases[0].calls[0].answered());
+    const message = try std.json.parseFromSliceLeaky(std.json.Value, arena,
+        \\{"jsonrpc":"2.0","id":3,"result":{"tools":[{"name":"list_pages"},{"name":"click","inputSchema":{"type":"object"}}]}}
+    , .{});
+    try std.testing.expectEqualStrings("[{\n \"name\": \"click\",\n \"inputSchema\": {\n  \"type\": \"object\"\n }\n},null]", try listedDefinitions(arena, message, &.{ "click", "nope" }));
+    const none = try parseCases(arena,
+        \\{"cases":[{"name":"n","calls":[{"args":{}}]}]}
+    );
+    try std.testing.expectEqualStrings("a call names no tool, no tools/list and no sleep", try checkCases(none));
 }
 
 test "the repository's cases file is well formed" {
