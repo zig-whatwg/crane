@@ -37,9 +37,17 @@ pub const ImplError = error{
 /// would leave the getters reading values someone else releases.
 pub const InternalState = struct {
     /// The promise this notification is about (required by the init dict).
-    promise: ?engine.Owned = null,
+    promise: ?engine.TracedValueHold = null,
     /// The rejection reason, or null for undefined.
-    reason: ?engine.Owned = null,
+    reason: ?engine.TracedValueHold = null,
+
+    /// VTable.trace_held_nodes (lane rc9 items 11-12): trace promise and
+    /// reason holds from this event's wrapper (or unwrapped-owner registry).
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const internal = getInternal(instance) orelse return;
+        if (internal.promise) |h| h.trace(tracer);
+        if (internal.reason) |h| h.trace(tracer);
+    }
 };
 
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
@@ -61,6 +69,7 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
+    engine.forgetUnwrappedTracedOwner(instance);
     if (state.own._internal) |internal| {
         if (internal.promise) |value| value.release();
         if (internal.reason) |value| value.release();
@@ -95,19 +104,19 @@ pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString,
     // DOM inner event creation step 3: relative to the relevant global.
     state.base.own.timeStamp = performance_timeline.now(instance.ctx) orelse 0;
 
-    internal.promise = try hold(ctx, eventInitDict.promise);
-    if (eventInitDict.reason) |reason| internal.reason = try hold(ctx, reason);
+    internal.promise = try hold(instance, ctx, eventInitDict.promise);
+    if (eventInitDict.reason) |reason| internal.reason = try hold(instance, ctx, reason);
 
     // Without the initialized flag dispatchEvent throws InvalidStateError.
     try webidl.utils.initEventBase(&state.base.own, runtime.arenaOf(instance), ctx.allocator);
 }
 
-/// This event's own hold on `value` (borrowed), or null for undefined - the
-/// attributes' initial value. A platform object is held as its wrapper in its
-/// relevant realm; `realm` is the event's.
-fn hold(realm: runtime.Context, value: runtime.JSValue) !?engine.Owned {
+/// This event's own traced hold on `value` (borrowed), or null for undefined -
+/// the attributes' initial value. A platform object is held as its wrapper in
+/// its relevant realm; `realm` is the event's.
+fn hold(owner: *runtime.Instance, realm: runtime.Context, value: runtime.JSValue) !?engine.TracedValueHold {
     if (value == .undefined) return null;
-    return try engine.retainValue(if (value == .instance) value.instance.ctx else realm, value);
+    return try engine.keepValueTracedFor(owner, if (value == .instance) value.instance.ctx else realm, value);
 }
 
 /// Getter for promise
@@ -115,7 +124,7 @@ fn hold(realm: runtime.Context, value: runtime.JSValue) !?engine.Owned {
 pub fn get_promise(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return runtime.JSValue.jsUndefined;
     // The event keeps it; the binding gets a hold of its own.
-    if (internal.promise) |value| return (try engine.retainValue(instance.ctx, value.value)).take();
+    if (internal.promise) |value| return (try engine.retainValue(instance.ctx, value.value())).take();
     return runtime.JSValue.jsUndefined;
 }
 
@@ -123,6 +132,6 @@ pub fn get_promise(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// Spec: "The reason attribute must return the value it was initialized to."
 pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return runtime.JSValue.jsUndefined;
-    if (internal.reason) |value| return (try engine.retainValue(instance.ctx, value.value)).take();
+    if (internal.reason) |value| return (try engine.retainValue(instance.ctx, value.value())).take();
     return runtime.JSValue.jsUndefined;
 }

@@ -18,13 +18,17 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// The event's own hold on `state` when it is a script value: `state` is a
-/// view of it, released in deinit. The dictionary member's handle the
-/// binding converted is the binding's, released once the constructor returns
-/// (WebIDL: an `any` value is borrowed for the call). Interim: `state` moves
-/// onto the engine's traced-value pair when it lands (queued).
+/// The event's own traced hold on `state` when it is a script value: traced
+/// from this event's wrapper (`traceHeldNodes`; lane rc9 item 7), released in
+/// deinit.
 pub const InternalState = struct {
-    state_hold: ?engine.Owned = null,
+    state_hold: ?engine.TracedValueHold = null,
+
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const state = instance.stateAs(State) orelse return;
+        const internal = state.own._internal orelse return;
+        if (internal.state_hold) |h| h.trace(tracer);
+    }
 };
 
 /// Initialize instance (creates the instance)
@@ -42,6 +46,7 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
+    engine.forgetUnwrappedTracedOwner(instance);
     // A cloned string is freed; a script value's view is the hold's.
     state.own.state.deinit(instance.ctx.allocator);
     if (state.own._internal) |internal| {
@@ -95,9 +100,9 @@ fn keepState(ctx: runtime.Context, instance: *runtime.Instance, value: runtime.J
             const internal = try ctx.allocator.create(InternalState);
             internal.* = .{};
             state.own._internal = internal;
-            const held = try engine.retainValue(ctx, value);
+            const held = try engine.keepValueTracedFor(instance, ctx, value);
             internal.state_hold = held;
-            return held.value;
+            return held.value();
         },
         else => return value.clone(ctx.allocator),
     }
@@ -108,7 +113,17 @@ fn keepState(ctx: runtime.Context, instance: *runtime.Instance, value: runtime.J
 /// reference - the binding frees a string result handed over owned, and this
 /// one is the event's (the constructor's clone).
 pub fn get_state(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const kept = instance.getState(State).own.state;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.state_hold) |held| {
+            const v = held.value();
+            return switch (v) {
+                .handle => (try engine.retainValue(instance.ctx, v)).take(),
+                else => v,
+            };
+        }
+    }
+    const kept = state.own.state;
     return switch (kept) {
         .handle => (try engine.retainValue(instance.ctx, kept)).take(),
         .string => |text| runtime.JSValue.fromStringRef(text.data),

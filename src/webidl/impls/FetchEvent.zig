@@ -37,11 +37,11 @@ pub const construction_args = .{"fetch"};
 
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    /// The Request object, held: the event may be all that refers to it.
+    /// The Request object, held traced: the event may be all that refers to it.
     request: ?*runtime.Instance = null,
-    request_hold: ?engine.Owned = null,
-    preload_response: ?engine.Owned = null,
-    handled: ?engine.Owned = null,
+    request_hold: ?engine.TracedValueHold = null,
+    preload_response: ?engine.TracedValueHold = null,
+    handled: ?engine.TracedValueHold = null,
     /// OWNED.
     client_id: []u8 = &.{},
     resulting_client_id: []u8 = &.{},
@@ -51,6 +51,16 @@ pub const InternalState = struct {
     responder: ?*service_worker.fetch_event.Responder = null,
     /// Its respond-with entered flag, for an event with no responder.
     respond_with_entered: bool = false,
+
+    /// VTable.trace_held_nodes (lane rc9 items 8-10): trace request,
+    /// preloadResponse and handled holds from this event's wrapper.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const state = instance.stateAs(State) orelse return;
+        const internal = state.own._internal orelse return;
+        if (internal.request_hold) |h| h.trace(tracer);
+        if (internal.preload_response) |h| h.trace(tracer);
+        if (internal.handled) |h| h.trace(tracer);
+    }
 };
 
 /// FetchEvent's own construction steps: the generated chain runs
@@ -61,12 +71,12 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     internal.* = .{ .allocator = allocator };
     instance.getState(State).own._internal = internal;
     if (!@hasField(@TypeOf(args), "fetch")) return;
-    errdefer releaseAll(internal);
+    errdefer releaseAll(instance, internal);
     const init: service_worker.fetch_event.FetchEventInit = args.fetch;
     const ctx = instance.ctx;
-    try keepRequest(ctx, internal, init.request);
-    internal.preload_response = try engine.retainValue(ctx, init.preload_response);
-    internal.handled = try engine.retainValue(ctx, init.handled);
+    try keepRequest(instance, ctx, internal, init.request);
+    internal.preload_response = try engine.keepValueTracedFor(instance, ctx, init.preload_response);
+    internal.handled = try engine.keepValueTracedFor(instance, ctx, init.handled);
     internal.client_id = try allocator.dupe(u8, init.client_id);
     internal.resulting_client_id = try allocator.dupe(u8, init.resulting_client_id);
     internal.replaces_client_id = try allocator.dupe(u8, init.replaces_client_id);
@@ -78,12 +88,13 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
-    releaseAll(internal);
+    releaseAll(instance, internal);
     internal.allocator.destroy(internal);
     state.own._internal = null;
 }
 
-fn releaseAll(internal: *InternalState) void {
+fn releaseAll(instance: *runtime.Instance, internal: *InternalState) void {
+    engine.forgetUnwrappedTracedOwner(instance);
     const allocator = internal.allocator;
     if (internal.request_hold) |hold| hold.release();
     internal.request_hold = null;
@@ -102,8 +113,8 @@ fn releaseAll(internal: *InternalState) void {
     internal.responder = null;
 }
 
-fn keepRequest(ctx: runtime.Context, internal: *InternalState, request: *runtime.Instance) !void {
-    internal.request_hold = try engine.retainValue(ctx, runtime.JSValue.fromInstance(request));
+fn keepRequest(owner: *runtime.Instance, ctx: runtime.Context, internal: *InternalState, request: *runtime.Instance) !void {
+    internal.request_hold = try engine.keepValueTracedFor(owner, ctx, runtime.JSValue.fromInstance(request));
     internal.request = request;
 }
 
@@ -116,15 +127,20 @@ pub fn call_constructor(instance: *runtime.Instance, @"type": runtime.DOMString,
     try dom.event_construction.innerEventCreationSteps(instance, @"type", dom.event_construction.eventInitFrom(eventInitDict.base.base));
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     const allocator = internal.allocator;
-    try keepRequest(ctx, internal, eventInitDict.request);
+    try keepRequest(instance, ctx, internal, eventInitDict.request);
     internal.preload_response = if (eventInitDict.preloadResponse) |value|
-        try engine.retainValue(ctx, value)
-    else
-        try engine.createResolvedPromise(ctx, runtime.JSValue.jsUndefined);
-    internal.handled = if (eventInitDict.handled) |value| try engine.retainValue(ctx, value) else blk: {
+        try engine.keepValueTracedFor(instance, ctx, value)
+    else blk: {
+        const p = try engine.createResolvedPromise(ctx, runtime.JSValue.jsUndefined);
+        defer p.release();
+        break :blk try engine.keepValueTracedFor(instance, ctx, p.value);
+    };
+    internal.handled = if (eventInitDict.handled) |value|
+        try engine.keepValueTracedFor(instance, ctx, value)
+    else blk: {
         var capability = try engine.createPromise(ctx);
         defer engine.releasePromiseCapability(&capability);
-        break :blk try engine.retainValue(ctx, capability.promise);
+        break :blk try engine.keepValueTracedFor(instance, ctx, capability.promise);
     };
     if (eventInitDict.clientId) |id| internal.client_id = try allocator.dupe(u8, id.asSlice());
     if (eventInitDict.resultingClientId) |id| internal.resulting_client_id = try allocator.dupe(u8, id.asSlice());
@@ -146,7 +162,7 @@ pub fn get_preloadResponse(instance: *runtime.Instance) anyerror!runtime.JSValue
     const internal = try internalOf(instance);
     const hold = internal.preload_response orelse return runtime.JSValue.jsUndefined;
     // The event keeps its own; the binding gets a hold of its own.
-    return (try engine.retainValue(instance.ctx, hold.value)).take();
+    return (try engine.retainValue(instance.ctx, hold.value())).take();
 }
 
 /// Getter for clientId (4.6.3).
@@ -171,7 +187,7 @@ pub fn get_replacesClientId(instance: *runtime.Instance) anyerror!runtime.DOMStr
 pub fn get_handled(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = try internalOf(instance);
     const hold = internal.handled orelse return runtime.JSValue.jsUndefined;
-    return (try engine.retainValue(instance.ctx, hold.value)).take();
+    return (try engine.retainValue(instance.ctx, hold.value())).take();
 }
 
 /// Operation: respondWith (4.6.7).
