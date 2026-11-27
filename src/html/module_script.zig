@@ -595,11 +595,20 @@ fn createWasmModuleScript(env: *const Environment, bytes: []const u8, url: []con
     };
     defer allocator.free(metadata_json);
 
-    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, metadata_json, .{});
+    // The string is the page's: the script above ran in its realm and
+    // called the page's JSON.stringify, WebAssembly.Module and
+    // Uint8Array.fromBase64, any of which it may have replaced. Read it as
+    // untrusted input (`wasmModuleShape`): anything but the shape the
+    // script makes fails this script's fetch, and never an unchecked
+    // unwrap (audit D C1: `JSON.stringify = () => '[]'` then a wasm import
+    // panicked the ReleaseSafe build).
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, metadata_json, .{}) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.WasmCompileFailed,
+    };
     defer parsed.deinit();
-    const obj = parsed.value.object;
-    const imports_arr = obj.get("i").?.array.items;
-    const exports_arr = obj.get("e").?.array.items;
+    const shape = try wasmModuleShape(allocator, parsed.value);
+    defer shape.deinit(allocator);
 
     var out: std.Io.Writer.Allocating = .init(allocator);
     defer out.deinit();
@@ -607,33 +616,26 @@ fn createWasmModuleScript(env: *const Environment, bytes: []const u8, url: []con
 
     // Emit static ES module imports so Link validates every imported binding
     // and LoadRequestedModules fetches all Wasm and JS dependencies.
-    for (imports_arr, 0..) |entry, idx| {
-        const pair = entry.array.items;
-        const mod_spec = pair[0].string;
-        const imp_name = pair[1].string;
+    for (shape.imports, 0..) |wasm_import, idx| {
         try writer.print("import {{{f} as __w_i{d}}} from {f};\n", .{
-            std.json.fmt(imp_name, .{}),
+            std.json.fmt(wasm_import.name, .{}),
             idx,
-            std.json.fmt(mod_spec, .{}),
+            std.json.fmt(wasm_import.module, .{}),
         });
     }
 
     try writer.writeAll("const __w_imp = Object.create(null);\n");
-    for (imports_arr, 0..) |entry, idx| {
-        const pair = entry.array.items;
-        const mod_spec = pair[0].string;
-        const imp_name = pair[1].string;
+    for (shape.imports, 0..) |wasm_import, idx| {
         try writer.print("(__w_imp[{f}] ??= Object.create(null))[{f}] = __w_i{d};\n", .{
-            std.json.fmt(mod_spec, .{}),
-            std.json.fmt(imp_name, .{}),
+            std.json.fmt(wasm_import.module, .{}),
+            std.json.fmt(wasm_import.name, .{}),
             idx,
         });
     }
 
     try writer.print("const __w_inst = new WebAssembly.Instance(new WebAssembly.Module(Uint8Array.fromBase64(\"{s}\")), __w_imp);\n", .{b64});
 
-    for (exports_arr, 0..) |entry, idx| {
-        const exp_name = entry.string;
+    for (shape.exports, 0..) |exp_name, idx| {
         try writer.print("const __w_e{d} = __w_inst.exports[{f}];\nexport {{__w_e{d} as {f}}};\n", .{
             idx,
             std.json.fmt(exp_name, .{}),
@@ -647,6 +649,75 @@ fn createWasmModuleScript(env: *const Environment, bytes: []const u8, url: []con
         .parse_error => |parse_error| script.parse_error = parse_error,
     }
     return script;
+}
+
+/// One import of a WebAssembly module: WebAssembly.Module.imports' `module`
+/// and `name`. BORROWED from the parsed value it was read from.
+const WasmImport = struct { module: []const u8, name: []const u8 };
+
+/// The imports and export names `createWasmModuleScript`'s inspection
+/// script reported. The slices are OWNED (`deinit`); the strings are
+/// BORROWED from the parsed value.
+const WasmModuleShape = struct {
+    imports: []const WasmImport,
+    exports: []const []const u8,
+
+    fn deinit(self: WasmModuleShape, allocator: std.mem.Allocator) void {
+        allocator.free(self.imports);
+        allocator.free(self.exports);
+    }
+};
+
+/// Read `{"i": [[module, name], ...], "e": [name, ...]}` - the shape the
+/// inspection script's JSON.stringify makes - from `value`, checking every
+/// step: the value came from the page's realm, through functions the page
+/// can replace, so it is untrusted input. Anything else is
+/// error.WasmCompileFailed, which fails the module script's fetch.
+fn wasmModuleShape(allocator: std.mem.Allocator, value: std.json.Value) error{ OutOfMemory, WasmCompileFailed }!WasmModuleShape {
+    const bad = error.WasmCompileFailed;
+    const root = switch (value) {
+        .object => |object| object,
+        else => return bad,
+    };
+    if (root.count() != 2) return bad;
+    const import_values = switch (root.get("i") orelse return bad) {
+        .array => |array| array.items,
+        else => return bad,
+    };
+    const export_values = switch (root.get("e") orelse return bad) {
+        .array => |array| array.items,
+        else => return bad,
+    };
+
+    const imports = try allocator.alloc(WasmImport, import_values.len);
+    errdefer allocator.free(imports);
+    for (import_values, imports) |entry, *wasm_import| {
+        const pair = switch (entry) {
+            .array => |array| array.items,
+            else => return bad,
+        };
+        if (pair.len != 2) return bad;
+        wasm_import.* = .{
+            .module = switch (pair[0]) {
+                .string => |string| string,
+                else => return bad,
+            },
+            .name = switch (pair[1]) {
+                .string => |string| string,
+                else => return bad,
+            },
+        };
+    }
+
+    const exports = try allocator.alloc([]const u8, export_values.len);
+    errdefer allocator.free(exports);
+    for (export_values, exports) |entry, *name| {
+        name.* = switch (entry) {
+            .string => |string| string,
+            else => return bad,
+        };
+    }
+    return .{ .imports = imports, .exports = exports };
 }
 
 /// A second hold (OWNED) on a value a script keeps, in its realm.
@@ -2161,6 +2232,57 @@ test "findByRecord finds every record of a cyclic graph with a shared child, wal
         }
         try std.testing.expectEqual(@as(?*ModuleScript, null), findByRecord(&scripts[0], @ptrFromInt(0x9000)));
         for (scripts) |after| try std.testing.expect(!after.search_visited);
+    }
+}
+
+test "wasmModuleShape reads the inspection script's shape and refuses every other one" {
+    const allocator = std.testing.allocator;
+    {
+        const parsed = try std.json.parseFromSlice(std.json.Value, allocator,
+            \\{"i":[["./env.js","mul"],["./add.wasm","add"]],"e":["double",""]}
+        , .{});
+        defer parsed.deinit();
+        const shape = try wasmModuleShape(allocator, parsed.value);
+        defer shape.deinit(allocator);
+        try std.testing.expectEqual(@as(usize, 2), shape.imports.len);
+        try std.testing.expectEqualStrings("./env.js", shape.imports[0].module);
+        try std.testing.expectEqualStrings("mul", shape.imports[0].name);
+        try std.testing.expectEqualStrings("./add.wasm", shape.imports[1].module);
+        try std.testing.expectEqualStrings("add", shape.imports[1].name);
+        try std.testing.expectEqual(@as(usize, 2), shape.exports.len);
+        try std.testing.expectEqualStrings("double", shape.exports[0]);
+        try std.testing.expectEqualStrings("", shape.exports[1]);
+    }
+    // What a page's JSON.stringify can return instead: each one broke one
+    // of the unchecked reads this replaced (`.object`, `.get("i").?`,
+    // `.array`, `pair[0]`, `.string`).
+    const refused = [_][]const u8{
+        "[]",
+        "{}",
+        "null",
+        "\"x\"",
+        "1",
+        "{\"i\":{},\"e\":[]}",
+        "{\"i\":[1],\"e\":[]}",
+        "{\"i\":[[]],\"e\":[]}",
+        "{\"i\":[[\"./m.js\"]],\"e\":[]}",
+        "{\"i\":[[\"./m.js\",\"a\",\"b\"]],\"e\":[]}",
+        "{\"i\":[[1,2]],\"e\":[]}",
+        "{\"i\":[[\"./m.js\",2]],\"e\":[]}",
+        "{\"i\":[[[104],\"a\"]],\"e\":[]}",
+        "{\"i\":[],\"e\":{}}",
+        "{\"i\":[],\"e\":[1]}",
+        "{\"i\":[],\"e\":[[]]}",
+        "{\"i\":[],\"e\":[null]}",
+        "{\"i\":[]}",
+        "{\"e\":[]}",
+        "{\"i\":[],\"e\":[],\"x\":1}",
+        "{\"i\":[],\"x\":[]}",
+    };
+    for (refused) |json| {
+        const parsed = try std.json.parseFromSlice(std.json.Value, allocator, json, .{});
+        defer parsed.deinit();
+        try std.testing.expectError(error.WasmCompileFailed, wasmModuleShape(allocator, parsed.value));
     }
 }
 
