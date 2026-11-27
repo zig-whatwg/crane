@@ -4011,10 +4011,10 @@ pub fn build(b: *std.Build) void {
     // What a finished program or library links on the target's OS.
     platform_build.linkArtifact(crane_lib.root_module, target);
 
-    // ---- Crane Executable (crane) ----
+    // ---- Crane WebDriver Executable (crane-webdriver) ----
     // WebDriver browser for wptrunner integration
-    const crane_exe = b.addExecutable(.{
-        .name = "crane",
+    const crane_webdriver_exe = b.addExecutable(.{
+        .name = "crane-webdriver",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/webdriver/main.zig"),
             .target = target,
@@ -4022,8 +4022,8 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    // Add all imports to crane executable
-    const crane_exe_imports = [_]std.Build.Module.Import{
+    // Add all imports to crane-webdriver executable
+    const crane_webdriver_imports = [_]std.Build.Module.Import{
         .{ .name = "runtime", .module = runtime_mod },
         .{ .name = "interfaces", .module = interfaces_mod },
         .{ .name = "namespaces", .module = namespaces_mod },
@@ -4038,32 +4038,31 @@ pub fn build(b: *std.Build) void {
         // (platform.attachSignalStack: std_options sets std's own off).
         .{ .name = "platform", .module = platform_mod },
     };
-    for (crane_exe_imports) |import| crane_exe.root_module.addImport(import.name, import.module);
+    for (crane_webdriver_imports) |import| crane_webdriver_exe.root_module.addImport(import.name, import.module);
 
     // The engine: its adapter's sources, its archives and their C++ runtime.
-    engine.link(b, crane_exe.root_module, .{});
+    engine.link(b, crane_webdriver_exe.root_module, .{});
 
-    platform_build.linkArtifact(crane_exe.root_module, target);
+    platform_build.linkArtifact(crane_webdriver_exe.root_module, target);
 
     // Build step
     const browser_step = b.step("browser", "Build Crane browser (self-contained: the engine linked in)");
 
     const install_crane_lib = b.addInstallArtifact(crane_lib, .{});
-    const install_crane_exe = b.addInstallArtifact(crane_exe, .{});
+    const install_crane_webdriver = b.addInstallArtifact(crane_webdriver_exe, .{});
 
     browser_step.dependOn(&install_crane_lib.step);
-    browser_step.dependOn(&install_crane_exe.step);
 
-    // Add "crane" as an alias for browser step (WebDriver-controlled browser)
-    const crane_step = b.step("crane", "Build Crane WebDriver browser (alias for 'browser')");
-    crane_step.dependOn(&install_crane_exe.step);
+    const crane_webdriver_step = b.step("crane-webdriver", "Build Crane WebDriver browser (zig-out/bin/crane-webdriver)");
+    crane_webdriver_step.dependOn(&install_crane_webdriver.step);
 
     // crane without a binary: all of src/webdriver and the target platform's
     // graph analysed, the engine adapter's C++ compiled, nothing linked. Nothing else
     // compiles either for the build machine - every test binds `testing` -
     // which is how src/webdriver sat out the Zig 0.16 migration.
-    const crane_check = addCompileCheck(b, "crane_check", "src/webdriver/main.zig", target, optimize, &crane_exe_imports, &engine);
-    b.step("crane-check", "Compile crane (src/webdriver + the target platform's graph) without linking").dependOn(&crane_check.step);
+    const crane_check = addCompileCheck(b, "crane_check", "src/webdriver/main.zig", target, optimize, &crane_webdriver_imports, &engine);
+    const crane_check_step = b.step("crane-check", "Compile crane (tools/crane + src/webdriver + the target platform's graph) without linking");
+    crane_check_step.dependOn(&crane_check.step);
     check_target_step.dependOn(&crane_check.step);
     // Part of the whole test run (the integrator, 2026-10-23: about 78 s and
     // 2.3 GB beside a 46-minute test), one more root under its -j.
@@ -4269,6 +4268,91 @@ pub fn build(b: *std.Build) void {
     }) else null;
 
     // ========================================================================
+    // SHIPPED CRANE CLI (tools/crane.zig)
+    // ========================================================================
+    //
+    // `zig build crane`: builds zig-out/bin/crane (and its engine startup data
+    // beside it) using the shared graph at -Doptimize.
+    // `zig build crane-release`: builds zig-out/bin/crane over the production
+    // graph in ReleaseSafe with strip=false so crash reports keep symbolized
+    // stack traces, static external libraries, and CDP+MCP enabled.
+    const crash_handler_mod = b.createModule(.{
+        .root_source_file = b.path("tools/crash_handler.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const crane_cli_imports = [_]std.Build.Module.Import{
+        .{ .name = "engine", .module = crane_graph.engine },
+        .{ .name = "browser", .module = crane_graph.browser },
+        .{ .name = "console", .module = crane_graph.console },
+        .{ .name = "platform", .module = crane_graph.platform },
+        .{ .name = "devtools", .module = crane_graph.devtools },
+        .{ .name = "crash_handler", .module = crash_handler_mod },
+        .{ .name = "crane_options", .module = crane_cli_options_mod },
+    };
+    const crane_exe = b.addExecutable(.{
+        .name = "crane",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/crane.zig"),
+            .target = target,
+            .optimize = optimize,
+            .strip = false,
+            .imports = &crane_cli_imports,
+        }),
+    });
+    if (shared_c.compilesFull()) crane_exe.bundle_ubsan_rt = true;
+    engine.link(b, crane_exe.root_module, .{});
+    platform_build.linkArtifact(crane_exe.root_module, target);
+
+    const install_crane_exe = b.addInstallArtifact(crane_exe, .{});
+    if (engine_startup_install) |startup_install| install_crane_exe.step.dependOn(startup_install);
+    browser_step.dependOn(&install_crane_exe.step);
+
+    const crane_step = b.step("crane", "Build Crane headless browser CLI (zig-out/bin/crane)");
+    crane_step.dependOn(&install_crane_exe.step);
+
+    const crane_cli_check = addCompileCheck(b, "crane_cli_check", "tools/crane.zig", target, optimize, &crane_cli_imports, &engine);
+    crane_check_step.dependOn(&crane_cli_check.step);
+    check_target_step.dependOn(&crane_cli_check.step);
+    if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) and test_selection.file == null) {
+        test_step.dependOn(&crane_cli_check.step);
+    }
+
+    const crash_handler_release_mod = b.createModule(.{
+        .root_source_file = b.path("tools/crash_handler.zig"),
+        .target = target,
+        .optimize = .ReleaseSafe,
+    });
+    const crane_release_exe = b.addExecutable(.{
+        .name = "crane",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/crane.zig"),
+            .target = target,
+            .optimize = .ReleaseSafe,
+            .strip = false,
+            .imports = &.{
+                .{ .name = "engine", .module = production_graph.engine },
+                .{ .name = "browser", .module = production_graph.browser },
+                .{ .name = "console", .module = production_graph.console },
+                .{ .name = "platform", .module = production_graph.platform },
+                .{ .name = "devtools", .module = production_graph.devtools },
+                .{ .name = "crash_handler", .module = crash_handler_release_mod },
+                .{ .name = "crane_options", .module = crane_cli_options_mod },
+            },
+        }),
+    });
+    if (production_build.modes.sanitize_c) |sanitizer| crane_release_exe.root_module.sanitize_c = sanitizer;
+    if (production_c.compilesFull()) crane_release_exe.bundle_ubsan_rt = true;
+    engine.link(b, crane_release_exe.root_module, .{});
+    platform_build.linkArtifact(crane_release_exe.root_module, target);
+
+    const install_crane_release = b.addInstallArtifact(crane_release_exe, .{});
+    if (engine_startup_install) |startup_install| install_crane_release.step.dependOn(startup_install);
+
+    const crane_release_step = b.step("crane-release", "Build Crane release CLI (ReleaseSafe, debug symbols preserved, static libs, CDP+MCP enabled)");
+    crane_release_step.dependOn(&install_crane_release.step);
+
+    // ========================================================================
     // REPL TOOL
     // ========================================================================
 
@@ -4456,6 +4540,19 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tools/crash_handler.zig"),
             .target = target,
         });
+        const crane_cli_test_mod = b.createModule(.{
+            .root_source_file = b.path("tools/crane.zig"),
+            .target = target,
+            .imports = &.{
+                .{ .name = "engine", .module = testing_graph.engine },
+                .{ .name = "browser", .module = testing_graph.browser },
+                .{ .name = "console", .module = testing_graph.console },
+                .{ .name = "platform", .module = testing_graph.platform },
+                .{ .name = "devtools", .module = testing_graph.devtools },
+                .{ .name = "crash_handler", .module = crash_handler_test_mod },
+                .{ .name = "crane_options", .module = crane_cli_options_mod },
+            },
+        });
         const crash_fixture_handler_mod = b.createModule(.{
             .root_source_file = b.path("tools/crash_handler.zig"),
             .target = target,
@@ -4477,11 +4574,15 @@ pub fn build(b: *std.Build) void {
         const cli_fixtures_options = b.addOptions();
         cli_fixtures_options.addOptionPath("crash_fixture", crash_fixture_exe.getEmittedBin());
         const cli_test_imports = [_]std.Build.Module.Import{
+            .{ .name = "crane", .module = crane_cli_test_mod },
+            .{ .name = "browser", .module = testing_graph.browser },
+            .{ .name = "devtools", .module = testing_graph.devtools },
+            .{ .name = "platform", .module = testing_graph.platform },
             .{ .name = "crash_handler", .module = crash_handler_test_mod },
             .{ .name = "cli_fixtures", .module = cli_fixtures_options.createModule() },
             .{ .name = "crane_options", .module = crane_cli_options_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/cli", target, &cli_test_imports, false, test_selection) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/cli", target, &cli_test_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add cli test files: {}\n", .{err});
         };
     }
