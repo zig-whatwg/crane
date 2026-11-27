@@ -6,6 +6,7 @@
 //! binary data buffer that can be shared between agents.
 
 const std = @import("std");
+const heap = @import("../heap/root.zig");
 
 /// SharedArrayBuffer represents a fixed-length raw binary data buffer
 /// that can be shared between agents (workers/threads)
@@ -21,8 +22,9 @@ pub const SharedArrayBuffer = struct {
     ///
     /// The memory is aligned to 16 bytes to support atomic operations on all types.
     pub fn init(allocator: std.mem.Allocator, size: usize) !SharedArrayBuffer {
-        // Allocate with 16-byte alignment for atomic operations
-        const data = try allocator.alignedAlloc(u8, @fromBackingInt(@intCast(4)), size); // 2^4 = 16 bytes
+        // Allocate with 16-byte alignment for atomic operations, comptime-routed
+        // to the `.bytes` partition (allocator-hardening design §3.1).
+        const data = try heap.allocAligned(allocator, u8, .@"16", size);
         @memset(data, 0);
 
         return SharedArrayBuffer{
@@ -32,8 +34,7 @@ pub const SharedArrayBuffer = struct {
     }
 
     pub fn deinit(self: *SharedArrayBuffer) void {
-        // Must free with the same alignment we allocated with (16 bytes = 2^4)
-        self.allocator.rawFree(self.data, @fromBackingInt(@intCast(4)), @returnAddress());
+        heap.freeAligned(self.allocator, self.data, .@"16");
     }
 
     /// Get the byte length of this SharedArrayBuffer
