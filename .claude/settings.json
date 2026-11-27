@@ -11,6 +11,17 @@
             "statusMessage": "crane_guard"
           }
         ]
+      },
+      {
+        "matcher": "Agent|Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/no_fable.sh\"",
+            "timeout": 10,
+            "statusMessage": "no_fable"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
