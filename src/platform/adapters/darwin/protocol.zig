@@ -356,7 +356,7 @@ pub const protocol = struct {
     pub const userDirectory = openUserDirectory;
     pub const screenInfo = headless.screenInfo;
     pub const isOnline = headless.isOnline;
-    pub const userPreferences = headless.userPreferences;
+    pub const userPreferences = darwinUserPreferences;
     pub const systemVisibility = headless.systemVisibility;
     pub const displayRefreshInterval = headless.displayRefreshInterval;
     pub const screenDetails = headless.screenDetails;
@@ -487,3 +487,44 @@ pub const protocol = struct {
     pub const devtoolsTlsWrite = devtools_transport.devtoolsTlsWrite;
     pub const devtoolsTlsClose = devtools_transport.devtoolsTlsClose;
 };
+
+// ---------------------------------------------------------------------------
+// OS appearance (Golden Rule 2: Chrome --headless NativeTheme, Firefox
+// --headless nsLookAndFeel, and Safari NSAppearance all follow host OS
+// appearance with `.light` fallback).
+// ---------------------------------------------------------------------------
+
+const CFTypeRef = *const anyopaque;
+const CFIndex = isize;
+const CFRange = extern struct { location: CFIndex, length: CFIndex };
+const kCFStringEncodingUTF8: u32 = 0x08000100;
+
+extern "c" fn CFRelease(cf: CFTypeRef) void;
+extern "c" fn CFGetTypeID(cf: CFTypeRef) usize;
+extern "c" fn CFStringGetTypeID() usize;
+extern "c" fn CFStringCreateWithBytes(allocator: ?CFTypeRef, bytes: [*]const u8, length: CFIndex, encoding: u32, external: u8) ?CFTypeRef;
+extern "c" fn CFStringGetLength(string: CFTypeRef) CFIndex;
+extern "c" fn CFStringGetBytes(string: CFTypeRef, range: CFRange, encoding: u32, loss_byte: u8, external: u8, buffer: ?[*]u8, max: CFIndex, used: ?*CFIndex) CFIndex;
+extern "c" fn CFPreferencesCopyAppValue(key: CFTypeRef, application_id: CFTypeRef) ?CFTypeRef;
+extern "c" const kCFPreferencesAnyApplication: CFTypeRef;
+
+fn darwinUserPreferences(browser: *platform.BrowserPlatform) platform.UserPreferences {
+    _ = browser;
+    var prefs: platform.UserPreferences = .{};
+    if (comptime builtin.os.tag != .macos) return prefs;
+    const key_bytes = "AppleInterfaceStyle";
+    const key = CFStringCreateWithBytes(null, key_bytes.ptr, key_bytes.len, kCFStringEncodingUTF8, 0) orelse return prefs;
+    defer CFRelease(key);
+    const val = CFPreferencesCopyAppValue(key, kCFPreferencesAnyApplication) orelse return prefs;
+    defer CFRelease(val);
+    if (CFGetTypeID(val) != CFStringGetTypeID()) return prefs;
+    const len = CFStringGetLength(val);
+    if (len <= 0 or len > 32) return prefs;
+    var buf: [32]u8 = undefined;
+    var used: CFIndex = 0;
+    const converted = CFStringGetBytes(val, .{ .location = 0, .length = len }, kCFStringEncodingUTF8, 0, 0, &buf, buf.len, &used);
+    if (converted == len and used > 0 and std.ascii.eqlIgnoreCase(buf[0..@intCast(used)], "Dark")) {
+        prefs.color_scheme = .dark;
+    }
+    return prefs;
+}

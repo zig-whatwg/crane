@@ -23,6 +23,8 @@ test "emulate: a user agent, the media features and a viewport, each cleared by 
     var r = try h.tool("navigate_page", "{\"pageId\":1,\"url\":\"data:text/html,<title>E</title>\"}");
     try testing.expect(!r.is_error);
     const own = try h.arena.allocator().dupe(u8, (try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => navigator.userAgent\"}")).text);
+    // Clearing emulation restores the host's own prefers-color-scheme (OS appearance on macOS/Linux).
+    const own_media = try h.arena.allocator().dupe(u8, (try h.tool("evaluate_script", try std.fmt.allocPrint(h.arena.allocator(), "{{\"pageId\":1,\"function\":{f}}}", .{std.json.fmt(media, .{})}))).text);
 
     r = try h.tool("emulate", "{\"pageId\":1,\"userAgent\":\"Agent/1\",\"colorScheme\":\"dark\",\"prefersReducedMotion\":\"reduce\",\"prefersContrast\":\"more\",\"forcedColors\":\"active\",\"viewport\":\"400x300x2\"}");
     try testing.expect(!r.is_error);
@@ -54,10 +56,12 @@ test "emulate: a user agent, the media features and a viewport, each cleared by 
     try testing.expectEqualStrings("Emulation configured successfully", r.text);
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => navigator.userAgent\"}");
     try testing.expectEqualStrings(own, r.text);
-    try expectResult(&h, media, "[false,false,false,false]");
+    r = try h.tool("evaluate_script", try std.fmt.allocPrint(h.arena.allocator(), "{{\"pageId\":1,\"function\":{f}}}", .{std.json.fmt(media, .{})}));
+    try testing.expectEqualStrings(own_media, r.text);
     // "auto" is none too.
     r = try h.tool("emulate", "{\"pageId\":1,\"colorScheme\":\"auto\"}");
-    try expectResult(&h, media, "[false,false,false,false]");
+    r = try h.tool("evaluate_script", try std.fmt.allocPrint(h.arena.allocator(), "{{\"pageId\":1,\"function\":{f}}}", .{std.json.fmt(media, .{})}));
+    try testing.expectEqualStrings(own_media, r.text);
 }
 
 test "emulate: mobile and touch reload the page, as Puppeteer's setViewport does" {

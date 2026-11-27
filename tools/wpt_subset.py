@@ -696,6 +696,15 @@ INCLUDE = [
     # subtests and 2 upstream-bug assert_false(undefined) subtests in
     # non-fully-active.https.html fail).
     ('geolocation/',               'W3C Geolocation API (CR 2026-03-26) and §12 emulation'),
+    # Lane rc9 Part C survey (2026-11-26): the 6 non-geometry IntersectionObserver
+    # API testharness files (35/35 PASS, 0 blockers on server1; the other 144 files
+    # assert layout/scroll/box geometry and stay out until a 0.2 renderer exists).
+    ('intersection-observer/observer-attributes.html', 'IntersectionObserver constructor defaults and attribute getters (no geometry)'),
+    ('intersection-observer/observer-exceptions.html', 'IntersectionObserver constructor and observe() validation (no geometry)'),
+    ('intersection-observer/observer-callback-arguments.html', 'IntersectionObserver callback this and arguments (no geometry)'),
+    ('intersection-observer/callback-cross-realm-report-exception.html', 'IntersectionObserver cross-realm exception reporting (no geometry)'),
+    ('intersection-observer/thresholds-frozen-array.html', 'IntersectionObserver.thresholds FrozenArray (no geometry)'),
+    ('intersection-observer/root-margin-scroll-margin-units.html', 'IntersectionObserver rootMargin/scrollMargin unit serialization (no geometry)'),
     # Codex row 131's candidates (2026-11-01): files its CSS property-family work
     # changed outside the parsing directories, screened against the scope line
     # (merged or ratified spec, shipped by at least one browser, not tentative, no

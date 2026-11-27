@@ -354,7 +354,7 @@ pub const protocol = struct {
     pub const userDirectory = openUserDirectory;
     pub const screenInfo = headless.screenInfo;
     pub const isOnline = headless.isOnline;
-    pub const userPreferences = headless.userPreferences;
+    pub const userPreferences = linuxUserPreferences;
     pub const systemVisibility = headless.systemVisibility;
     pub const displayRefreshInterval = headless.displayRefreshInterval;
     pub const screenDetails = headless.screenDetails;
@@ -485,3 +485,24 @@ pub const protocol = struct {
     pub const devtoolsTlsWrite = devtools_transport.devtoolsTlsWrite;
     pub const devtoolsTlsClose = devtools_transport.devtoolsTlsClose;
 };
+
+// ---------------------------------------------------------------------------
+// OS appearance (Golden Rule 2: Chrome --headless, Firefox --headless, and
+// Safari all follow host OS appearance with `.light` fallback).
+// ---------------------------------------------------------------------------
+
+fn linuxUserPreferences(browser: *platform.BrowserPlatform) platform.UserPreferences {
+    _ = browser;
+    var prefs: platform.UserPreferences = .{};
+    const raw = std.c.getenv("GTK_THEME") orelse return prefs;
+    const theme = std.mem.span(raw);
+    if (themeIndicatesDark(theme)) prefs.color_scheme = .dark;
+    return prefs;
+}
+
+fn themeIndicatesDark(theme: []const u8) bool {
+    const trimmed = std.mem.trim(u8, theme, " \t\r\n");
+    if (trimmed.len < 5) return false;
+    const suffix = trimmed[trimmed.len - 5 ..];
+    return std.ascii.eqlIgnoreCase(suffix, ":dark") or std.ascii.eqlIgnoreCase(suffix, "-dark");
+}
