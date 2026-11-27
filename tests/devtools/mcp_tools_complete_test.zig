@@ -338,10 +338,11 @@ test "console stack trace resolves Source Map V3 locations and skips ignoreList 
     const b64 = try a.alloc(u8, b64_len);
     _ = std.base64.standard.Encoder.encode(b64, map_json);
 
-    // Percent-encode `#` as `%23` so data: URL does not treat `//#` as a fragment.
+    // Percent-encode `#` (`%23`) and newlines (`%0A`) so the URL parser keeps
+    // line boundaries and does not treat `//#` as a fragment.
     const js = try std.fmt.allocPrint(
         a,
-        "function lib(){{ console.error('mapped-err'); }}\nfunction app(){{ lib(); }}\napp();\n//%23 sourceURL=http://example.test/bundle.js\n//%23 sourceMappingURL=data:application/json;base64,{s}\n",
+        "function lib(){{ console.error('mapped-err'); }}%0Afunction app(){{ lib(); }}%0Aapp();%0A//%23 sourceURL=http://example.test/bundle.js%0A//%23 sourceMappingURL=data:application/json;base64,{s}%0A",
         .{b64},
     );
     const nav_url = try std.fmt.allocPrint(a, "data:text/html,<script>{s}</script>", .{js});
@@ -352,8 +353,8 @@ test "console stack trace resolves Source Map V3 locations and skips ignoreList 
     const detail = try h.tool("get_console_message", "{\"pageId\":1,\"msgid\":1}");
     try testing.expect(!detail.is_error);
     // Original source file & 1-based line:col resolved via source map:
-    try testing.expect(std.mem.indexOf(u8, detail.text, "app.ts:42:5") != null);
-    try testing.expect(std.mem.indexOf(u8, detail.text, "app.ts:100:1") != null);
+    try testing.expect(std.mem.indexOf(u8, detail.text, "at app (app.ts:42:5)") != null);
+    try testing.expect(std.mem.indexOf(u8, detail.text, "at <anonymous> (app.ts:100:1)") != null);
     // Ignore-listed vendor frame omitted:
     try testing.expect(std.mem.indexOf(u8, detail.text, "vendor.js") == null);
     try testing.expect(std.mem.indexOf(u8, detail.text, "at lib") == null);

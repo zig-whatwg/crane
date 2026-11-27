@@ -437,10 +437,14 @@ fn formatFrameResolved(arena: Allocator, state: *const lp.State, frame: std.json
                     if (entry.source_url) |src_url| {
                         if (state.isActiveSourceMap(idx, src_url) and entry.source_line >= 0 and entry.source_column >= 0) {
                             if (sm.hasIgnoreListHint(src_url)) return null;
+                            // DevTools' StackTraceModel leaves a source-mapped
+                            // unnamed frame's `name` undefined, which
+                            // ConsoleFormatter prints as `<anonymous>`.
+                            const display_name = if (name.len != 0) name else "<anonymous>";
                             return try std.fmt.allocPrint(
                                 arena,
                                 "at {s} ({s}:{d}:{d})",
-                                .{ name, try console.displayName(arena, src_url), entry.source_line + 1, entry.source_column + 1 },
+                                .{ display_name, try console.displayName(arena, src_url), entry.source_line + 1, entry.source_column + 1 },
                             );
                         }
                     }
