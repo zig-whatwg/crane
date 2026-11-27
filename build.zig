@@ -4000,6 +4000,28 @@ pub fn build(b: *std.Build) void {
     crane_lib.installHeader(b.path("include/crane.h"), "crane.h");
     b.installArtifact(crane_lib);
 
+    // Translated C-ABI header module (`dep.module("crane-c")`) for downstream Zig
+    // consumers linking `dep.artifact("crane")` (`libcrane.a`): translates
+    // `include/crane.h` and attaches the engine and target platform link inputs
+    // (Zig does not propagate prebuilt archive `addObjectFile` entries across a
+    // static library `linkLibrary` boundary).
+    const crane_h_translate = b.addTranslateC(.{
+        .root_source_file = b.path("include/crane.h"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    if (platform_build.prepareC(target)) |prepare| prepare.translate(crane_h_translate);
+    const crane_c_mod = b.addModule("crane-c", .{
+        .root_source_file = crane_h_translate.getOutput(),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    if (platform_build.prepareC(target)) |prepare| prepare.module(crane_c_mod);
+    engine.link(b, crane_c_mod, .{});
+    platform_build.linkArtifact(crane_c_mod, target);
+
     const crane_lib_step = b.step("crane-lib", "Build Crane C-ABI static library (zig-out/lib/libcrane.a + zig-out/include/crane.h)");
     const install_crane_lib_only = b.addInstallArtifact(crane_lib, .{});
     crane_lib_step.dependOn(&install_crane_lib_only.step);

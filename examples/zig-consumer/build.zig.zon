@@ -1,0 +1,16 @@
+.{
+    .name = .crane_zig_consumer,
+    .version = "0.1.0",
+    .fingerprint = 0xaa737e8341c76e8b,
+    .minimum_zig_version = "0.17.0",
+    .dependencies = .{
+        .crane = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
