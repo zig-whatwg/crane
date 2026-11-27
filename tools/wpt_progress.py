@@ -5635,6 +5635,77 @@ def _check_crashtest_gate():
     assert st['clean'] == 1 and st['blocking'] == 1, st
 
 
+def _check_crashtest_rule_by_type():
+    """A crashtest is judged by its own rule, by its type in the worklist's crashtest
+    index (tests/wpt_0_1_crashtests.txt, from MANIFEST.json items.crashtest; lane gate2,
+    the integrator's conditions 2026-11-27 5:18 PM ET): it passes when it finished - OK,
+    no crash, timeout or error - and it never falls under NONE-PASSED, nor counts as clean
+    merely because it has no subtests."""
+    import tempfile
+    global CRASHTESTS
+    saved = CRASHTESTS
+    try:
+        CRASHTESTS = {'dom/a-crash.html', 'dom/b-crash.html', 'dom/c-crash.html', 'dom/e-crash.html'}
+        clean = {'status': 'OK', 'passed': 0, 'failed': 0, 'crashtest': True}
+        crashed = {'status': 'CRASH', 'passed': 0, 'failed': 0, 'crashtest': True}
+        with_subtests = {'status': 'OK', 'passed': 0, 'failed': 1, 'crashtest': True}
+        ran_as_testharness = {'status': 'OK', 'passed': 0, 'failed': 0}
+        timeout = {'status': 'TIMEOUT', 'passed': 0, 'failed': 0, 'crashtest': True}
+        # A clean crashtest does not block; a crashing one does.
+        assert gate_status(clean, 'dom/a-crash.html') == 'OK'
+        assert is_clean_ok(clean)
+        assert gate_status(crashed, 'dom/b-crash.html') == 'CRASH'
+        assert gate_status(timeout, 'dom/b-crash.html') == 'TIMEOUT'
+        # A crashtest has no subtests: one that reports a failing one is not clean.
+        assert gate_status(with_subtests, 'dom/c-crash.html') == 'ERROR'
+        assert not is_clean_ok(with_subtests)
+        # The index says crashtest but the run did not run it as one (a runner that
+        # does not know the type): never clean because it has no subtests.
+        assert gate_status(ran_as_testharness, 'dom/e-crash.html') == 'ERROR'
+        # A record that says crashtest for a file the index does not list: the index
+        # and the manifest disagree, so the file is not judged clean.
+        assert gate_status(clean, 'dom/d-not-indexed.html') == 'ERROR'
+        # A testharness file with no subtests keeps its own rule (nothing to fail).
+        assert gate_status({'status': 'OK', 'passed': 0, 'failed': 0}, 'dom/plain.html') == 'OK'
+        # Blocking counts: the CRASH, the TIMEOUT-free ERRORs and the ran-as-testharness one.
+        wl = ['dom/a-crash.html', 'dom/b-crash.html', 'dom/c-crash.html', 'dom/e-crash.html', 'dom/plain.html']
+        recs = {'dom/a-crash.html': clean, 'dom/b-crash.html': crashed, 'dom/c-crash.html': with_subtests,
+                'dom/e-crash.html': ran_as_testharness,
+                'dom/plain.html': {'status': 'OK', 'passed': 3, 'failed': 1}}
+        areas, _, _ = build(wl, recs)
+        assert areas['dom']['clean'] == 1, areas['dom']
+        assert areas['dom']['gating'] == 3, areas['dom']
+        assert areas['dom']['none-passed'] == 0, areas['dom']
+        # The headline's separate counts: testharness files and crashtests.
+        c = crashtest_counts(wl, recs)
+        assert c == {'testharness': 1, 'crashtests': 4, 'crashtests_blocking': 3}, c
+        # The mean per-file rate is over testharness files only.
+        _, mean = alt_rates(wl, recs)
+        assert abs(mean - 75.0) < 1e-9, mean
+        # The first generation with crashtests carries a marker, so the jump in the
+        # file total is never read as new files of the old kind.
+        assert crashtests_joined({'n': 241, 'total': 14346}, {'total': 14972, 'crashtests': 613}) == \
+            'worklist change: 613 crashtests joined the worklist (files 14,346 -> 14,972; subtests unchanged)'
+        assert crashtests_joined({'n': 242, 'total': 14972, 'crashtests': 613}, {'total': 14972, 'crashtests': 613}) is None
+        assert crashtests_joined(None, {'total': 613, 'crashtests': 613}) is None
+        # The index must be the worklist's: an entry outside it is refused.
+        with tempfile.TemporaryDirectory() as d:
+            index = os.path.join(d, 'crashtests.txt')
+            with open(index, 'w') as f:
+                f.write('# index\ndom/a-crash.html\ndom/gone-crash.html\n')
+            try:
+                load_crashtests(['dom/a-crash.html'], index)
+            except SystemExit as err:
+                assert 'dom/gone-crash.html' in str(err), err
+            else:
+                raise AssertionError('an index entry outside the worklist was accepted')
+            with open(index, 'w') as f:
+                f.write('# index\ndom/a-crash.html\n')
+            assert load_crashtests(['dom/a-crash.html', 'dom/plain.html'], index) == {'dom/a-crash.html'}
+    finally:
+        CRASHTESTS = saved
+
+
 if __name__ == '__main__':
     if sys.argv[1:] == ['--self-test']:
         _check_production_journal_only()
@@ -5643,6 +5714,7 @@ if __name__ == '__main__':
         _check_history_chart()
         _check_gate_rule()
         _check_crashtest_gate()
+        _check_crashtest_rule_by_type()
         _check_fixed_crane_test_in_fork()
         _check_history_subs()
         _check_history_sources()
