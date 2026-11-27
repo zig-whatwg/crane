@@ -273,6 +273,25 @@ pub const Browser = struct {
     /// A tab: its top-level traversable's browsing context id.
     pub const TabId = host_events.TabId;
 
+    fn logHeapAllocCallback(_: ?*anyopaque, partition: runtime.heap.PartitionId, size: usize, address: usize) void {
+        platform.logHeapAlloc(platform.heap_zone_tag_base + @backingInt(partition), size, address);
+    }
+
+    fn logHeapFreeCallback(_: ?*anyopaque, partition: runtime.heap.PartitionId, address: usize) void {
+        platform.logHeapFree(platform.heap_zone_tag_base + @backingInt(partition), address);
+    }
+
+    /// The Darwin `malloc_logger` observer `Browser.init` installs when built
+    /// with `-Dheap-alloc-log=true` (`[V2] D8`, Batch C item 5; zero cost when
+    /// false). Parameterized so tests pin both build configurations in one binary.
+    pub fn defaultAllocObserver(comptime enabled: bool) ?runtime.heap.AllocObserver {
+        if (!enabled) return null;
+        return .{
+            .on_alloc = logHeapAllocCallback,
+            .on_free = logHeapFreeCallback,
+        };
+    }
+
     /// Initialize a new Browser instance
     ///
     /// Creates a V8 isolate that will be reused across all navigations.
@@ -354,6 +373,12 @@ pub const Browser = struct {
         // so a seeded run replays both. A Browser that cannot reserve fails
         // here, cleanly; the scope's end releases it, last.
         try scope.reserveHeap(platform, browser_platform);
+        // Wire Darwin `malloc_logger` callouts when built with
+        // `-Dheap-alloc-log=true` (`[V2] D8`, Batch C item 5; zero cost when
+        // false, matching tools/gc_bench.zig).
+        if (comptime defaultAllocObserver(runtime.heap.heap_alloc_log_enabled)) |observer| {
+            if (scope.existingHeapEngine()) |eng| eng.setAllocObserver(observer);
+        }
         // The Browser's end reports what is still alive in its heap, where
         // the heap records sites (Debug builds, the bug-finding run).
         scope.report_heap_leaks = true;

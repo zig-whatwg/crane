@@ -64,6 +64,10 @@ pub const satellite = @import("satellite.zig");
 /// production release builds so the hot path pays zero instructions.
 pub const alloc_log_compiled: bool = builtin.mode == .debug or runtime_options.heap_alloc_log;
 
+/// Whether `-Dheap-alloc-log=true` was explicitly requested for this build
+/// (wires Darwin `malloc_logger` callouts automatically in `Browser.init`).
+pub const heap_alloc_log_enabled: bool = runtime_options.heap_alloc_log;
+
 /// Allocation/free observer hook for tooling builds (`[V2] D8`, Batch C item 5).
 pub const AllocObserver = struct {
     context: ?*anyopaque = null,

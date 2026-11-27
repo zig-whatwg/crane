@@ -156,3 +156,22 @@ test "item 1: concurrent and sequential worker AgentCache reuse is TSan-clean wi
     }
     try testing.expectEqual(@as(usize, 0), leaks);
 }
+
+test "item 2: Browser.defaultAllocObserver wires Darwin malloc_logger callouts iff -Dheap-alloc-log=true" {
+    try testing.expect(browser_mod.Browser.defaultAllocObserver(false) == null);
+    const obs = browser_mod.Browser.defaultAllocObserver(true) orelse return error.TestUnexpectedResult;
+
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .snapshot_path = "" });
+    defer browser.deinit();
+    const eng = browser.scope.existingHeapEngine() orelse return error.SkipZigTest;
+
+    // Default test build has -Dheap-alloc-log=false -> no observer auto-installed.
+    if (!runtime.heap.heap_alloc_log_enabled) {
+        try testing.expect(eng.alloc_observer == null);
+    }
+    // Installing the malloc_logger observer runs cleanly on alloc & free (no-op when no Darwin logger is attached).
+    eng.setAllocObserver(obs);
+    defer eng.setAllocObserver(null);
+    const p = try eng.alloc(.{ .node = .element }, 96, 8, runtime.heap.Site.of(u64), @returnAddress());
+    eng.free(p, 96, 8);
+}

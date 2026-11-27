@@ -669,6 +669,8 @@ pub fn binding(b: *std.Build, target: std.Build.ResolvedTarget, options: Binding
     facade.addImport("platform_options", options_mod);
     // TRANSITIONAL: the re-exported timer_backend reads the clock bridge.
     facade.addImport("clock", options.clock);
+    // Tooling heap allocation/free callouts (`malloc_logger` on Darwin, `[V2] D8`).
+    facade.addImport("memory", options.memory);
 
     const impl_root: std.Build.LazyPath = switch (options.platform) {
         .external => .{ .cwd_relative = options.module_path.? },
