@@ -43,6 +43,41 @@ pub const Options = struct {
     category_network_mocks: bool = false,
     /// Expose only the slim tool set (`--slim`: navigate, evaluate, screenshot).
     slim: bool = false,
+    // The rest of chrome-devtools-mcp v1.13.0's server flags Crane takes
+    // (src/config/mcp-options.ts, category-options.ts; the console parses
+    // them, camelCase and kebab-case, booleans also as --no-<name>).
+    /// `--categoryExperimentalThirdParty`: list_3p_developer_tools and
+    /// execute_3p_developer_tool ("third-party developer tools exposed by the
+    /// inspected page itself").
+    category_experimental_third_party: bool = false,
+    /// `--experimentalVision`: coordinate-based tools (click_at).
+    experimental_vision: bool = false,
+    /// `--categoryExperimentalWebmcp`: list_webmcp_tools and
+    /// execute_webmcp_tool. They read what the page registered through
+    /// document.modelContext, which a Browser exposes only when started with
+    /// WebMCP enabled (Chrome: `--enable-features=WebMCP`).
+    category_experimental_webmcp: bool = false,
+    /// `--sourceMaps` (`--no-source-maps`): "Whether to enable source maps
+    /// in DevTools".
+    source_maps: bool = true,
+    /// `--javascriptEvaluation` (`--no-javascript-evaluation`): false turns
+    /// off evaluate_script, set_logpoints and slim evaluate, navigate_page's
+    /// initScript, and navigations to javascript:, data: and vbscript: URLs.
+    javascript_evaluation: bool = true,
+    /// `--fileNavigations` (`--no-file-navigations`): false refuses file:
+    /// URLs (view-source: of one included) in new_page, navigate_page and
+    /// navigate.
+    file_navigations: bool = true,
+    /// `--maxNavigationSaved=<n>`: navigations whose requests and console
+    /// messages a page keeps (1..25; collectors/constants.ts
+    /// DEFAULT_MAX_NAVIGATION_SAVED 3).
+    max_navigation_saved: u32 = 3,
+    /// `--redactNetworkHeaders`: sensitive headers redacted in network
+    /// request details.
+    redact_network_headers: bool = false,
+    /// `--pageIdRouting` (`--no-page-id-routing`): page-scoped tools require
+    /// `pageId`; false: they take none and act on the selected page.
+    page_id_routing: bool = true,
 };
 
 pub const McpServer = struct {
