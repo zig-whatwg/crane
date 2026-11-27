@@ -111,12 +111,13 @@ const logpoint_tools = @import("tools/logpoints.zig");
 const memory_tools = @import("tools/memory.zig");
 const css_tools = @import("tools/css.zig");
 const renderer_tools = @import("tools/renderer.zig");
+const third_party_tools = @import("tools/third_party.zig");
 const slim_tools = @import("tools/slim.zig");
 const logpoints = @import("logpoints.zig");
 
 /// Every tool Crane offers (tools/list orders them as the copied
 /// definitions do).
-pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list ++ network_tools.list ++ input_tools.list ++ snapshot_tools.list ++ emulation_tools.list ++ logpoint_tools.list ++ memory_tools.list ++ css_tools.list ++ renderer_tools.list ++ slim_tools.list);
+pub const all: []const Tool = &(pages.list ++ console_tools.list ++ script.list ++ network_tools.list ++ input_tools.list ++ snapshot_tools.list ++ emulation_tools.list ++ logpoint_tools.list ++ memory_tools.list ++ css_tools.list ++ renderer_tools.list ++ third_party_tools.list ++ slim_tools.list);
 
 /// The tools/list JSON array for `all` with default flags (memoryDebugging off).
 pub fn listJson(allocator: Allocator) ![]u8 {
@@ -235,6 +236,7 @@ test {
     _ = script;
     _ = network_tools;
     _ = renderer_tools;
+    _ = third_party_tools;
     _ = slim_tools;
     _ = @import("heap_snapshot.zig");
     _ = @import("heap_formatter.zig");
