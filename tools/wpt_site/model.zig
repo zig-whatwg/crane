@@ -80,6 +80,9 @@ pub const Counts = struct {
     failed: u64 = 0,
     timed_out: u64 = 0,
     notrun: u64 = 0,
+    /// True when the journal record came from a WPT crashtest (`crashtest: true`),
+    /// which reports 0 subtests and passes when its top-level status is OK.
+    crashtest: bool = false,
 
     pub fn reported(c: Counts) u64 {
         return c.passed + c.failed + c.timed_out + c.notrun;
@@ -97,6 +100,9 @@ pub const Counts = struct {
 pub fn gateOf(status: ?[]const u8, c: Counts) Gate {
     const st = status orelse return .unrun;
     if (std.mem.eql(u8, st, "OK")) {
+        // WPT crashtests report 0 subtests: completing with status OK is a
+        // clean pass, never `empty` or `none_passed`.
+        if (c.crashtest) return .clean;
         if (c.reported() == 0) return .empty;
         if (c.passed == 0) return .none_passed;
         if (c.passed == c.reported()) return .clean;
@@ -108,6 +114,13 @@ pub fn gateOf(status: ?[]const u8, c: Counts) Gate {
     // a status we do not recognise is not a pass (wpt_progress.py files
     // these under error in its history too).
     return .err;
+}
+
+/// Convenience wrapper for callers holding `crashtest` separately from `Counts`.
+pub fn gateOfRecord(status: ?[]const u8, c: Counts, crashtest: bool) Gate {
+    var counts = c;
+    counts.crashtest = counts.crashtest or crashtest;
+    return gateOf(status, counts);
 }
 
 // ============================================================================
@@ -937,6 +950,28 @@ test "gate: an OK run with no subtests at all is empty, not NONE-PASSED" {
     const g = gateOf("OK", .{});
     try testing.expectEqual(Gate.empty, g);
     try testing.expect(!g.blocking());
+}
+
+test "gate: an OK crashtest counts as clean, not empty or NONE-PASSED; non-OK still blocks" {
+    const g = gateOf("OK", .{ .crashtest = true });
+    try testing.expectEqual(Gate.clean, g);
+    try testing.expect(!g.blocking());
+    try testing.expectEqual(Gate.clean, gateOf("OK", .{ .failed = 1, .crashtest = true }));
+    try testing.expectEqual(Gate.clean, gateOfRecord("OK", .{}, true));
+    try testing.expectEqual(Gate.empty, gateOfRecord("OK", .{}, false));
+    try testing.expectEqual(Gate.timeout, gateOf("TIMEOUT", .{ .crashtest = true }));
+    try testing.expect(gateOf("TIMEOUT", .{ .crashtest = true }).blocking());
+    try testing.expectEqual(Gate.crash, gateOf("CRASH", .{ .crashtest = true }));
+    try testing.expectEqual(Gate.err, gateOf("ERROR", .{ .crashtest = true }));
+    try testing.expectEqual(Gate.unrun, gateOf(null, .{ .crashtest = true }));
+    var t: Totals = .{};
+    t.add(gateOfRecord("OK", .{}, true), .{ .crashtest = true });
+    t.add(gateOfRecord("TIMEOUT", .{}, true), .{ .crashtest = true });
+    try testing.expectEqual(@as(u64, 2), t.files);
+    try testing.expectEqual(@as(u64, 1), t.clean);
+    try testing.expectEqual(@as(u64, 0), t.empty);
+    try testing.expectEqual(@as(u64, 0), t.none_passed);
+    try testing.expectEqual(@as(u64, 1), t.blocking());
 }
 
 test "gate: clean means every reported subtest passed, NOTRUN included" {

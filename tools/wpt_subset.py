@@ -45,6 +45,7 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(REPO, 'tests', 'wpt', 'MANIFEST.json')
 WORKLIST = os.path.join(REPO, 'tests', 'wpt_0_1_worklist.txt')
+CRASHTEST_WORKLIST = os.path.join(REPO, 'tests', 'wpt_0_1_crashtests.txt')
 
 # Prefix -> why it is in. Checked in order; first match wins.
 INCLUDE = [
@@ -1815,6 +1816,53 @@ def excluded(path):
     return False
 
 
+# Additional prefixes included only for `--crashtests` (lane crashtest1 / infra-ci1):
+# a11y testharness lives under accname/, html-aam/, wai-aria/, core-aam/, etc.,
+# while WPT places accessibility crashtests under top-level accessibility/crashtests/.
+CRASHTEST_INCLUDE_EXTRA = [
+    ('accessibility/crashtests/', 'accessibility tree crashtests (outside testharness INCLUDE)'),
+]
+
+# Crashtests excluded from tests/wpt_0_1_crashtests.txt, each with its evidence
+# from lanes crashtest1 (36c0adab7) and crashfix1 (163e2fb2b).
+# The 2 execcommand leaks and 3 real hangs from crashtest1 were fixed by crashfix1
+# and are INCLUDED. Only the 2 golden-rule-2 follows-majority timeouts and 8
+# layout/animation/window.find waits remain excluded.
+CRASHTEST_EXCLUDE = [
+    # Golden rule 2 follows-majority timeouts (verified 0 crashes, 0 leaks by crashfix1):
+    ('dom/nodes/crashtests/multiple-append-mutated-in-unload.https.html',
+     'follows-majority timeout (wpt.fyi Firefox T, Safari T; HTML spec iframe load re-parenting loop)'),
+    ('service-workers/cache-storage/crashtests/cache-response-clone.https.html',
+     'follows-majority timeout (wpt.fyi Chrome T, Safari T; Fetch clone locks pre-captured body reader)'),
+    # Geometry / rendering / unsupported feature waits (headless no-renderer scope line):
+    ('accessibility/crashtests/content-visibility-generated-content-removal.html',
+     'waits on content-visibility: auto scroll-out-of-view layout transition (needs-renderer)'),
+    ('css/selectors/crashtests/chrome-bug-565742178.html',
+     'waits on SVG <use> UA shadow-tree <image> error event (needs-renderer)'),
+    ('dom/nodes/moveBefore/moveBefore-range-iframe-crash.html',
+     'testdriver pointer drag on <input type=range> slider geometry (needs-renderer)'),
+    ('editing/crashtests/designMode-caret-change.html',
+     'waits on CSS @keyframes window.onanimationend (needs-renderer)'),
+    ('editing/crashtests/inserthorizontalrule-in-textarea-in-editor-and-undo-on-error-events.html',
+     'waits on <object onerror> embedded resource fallback'),
+    ('editing/crashtests/insertimage-with-replacing-selection-in-picture-element.html',
+     'waits on CSS animationend + window.find()'),
+    ('resize-observer/multiple-observers-with-mutation-crash.html',
+     'waits on borderBoxSize layout size change (needs-renderer)'),
+    ('selection/crashtests/selectall-and-find-svg-text-on-selectstart.html',
+     'calls non-standard window.find() in selectstart'),
+]
+
+
+def crashtest_excluded(path):
+    if excluded(path):
+        return True
+    for pattern, _ in CRASHTEST_EXCLUDE:
+        if path == pattern:
+            return True
+    return False
+
+
 def main():
     # Both default to this checkout. --manifest lets the worklist be generated
     # against a WPT tree that is not tests/wpt yet (a rebuilt snapshot before
@@ -1822,24 +1870,31 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--manifest', default=MANIFEST,
                         help='MANIFEST.json to read (default: tests/wpt/MANIFEST.json)')
-    parser.add_argument('--worklist', default=WORKLIST,
-                        help='worklist to write (default: tests/wpt_0_1_worklist.txt)')
+    parser.add_argument('--worklist', default=None,
+                        help='worklist to write (default: tests/wpt_0_1_worklist.txt, or tests/wpt_0_1_crashtests.txt with --crashtests)')
+    parser.add_argument('--crashtests', action='store_true',
+                        help='generate the headless-in-scope WPT crashtests worklist from items.crashtest')
     args = parser.parse_args()
-    manifest, worklist = args.manifest, args.worklist
+    manifest = args.manifest
+    worklist = args.worklist or (CRASHTEST_WORKLIST if args.crashtests else WORKLIST)
 
     if not os.path.exists(manifest):
         sys.exit(f"manifest not found: {manifest}\n"
                  "The tests/wpt submodule may not be checked out.")
 
-    items = list(walk(json.load(open(manifest))['items']['testharness']))
+    manifest_items = json.load(open(manifest))['items']
+    item_kind = 'crashtest' if args.crashtests else 'testharness'
+    items = list(walk(manifest_items[item_kind]))
+    include_table = (INCLUDE + CRASHTEST_INCLUDE_EXTRA) if args.crashtests else INCLUDE
+    is_excluded = crashtest_excluded if args.crashtests else excluded
 
     chosen = {}
     sources = collections.Counter()
     urls = collections.Counter()
     for path, url_count in items:
-        if excluded(path):
+        if is_excluded(path):
             continue
-        for prefix, why in INCLUDE:
+        for prefix, why in include_table:
             if path.startswith(prefix):
                 chosen[path] = prefix
                 sources[prefix] += 1
@@ -1847,18 +1902,23 @@ def main():
                 break
 
     with open(worklist, 'w') as f:
-        f.write("# Crane 0.1 WPT worklist - GENERATED by tools/wpt_subset.py\n")
-        f.write("# Do not hand-edit. Change the INCLUDE/EXCLUDE tables in that\n")
-        f.write("# script, which carry the reason for every decision, and re-run it.\n")
+        if args.crashtests:
+            f.write("# Crane 0.1 WPT crashtests worklist - GENERATED by tools/wpt_subset.py --crashtests\n")
+            f.write("# Do not hand-edit. Change the INCLUDE/CRASHTEST_INCLUDE_EXTRA/EXCLUDE/CRASHTEST_EXCLUDE\n")
+            f.write("# tables in that script, which carry the reason for every decision, and re-run it.\n")
+        else:
+            f.write("# Crane 0.1 WPT worklist - GENERATED by tools/wpt_subset.py\n")
+            f.write("# Do not hand-edit. Change the INCLUDE/EXCLUDE tables in that\n")
+            f.write("# script, which carry the reason for every decision, and re-run it.\n")
         f.write(f"# {len(chosen)} sources, {sum(urls.values())} test URLs\n")
         for path in sorted(chosen):
             f.write(path + '\n')
 
     print(f"{len(chosen)} sources, {sum(urls.values())} test URLs "
-          f"(corpus: {len(items)} sources)\n")
+          f"(corpus: {len(items)} {item_kind} sources)\n")
     print(f"{'sources':>8} {'urls':>7}  area")
     print('-' * 76)
-    for prefix, why in INCLUDE:
+    for prefix, why in include_table:
         if sources[prefix]:
             print(f"{sources[prefix]:8d} {urls[prefix]:7d}  {prefix:<50} {why}")
     print(f"\nwritten: {os.path.relpath(worklist, REPO)}")
