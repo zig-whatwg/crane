@@ -13,13 +13,23 @@ const builtin = @import("builtin");
 pub const issues_url = "https://github.com/zig-whatwg/crane/issues";
 pub const issue_url = "https://github.com/zig-whatwg/crane/issues/new";
 
+pub fn modeName(mode: std.builtin.OptimizeMode) []const u8 {
+    return switch (mode) {
+        .Debug => "Debug",
+        .ReleaseSafe => "ReleaseSafe",
+        .ReleaseFast => "ReleaseFast",
+        .ReleaseSmall => "ReleaseSmall",
+    };
+}
+
 pub const BuildInfo = struct {
     version: []const u8 = "0.1.0",
     git_sha: []const u8 = "unknown",
-    build_mode: []const u8 = @tagName(builtin.mode),
+    build_mode: []const u8 = modeName(builtin.mode),
     os: []const u8 = @tagName(builtin.os.tag),
     arch: []const u8 = @tagName(builtin.cpu.arch),
     zig_version: []const u8 = builtin.zig_version_string,
+    command: ?[]const u8 = null,
 };
 
 pub const CrashKind = union(enum) {
@@ -30,8 +40,198 @@ pub const CrashKind = union(enum) {
     },
 };
 
+const max_command_len = 1024;
 var active_info: BuildInfo = .{};
+var command_buf: [max_command_len]u8 = undefined;
+var command_len: std.atomic.Value(usize) = .init(0);
 var crash_stage: std.atomic.Value(u8) = .init(0);
+
+/// Record the sanitized process command line once at startup into static
+/// storage so both panic and fatal-signal handlers can print it without
+/// allocating memory.
+pub fn recordCommandLine(args: []const []const u8) void {
+    const formatted = formatCommandLine(&command_buf, args);
+    command_len.store(formatted.len, .release);
+}
+
+/// Return the recorded command line slice, or `null` if none was recorded.
+pub fn recordedCommandLine() ?[]const u8 {
+    const len = command_len.load(.acquire);
+    if (len == 0 or len > command_buf.len) return null;
+    return command_buf[0..len];
+}
+
+/// Format `args` into `buf` for the crash banner:
+/// - uses only the basename of `argv[0]` (avoids leaking local paths)
+/// - redacts secret-bearing flag values and URL `user:pass@` credentials
+/// - single-quotes arguments containing whitespace or shell metacharacters
+/// - truncates cleanly with ` ...` if the full command exceeds `buf.len`
+pub fn formatCommandLine(buf: []u8, args: []const []const u8) []const u8 {
+    if (args.len == 0 or buf.len == 0) return buf[0..0];
+
+    var pos: usize = 0;
+    var truncated = false;
+    var redact_next = false;
+
+    for (args, 0..) |raw_arg, idx| {
+        if (idx > 0) {
+            if (!appendRaw(buf, &pos, " ")) {
+                truncated = true;
+                break;
+            }
+        }
+
+        if (idx == 0) {
+            const base = std.fs.path.basename(raw_arg);
+            if (!appendShellArg(buf, &pos, if (base.len > 0) base else raw_arg)) {
+                truncated = true;
+                break;
+            }
+            continue;
+        }
+
+        if (redact_next) {
+            redact_next = false;
+            if (!appendRaw(buf, &pos, "<redacted>")) {
+                truncated = true;
+                break;
+            }
+            continue;
+        }
+
+        if (std.mem.startsWith(u8, raw_arg, "-")) {
+            if (std.mem.indexOfScalar(u8, raw_arg, '=')) |eq| {
+                const flag = raw_arg[0..eq];
+                const val = raw_arg[eq + 1 ..];
+                if (isSensitiveFlagName(flag)) {
+                    if (!appendRaw(buf, &pos, flag) or !appendRaw(buf, &pos, "=<redacted>")) {
+                        truncated = true;
+                        break;
+                    }
+                    continue;
+                }
+                if (hasUrlCredentials(val)) {
+                    if (!appendRaw(buf, &pos, flag) or !appendRaw(buf, &pos, "=") or !appendSanitizedUrlArg(buf, &pos, val)) {
+                        truncated = true;
+                        break;
+                    }
+                    continue;
+                }
+            } else if (isSensitiveFlagName(raw_arg)) {
+                redact_next = true;
+                if (!appendRaw(buf, &pos, raw_arg)) {
+                    truncated = true;
+                    break;
+                }
+                continue;
+            }
+        }
+
+        if (hasUrlCredentials(raw_arg)) {
+            if (!appendSanitizedUrlArg(buf, &pos, raw_arg)) {
+                truncated = true;
+                break;
+            }
+        } else if (!appendShellArg(buf, &pos, raw_arg)) {
+            truncated = true;
+            break;
+        }
+    }
+
+    if (truncated) {
+        const suffix = " ...";
+        if (buf.len >= suffix.len) {
+            const cut = @min(pos, buf.len - suffix.len);
+            @memcpy(buf[cut .. cut + suffix.len], suffix);
+            pos = cut + suffix.len;
+        }
+    }
+    return buf[0..pos];
+}
+
+fn isSensitiveFlagName(flag: []const u8) bool {
+    const trimmed = std.mem.trimStart(u8, flag, "-");
+    return containsAsciiCaseInsensitive(trimmed, "token") or
+        containsAsciiCaseInsensitive(trimmed, "password") or
+        containsAsciiCaseInsensitive(trimmed, "passwd") or
+        containsAsciiCaseInsensitive(trimmed, "secret") or
+        containsAsciiCaseInsensitive(trimmed, "api-key") or
+        containsAsciiCaseInsensitive(trimmed, "apikey") or
+        containsAsciiCaseInsensitive(trimmed, "auth");
+}
+
+fn containsAsciiCaseInsensitive(haystack: []const u8, needle: []const u8) bool {
+    if (needle.len == 0 or needle.len > haystack.len) return false;
+    var i: usize = 0;
+    while (i + needle.len <= haystack.len) : (i += 1) {
+        if (std.ascii.eqlIgnoreCase(haystack[i .. i + needle.len], needle)) return true;
+    }
+    return false;
+}
+
+fn hasUrlCredentials(s: []const u8) bool {
+    const scheme_end = std.mem.indexOf(u8, s, "://") orelse return false;
+    const after_scheme = s[scheme_end + 3 ..];
+    const auth_end = std.mem.indexOfAny(u8, after_scheme, "/?#") orelse after_scheme.len;
+    const authority = after_scheme[0..auth_end];
+    return std.mem.indexOfScalar(u8, authority, '@') != null;
+}
+
+fn appendSanitizedUrlArg(buf: []u8, pos: *usize, s: []const u8) bool {
+    const scheme_end = std.mem.indexOf(u8, s, "://") orelse return appendShellArg(buf, pos, s);
+    const after_scheme = s[scheme_end + 3 ..];
+    const auth_end = std.mem.indexOfAny(u8, after_scheme, "/?#") orelse after_scheme.len;
+    const authority = after_scheme[0..auth_end];
+    const at = std.mem.lastIndexOfScalar(u8, authority, '@') orelse return appendShellArg(buf, pos, s);
+
+    const prefix = s[0 .. scheme_end + 3];
+    const rest = after_scheme[at + 1 ..];
+    const quote = needsShellQuoting(prefix) or needsShellQuoting(rest);
+    if (quote and !appendRaw(buf, pos, "'")) return false;
+    if (!appendQuotedBody(buf, pos, prefix, quote)) return false;
+    if (!appendRaw(buf, pos, "<redacted>@")) return false;
+    if (!appendQuotedBody(buf, pos, rest, quote)) return false;
+    if (quote and !appendRaw(buf, pos, "'")) return false;
+    return true;
+}
+
+fn needsShellQuoting(s: []const u8) bool {
+    if (s.len == 0) return true;
+    for (s) |c| {
+        switch (c) {
+            ' ', '\t', '\n', '\r', '\'', '"', '\\', '$', '`', '<', '>', '|', '&', ';', '(', ')', '*', '?', '[', ']', '{', '}', '!', '#', '~' => return true,
+            else => if (c < 0x20 or c == 0x7f) return true,
+        }
+    }
+    return false;
+}
+
+fn appendShellArg(buf: []u8, pos: *usize, arg: []const u8) bool {
+    const quote = needsShellQuoting(arg);
+    if (!quote) return appendRaw(buf, pos, arg);
+    if (!appendRaw(buf, pos, "'")) return false;
+    if (!appendQuotedBody(buf, pos, arg, true)) return false;
+    return appendRaw(buf, pos, "'");
+}
+
+fn appendQuotedBody(buf: []u8, pos: *usize, s: []const u8, quote: bool) bool {
+    if (!quote) return appendRaw(buf, pos, s);
+    for (s) |c| {
+        if (c == '\'') {
+            if (!appendRaw(buf, pos, "'\\''")) return false;
+        } else {
+            if (!appendRaw(buf, pos, &.{c})) return false;
+        }
+    }
+    return true;
+}
+
+fn appendRaw(buf: []u8, pos: *usize, s: []const u8) bool {
+    if (pos.* + s.len > buf.len) return false;
+    @memcpy(buf[pos.* .. pos.* + s.len], s);
+    pos.* += s.len;
+    return true;
+}
 
 /// Write the crash report header before the symbolized stack trace.
 pub fn writeHeader(writer: *std.Io.Writer, info: BuildInfo, kind: CrashKind) std.Io.Writer.Error!void {
@@ -45,6 +245,11 @@ pub fn writeHeader(writer: *std.Io.Writer, info: BuildInfo, kind: CrashKind) std
         info.arch,
         info.zig_version,
     });
+    if (info.command) |cmd| {
+        if (cmd.len > 0) {
+            try writer.print("Command:    {s}\n", .{cmd});
+        }
+    }
     switch (kind) {
         .panic => |msg| try writer.print("Cause:      panic: {s}\n", .{msg}),
         .signal => |sig| {
@@ -78,11 +283,9 @@ pub fn writeFooter(writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.writeAll("       reproduction adds useful diagnostic data, add it as a comment\n");
     try writer.writeAll("       on that issue.\n\n");
     try writer.print("  4. Otherwise, open a new issue at:\n       {s}\n", .{issue_url});
-    try writer.writeAll("     Include:\n");
-    try writer.writeAll("     - The Crane version, commit SHA, build mode, and OS/arch above\n");
-    try writer.writeAll("     - The exact `crane` command and flags run\n");
-    try writer.writeAll("     - The URL or minimal HTML reproduction\n");
-    try writer.writeAll("     - The full stack trace above\n");
+    try writer.writeAll("     Include the version, build, command, cause, and full stack trace\n");
+    try writer.writeAll("     above, plus a minimal URL/HTML reproduction if not already in the\n");
+    try writer.writeAll("     command.\n");
     try writer.writeAll("========================================================================\n");
 }
 
@@ -100,7 +303,11 @@ pub fn PanicHandler(comptime info: BuildInfo) type {
                     const stderr = std.debug.lockStderr(&.{}).terminal();
                     defer std.debug.unlockStderr();
 
-                    writeHeader(stderr.writer, info, .{ .panic = msg }) catch break :trace;
+                    var effective_info = info;
+                    if (effective_info.command == null) {
+                        effective_info.command = recordedCommandLine();
+                    }
+                    writeHeader(stderr.writer, effective_info, .{ .panic = msg }) catch break :trace;
                     if (@errorReturnTrace()) |t| if (t.index > 0) {
                         stderr.writer.writeAll("Error return trace:\n") catch break :trace;
                         std.debug.writeErrorReturnTrace(t, stderr) catch break :trace;
@@ -210,7 +417,11 @@ fn handleCrashSignal(addr: ?usize, name: []const u8, opt_ctx: ?std.debug.CpuCont
             const stderr = std.debug.lockStderr(&.{}).terminal();
             defer std.debug.unlockStderr();
 
-            writeHeader(stderr.writer, active_info, .{ .signal = .{ .name = name, .addr = addr } }) catch break :trace;
+            var effective_info = active_info;
+            if (effective_info.command == null) {
+                effective_info.command = recordedCommandLine();
+            }
+            writeHeader(stderr.writer, effective_info, .{ .signal = .{ .name = name, .addr = addr } }) catch break :trace;
             std.debug.writeCurrentStackTrace(.{
                 .context = opt_ctx,
                 .allow_unsafe_unwind = true,

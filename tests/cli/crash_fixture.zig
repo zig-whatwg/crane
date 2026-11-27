@@ -27,6 +27,7 @@ noinline fn triggerAbort() noreturn {
 pub fn main(init: std.process.Init) !void {
     crash_handler.installSignalHandlers(build_info);
     const args = try init.minimal.args.toSlice(init.arena.allocator());
+    crash_handler.recordCommandLine(args);
     if (args.len < 2) return;
     if (std.mem.eql(u8, args[1], "panic")) {
         triggerPanic();

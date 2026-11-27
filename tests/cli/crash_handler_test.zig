@@ -14,6 +14,7 @@ test "crash_handler: formats panic header with version, sha, build info, and mes
         .os = "macos",
         .arch = "aarch64",
         .zig_version = "0.17.1-dev",
+        .command = "crane --mcp-port=9223 https://example.com",
     };
 
     try crash_handler.writeHeader(&out.writer, info, .{ .panic = "index out of bounds" });
@@ -26,8 +27,49 @@ test "crash_handler: formats panic header with version, sha, build info, and mes
     try testing.expect(std.mem.indexOf(u8, text, "macos") != null);
     try testing.expect(std.mem.indexOf(u8, text, "aarch64") != null);
     try testing.expect(std.mem.indexOf(u8, text, "0.17.1-dev") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "Command:    crane --mcp-port=9223 https://example.com") != null);
     try testing.expect(std.mem.indexOf(u8, text, "index out of bounds") != null);
     try testing.expect(std.mem.indexOf(u8, text, "Stack trace:") != null);
+}
+
+test "crash_handler: formatCommandLine strips argv0 path, quotes shell chars, redacts secrets, and truncates" {
+    var buf: [256]u8 = undefined;
+
+    const basic = crash_handler.formatCommandLine(&buf, &.{
+        "/Users/dev/bin/crane",
+        "--mcp-port=9223",
+        "data:text/html,<script>console.log(\"ran\", 6*7)</script>",
+    });
+    try testing.expectEqualStrings(
+        "crane --mcp-port=9223 'data:text/html,<script>console.log(\"ran\", 6*7)</script>'",
+        basic,
+    );
+
+    const redacted = crash_handler.formatCommandLine(&buf, &.{
+        "/opt/crane",
+        "--mcp-token=supersecret",
+        "--password",
+        "hunter2",
+        "--proxy-server=http://alice:pw@proxy.local:8080",
+        "https://bob:topsecret@example.com/page",
+    });
+    try testing.expect(std.mem.indexOf(u8, redacted, "supersecret") == null);
+    try testing.expect(std.mem.indexOf(u8, redacted, "hunter2") == null);
+    try testing.expect(std.mem.indexOf(u8, redacted, "alice:pw") == null);
+    try testing.expect(std.mem.indexOf(u8, redacted, "bob:topsecret") == null);
+    try testing.expect(std.mem.indexOf(u8, redacted, "--mcp-token=<redacted>") != null);
+    try testing.expect(std.mem.indexOf(u8, redacted, "--password <redacted>") != null);
+    try testing.expect(std.mem.indexOf(u8, redacted, "http://<redacted>@proxy.local:8080") != null);
+    try testing.expect(std.mem.indexOf(u8, redacted, "https://<redacted>@example.com/page") != null);
+
+    var small: [24]u8 = undefined;
+    const trunc = crash_handler.formatCommandLine(&small, &.{
+        "/usr/local/bin/crane",
+        "--remote-debugging-port=9222",
+        "--mcp-port=9223",
+    });
+    try testing.expect(trunc.len <= small.len);
+    try testing.expect(std.mem.endsWith(u8, trunc, " ..."));
 }
 
 test "crash_handler: formats signal header with address and without address" {
@@ -82,17 +124,14 @@ test "crash_handler: footer contains agent/human triage workflow, both GitHub UR
     // Step 4: New issue URL and required details.
     try testing.expect(std.mem.indexOf(u8, text, "4.") != null);
     try testing.expect(std.mem.indexOf(u8, text, "https://github.com/zig-whatwg/crane/issues/new") != null);
-    try testing.expect(std.mem.indexOf(u8, text, "commit SHA") != null);
-    try testing.expect(std.mem.indexOf(u8, text, "build mode") != null);
-    try testing.expect(std.mem.indexOf(u8, text, "OS/arch") != null);
-    try testing.expect(std.mem.indexOf(u8, text, "command") != null);
-    try testing.expect(std.mem.indexOf(u8, text, "URL") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "version, build, command, cause") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "URL/HTML") != null);
     try testing.expect(std.mem.indexOf(u8, text, "stack trace") != null);
 }
 
-test "crash_handler: real panic subprocess prints banner, version, stack trace, and GitHub issue URL" {
+test "crash_handler: real panic subprocess prints banner, version, command, stack trace, and GitHub issue URL" {
     const res = try std.process.run(testing.allocator, testing.io, .{
-        .argv = &.{ cli_fixtures.crash_fixture, "panic" },
+        .argv = &.{ cli_fixtures.crash_fixture, "panic", "--mcp-port=9223" },
     });
     defer testing.allocator.free(res.stdout);
     defer testing.allocator.free(res.stderr);
@@ -108,6 +147,8 @@ test "crash_handler: real panic subprocess prints banner, version, stack trace, 
     try testing.expect(std.mem.indexOf(u8, res.stderr, "Crane crashed") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "0.1.0-test") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "deadbeef0") != null);
+    try testing.expect(std.mem.indexOf(u8, res.stderr, "ReleaseSafe") != null);
+    try testing.expect(std.mem.indexOf(u8, res.stderr, "Command:    cli_crash_fixture panic --mcp-port=9223") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "intentional crash fixture panic") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "https://github.com/zig-whatwg/crane/issues\n") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "https://github.com/zig-whatwg/crane/issues/new") != null);
@@ -120,9 +161,9 @@ test "crash_handler: real panic subprocess prints banner, version, stack trace, 
         std.mem.indexOf(u8, res.stderr, "crash_fixture.zig") != null);
 }
 
-test "crash_handler: real SIGABRT subprocess prints signal banner, stack trace, and GitHub issue URL" {
+test "crash_handler: real SIGABRT subprocess prints signal banner, command, stack trace, and GitHub issue URL" {
     const res = try std.process.run(testing.allocator, testing.io, .{
-        .argv = &.{ cli_fixtures.crash_fixture, "abort" },
+        .argv = &.{ cli_fixtures.crash_fixture, "abort", "--viewport=1280x720" },
     });
     defer testing.allocator.free(res.stdout);
     defer testing.allocator.free(res.stderr);
@@ -136,6 +177,7 @@ test "crash_handler: real SIGABRT subprocess prints signal banner, stack trace, 
 
     try testing.expect(std.mem.indexOf(u8, res.stderr, "Crane crashed") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "0.1.0-test") != null);
+    try testing.expect(std.mem.indexOf(u8, res.stderr, "Command:    cli_crash_fixture abort --viewport=1280x720") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "SIGABRT") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "https://github.com/zig-whatwg/crane/issues/new") != null);
     try testing.expect(std.mem.indexOf(u8, res.stderr, "1.") != null);

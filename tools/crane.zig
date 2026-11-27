@@ -1069,6 +1069,7 @@ pub fn main(init: std.process.Init) !u8 {
     const std_out = &stdout.interface;
 
     const args = try init.minimal.args.toSlice(init.arena.allocator());
+    crash_handler.recordCommandLine(args);
     const rest = try init.arena.allocator().alloc([]const u8, if (args.len > 0) args.len - 1 else 0);
     for (rest, 0..) |*arg, i| arg.* = args[i + 1];
 
