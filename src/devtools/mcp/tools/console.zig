@@ -472,7 +472,7 @@ test "console stack trace source-map resolution and ignoreList filtering" {
     const arena = arena_state.allocator();
 
     const map_json =
-        \\{"version":3,"sources":["vendor.js","src/app.ts"],"ignoreList":[0],"names":[],"mappings":"AAAS;ACgCI"}
+        \\{"version":3,"sources":["vendor.js","src/app.ts"],"ignoreList":[0],"names":[],"mappings":"AASA;ACgCI"}
     ;
     const sm = try lp.source_map.parse(alloc, "http://example.test/bundle.js", "http://example.test/bundle.js.map", map_json);
     var state: lp.State = .{};
