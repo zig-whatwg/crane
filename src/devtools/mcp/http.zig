@@ -404,6 +404,9 @@ pub const HttpServer = struct {
     /// state lock.
     pending_count: u32 = 0,
     authed_count: u32 = 0,
+    /// Bumped and futex-woken by every `retire`: what an acceptor at the
+    /// connection cap waits on.
+    retired: std.atomic.Value(u32) = .init(0),
 
     acceptor: ?platform.Thread = null,
     reaper: ?platform.Thread = null,
@@ -612,29 +615,45 @@ pub const HttpServer = struct {
     }
 
     /// List a just-accepted connection as pending, its deadline the auth
-    /// deadline; null when none may be listed now (it is closed). Pending
-    /// connections full: the oldest one not shut yet is shut down for it.
+    /// deadline; null when the server stops first or memory runs out (it is
+    /// closed). Pending connections full: the oldest one not shut yet is shut
+    /// down for it. At the connection cap it waits: the live connections are
+    /// at most the authenticated slots and the pending ones, so every listed
+    /// connection over them is one already shut and on its way out - the new
+    /// one is never refused for a flood's leavings (a refusal there let a
+    /// burst of idle sockets close the agent's own connection on a loaded
+    /// host: mcp_http_test "slots", alone 4/5 on chat.local).
     fn admit(self: *HttpServer, stream: platform.DevtoolsStream) ?*Conn {
-        const now = nowNs();
-        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.state_mutex);
-        if (self.pending_count >= self.options.max_pending_connections) {
-            var oldest: ?*Conn = null;
-            for (self.conns.items) |c| {
-                if (c.authenticated or c.shut) continue;
-                if (oldest == null or c.accepted_ns < oldest.?.accepted_ns) oldest = c;
+        var evicted = false;
+        while (true) {
+            const seen = self.retired.load(.acquire);
+            {
+                std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+                defer std.Io.Threaded.mutexUnlock(&self.state_mutex);
+                if (!evicted and self.pending_count >= self.options.max_pending_connections) {
+                    evicted = true;
+                    var oldest: ?*Conn = null;
+                    for (self.conns.items) |c| {
+                        if (c.authenticated or c.shut) continue;
+                        if (oldest == null or c.accepted_ns < oldest.?.accepted_ns) oldest = c;
+                    }
+                    if (oldest) |c| shutConn(c);
+                }
+                if (self.conns.items.len < self.connectionCap()) {
+                    const now = nowNs();
+                    const conn = self.allocator.create(Conn) catch return null;
+                    conn.* = .{ .raw = stream, .accepted_ns = now, .deadline_ns = .init(deadlineFrom(now, self.options.auth_timeout_ms)) };
+                    self.conns.append(self.allocator, conn) catch {
+                        self.allocator.destroy(conn);
+                        return null;
+                    };
+                    self.pending_count += 1;
+                    return conn;
+                }
             }
-            if (oldest) |c| shutConn(c);
+            if (self.stopping.load(.acquire)) return null;
+            futexIo().futexWaitTimeout(u32, &self.retired.raw, seen, .{ .duration = .{ .raw = .fromMilliseconds(50), .clock = .awake } }) catch {};
         }
-        if (self.conns.items.len >= self.connectionCap()) return null;
-        const conn = self.allocator.create(Conn) catch return null;
-        conn.* = .{ .raw = stream, .accepted_ns = now, .deadline_ns = .init(deadlineFrom(now, self.options.auth_timeout_ms)) };
-        self.conns.append(self.allocator, conn) catch {
-            self.allocator.destroy(conn);
-            return null;
-        };
-        self.pending_count += 1;
-        return conn;
     }
 
     /// The connection's first request authenticated: it takes an
@@ -662,6 +681,8 @@ pub const HttpServer = struct {
         std.Io.Threaded.mutexUnlock(&self.state_mutex);
         platform.devtoolsClose(conn.raw);
         self.allocator.destroy(conn);
+        _ = self.retired.fetchAdd(1, .release);
+        futexIo().futexWake(u32, &self.retired.raw, std.math.maxInt(u32));
     }
 
     fn workerDone(self: *HttpServer) void {

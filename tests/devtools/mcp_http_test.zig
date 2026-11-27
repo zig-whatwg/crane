@@ -654,7 +654,7 @@ test "mcp http sessions: 300 initialize cycles - ended by DELETE, by DELETE afte
     }
 }
 
-test "mcp http slots: twelve idle sockets that never authenticate cannot lock the agent out of 2 slots, and each ends by the auth deadline, TLS handshakes included (audit M3)" {
+test "mcp http slots: forty idle sockets that never authenticate cannot lock the agent out of 2 slots, and each ends by the auth deadline, TLS handshakes included (audit M3)" {
     var debug_alloc: LeakChecked = .init;
     defer testing.expect(debug_alloc.deinit() == .ok) catch {};
     const allocator = debug_alloc.allocator();
@@ -663,14 +663,17 @@ test "mcp http slots: twelve idle sockets that never authenticate cannot lock th
         var fx = try Fixture.start(allocator, .{ .max_connections = 2, .max_pending_connections = 4, .auth_timeout_ms = 300, .reap_interval_ms = 20 });
         defer fx.stop();
         const port = fx.mcp_http.boundPort();
-        var idle: [12]std.c.fd_t = undefined;
+        // Far more than the 4 pending slots and the 10 connections listed at
+        // most: the agent's connection comes while the evicted ones are still
+        // on their way out.
+        var idle: [40]std.c.fd_t = undefined;
         var opened: usize = 0;
         defer for (idle[0..opened]) |fd| {
             _ = std.c.close(fd);
         };
         while (opened < idle.len) : (opened += 1) idle[opened] = try connectV4(port);
 
-        // The agent's own request, while all twelve sit idle.
+        // The agent's own request, while all forty sit idle.
         const req = try std.fmt.allocPrint(allocator, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nMCP-Protocol-Version: 2026-07-28\r\nMcp-Method: ping\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n{s}", .{ port, fx.mcp_http.bearerToken(), modern_ping.len, modern_ping });
         defer allocator.free(req);
         var res = try sendRequest(allocator, port, req);
