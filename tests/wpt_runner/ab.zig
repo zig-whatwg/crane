@@ -33,7 +33,8 @@
 //! commit) in <dir> - and, for the side the bug-finding runner runs (the
 //! tip), that tree's wpt_handle_leaks_baseline.txt, which its handle gate
 //! reads (`--handle-baseline`: the runs' directory is the WPT tree, which
-//! has no tools/). A frozen generation (~/crane-frozen/main-<sha>) is a
+//! has no tools/), and its wpt_handle_unsettled.txt, which the compare
+//! reads (`--unsettled`). A frozen generation (~/crane-frozen/main-<sha>) is a
 //! frozen dir with its full run's journal and result streams in full/: as
 //! the base, only the tip runs, and the base is that run, read for the
 //! listed files.
@@ -429,9 +430,11 @@ pub const Frozen = struct {
     runner_sha256: [64]u8,
     worklist: []const u8,
     known: []const u8,
-    /// The tree's tools/wpt_handle_leaks_baseline.txt; checked only for the
-    /// side the bug-finding runner runs.
+    /// The tree's tools/wpt_handle_leaks_baseline.txt and
+    /// tools/wpt_handle_unsettled.txt; checked only for the side the
+    /// bug-finding runner runs.
     handle_baseline: []const u8,
+    handle_unsettled: []const u8,
     build_info: []const u8,
 };
 
@@ -464,6 +467,8 @@ pub fn checkFrozen(arena: Allocator, io: Io, dir: []const u8, commit: []const u8
     if (!exists(io, known)) return bad(arena, "{s} missing", .{known});
     const handle_baseline = try std.fs.path.join(arena, &.{ dir, "wpt_handle_leaks_baseline.txt" });
     if (need_bug and !exists(io, handle_baseline)) return bad(arena, "{s} missing (the bug-finding runner's handle caps: copy the tree's tools/wpt_handle_leaks_baseline.txt)", .{handle_baseline});
+    const handle_unsettled = try std.fs.path.join(arena, &.{ dir, "wpt_handle_unsettled.txt" });
+    if (need_bug and !exists(io, handle_unsettled)) return bad(arena, "{s} missing (the files whose handle reading may be unsettled: copy the tree's tools/wpt_handle_unsettled.txt)", .{handle_unsettled});
     const info_path = try std.fs.path.join(arena, &.{ dir, "BUILD_INFO" });
     const info = Io.Dir.cwd().readFileAlloc(io, info_path, arena, .limited(64 * 1024)) catch "";
     const named_by = if (info.len > 0) info else std.fs.path.basename(dir);
@@ -482,6 +487,7 @@ pub fn checkFrozen(arena: Allocator, io: Io, dir: []const u8, commit: []const u8
         .worklist = worklist,
         .known = known,
         .handle_baseline = handle_baseline,
+        .handle_unsettled = handle_unsettled,
         .build_info = std.mem.trim(u8, info, " \t\r\n"),
     } };
 }
@@ -764,7 +770,7 @@ pub fn run(arena: Allocator, io: Io, opts: Options) !Exit {
                 const records = try w.readRecords(r.dir);
                 const e = try w.endLine("bug-tip", r.rc, records, list);
                 if (!e.complete) return ended(&w, .incomplete);
-                const rc = try w.child(&.{ tip.build_compare, try std.fmt.allocPrint(arena, "--production={s}", .{tip_dir}), try std.fmt.allocPrint(arena, "--bug-finding={s}", .{r.dir}), try std.fmt.allocPrint(arena, "--log={s}.log", .{r.dir}), try std.fmt.allocPrint(arena, "--known={s}", .{tip.known}) }, try w.path("bug-compare.txt"));
+                const rc = try w.child(&.{ tip.build_compare, try std.fmt.allocPrint(arena, "--production={s}", .{tip_dir}), try std.fmt.allocPrint(arena, "--bug-finding={s}", .{r.dir}), try std.fmt.allocPrint(arena, "--log={s}.log", .{r.dir}), try std.fmt.allocPrint(arena, "--known={s}", .{tip.known}), try std.fmt.allocPrint(arena, "--unsettled={s}", .{tip.handle_unsettled}) }, try w.path("bug-compare.txt"));
                 const text = Io.Dir.cwd().readFileAlloc(io, try w.path("bug-compare.txt"), arena, .limited(64 << 20)) catch "";
                 w.say("==== the bug-finding gate (wpt_build_compare) rc={d}:\n{s}", .{ rc, lastLines(text, 30) });
                 if (rc != 0) w.findings = true;
@@ -1145,6 +1151,8 @@ test "a frozen dir: its runners' sums, its worklist, its commit; nested or flat"
     try testing.expect(std.mem.indexOf(u8, (try checkFrozen(a, io, dir, "97ab1aaf2", true)).problem, "wpt_handle_leaks_baseline.txt missing") != null);
     try testing.expect((try checkFrozen(a, io, dir, "97ab1aaf2", false)) == .ok);
     try tmp.dir.writeFile(io, .{ .sub_path = "wpt_handle_leaks_baseline.txt", .data = "# none\n" });
+    try testing.expect(std.mem.indexOf(u8, (try checkFrozen(a, io, dir, "97ab1aaf2", true)).problem, "wpt_handle_unsettled.txt missing") != null);
+    try tmp.dir.writeFile(io, .{ .sub_path = "wpt_handle_unsettled.txt", .data = "# none\n" });
     const ok = (try checkFrozen(a, io, dir, "97ab1aaf2", true)).ok;
     try testing.expect(std.mem.endsWith(u8, ok.runner, "zig-out/bin/wpt_runner"));
     try testing.expect(std.mem.endsWith(u8, ok.handle_baseline, "wpt_handle_leaks_baseline.txt"));

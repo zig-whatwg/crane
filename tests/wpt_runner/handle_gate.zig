@@ -305,10 +305,13 @@ fn signPrefix(v: i64) []const u8 {
 }
 
 /// The most entries tools/wpt_handle_leaks_baseline.txt may hold: the 5
-/// cross-realm holders the gate was seeded with (522584dbe), which lane rc10
-/// fixes. The baseline is a ratchet (tools/AGENTS.md "Known debt only goes
-/// down"): lower this as entries go, never raise it without the integrator.
-pub const max_baseline_entries = 5;
+/// cross-realm holders the gate was seeded with (522584dbe, lane rc10's), and
+/// the 77 settled holders lane gate2's two FULL bug-finding runs found
+/// (2026-11-27; the integrator's ruling 10:31 PM ET, each with its owner
+/// queue item). The baseline is a ratchet (tools/AGENTS.md "Known debt only
+/// goes down"): lower this as entries go, never raise it without the
+/// integrator.
+pub const max_baseline_entries = 82;
 
 /// What marks a leak line (`writeDiagnostic`) in the bug-finding log.
 pub const leak_line_marker = "handle leak: ";
@@ -594,7 +597,7 @@ test "a leak line is one handle leak: the diagnostic's own text, never a heap le
     try testing.expect(!isLeakLine("handle gate: checked 2 file(s), 1 handle leak(s) over the baseline, 0 OK file(s) unread (no counters); baseline none (every file held to 0 / 0)"));
 }
 
-test "the checked-in handle baseline only goes down: at most the 5 entries lane gate2 found (2026-11-27)" {
+test "the checked-in handle baseline only goes down: at most its 82 entries (2026-11-27)" {
     // tools/wpt_handle_leaks_baseline.txt is a ratchet (tools/AGENTS.md "Known
     // debt only goes down"): lane rc10 removes the entries it fixes, and this
     // cap follows them down. Raising it needs the integrator's OK.

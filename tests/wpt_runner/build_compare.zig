@@ -417,7 +417,7 @@ pub const LogFindings = struct {
     handle_baseline: []const u8 = "",
 
     pub fn total(self: LogFindings) usize {
-        return self.leaks + self.bad_frees + self.panics + self.poison_reads + self.refcount + self.heap_leaks + self.unexpected_rungs + self.handle_leaks;
+        return self.leaks + self.bad_frees + self.panics + self.poison_reads + self.refcount + self.heap_leaks + self.unexpected_rungs;
     }
 
     pub fn scan(self: *LogFindings, text: []const u8) void {
@@ -471,9 +471,70 @@ pub const HandleCoverage = struct {
     /// (`handle unsettled:`): their reading is taken anyway, and named.
     unsettled: usize = 0,
     first_unsettled: ?[]const u8 = null,
+    /// Leak lines of OK files: of files that read unsettled and are listed
+    /// in tools/wpt_handle_unsettled.txt (pending the settle's end condition:
+    /// counted, not failing), and of every other file (failing: over its
+    /// tools/wpt_handle_leaks_baseline.txt cap after a settled reading, or
+    /// unsettled and unlisted).
+    pending_leaks: usize = 0,
+    blocking_leaks: usize = 0,
+    first_blocking_leak: ?[]const u8 = null,
+    /// Unsettled readings of files the list does not name: a file that
+    /// settled before now does not (failing).
+    new_unsettled: usize = 0,
+    first_new_unsettled: ?[]const u8 = null,
+    /// Listed files that ran OK and settled: remove them (the list only goes
+    /// down; failing, as a stale known difference is).
+    stale_unsettled: usize = 0,
+    first_stale_unsettled: ?[]const u8 = null,
 };
 
+/// The default list of files whose handle readings may be unsettled
+/// (option B, the integrator 2026-11-27 10:31 PM ET).
+pub const default_unsettled_path = "tools/wpt_handle_unsettled.txt";
+
+/// The most entries tools/wpt_handle_unsettled.txt may hold: the 549 files
+/// lane gate2's two FULL bug-finding runs both read unsettled, and the 14
+/// intermittent ones (2026-11-27). It only goes down - lower this as entries
+/// go, never raise it without the integrator.
+pub const max_unsettled_entries = 563;
+
+/// The unsettled list: one worklist path a line, `#` comments; each path
+/// once. A path followed by a TAB, `intermittent`, a TAB and its evidence
+/// reads unsettled in some runs only (Firefox metadata's `expected: [PASS,
+/// FAIL]`): never NEW when it reads so, never STALE when it settles. The
+/// value is whether the entry is intermittent.
+pub fn parseUnsettledList(arena: Allocator, text: []const u8) error{ OutOfMemory, InvalidUnsettledList }!std.StringHashMapUnmanaged(bool) {
+    var set: std.StringHashMapUnmanaged(bool) = .empty;
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |raw| {
+        const line = std.mem.trim(u8, raw, " \r");
+        if (line.len == 0 or line[0] == '#') continue;
+        var fields = std.mem.splitScalar(u8, line, '\t');
+        const path = std.mem.trim(u8, fields.first(), " ");
+        var intermittent = false;
+        if (fields.next()) |kind| {
+            if (!std.mem.eql(u8, kind, "intermittent")) return error.InvalidUnsettledList;
+            const evidence = fields.next() orelse return error.InvalidUnsettledList;
+            if (std.mem.trim(u8, evidence, " ").len == 0) return error.InvalidUnsettledList;
+            intermittent = true;
+        }
+        if (path.len == 0) return error.InvalidUnsettledList;
+        const gop = try set.getOrPut(arena, path);
+        if (gop.found_existing) return error.InvalidUnsettledList;
+        gop.value_ptr.* = intermittent;
+    }
+    return set;
+}
+
+/// `handleCoverageListed` with no unsettled list: every unsettled file is new.
 pub fn handleCoverage(arena: Allocator, logs: []const []const u8, run: *const Run) Allocator.Error!HandleCoverage {
+    const none: std.StringHashMapUnmanaged(bool) = .empty;
+    return handleCoverageListed(arena, logs, run, &none);
+}
+
+pub fn handleCoverageListed(arena: Allocator, logs: []const []const u8, run: *const Run, allowed_unsettled: *const std.StringHashMapUnmanaged(bool)) Allocator.Error!HandleCoverage {
+    var leaked: std.StringHashMapUnmanaged(void) = .empty;
     var checked: std.StringHashMapUnmanaged(void) = .empty;
     var unread: std.StringHashMapUnmanaged(void) = .empty;
     var unsettled: std.StringHashMapUnmanaged(void) = .empty;
@@ -481,7 +542,10 @@ pub fn handleCoverage(arena: Allocator, logs: []const []const u8, run: *const Ru
         var lines = std.mem.splitScalar(u8, text, '\n');
         while (lines.next()) |line| {
             if (handle_gate.checkedPath(line)) |p| try checked.put(arena, p, {});
-            if (handle_gate.leakPath(line)) |p| try checked.put(arena, p, {});
+            if (handle_gate.leakPath(line)) |p| {
+                try checked.put(arena, p, {});
+                try leaked.put(arena, p, {});
+            }
             if (handle_gate.unreadPath(line)) |p| try unread.put(arena, p, {});
             if (handle_gate.unsettledPath(line)) |p| try unsettled.put(arena, p, {});
         }
@@ -490,9 +554,27 @@ pub fn handleCoverage(arena: Allocator, logs: []const []const u8, run: *const Ru
     for (run.files.keys(), run.files.values()) |path, status| {
         if (status != .ok) continue;
         c.ok_files += 1;
-        if (unsettled.contains(path)) {
+        const is_unsettled = unsettled.contains(path);
+        const is_listed = allowed_unsettled.contains(path);
+        const is_intermittent = allowed_unsettled.get(path) orelse false;
+        if (is_unsettled) {
             c.unsettled += 1;
             if (c.first_unsettled == null) c.first_unsettled = path;
+            if (!is_listed) {
+                c.new_unsettled += 1;
+                if (c.first_new_unsettled == null) c.first_new_unsettled = path;
+            }
+        } else if (is_listed and !is_intermittent and (checked.contains(path) or unread.contains(path))) {
+            c.stale_unsettled += 1;
+            if (c.first_stale_unsettled == null) c.first_stale_unsettled = path;
+        }
+        if (leaked.contains(path)) {
+            if (is_unsettled and is_listed) {
+                c.pending_leaks += 1;
+            } else {
+                c.blocking_leaks += 1;
+                if (c.first_blocking_leak == null) c.first_blocking_leak = path;
+            }
         }
         if (checked.contains(path)) {
             c.checked += 1;
@@ -561,6 +643,12 @@ pub const Report = struct {
         not_run,
         /// An OK file was not checked: no line for it, or no counters.
         unchecked,
+        /// A handle leak of a file not pending in the unsettled list.
+        leaks,
+        /// An unsettled reading of a file the list does not name.
+        new_unsettled,
+        /// A listed file that settled.
+        stale_unsettled,
     };
 
     /// Why the handle gate's lines do not cover the run's OK files, or null
@@ -570,6 +658,9 @@ pub const Report = struct {
         if (h.ok_files == 0) return null;
         if (h.checked == 0 and h.unread == 0) return .not_run;
         if (h.unchecked > 0 or h.unread > 0) return .unchecked;
+        if (h.blocking_leaks > 0) return .leaks;
+        if (h.new_unsettled > 0) return .new_unsettled;
+        if (h.stale_unsettled > 0) return .stale_unsettled;
         return null;
     }
 
@@ -578,13 +669,20 @@ pub const Report = struct {
         if (self.wrong_build > 0) try w.print("  WRONG BUILD: {d} journal record(s) are not the side they were given as (a production journal as --production, a bug-finding one as --bug-finding)\n", .{self.wrong_build});
         try w.print("bug-finding gate: {s} - crashes {d}, ownership violations {d}", .{ if (self.gatePassed()) "PASS" else "FAIL", self.crashes.len, self.ownership_violations });
         if (self.log) |l| {
-            try w.print(", leaks {d}, bad frees {d}, panics {d}, poison reads {d}, refcount {d}, heap leaks {d}, unexpected rungs {d}, handle leaks {d} (and {d} node(s) swept at Browser ends, not counted)\n", .{ l.leaks, l.bad_frees, l.panics, l.poison_reads, l.refcount, l.heap_leaks, l.unexpected_rungs, l.handle_leaks, l.heap_swept_nodes });
             const h = self.handle orelse HandleCoverage{};
+            try w.print(", leaks {d}, bad frees {d}, panics {d}, poison reads {d}, refcount {d}, heap leaks {d}, unexpected rungs {d}, handle leaks {d} (and {d} node(s) swept at Browser ends, not counted)\n", .{ l.leaks, l.bad_frees, l.panics, l.poison_reads, l.refcount, l.heap_leaks, l.unexpected_rungs, h.blocking_leaks, l.heap_swept_nodes });
             if (self.handleGateProblem()) |p| switch (p) {
                 .not_run => try w.print("  handle gate: NOT RUN - no file's handle check in the log, so none of the bug-finding run's {d} OK file(s) was checked\n", .{h.ok_files}),
                 .unchecked => try w.print("  handle gate: NOT RECONCILED - checked {d} of the bug-finding run's {d} OK file(s): {d} unread (no counters), {d} with no check line (first: {s})\n", .{ h.checked, h.ok_files, h.unread, h.unchecked, h.first_unchecked orelse "-" }),
-            } else try w.print("  handle gate: checked {d} of the bug-finding run's {d} OK file(s) ({d} runner process summaries), {d} handle leak(s); baseline {s}\n", .{ h.checked, h.ok_files, l.handle_gate_runs, l.handle_leaks, if (l.handle_baseline.len > 0) l.handle_baseline else "none" });
-            if (h.unsettled > 0) try w.print("  handle gate: {d} OK file(s) read UNSETTLED - the closed page's work or agents outlived the settle's bound (first: {s})\n", .{ h.unsettled, h.first_unsettled orelse "-" });
+                else => {},
+            };
+            const problem = self.handleGateProblem();
+            const coverage_ok = if (problem) |pr| pr != .not_run and pr != .unchecked else true;
+            if (coverage_ok)
+                try w.print("  handle gate: checked {d} of the bug-finding run's {d} OK file(s) ({d} runner process summaries), {d} handle leak(s) over the baseline (first: {s}); baseline {s}\n", .{ h.checked, h.ok_files, l.handle_gate_runs, h.blocking_leaks, h.first_blocking_leak orelse "-", if (l.handle_baseline.len > 0) l.handle_baseline else "none" });
+            if (h.unsettled > h.new_unsettled) try w.print("  handle gate: {d} OK file(s) read UNSETTLED, all listed in " ++ default_unsettled_path ++ " ({d} with a handle leak, pending)\n", .{ h.unsettled - h.new_unsettled, h.pending_leaks });
+            if (h.new_unsettled > 0) try w.print("  handle gate: {d} NEW unsettled file(s), not in " ++ default_unsettled_path ++ " (first: {s})\n", .{ h.new_unsettled, h.first_new_unsettled orelse "-" });
+            if (h.stale_unsettled > 0) try w.print("  handle gate: {d} STALE entry(ies) of " ++ default_unsettled_path ++ " settled - remove them (first: {s})\n", .{ h.stale_unsettled, h.first_stale_unsettled orelse "-" });
         } else try w.writeAll(" (no log given: leaks, bad frees, panics, poison reads and handle leaks not read)\n");
         for (self.crashes) |path| try w.print("  CRASH {s}\n", .{path});
         try w.print("differences: {d} ({d} known, {d} NEW, {d} STALE)\n", .{ self.differences.len, self.verdict.known, self.verdict.new.len, self.verdict.stale.len });
@@ -632,6 +730,8 @@ const usage =
     \\  <dir>: a run's output directory - its journal.jsonl and every
     \\         journal*.wptreport.jsonl under it (a sweep's full/ directory)
     \\  --known: the known differences (default tools/wpt_build_differences.txt)
+    \\  --unsettled: the files whose handle reading may be unsettled
+    \\           (default tools/wpt_handle_unsettled.txt)
     \\  --log:   the bug-finding run's log (a sweep's sweep.log), read for
     \\           leaks, bad frees, panics, poison reads and the V8 handle
     \\           gate's leaks and summaries; repeatable
@@ -654,6 +754,7 @@ pub fn main(init: std.process.Init) !u8 {
     var production_dir: ?[]const u8 = null;
     var bug_finding_dir: ?[]const u8 = null;
     var known_path: []const u8 = "tools/wpt_build_differences.txt";
+    var unsettled_path: []const u8 = default_unsettled_path;
     var logs: std.ArrayList([]const u8) = .empty;
     for (args[1..]) |arg| {
         if (valueOf(arg, "--production")) |v| {
@@ -662,6 +763,8 @@ pub fn main(init: std.process.Init) !u8 {
             bug_finding_dir = v;
         } else if (valueOf(arg, "--known")) |v| {
             known_path = v;
+        } else if (valueOf(arg, "--unsettled")) |v| {
+            unsettled_path = v;
         } else if (valueOf(arg, "--log")) |v| {
             try logs.append(arena, v);
         } else {
@@ -686,6 +789,18 @@ pub fn main(init: std.process.Init) !u8 {
     const known = parseKnown(arena, known_text, &diag) catch |err| switch (err) {
         error.InvalidKnown => {
             try out.print("wpt_build_compare: {s}:{d}: {s}\n", .{ known_path, diag.line, diag.reason });
+            return 2;
+        },
+        else => return err,
+    };
+
+    const unsettled_text = readFile(arena, unsettled_path) catch |err| {
+        try out.print("wpt_build_compare: cannot read {s}: {t}\n", .{ unsettled_path, err });
+        return 2;
+    };
+    const allowed_unsettled = parseUnsettledList(arena, unsettled_text) catch |err| switch (err) {
+        error.InvalidUnsettledList => {
+            try out.print("wpt_build_compare: {s}: a path is listed twice\n", .{unsettled_path});
             return 2;
         },
         else => return err,
@@ -718,7 +833,7 @@ pub fn main(init: std.process.Init) !u8 {
         .ownership_violations = bug_finding.ownership_violations,
         .log = findings,
         .wrong_build = wrongBuild(&production, .production) + wrongBuild(&bug_finding, .bug_finding),
-        .handle = if (findings != null) try handleCoverage(arena, log_texts.items, &bug_finding) else null,
+        .handle = if (findings != null) try handleCoverageListed(arena, log_texts.items, &bug_finding, &allowed_unsettled) else null,
     };
     try report.write(out);
     return if (report.passed()) 0 else 1;
@@ -1071,7 +1186,14 @@ test "a V8 handle leak line in the bug-finding log counts in the gate's total, a
     f.scan(
         \\warning(handle): handle leak: streams/a.html: live_object_globals +1 (max 0), wrapper_cache_entries +5 (max 0), global_handle_bytes +64, node_wrappers 0
     );
-    try testing.expectEqual(@as(usize, 1), f.total());
+    try testing.expectEqual(@as(usize, 1), f.handle_leaks);
+    // The gate judges it through the handle coverage (option B: a leak of a
+    // file pending in the unsettled list is counted, not failing).
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const run = try fixtureRun(arena_state.allocator(), &.{.{ .index = 0, .path = "streams/a.html", .status = .ok }}, "");
+    const h = try handleCoverage(arena_state.allocator(), &.{"warning(handle): handle leak: streams/a.html: live_object_globals +1 (max 0), wrapper_cache_entries +5 (max 0), global_handle_bytes +64, node_wrappers 0"}, &run);
+    try testing.expectEqual(@as(usize, 1), h.blocking_leaks);
 }
 
 test "a V8 handle leak fails the bug-finding gate like a heap leak, and the handle gate must have checked every OK file" {
@@ -1100,7 +1222,7 @@ test "a V8 handle leak fails the bug-finding gate like a heap leak, and the hand
     f.scan(log);
     try testing.expectEqual(@as(usize, 1), f.handle_leaks);
     try testing.expectEqual(@as(usize, 1), f.heap_leaks);
-    try testing.expectEqual(@as(usize, 2), f.total());
+    try testing.expectEqual(@as(usize, 1), f.total());
     try testing.expectEqual(@as(usize, 1), f.handle_gate_runs);
     try testing.expectEqualStrings("tools/wpt_handle_leaks_baseline.txt", f.handle_baseline);
     const coverage = try handleCoverage(arena, &.{log}, &run);
@@ -1136,6 +1258,7 @@ test "a V8 handle leak fails the bug-finding gate like a heap leak, and the hand
     // Clean: every OK file checked, no leak.
     var clean = report;
     clean.log = .{ .handle_gate_runs = 1 };
+    clean.handle = try handleCoverage(arena, &.{"handle checked: streams/a.html\nhandle checked: dom/b.html\nhandle checked: dom/c-crash.html\n"}, &run);
     try testing.expect(clean.gatePassed());
     try testing.expect(clean.handleGateProblem() == null);
 
@@ -1191,8 +1314,8 @@ test "option B: an unsettled reading is pending only for a listed file; a new un
         .{ .index = 2, .path = "dom/clean.html", .status = .ok },
     };
     const run = try fixtureRun(arena, &records, "");
-    const listed = try parseUnsettledList(arena, "# pending hsettle1\nfetch/sw.any.js\nfetch/sw-quiet.any.js\n");
-    try testing.expectEqual(@as(usize, 2), listed.count());
+    const allowed = try parseUnsettledList(arena, "# pending hsettle1\nfetch/sw.any.js\nfetch/sw-quiet.any.js\n");
+    try testing.expectEqual(@as(usize, 2), allowed.count());
 
     // Both listed files read unsettled; one also leaks +1: pending, the gate passes.
     const pending_log =
@@ -1212,7 +1335,7 @@ test "option B: an unsettled reading is pending only for a listed file; a new un
         .crashes = &.{},
         .ownership_violations = 0,
         .log = f,
-        .handle = try handleCoverageListed(arena, &.{pending_log}, &run, &listed),
+        .handle = try handleCoverageListed(arena, &.{pending_log}, &run, &allowed),
         .wrong_build = 0,
     };
     const h = report.handle.?;
@@ -1236,7 +1359,7 @@ test "option B: an unsettled reading is pending only for a listed file; a new un
         \\handle checked: fetch/sw-quiet.any.js
     ;
     report.log = .{};
-    report.handle = try handleCoverageListed(arena, &.{new_log}, &run, &listed);
+    report.handle = try handleCoverageListed(arena, &.{new_log}, &run, &allowed);
     try testing.expectEqual(@as(usize, 1), report.handle.?.new_unsettled);
     try testing.expect(!report.gatePassed());
     w = .fixed(&buf);
@@ -1250,7 +1373,7 @@ test "option B: an unsettled reading is pending only for a listed file; a new un
         \\handle checked: fetch/sw-quiet.any.js
         \\handle checked: dom/clean.html
     ;
-    report.handle = try handleCoverageListed(arena, &.{stale_log}, &run, &listed);
+    report.handle = try handleCoverageListed(arena, &.{stale_log}, &run, &allowed);
     try testing.expectEqual(@as(usize, 1), report.handle.?.stale_unsettled);
     try testing.expect(!report.gatePassed());
     w = .fixed(&buf);
@@ -1268,7 +1391,7 @@ test "option B: an unsettled reading is pending only for a listed file; a new un
     var lf: LogFindings = .{};
     lf.scan(leak_log);
     report.log = lf;
-    report.handle = try handleCoverageListed(arena, &.{leak_log}, &run, &listed);
+    report.handle = try handleCoverageListed(arena, &.{leak_log}, &run, &allowed);
     try testing.expectEqual(@as(usize, 1), report.handle.?.blocking_leaks);
     try testing.expect(!report.gatePassed());
 }
@@ -1278,7 +1401,24 @@ test "the checked-in unsettled list parses, each path once, and only goes down" 
     defer arena_state.deinit();
     const arena = arena_state.allocator();
     const text = try host.cwd().readFileAlloc(host.io(), default_unsettled_path, arena, .limited(4 << 20));
-    const listed = try parseUnsettledList(arena, text);
-    try testing.expect(listed.count() <= max_unsettled_entries);
+    const allowed = try parseUnsettledList(arena, text);
+    try testing.expect(allowed.count() <= max_unsettled_entries);
     try testing.expectError(error.InvalidUnsettledList, parseUnsettledList(arena, "a.html\na.html\n"));
+    try testing.expectError(error.InvalidUnsettledList, parseUnsettledList(arena, "a.html\tsometimes\tx\n"));
+    try testing.expectError(error.InvalidUnsettledList, parseUnsettledList(arena, "a.html\tintermittent\t\n"));
+}
+
+test "an intermittent unsettled entry is neither NEW when it reads unsettled nor STALE when it settles" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const records = [_]journal.Record{.{ .index = 0, .path = "workers/w.html", .status = .ok }};
+    const run = try fixtureRun(arena, &records, "");
+    const allowed = try parseUnsettledList(arena, "workers/w.html\tintermittent\tunsettled in 1 of 2 FULL runs\n");
+    try testing.expect(allowed.get("workers/w.html").?);
+    const settled = try handleCoverageListed(arena, &.{"handle checked: workers/w.html"}, &run, &allowed);
+    try testing.expectEqual(@as(usize, 0), settled.stale_unsettled);
+    const unsettled = try handleCoverageListed(arena, &.{"handle unsettled: workers/w.html: after 80 rounds the event loop has no pending work and 1 agent(s) beyond the clean reading are alive\nhandle checked: workers/w.html"}, &run, &allowed);
+    try testing.expectEqual(@as(usize, 0), unsettled.new_unsettled);
+    try testing.expectEqual(@as(usize, 1), unsettled.unsettled);
 }
