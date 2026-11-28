@@ -1175,3 +1175,110 @@ test "a check line names its file: clean, unread, or its leak line" {
     try testing.expect(handle_gate.checkedPath("handle gate: checked 3 file(s), 0 handle leak(s) over the baseline, 0 OK file(s) unread (no counters); baseline none (every file held to 0 / 0)") == null);
     try testing.expect(handle_gate.leakPath("warning(heap): heap leak: 3 State block(s) and 3 Instance slot(s) alive at the Browser's end") == null);
 }
+
+test "option B: an unsettled reading is pending only for a listed file; a new unsettled file, a listed file that settled, and a settled leak fail the gate" {
+    // The integrator's ruling, 2026-11-27 10:31 PM ET: a reading the settle
+    // could not bring to its end condition is reported and counted, never a
+    // pass by itself - tools/wpt_handle_unsettled.txt lists the files allowed
+    // to read so (pending the settle's service-worker end and bfcache flush),
+    // and it only goes down.
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const records = [_]journal.Record{
+        .{ .index = 0, .path = "fetch/sw.any.js", .status = .ok },
+        .{ .index = 1, .path = "fetch/sw-quiet.any.js", .status = .ok },
+        .{ .index = 2, .path = "dom/clean.html", .status = .ok },
+    };
+    const run = try fixtureRun(arena, &records, "");
+    const listed = try parseUnsettledList(arena, "# pending hsettle1\nfetch/sw.any.js\nfetch/sw-quiet.any.js\n");
+    try testing.expectEqual(@as(usize, 2), listed.count());
+
+    // Both listed files read unsettled; one also leaks +1: pending, the gate passes.
+    const pending_log =
+        \\handle unsettled: fetch/sw.any.js: after 80 rounds the event loop has no pending work and 1 agent(s) beyond the clean reading are alive
+        \\warning(handle): handle leak: fetch/sw.any.js: live_object_globals +1 (max 0), wrapper_cache_entries 0 (max 0), global_handle_bytes 0, node_wrappers 0
+        \\handle unsettled: fetch/sw-quiet.any.js: after 80 rounds the event loop has no pending work and 1 agent(s) beyond the clean reading are alive
+        \\handle checked: fetch/sw-quiet.any.js
+        \\handle checked: dom/clean.html
+    ;
+    var f: LogFindings = .{};
+    f.scan(pending_log);
+    var report: Report = .{
+        .production_files = 3,
+        .bug_finding_files = 3,
+        .differences = &.{},
+        .verdict = .{ .new = &.{}, .stale = &.{}, .known = 0 },
+        .crashes = &.{},
+        .ownership_violations = 0,
+        .log = f,
+        .handle = try handleCoverageListed(arena, &.{pending_log}, &run, &listed),
+        .wrong_build = 0,
+    };
+    const h = report.handle.?;
+    try testing.expectEqual(@as(usize, 2), h.unsettled);
+    try testing.expectEqual(@as(usize, 1), h.pending_leaks);
+    try testing.expectEqual(@as(usize, 0), h.blocking_leaks);
+    try testing.expect(report.gatePassed());
+    var buf: [4096]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try report.write(&w);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "bug-finding gate: PASS") != null);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "2 OK file(s) read UNSETTLED, all listed in tools/wpt_handle_unsettled.txt (1 with a handle leak, pending)") != null);
+
+    // A file that settled before now reads unsettled: NEW, the gate fails.
+    const new_log =
+        \\handle unsettled: dom/clean.html: after 80 rounds the event loop has pending work and 0 agent(s) beyond the clean reading are alive
+        \\handle checked: dom/clean.html
+        \\handle unsettled: fetch/sw.any.js: after 80 rounds the event loop has no pending work and 1 agent(s) beyond the clean reading are alive
+        \\handle checked: fetch/sw.any.js
+        \\handle unsettled: fetch/sw-quiet.any.js: after 80 rounds the event loop has no pending work and 1 agent(s) beyond the clean reading are alive
+        \\handle checked: fetch/sw-quiet.any.js
+    ;
+    report.log = .{};
+    report.handle = try handleCoverageListed(arena, &.{new_log}, &run, &listed);
+    try testing.expectEqual(@as(usize, 1), report.handle.?.new_unsettled);
+    try testing.expect(!report.gatePassed());
+    w = .fixed(&buf);
+    try report.write(&w);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "handle gate: 1 NEW unsettled file(s), not in tools/wpt_handle_unsettled.txt (first: dom/clean.html)") != null);
+
+    // A listed file that settled: STALE, the list only goes down.
+    const stale_log =
+        \\handle unsettled: fetch/sw.any.js: after 80 rounds the event loop has no pending work and 1 agent(s) beyond the clean reading are alive
+        \\handle checked: fetch/sw.any.js
+        \\handle checked: fetch/sw-quiet.any.js
+        \\handle checked: dom/clean.html
+    ;
+    report.handle = try handleCoverageListed(arena, &.{stale_log}, &run, &listed);
+    try testing.expectEqual(@as(usize, 1), report.handle.?.stale_unsettled);
+    try testing.expect(!report.gatePassed());
+    w = .fixed(&buf);
+    try report.write(&w);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "handle gate: 1 STALE entry(ies) of tools/wpt_handle_unsettled.txt settled - remove them (first: fetch/sw-quiet.any.js)") != null);
+
+    // A settled file's leak is a leak, listed or not.
+    const leak_log =
+        \\handle unsettled: fetch/sw.any.js: after 80 rounds the event loop has no pending work and 1 agent(s) beyond the clean reading are alive
+        \\handle checked: fetch/sw.any.js
+        \\handle unsettled: fetch/sw-quiet.any.js: after 80 rounds the event loop has no pending work and 1 agent(s) beyond the clean reading are alive
+        \\handle checked: fetch/sw-quiet.any.js
+        \\warning(handle): handle leak: dom/clean.html: live_object_globals +1 (max 0), wrapper_cache_entries 0 (max 0), global_handle_bytes 0, node_wrappers 0
+    ;
+    var lf: LogFindings = .{};
+    lf.scan(leak_log);
+    report.log = lf;
+    report.handle = try handleCoverageListed(arena, &.{leak_log}, &run, &listed);
+    try testing.expectEqual(@as(usize, 1), report.handle.?.blocking_leaks);
+    try testing.expect(!report.gatePassed());
+}
+
+test "the checked-in unsettled list parses, each path once, and only goes down" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const text = try host.cwd().readFileAlloc(host.io(), default_unsettled_path, arena, .limited(4 << 20));
+    const listed = try parseUnsettledList(arena, text);
+    try testing.expect(listed.count() <= max_unsettled_entries);
+    try testing.expectError(error.InvalidUnsettledList, parseUnsettledList(arena, "a.html\na.html\n"));
+}
