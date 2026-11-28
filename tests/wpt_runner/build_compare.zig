@@ -647,6 +647,9 @@ pub const Report = struct {
     /// The bug-finding run's OK files against the handle gate's lines in the
     /// log (`handleCoverage`); null when no log was given.
     handle: ?HandleCoverage = null,
+    /// The baseline whose caps judged the leak lines (`--handle-baseline`);
+    /// empty: the runner's, as its summaries name it.
+    handle_baseline_path: []const u8 = "",
 
     pub fn passed(self: Report) bool {
         return self.gatePassed() and self.verdict.new.len == 0 and self.verdict.stale.len == 0 and self.wrong_build == 0;
@@ -699,7 +702,7 @@ pub const Report = struct {
             const problem = self.handleGateProblem();
             const coverage_ok = if (problem) |pr| pr != .not_run and pr != .unchecked else true;
             if (coverage_ok)
-                try w.print("  handle gate: checked {d} of the bug-finding run's {d} OK file(s) ({d} runner process summaries), {d} handle leak(s) over the baseline (first: {s}); baseline {s}\n", .{ h.checked, h.ok_files, l.handle_gate_runs, h.blocking_leaks, h.first_blocking_leak orelse "-", if (l.handle_baseline.len > 0) l.handle_baseline else "none" });
+                try w.print("  handle gate: checked {d} of the bug-finding run's {d} OK file(s) ({d} runner process summaries), {d} handle leak(s) over the baseline (first: {s}); baseline {s}\n", .{ h.checked, h.ok_files, l.handle_gate_runs, h.blocking_leaks, h.first_blocking_leak orelse "-", if (self.handle_baseline_path.len > 0) self.handle_baseline_path else if (l.handle_baseline.len > 0) l.handle_baseline else "none" });
             const listed_unsettled = h.unsettled - h.new_unsettled - h.unsettled_quiet;
             if (listed_unsettled > 0) try w.print("  handle gate: {d} OK file(s) read UNSETTLED, all listed in " ++ default_unsettled_path ++ " ({d} with a handle leak, pending)\n", .{ listed_unsettled, h.pending_leaks });
             if (h.unsettled_quiet > 0) try w.print("  handle gate: {d} unlisted file(s) read unsettled with no handle leak - reported, not failing (first: {s})\n", .{ h.unsettled_quiet, h.first_unsettled_quiet orelse "-" });
@@ -867,6 +870,7 @@ pub fn main(init: std.process.Init) !u8 {
         .log = findings,
         .wrong_build = wrongBuild(&production, .production) + wrongBuild(&bug_finding, .bug_finding),
         .handle = if (findings != null) try handleCoverageListed(arena, log_texts.items, &bug_finding, &allowed_unsettled, &baseline) else null,
+        .handle_baseline_path = handle_baseline_path,
     };
     try report.write(out);
     return if (report.passed()) 0 else 1;
