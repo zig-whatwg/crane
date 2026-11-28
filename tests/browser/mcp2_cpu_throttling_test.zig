@@ -179,6 +179,7 @@ test "Browser JS setTimeout chain slows under EventLoop CPU throttling and resto
     const rst_str = try ctx.evaluateScriptToString("String(window.__elapsed)", testing.allocator);
     defer testing.allocator.free(rst_str);
     const rst_ms = try std.fmt.parseFloat(f64, rst_str);
+    if (!(rst_ms < thr_ms * 0.75)) std.debug.print("chain: unthrottled {d:.1} ms, 4x {d:.1} ms, restored {d:.1} ms\n", .{ base_ms, thr_ms, rst_ms });
     try testing.expect(rst_ms < thr_ms * 0.75);
 }
 
