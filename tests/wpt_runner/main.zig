@@ -953,7 +953,7 @@ pub fn executeTests(
         const test_file = discovery.test_files.items[file_offset];
         if (comptime !wpt_options.production) {
             if (handle_before == null) {
-                browser.wpt_browser.settleForHandleGate();
+                _ = browser.wpt_browser.settleForHandleGate(null);
                 handle_before = readHandleSnapshot();
             }
         }
@@ -1186,7 +1186,13 @@ pub fn executeTests(
         const will_restart = tally.status.restartsBrowser(browser.leftovers());
         if (comptime !wpt_options.production) {
             if (tally.status == .ok) {
-                browser.wpt_browser.settleForHandleGate();
+                const settle = browser.wpt_browser.settleForHandleGate(if (handle_before) |b| b.live_agents else null);
+                if (!settle.settled) {
+                    var unsettled_buf: [1024]u8 = undefined;
+                    var unsettled: std.Io.Writer = .fixed(&unsettled_buf);
+                    handle_gate.writeUnsettled(&unsettled, test_file.path, settle.pending_work, settle.extra_agents, settle.rounds) catch {};
+                    print("{s}\n", .{unsettled.buffered()});
+                }
                 // One line per OK file, written as it ends: a runner process
                 // that dies later keeps every check it made (handle_gate.zig).
                 const after = readHandleSnapshot();

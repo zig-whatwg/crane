@@ -467,23 +467,33 @@ pub const HandleCoverage = struct {
     unchecked: usize = 0,
     /// The first OK file (in the journal's order) with no line.
     first_unchecked: ?[]const u8 = null,
+    /// OK files whose settle hit its bound before the closed page was gone
+    /// (`handle unsettled:`): their reading is taken anyway, and named.
+    unsettled: usize = 0,
+    first_unsettled: ?[]const u8 = null,
 };
 
 pub fn handleCoverage(arena: Allocator, logs: []const []const u8, run: *const Run) Allocator.Error!HandleCoverage {
     var checked: std.StringHashMapUnmanaged(void) = .empty;
     var unread: std.StringHashMapUnmanaged(void) = .empty;
+    var unsettled: std.StringHashMapUnmanaged(void) = .empty;
     for (logs) |text| {
         var lines = std.mem.splitScalar(u8, text, '\n');
         while (lines.next()) |line| {
             if (handle_gate.checkedPath(line)) |p| try checked.put(arena, p, {});
             if (handle_gate.leakPath(line)) |p| try checked.put(arena, p, {});
             if (handle_gate.unreadPath(line)) |p| try unread.put(arena, p, {});
+            if (handle_gate.unsettledPath(line)) |p| try unsettled.put(arena, p, {});
         }
     }
     var c: HandleCoverage = .{};
     for (run.files.keys(), run.files.values()) |path, status| {
         if (status != .ok) continue;
         c.ok_files += 1;
+        if (unsettled.contains(path)) {
+            c.unsettled += 1;
+            if (c.first_unsettled == null) c.first_unsettled = path;
+        }
         if (checked.contains(path)) {
             c.checked += 1;
         } else if (unread.contains(path)) {
@@ -574,6 +584,7 @@ pub const Report = struct {
                 .not_run => try w.print("  handle gate: NOT RUN - no file's handle check in the log, so none of the bug-finding run's {d} OK file(s) was checked\n", .{h.ok_files}),
                 .unchecked => try w.print("  handle gate: NOT RECONCILED - checked {d} of the bug-finding run's {d} OK file(s): {d} unread (no counters), {d} with no check line (first: {s})\n", .{ h.checked, h.ok_files, h.unread, h.unchecked, h.first_unchecked orelse "-" }),
             } else try w.print("  handle gate: checked {d} of the bug-finding run's {d} OK file(s) ({d} runner process summaries), {d} handle leak(s); baseline {s}\n", .{ h.checked, h.ok_files, l.handle_gate_runs, l.handle_leaks, if (l.handle_baseline.len > 0) l.handle_baseline else "none" });
+            if (h.unsettled > 0) try w.print("  handle gate: {d} OK file(s) read UNSETTLED - the closed page's work or agents outlived the settle's bound (first: {s})\n", .{ h.unsettled, h.first_unsettled orelse "-" });
         } else try w.writeAll(" (no log given: leaks, bad frees, panics, poison reads and handle leaks not read)\n");
         for (self.crashes) |path| try w.print("  CRASH {s}\n", .{path});
         try w.print("differences: {d} ({d} known, {d} NEW, {d} STALE)\n", .{ self.differences.len, self.verdict.known, self.verdict.new.len, self.verdict.stale.len });
@@ -1096,6 +1107,12 @@ test "a V8 handle leak fails the bug-finding gate like a heap leak, and the hand
     try testing.expectEqual(@as(usize, 3), coverage.ok_files);
     try testing.expectEqual(@as(usize, 3), coverage.checked);
     try testing.expectEqual(@as(usize, 0), coverage.unchecked);
+    try testing.expectEqual(@as(usize, 0), coverage.unsettled);
+    // A file read at the settle's bound is named, and still judged by its check.
+    const late = try handleCoverage(arena, &.{ log, "handle unsettled: dom/b.html: after 80 rounds the event loop has pending work and 1 agent(s) beyond the clean reading are alive" }, &run);
+    try testing.expectEqual(@as(usize, 1), late.unsettled);
+    try testing.expectEqualStrings("dom/b.html", late.first_unsettled.?);
+    try testing.expectEqual(@as(usize, 3), late.checked);
 
     var report: Report = .{
         .production_files = 4,
@@ -1153,6 +1170,7 @@ test "a V8 handle leak fails the bug-finding gate like a heap leak, and the hand
 test "a check line names its file: clean, unread, or its leak line" {
     try testing.expectEqualStrings("dom/b.html", handle_gate.checkedPath("handle checked: dom/b.html").?);
     try testing.expectEqualStrings("dom/c.html", handle_gate.unreadPath("handle unread: dom/c.html").?);
+    try testing.expectEqualStrings("dom/w.any.worker.html", handle_gate.unsettledPath("handle unsettled: dom/w.any.worker.html: after 80 rounds the event loop has pending work and 1 agent(s) beyond the clean reading are alive").?);
     try testing.expectEqualStrings("streams/a.html", handle_gate.leakPath("warning(handle): handle leak: streams/a.html: live_object_globals +1 (max 0), wrapper_cache_entries 0 (max 0), global_handle_bytes +8, node_wrappers 0").?);
     try testing.expect(handle_gate.checkedPath("handle gate: checked 3 file(s), 0 handle leak(s) over the baseline, 0 OK file(s) unread (no counters); baseline none (every file held to 0 / 0)") == null);
     try testing.expect(handle_gate.leakPath("warning(heap): heap leak: 3 State block(s) and 3 Instance slot(s) alive at the Browser's end") == null);

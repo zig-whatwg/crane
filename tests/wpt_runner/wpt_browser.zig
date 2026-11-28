@@ -189,19 +189,75 @@ pub const WptBrowser = struct {
     /// Settle the Browser onto a clean initial `about:blank` realm and force
     /// full GC + deferred-teardown drain so `wpt_runner_bug_finding` can
     /// sample net V8 handle deltas across a file boundary (`handle_gate.zig`).
-    pub fn settleForHandleGate(self: *WptBrowser) void {
+    /// How `settleForHandleGate` ended.
+    pub const Settle = struct {
+        /// The end condition held: the event loop has no pending work (no
+        /// runnable task, no worker it owns still running, no fetch in
+        /// flight, no active timer, no teardown waiting) and no agent beyond
+        /// the clean reading's is alive.
+        settled: bool,
+        rounds: usize,
+        pending_work: bool,
+        /// Live agents beyond `target_agents` when it ended (0 when settled).
+        extra_agents: u64,
+    };
+
+    /// The bound: rounds of one event-loop turn of at most 25 ms each.
+    pub const settle_max_rounds = 80;
+
+    /// Close the file's page and settle the Browser for the handle gate's
+    /// reading (handle_gate.zig): navigate to about:blank, then run
+    /// GC + deferred teardown and let the event loop turn until the closed
+    /// page is really gone - the loop has no pending work
+    /// (EventLoop.hasPendingWork: no worker this loop owns is running, no
+    /// task, fetch, timer or teardown pending) and the process has no more
+    /// live agents than at the clean reading (`target_agents`, the
+    /// diagnostic counter live_agents: a worker's agent ends on its own
+    /// thread) - then GC twice more so what that end released is collected.
+    /// `settle_max_rounds` bounds it; a reading taken at the bound is
+    /// `settled = false`, and the runner says so beside the file's check.
+    /// Lane gate2: the earlier settle (about:blank + 2 GCs, no turn of the
+    /// loop) read a page whose worker was still ending as a +1 leak - 515 of
+    /// 631 handle-leak lines of a FULL bug-finding run were .any.js files.
+    pub fn settleForHandleGate(self: *WptBrowser, target_agents: ?u64) Settle {
+        var out: Settle = .{ .settled = false, .rounds = 0, .pending_work = false, .extra_agents = 0 };
         self.closeOldWindows();
-        self.browser.navigateWithOptions("about:blank", .window, .{ .skip_load = true }) catch return;
-        const page = self.browser.current_context orelse return;
-        const window = page.window_instance orelse return;
-        const agent = window.ctx.agent orelse return;
-        // Two GC + deferred-teardown passes so weak callbacks, finalizers, and
-        // any second-pass released wrappers all settle cleanly.
+        self.browser.navigateWithOptions("about:blank", .window, .{ .skip_load = true }) catch return out;
+        const page = self.browser.current_context orelse return out;
+        const window = page.window_instance orelse return out;
+        const agent = window.ctx.agent orelse return out;
+        while (out.rounds < settle_max_rounds) : (out.rounds += 1) {
+            engine.requestGarbageCollection(agent);
+            self.browser.agent_host.deferred_teardown.drainAll();
+            out.pending_work = if (self.browser.event_loop) |loop| loop.hasPendingWork() else false;
+            const agents = counter("live_agents") orelse 0;
+            out.extra_agents = if (target_agents) |t| agents -| t else 0;
+            if (!out.pending_work and out.extra_agents == 0) {
+                out.settled = true;
+                break;
+            }
+            _ = self.browser.runEventLoopBlocking(25) catch {};
+        }
+        // What the end released: weak callbacks, finalizers, second-pass
+        // wrappers.
         var pass: usize = 0;
         while (pass < 2) : (pass += 1) {
             engine.requestGarbageCollection(agent);
             self.browser.agent_host.deferred_teardown.drainAll();
         }
+        return out;
+    }
+
+    /// One of the engine's diagnostic counters, or null when it gives none.
+    pub fn counter(name: []const u8) ?u64 {
+        if (engine.capabilities.diagnostic_counters == .unsupported) return null;
+        var buffer: [4096]u8 = undefined;
+        var fixed = std.heap.FixedBufferAllocator.init(&buffer);
+        const counters = engine.diagnosticCounters(fixed.allocator()) catch return null;
+        for (counters) |c| {
+            if (std.mem.eql(u8, c.name, name)) return if (c.value < 0) 0 else @intCast(c.value);
+        }
+        return null;
     }
 
     /// Cleanup

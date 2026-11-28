@@ -40,6 +40,9 @@ pub const Snapshot = struct {
     wrapper_cache_entries: u64 = 0,
     global_handle_bytes: u64 = 0,
     node_wrappers: u64 = 0,
+    /// Agents alive in the process (`live_agents`): the settle's target - a
+    /// closed page's workers have ended when it is back to the clean reading's.
+    live_agents: u64 = 0,
 
     pub fn diff(before: Snapshot, after: Snapshot) Delta {
         return .{
@@ -96,6 +99,8 @@ pub fn extractSnapshot(counters: anytype) Snapshot {
             snap.global_handle_bytes = counterToU64(c.value);
         } else if (std.mem.eql(u8, c.name, "node_wrappers")) {
             snap.node_wrappers = counterToU64(c.value);
+        } else if (std.mem.eql(u8, c.name, "live_agents")) {
+            snap.live_agents = counterToU64(c.value);
         }
     }
     return snap;
@@ -332,6 +337,21 @@ pub fn leakPath(line: []const u8) ?[]const u8 {
 pub const checked_line_marker = "handle checked: ";
 /// An OK file whose handles could not be read (the engine gave no counters).
 pub const unread_line_marker = "handle unread: ";
+/// A file whose settle hit its bound before the closed page was gone (its
+/// check line follows as usual): `handle unsettled: <path>: <why>`.
+pub const unsettled_line_marker = "handle unsettled: ";
+
+pub fn writeUnsettled(w: *std.Io.Writer, path: []const u8, pending_work: bool, extra_agents: u64, rounds: usize) std.Io.Writer.Error!void {
+    try w.print(unsettled_line_marker ++ "{s}: after {d} rounds the event loop {s} pending work and {d} agent(s) beyond the clean reading are alive", .{ path, rounds, if (pending_work) "has" else "has no", extra_agents });
+}
+
+/// The file an unsettled line names, or null.
+pub fn unsettledPath(line: []const u8) ?[]const u8 {
+    const at = std.mem.indexOf(u8, line, unsettled_line_marker) orelse return null;
+    const rest = line[at + unsettled_line_marker.len ..];
+    const end = std.mem.indexOf(u8, rest, ": after ") orelse return null;
+    return rest[0..end];
+}
 
 pub fn writeChecked(w: *std.Io.Writer, path: []const u8) std.Io.Writer.Error!void {
     try w.print(checked_line_marker ++ "{s}", .{path});
@@ -601,6 +621,13 @@ test "each OK file's check line round-trips its path: clean, unread, or a leak" 
     w = .fixed(&buf);
     try writeDiagnostic(&w, "dom/nodes/c.html", base.check("dom/nodes/c.html", .{}, .{ .live_object_globals = 1 }));
     try testing.expectEqualStrings("dom/nodes/c.html", leakPath(w.buffered()).?);
+    w = .fixed(&buf);
+    try writeUnsettled(&w, "dom/nodes/d.any.worker.html", true, 1, 80);
+    try testing.expectEqualStrings("dom/nodes/d.any.worker.html", unsettledPath(w.buffered()).?);
+    try testing.expect(checkedPath(w.buffered()) == null);
     // The run's summary is none of them.
     try testing.expect(checkedPath("handle gate: checked 2 file(s), 0 handle leak(s) over the baseline, 0 OK file(s) unread (no counters); baseline none (every file held to 0 / 0)") == null);
+    // The settle's target: live agents, read with the handle counters.
+    const Counter = struct { name: []const u8, value: i64 };
+    try testing.expectEqual(@as(u64, 2), extractSnapshot(&[_]Counter{.{ .name = "live_agents", .value = 2 }}).live_agents);
 }
