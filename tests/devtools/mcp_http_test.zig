@@ -7,6 +7,13 @@
 //! query-string token refusal, per-connection & per-token 429 rate limiting,
 //! mandatory TLS on non-loopback, optional TLS on loopback), and clean
 //! wakeable shutdown under leak checking.
+//!
+//! Lane mcp3, batch A (audit report C, H1/M3/M4): sessions are freed when
+//! they end and bounded while they live; connections that have not
+//! authenticated never hold one of the authenticated slots and end at a
+//! deadline; kept-alive, stalled and idle connections and idle sessions time
+//! out; a session's first tools/call waits for the client's roots as the
+//! stdio transport does (chrome-devtools-mcp src/index.ts #getContext).
 
 const std = @import("std");
 const testing = std.testing;
@@ -16,6 +23,8 @@ const devtools = @import("devtools");
 const http_mcp = devtools.mcp.http;
 
 const LeakChecked = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true });
+/// The same, counting the bytes live (`debug.total_requested_bytes`).
+const Counted = @import("root").poisoning.DebugAllocator(.{ .thread_safe = true, .enable_memory_limit = true });
 
 const Fixture = struct {
     allocator: std.mem.Allocator,
@@ -430,4 +439,429 @@ test "mcp http options: --slim and --categoryNetworkMocks forward into McpServer
         try testing.expect(std.mem.indexOf(u8, res.body, "\"name\":\"mock_network\"") != null);
         try testing.expect(std.mem.indexOf(u8, res.body, "\"name\":\"remove_network_mock\"") != null);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Lane mcp3, batch A: session lifetime (H1), slots and timeouts (M3), the
+// roots wait (M4).
+// ---------------------------------------------------------------------------
+
+const legacy_init = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{}}}";
+const legacy_init_roots = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"roots\":{\"listChanged\":true}}}}";
+const initialized_note = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}";
+const modern_ping = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}";
+const list_pages_call = "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"list_pages\",\"arguments\":{}}}";
+
+/// Descriptors open in this process now (0..4095, probed with F_GETFD).
+fn openDescriptorCount() usize {
+    var count: usize = 0;
+    var fd: std.c.fd_t = 0;
+    while (fd < 4096) : (fd += 1) {
+        if (std.c.fcntl(fd, std.c.F.GETFD) != -1) count += 1;
+    }
+    return count;
+}
+
+/// Wait until the server holds no connection (its workers have closed their
+/// sockets): what a descriptor count must wait for.
+fn waitForNoConnections(srv: *http_mcp.HttpServer) !void {
+    const deadline = platform.monotonicMillis() + 5_000;
+    while (srv.connectionCount() != 0) {
+        if (platform.monotonicMillis() >= deadline) return error.ConnectionsStayed;
+        platform.sleepThread(5 * std.time.ns_per_ms);
+    }
+}
+
+/// Whether the server closes `fd` within `timeout_ms` (what it sends first is
+/// discarded).
+fn serverClosed(fd: std.c.fd_t, timeout_ms: i64) bool {
+    const deadline = platform.monotonicMillis() + timeout_ms;
+    while (true) {
+        const left = deadline - platform.monotonicMillis();
+        if (left <= 0) return false;
+        var pfd = [_]std.c.pollfd{.{ .fd = fd, .events = std.c.POLL.IN, .revents = 0 }};
+        if (std.c.poll(&pfd, 1, @intCast(left)) <= 0) return false;
+        var chunk: [1024]u8 = undefined;
+        if (std.c.recv(fd, &chunk, chunk.len, 0) <= 0) return true;
+    }
+}
+
+/// One client connection read a little at a time (an event stream, a
+/// kept-alive connection).
+const Client = struct {
+    fd: std.c.fd_t,
+    buf: std.ArrayList(u8) = .empty,
+
+    fn open(port: u16) !Client {
+        return .{ .fd = try connectV4(port) };
+    }
+
+    fn close(self: *Client, allocator: std.mem.Allocator) void {
+        _ = std.c.close(self.fd);
+        self.buf.deinit(allocator);
+    }
+
+    fn send(self: *Client, data: []const u8) !void {
+        try sendAll(self.fd, data);
+    }
+
+    /// Read until `needle` is in what was read from `from` on; the index just
+    /// past it. error.ReadTimeout after `timeout_ms`; error.Closed when the
+    /// server ends the connection first.
+    fn readUntil(self: *Client, allocator: std.mem.Allocator, needle: []const u8, from: usize, timeout_ms: i64) !usize {
+        const deadline = platform.monotonicMillis() + timeout_ms;
+        while (true) {
+            if (from <= self.buf.items.len) {
+                if (std.mem.indexOf(u8, self.buf.items[from..], needle)) |at| return from + at + needle.len;
+            }
+            const left = deadline - platform.monotonicMillis();
+            if (left <= 0) return error.ReadTimeout;
+            var pfd = [_]std.c.pollfd{.{ .fd = self.fd, .events = std.c.POLL.IN, .revents = 0 }};
+            if (std.c.poll(&pfd, 1, @intCast(left)) <= 0) return error.ReadTimeout;
+            var chunk: [4096]u8 = undefined;
+            const n = std.c.recv(self.fd, &chunk, chunk.len, 0);
+            if (n <= 0) return error.Closed;
+            try self.buf.appendSlice(allocator, chunk[0..@intCast(n)]);
+        }
+    }
+
+    /// Whether the server closes the connection within `timeout_ms` (what it
+    /// sends first is kept).
+    fn closedWithin(self: *Client, allocator: std.mem.Allocator, timeout_ms: i64) !bool {
+        _ = self.readUntil(allocator, "\x00never sent\x00", self.buf.items.len, timeout_ms) catch |err| switch (err) {
+            error.Closed => return true,
+            error.ReadTimeout => return false,
+            else => return err,
+        };
+        return false;
+    }
+};
+
+/// A POST /mcp: `session` adds its Mcp-Session-Id and the legacy version
+/// header; `extra` adds header lines (each ending in CRLF).
+fn postRequest(allocator: std.mem.Allocator, port: u16, token: []const u8, session: ?[]const u8, extra: []const u8, body: []const u8, close_conn: bool) ![]u8 {
+    const session_lines = if (session) |sid|
+        try std.fmt.allocPrint(allocator, "Mcp-Session-Id: {s}\r\nMCP-Protocol-Version: 2025-11-25\r\n", .{sid})
+    else
+        try allocator.dupe(u8, "");
+    defer allocator.free(session_lines);
+    return std.fmt.allocPrint(allocator, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nContent-Type: application/json\r\n{s}{s}Content-Length: {d}\r\n{s}\r\n{s}", .{
+        port,
+        token,
+        session_lines,
+        extra,
+        body.len,
+        if (close_conn) "Connection: close\r\n" else "",
+        body,
+    });
+}
+
+/// Initialize a legacy session; its id (allocated).
+fn initSession(allocator: std.mem.Allocator, port: u16, token: []const u8, body: []const u8) ![]u8 {
+    const req = try postRequest(allocator, port, token, null, "", body, true);
+    defer allocator.free(req);
+    var res = try sendRequest(allocator, port, req);
+    defer res.deinit(allocator);
+    if (res.status != 200) return error.InitializeFailed;
+    return allocator.dupe(u8, res.header("mcp-session-id") orelse return error.MissingSessionId);
+}
+
+/// POST `body` on session `sid`; the status.
+fn sessionPost(allocator: std.mem.Allocator, port: u16, token: []const u8, sid: []const u8, body: []const u8) !u16 {
+    const req = try postRequest(allocator, port, token, sid, "", body, true);
+    defer allocator.free(req);
+    var res = try sendRequest(allocator, port, req);
+    defer res.deinit(allocator);
+    return res.status;
+}
+
+/// DELETE session `sid`; the status.
+fn sessionDelete(allocator: std.mem.Allocator, port: u16, token: []const u8, sid: []const u8) !u16 {
+    const req = try std.fmt.allocPrint(allocator, "DELETE /mcp HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nMCP-Protocol-Version: 2025-11-25\r\nMcp-Session-Id: {s}\r\nConnection: close\r\n\r\n", .{ port, token, sid });
+    defer allocator.free(req);
+    var res = try sendRequest(allocator, port, req);
+    defer res.deinit(allocator);
+    return res.status;
+}
+
+/// Open session `sid`'s GET event stream and read its priming event; the
+/// index just past it.
+fn openStream(allocator: std.mem.Allocator, client: *Client, port: u16, token: []const u8, sid: []const u8) !usize {
+    const req = try std.fmt.allocPrint(allocator, "GET /mcp HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nMCP-Protocol-Version: 2025-11-25\r\nMcp-Session-Id: {s}\r\nAccept: text/event-stream\r\n\r\n", .{ port, token, sid });
+    defer allocator.free(req);
+    try client.send(req);
+    const head_end = try client.readUntil(allocator, "\r\n\r\n", 0, 3_000);
+    if (std.mem.indexOf(u8, client.buf.items[0..head_end], "text/event-stream") == null) return error.NotAnEventStream;
+    return client.readUntil(allocator, "\n\n", head_end, 3_000);
+}
+
+/// The JSON of the first `data:` line in `bytes`.
+fn firstEventData(bytes: []const u8) ?[]const u8 {
+    const at = std.mem.indexOf(u8, bytes, "data: ") orelse return null;
+    const rest = bytes[at + "data: ".len ..];
+    const end = std.mem.indexOfScalar(u8, rest, '\n') orelse return null;
+    return rest[0..end];
+}
+
+test "mcp http sessions: 300 initialize cycles - ended by DELETE, by DELETE after a GET stream, or by the client leaving - leave descriptors, sessions and memory where they were (audit H1)" {
+    var debug_alloc: Counted = .init;
+    defer testing.expect(debug_alloc.deinit() == .ok) catch {};
+    const allocator = debug_alloc.allocator();
+
+    var fx = try Fixture.start(allocator, .{ .max_connections = 4, .max_requests_per_connection = 0, .max_requests_per_token = 0 });
+    defer fx.stop();
+    const srv = fx.mcp_http;
+    const port = srv.boundPort();
+    const token = srv.bearerToken();
+
+    const Cycle = struct {
+        fn run(a: std.mem.Allocator, p: u16, t: []const u8, i: usize) !void {
+            const sid = try initSession(a, p, t, legacy_init);
+            defer a.free(sid);
+            try testing.expectEqual(@as(u16, 202), try sessionPost(a, p, t, sid, initialized_note));
+            switch (i % 3) {
+                0 => try testing.expectEqual(@as(u16, 200), try sessionDelete(a, p, t, sid)),
+                1 => {
+                    var stream = try Client.open(p);
+                    defer stream.close(a);
+                    _ = try openStream(a, &stream, p, t, sid);
+                    try testing.expectEqual(@as(u16, 200), try sessionDelete(a, p, t, sid));
+                    // DELETE ends the session's stream.
+                    try testing.expect(try stream.closedWithin(a, 3_000));
+                },
+                // The client leaves without a DELETE.
+                else => {},
+            }
+        }
+    };
+    // Warm up past the session cap (2 x max_connections), so the list and
+    // the buffers have their size.
+    var i: usize = 0;
+    while (i < 12) : (i += 1) try Cycle.run(allocator, port, token, i);
+    try waitForNoConnections(srv);
+    const descriptors_before = openDescriptorCount();
+    const bytes_before = debug_alloc.debug.total_requested_bytes;
+
+    while (i < 312) : (i += 1) try Cycle.run(allocator, port, token, i);
+    try waitForNoConnections(srv);
+
+    const descriptors_after = openDescriptorCount();
+    const bytes_after = debug_alloc.debug.total_requested_bytes;
+    const sessions_after = srv.sessionCount();
+    if (sessions_after > 8 or descriptors_after > descriptors_before or bytes_after > bytes_before + 16 * 1024) {
+        std.debug.print("after 300 cycles: {d} sessions (cap 8), descriptors {d} -> {d}, live bytes {d} -> {d}\n", .{ sessions_after, descriptors_before, descriptors_after, bytes_before, bytes_after });
+        return error.SessionsNotFreed;
+    }
+}
+
+test "mcp http slots: forty idle sockets that never authenticate cannot lock the agent out of 2 slots, and each ends by the auth deadline, TLS handshakes included (audit M3)" {
+    var debug_alloc: LeakChecked = .init;
+    defer testing.expect(debug_alloc.deinit() == .ok) catch {};
+    const allocator = debug_alloc.allocator();
+
+    {
+        var fx = try Fixture.start(allocator, .{ .max_connections = 2, .max_pending_connections = 4, .auth_timeout_ms = 300, .reap_interval_ms = 20 });
+        defer fx.stop();
+        const port = fx.mcp_http.boundPort();
+        // Far more than the 4 pending slots and the 10 connections listed at
+        // most: the agent's connection comes while the evicted ones are still
+        // on their way out.
+        var idle: [40]std.c.fd_t = undefined;
+        var opened: usize = 0;
+        defer for (idle[0..opened]) |fd| {
+            _ = std.c.close(fd);
+        };
+        while (opened < idle.len) : (opened += 1) idle[opened] = try connectV4(port);
+
+        // The agent's own request, while all forty sit idle.
+        const req = try std.fmt.allocPrint(allocator, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nMCP-Protocol-Version: 2026-07-28\r\nMcp-Method: ping\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n{s}", .{ port, fx.mcp_http.bearerToken(), modern_ping.len, modern_ping });
+        defer allocator.free(req);
+        var res = try sendRequest(allocator, port, req);
+        defer res.deinit(allocator);
+        try testing.expectEqual(@as(u16, 200), res.status);
+
+        // The server closes every idle socket (300 ms deadline; it looks every 20 ms).
+        for (idle) |fd| try testing.expect(serverClosed(fd, 3_000));
+    }
+
+    // A TLS handshake that never starts ends at the same deadline.
+    {
+        var fx = try Fixture.start(allocator, .{ .tls = .required, .max_connections = 2, .max_pending_connections = 4, .auth_timeout_ms = 300, .reap_interval_ms = 20 });
+        defer fx.stop();
+        const port = fx.mcp_http.boundPort();
+        var idle: [3]std.c.fd_t = undefined;
+        var opened: usize = 0;
+        defer for (idle[0..opened]) |fd| {
+            _ = std.c.close(fd);
+        };
+        while (opened < idle.len) : (opened += 1) idle[opened] = try connectV4(port);
+        for (idle) |fd| try testing.expect(serverClosed(fd, 3_000));
+    }
+}
+
+test "mcp http timeouts: a kept-alive connection gone idle, a request head that stalls, a wrong token with a body never sent, and a session gone idle all end (audit M3)" {
+    var debug_alloc: LeakChecked = .init;
+    defer testing.expect(debug_alloc.deinit() == .ok) catch {};
+    const allocator = debug_alloc.allocator();
+
+    var fx = try Fixture.start(allocator, .{ .keep_alive_timeout_ms = 200, .request_timeout_ms = 300, .session_idle_timeout_ms = 300, .reap_interval_ms = 20 });
+    defer fx.stop();
+    const port = fx.mcp_http.boundPort();
+    const token = fx.mcp_http.bearerToken();
+    const ping = try std.fmt.allocPrint(allocator, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nMCP-Protocol-Version: 2026-07-28\r\nMcp-Method: ping\r\nContent-Length: {d}\r\n\r\n{s}", .{ port, token, modern_ping.len, modern_ping });
+    defer allocator.free(ping);
+
+    // 1. Kept alive (Node's http.Server answers Keep-Alive: timeout=), then idle.
+    {
+        var c = try Client.open(port);
+        defer c.close(allocator);
+        try c.send(ping);
+        _ = try c.readUntil(allocator, "\"resultType\":\"complete\"", 0, 3_000);
+        try testing.expect(std.mem.indexOf(u8, c.buf.items, "Connection: keep-alive") != null);
+        try testing.expect(std.mem.indexOf(u8, c.buf.items, "Keep-Alive: timeout=") != null);
+        try testing.expect(try c.closedWithin(allocator, 3_000));
+    }
+
+    // 2. A second request whose head stops halfway.
+    {
+        var c = try Client.open(port);
+        defer c.close(allocator);
+        try c.send(ping);
+        _ = try c.readUntil(allocator, "\"resultType\":\"complete\"", 0, 3_000);
+        try c.send("POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+        try testing.expect(try c.closedWithin(allocator, 3_000));
+    }
+
+    // 3. A wrong token is refused from the head alone: the 4 MB body it
+    //    announces is never waited for.
+    {
+        var c = try Client.open(port);
+        defer c.close(allocator);
+        try c.send("POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer wrong\r\nContent-Length: 4000000\r\n\r\n");
+        _ = try c.readUntil(allocator, "401 Unauthorized", 0, 2_000);
+    }
+
+    // 4. A session left idle past its timeout answers 404 ("The server MAY
+    //    terminate the session at any time, after which it MUST respond to
+    //    requests containing that session ID with HTTP 404 Not Found").
+    {
+        const sid = try initSession(allocator, port, token, legacy_init);
+        defer allocator.free(sid);
+        try testing.expectEqual(@as(u16, 202), try sessionPost(allocator, port, token, sid, initialized_note));
+        platform.sleepThread(800 * std.time.ns_per_ms);
+        try testing.expectEqual(@as(u16, 404), try sessionPost(allocator, port, token, sid, "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}"));
+    }
+}
+
+test "mcp http roots: a session's first tools/call asks for the client's roots on its own event stream and answers once they come; a later call does not wait (audit M4; chrome-devtools-mcp src/index.ts #getContext)" {
+    var debug_alloc: LeakChecked = .init;
+    defer testing.expect(debug_alloc.deinit() == .ok) catch {};
+    const allocator = debug_alloc.allocator();
+
+    var fx = try Fixture.start(allocator, .{ .mcp = .{ .roots_timeout_ms = 10_000 } });
+    defer fx.stop();
+    const port = fx.mcp_http.boundPort();
+    const token = fx.mcp_http.bearerToken();
+    const sid = try initSession(allocator, port, token, legacy_init_roots);
+    defer allocator.free(sid);
+    try testing.expectEqual(@as(u16, 202), try sessionPost(allocator, port, token, sid, initialized_note));
+
+    var call = try Client.open(port);
+    defer call.close(allocator);
+    const req = try postRequest(allocator, port, token, sid, "Accept: application/json, text/event-stream\r\n", list_pages_call, false);
+    defer allocator.free(req);
+    try call.send(req);
+    const head_end = try call.readUntil(allocator, "\r\n\r\n", 0, 3_000);
+    const head = call.buf.items[0..head_end];
+    try testing.expect(std.mem.indexOf(u8, head, "200 OK") != null);
+    try testing.expect(std.mem.indexOf(u8, head, "Content-Type: text/event-stream") != null);
+    const first_end = try call.readUntil(allocator, "\n\n", head_end, 3_000);
+    const data = firstEventData(call.buf.items[head_end..first_end]) orelse return error.NoEvent;
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_state.deinit();
+    const request = try std.json.parseFromSliceLeaky(std.json.Value, arena_state.allocator(), data, .{});
+    try testing.expectEqualStrings("roots/list", request.object.get("method").?.string);
+    const roots_id = request.object.get("id").?.integer;
+
+    // The client answers on a connection of its own; the call goes on.
+    const answered_at = platform.monotonicMillis();
+    const answer = try std.fmt.allocPrint(allocator, "{{\"jsonrpc\":\"2.0\",\"id\":{d},\"result\":{{\"roots\":[{{\"uri\":\"file:///tmp\",\"name\":\"tmp\"}}]}}}}", .{roots_id});
+    defer allocator.free(answer);
+    try testing.expectEqual(@as(u16, 202), try sessionPost(allocator, port, token, sid, answer));
+    const result_end = try call.readUntil(allocator, "## Pages", first_end, 5_000);
+    try testing.expect(platform.monotonicMillis() - answered_at < 5_000);
+    try testing.expect(std.mem.indexOf(u8, call.buf.items[first_end..result_end], "\"id\":7") != null);
+    // The final response ends the stream.
+    try testing.expect(try call.closedWithin(allocator, 3_000));
+
+    // The roots came: a later call is answered at once, as JSON.
+    const again = try postRequest(allocator, port, token, sid, "Accept: application/json, text/event-stream\r\n", list_pages_call, true);
+    defer allocator.free(again);
+    var res = try sendRequest(allocator, port, again);
+    defer res.deinit(allocator);
+    try testing.expectEqual(@as(u16, 200), res.status);
+    try testing.expect(std.mem.startsWith(u8, res.header("content-type") orelse "", "application/json"));
+    try testing.expect(std.mem.indexOf(u8, res.body, "## Pages") != null);
+}
+
+test "mcp http roots: a client that never answers delays only its first tools/call, by the roots timeout" {
+    var debug_alloc: LeakChecked = .init;
+    defer testing.expect(debug_alloc.deinit() == .ok) catch {};
+    const allocator = debug_alloc.allocator();
+
+    var fx = try Fixture.start(allocator, .{ .mcp = .{ .roots_timeout_ms = 400 } });
+    defer fx.stop();
+    const port = fx.mcp_http.boundPort();
+    const token = fx.mcp_http.bearerToken();
+    const sid = try initSession(allocator, port, token, legacy_init_roots);
+    defer allocator.free(sid);
+    try testing.expectEqual(@as(u16, 202), try sessionPost(allocator, port, token, sid, initialized_note));
+
+    var call = try Client.open(port);
+    defer call.close(allocator);
+    const req = try postRequest(allocator, port, token, sid, "Accept: application/json, text/event-stream\r\n", list_pages_call, false);
+    defer allocator.free(req);
+    const sent_at = platform.monotonicMillis();
+    try call.send(req);
+    const asked_end = try call.readUntil(allocator, "roots/list", 0, 3_000);
+    _ = try call.readUntil(allocator, "## Pages", asked_end, 5_000);
+    const waited = platform.monotonicMillis() - sent_at;
+    try testing.expect(waited >= 350);
+
+    // The wait is over for good: the next call does not wait.
+    const again = try postRequest(allocator, port, token, sid, "Accept: application/json, text/event-stream\r\n", list_pages_call, true);
+    defer allocator.free(again);
+    var res = try sendRequest(allocator, port, again);
+    defer res.deinit(allocator);
+    try testing.expectEqual(@as(u16, 200), res.status);
+    try testing.expect(std.mem.startsWith(u8, res.header("content-type") orelse "", "application/json"));
+}
+
+test "mcp http GET stream: a server message queued while the session's stream waits reaches it; a second GET stream on the session is 409 (the MCP TypeScript SDK's StreamableHTTPServerTransport allows one)" {
+    var debug_alloc: LeakChecked = .init;
+    defer testing.expect(debug_alloc.deinit() == .ok) catch {};
+    const allocator = debug_alloc.allocator();
+
+    var fx = try Fixture.start(allocator, .{});
+    defer fx.stop();
+    const port = fx.mcp_http.boundPort();
+    const token = fx.mcp_http.bearerToken();
+    const sid = try initSession(allocator, port, token, legacy_init_roots);
+    defer allocator.free(sid);
+
+    var stream = try Client.open(port);
+    defer stream.close(allocator);
+    const primed_end = try openStream(allocator, &stream, port, token, sid);
+    // Let the stream settle into its wait.
+    platform.sleepThread(100 * std.time.ns_per_ms);
+    // notifications/initialized asks the client for its roots (#updateRoots),
+    // on the stream.
+    try testing.expectEqual(@as(u16, 202), try sessionPost(allocator, port, token, sid, initialized_note));
+    _ = try stream.readUntil(allocator, "\"method\":\"roots/list\"", primed_end, 3_000);
+
+    const second = try std.fmt.allocPrint(allocator, "GET /mcp HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nMCP-Protocol-Version: 2025-11-25\r\nMcp-Session-Id: {s}\r\nAccept: text/event-stream\r\nConnection: close\r\n\r\n", .{ port, token, sid });
+    defer allocator.free(second);
+    var res = try sendRequest(allocator, port, second);
+    defer res.deinit(allocator);
+    try testing.expectEqual(@as(u16, 409), res.status);
 }

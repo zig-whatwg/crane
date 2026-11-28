@@ -1206,17 +1206,36 @@ pub fn initiatorTypeName(initiator_type: fetch.internal.InitiatorType) []const u
     };
 }
 
-/// Resource Timing "convert fetch timestamp" for `realm`'s global: zero
-/// stays zero; any other time is its relative high resolution coarse time.
+/// Resource Timing "convert fetch timestamp" for `realm`'s global, for a
+/// fetch timing info's times: 1. zero stays zero; 2. any other time is its
+/// relative high resolution coarse time - which, as in WebKit
+/// (networkLoadTimeToDOMHighResTimeStamp, 306074@main), is 0 at or before
+/// the time origin and never 0 after it: a moment inside the origin's tick
+/// reads one tick (Performances.fetch_timestamp; hr_time.TimeOrigin.
+/// relativeFetchTime states the ruling). The document's unload, DOM and load
+/// marks are not fetch timestamps: `relativeMark` converts them, raising
+/// nothing, as WebKit's PerformanceNavigationTiming::millisecondsSinceOrigin
+/// does.
 const FetchTimestampConverter = struct {
     realm: runtime.Context,
 
     fn call(self: FetchTimestampConverter, ts: f64) f64 {
+        // 1. If ts is zero, return zero.
         if (ts == 0) return 0;
+        // 2. Otherwise, the relative high resolution coarse time.
         const impl = hooks.read().performances orelse return 0;
-        return impl.relative_coarse_time(self.realm, ts) orelse 0;
+        return impl.fetch_timestamp(self.realm, ts) orelse 0;
     }
 };
+
+/// A document load timing mark `ts` (the unsafe shared current time in ms;
+/// 0 when the mark was never taken) for `realm`'s global: 0 stays 0, any
+/// other moment is its plain relative high resolution coarse time.
+fn relativeMark(realm: runtime.Context, ts: f64) f64 {
+    if (ts == 0) return 0;
+    const impl = hooks.read().performances orelse return 0;
+    return impl.relative_coarse_time(realm, ts) orelse 0;
+}
 
 /// What PerformanceResourceTiming supplies.
 pub const ResourceTimings = struct {
@@ -1605,10 +1624,11 @@ pub fn createNavigationTimingEntry(realm: runtime.Context, record: NavigationRec
         timeline.navigation_entry = null;
     }
     // 5. The previous document unload timing, relative to the new time
-    // origin.
+    // origin: marks of the document's unload, not fetch timestamps (nothing
+    // raised; see FetchTimestampConverter).
+    timeline.load_timing.unload_event_start = relativeMark(realm, record.unload_event_start);
+    timeline.load_timing.unload_event_end = relativeMark(realm, record.unload_event_end);
     const convert = FetchTimestampConverter{ .realm = realm };
-    timeline.load_timing.unload_event_start = convert.call(record.unload_event_start);
-    timeline.load_timing.unload_event_end = convert.call(record.unload_event_end);
     // 3. Setup the resource timing entry given "navigation", the document's
     // URL, fetchTiming, cacheMode and bodyInfo.
     var timing = try ResourceTiming.fromReport(timeline.allocator, record.report, convert);
@@ -1740,6 +1760,13 @@ pub const Performances = struct {
     /// global: coarsened, then made relative to its time origin. Null for
     /// a global with no Performance.
     relative_coarse_time: *const fn (realm: runtime.Context, unsafe_ms: f64) ?f64,
+    /// Resource Timing "convert fetch timestamp" step 2 for `unsafe_ms`, a
+    /// fetch timing info's moment (not zero), for `realm`'s global: the
+    /// relative coarse time, 0 at or before the time origin and one tick
+    /// for a moment after it inside its tick (WebKit's
+    /// networkLoadTimeToDOMHighResTimeStamp). Null for a global with no
+    /// Performance.
+    fetch_timestamp: *const fn (realm: runtime.Context, unsafe_ms: f64) ?f64,
     /// HR-Time "get time origin timestamp" for `realm`'s global (its
     /// Performance's timeOrigin, ms since the Unix epoch).
     time_origin_timestamp: *const fn (realm: runtime.Context) ?f64,

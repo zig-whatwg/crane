@@ -1,12 +1,20 @@
-//! Lane net-nav1 (Item 5): WebAssembly ESM integration (`application/wasm`
-//! module scripts in `<script type="module">`, static `import`, dynamic
-//! `import()`, Wasm importing JS, Wasm importing Wasm, invalid Wasm
-//! `WebAssembly.CompileError`, and wrong MIME type rejection).
+//! An `application/wasm` module script is a fetch failure, as in every
+//! shipping browser (user ruling 2026-11-27 5:31 PM ET, option (b), lane
+//! wasm2; the evidence is at module_script.zig createFromResponse, HTML
+//! "fetch a single module script" step 6): a `<script type=module>` whose
+//! source or static import is a .wasm response fires `error` and runs no
+//! WebAssembly start function, and import() of one rejects with a
+//! TypeError - whatever the bytes, and in a worker too.
+//!
+//! This file first tested lane net-nav1's JS-source shim (3aa9141a9), which
+//! ran a script in the page's realm to make ES module records for Wasm and
+//! could panic the engine (lane wasm2 step 1); the shim is gone.
 
 const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
 const LoopbackListener = @import("loopback_listener").LoopbackListener;
+const loop_settle = @import("loop_settle.zig");
 
 // (module (func (export "add") (param i32 i32) (result i32) (i32.add (local.get 0) (local.get 1))))
 const wasm_add = [_]u8{
@@ -119,14 +127,19 @@ const WasmSite = struct {
             content_type = "text/html";
             body =
                 \\<!doctype html>
-                \\<script type="module" src="/start.wasm"></script>
-                \\<script type="module">
+                \\<script>window.events = [];</script>
+                \\<script type="module" src="/start.wasm" onload="events.push('start:load')" onerror="events.push('start:error')"></script>
+                \\<script type="module" onerror="events.push('static:error')">
                 \\  import { add } from './add.wasm';
                 \\  import { double as dbl } from './import_js.wasm';
                 \\  import { inc } from './import_wasm.wasm';
                 \\  window.staticResult = `${add(20, 22)}:${dbl(21)}:${inc(41)}`;
                 \\</script>
+                \\<script type="module">window.plainModuleRan = true;</script>
             ;
+        } else if (std.mem.eql(u8, path, "/worker.js")) {
+            content_type = "text/javascript";
+            body = "import('/add.wasm').then(() => postMessage('fulfilled'), (e) => postMessage('rejected:' + e.name));";
         } else if (std.mem.eql(u8, path, "/add.wasm")) {
             content_type = "application/wasm";
             body = &wasm_add;
@@ -161,18 +174,7 @@ const WasmSite = struct {
     }
 };
 
-fn runUntil(browser: *browser_mod.Browser, page: *browser_mod.Context, expr: []const u8) !void {
-    var waited: usize = 0;
-    while (waited < 5_000) : (waited += 10) {
-        const value = try page.evaluateScriptToString(expr, testing.allocator);
-        defer testing.allocator.free(value);
-        if (std.mem.eql(u8, value, "true")) return;
-        _ = try browser.runEventLoopBlocking(10);
-    }
-    return error.TimedOut;
-}
-
-test "Item 5: Wasm ESM module scripts (script src, static import, Wasm->JS, Wasm->Wasm, dynamic import, CompileError, MIME check)" {
+test "a wasm module script is a fetch failure: script src and static imports fire error, import() rejects with TypeError, in a worker too" {
     const site = try WasmSite.start(testing.allocator);
     defer site.stop();
 
@@ -183,23 +185,30 @@ test "Item 5: Wasm ESM module scripts (script src, static import, Wasm->JS, Wasm
     try browser.navigate(try site.url(&url_buf, "/page.html"), .window);
     const page = browser.current_context orelse return error.NoContext;
 
-    try runUntil(browser, page, "window.staticResult === '42:42:42' && window.startRan === 1");
+    // The plain module after them runs; the two whose graph has a .wasm
+    // response fire error, and nothing of theirs ran: no start function
+    // (sink.js's mark), no body.
+    try loop_settle.settle(browser);
+    const static = try page.evaluateScriptToString("[...events].sort().join() + '|' + window.plainModuleRan + '|' + typeof window.staticResult + '|' + typeof window.startRan", testing.allocator);
+    defer testing.allocator.free(static);
+    try testing.expectEqualStrings("start:error,static:error|true|undefined|undefined", static);
 
-    // Dynamic import of valid Wasm, invalid Wasm (CompileError), and wrong MIME (TypeError).
+    // import() of a valid module, of invalid bytes and of the wrong MIME
+    // type all reject with a TypeError: none of them is compiled. The
+    // worker is ended once it has answered: a live worker is pending work,
+    // and the loop would not go idle until settle's bound.
     const kick = try page.evaluateScriptToString(
         \\(async () => {
-        \\  const m = await import('/add.wasm');
-        \\  let badErr = '';
-        \\  try { await import('/invalid.wasm'); } catch (e) { badErr = e instanceof WebAssembly.CompileError ? 'CompileError' : e.name; }
-        \\  let mimeErr = '';
-        \\  try { await import('/wrong-mime.wasm'); } catch (e) { mimeErr = e.name; }
-        \\  window.dynResult = `${m.add(10, 5)}:${badErr}:${mimeErr}`;
+        \\  const name = (p) => import(p).then(() => 'fulfilled', (e) => e.name);
+        \\  window.dynResult = `${await name('/add.wasm')}:${await name('/invalid.wasm')}:${await name('/wrong-mime.wasm')}`;
+        \\  const worker = new Worker('/worker.js');
+        \\  worker.onmessage = (e) => { window.workerResult = e.data; worker.terminate(); };
         \\})(); 'ok'
     , testing.allocator);
     testing.allocator.free(kick);
 
-    try runUntil(browser, page, "typeof window.dynResult === 'string'");
-    const dyn = try page.evaluateScriptToString("window.dynResult", testing.allocator);
+    try loop_settle.settle(browser);
+    const dyn = try page.evaluateScriptToString("window.dynResult + '|' + window.workerResult", testing.allocator);
     defer testing.allocator.free(dyn);
-    try testing.expectEqualStrings("15:CompileError:TypeError", dyn);
+    try testing.expectEqualStrings("TypeError:TypeError:TypeError|rejected:TypeError", dyn);
 }

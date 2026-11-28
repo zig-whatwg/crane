@@ -59,4 +59,5 @@ pub const CROSS_ORIGIN_ISOLATED_RESOLUTION_NS = coarsen.CROSS_ORIGIN_ISOLATED_RE
 // only when something analyzes its import.
 test {
     _ = coarsen;
+    _ = time_origin;
 }

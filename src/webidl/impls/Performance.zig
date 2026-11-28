@@ -49,6 +49,7 @@ pub fn installHooks() void {
         .of_performance = &timelineOfPerformance,
         .now = &nowOfRealm,
         .relative_coarse_time = &relativeCoarseTimeOfRealm,
+        .fetch_timestamp = &fetchTimestampOfRealm,
         .time_origin_timestamp = &timeOriginTimestampOfRealm,
         .set_navigation_start = &setNavigationStartOfRealm,
     });
@@ -91,8 +92,8 @@ fn timeOriginOf(ctx: runtime.Context) hr_time.TimeOrigin {
     // The origin is the recorded moment, coarsened, measured from the
     // estimated monotonic time of the Unix epoch - the process's, or on the
     // Browser's own clocks.
-    var origin = hr_time.TimeOrigin.initWithOrigin(
-        hr_time.coarsenTime(@as(hr_time.Nanoseconds, moment), cross_origin_isolated),
+    var origin = hr_time.TimeOrigin.initAtUnsafe(
+        @as(hr_time.Nanoseconds, moment),
         hr_time.time_origin.estimatedMonotonicTimeOfUnixEpochOn(source),
         cross_origin_isolated,
     );
@@ -178,7 +179,7 @@ fn setNavigationStartOfRealm(realm: runtime.Context, unsafe_ms: f64) void {
     // docs/platform-protocol.md section 9).
     if (!internal.time_origin.source.isProcess()) return;
     const moment: hr_time.Nanoseconds = @intFromFloat(unsafe_ms * std.time.ns_per_ms);
-    internal.time_origin.origin_moment = hr_time.coarsenTime(moment, internal.time_origin.cross_origin_isolated);
+    internal.time_origin.moveTo(moment);
 }
 
 fn timeOriginTimestampOfRealm(realm: runtime.Context) ?f64 {
@@ -197,6 +198,19 @@ fn relativeCoarseTimeOfRealm(realm: runtime.Context, unsafe_ms: f64) ?f64 {
     const moment: hr_time.Nanoseconds = @intFromFloat(unsafe_ms * std.time.ns_per_ms);
     const coarse = hr_time.coarsenTime(moment, origin.cross_origin_isolated);
     return hr_time.toMilliseconds(coarse - origin.origin_moment);
+}
+
+/// Resource Timing "convert fetch timestamp" step 2 for `unsafe_ms` - a
+/// fetch timing info's moment of the unsafe shared current time, in ms, not
+/// zero - for `realm`'s global: its relative high resolution coarse time, 0
+/// at or before the time origin and one tick for a moment inside the
+/// origin's tick after it (WebKit's networkLoadTimeToDOMHighResTimeStamp;
+/// hr_time.TimeOrigin.relativeFetchTime states the ruling).
+fn fetchTimestampOfRealm(realm: runtime.Context, unsafe_ms: f64) ?f64 {
+    const performance = performanceOfRealm(realm) orelse return null;
+    const internal = getInternal(performance) orelse return null;
+    const moment: hr_time.Nanoseconds = @intFromFloat(unsafe_ms * std.time.ns_per_ms);
+    return hr_time.toMilliseconds(internal.time_origin.relativeFetchTime(moment));
 }
 
 // ============================================================================

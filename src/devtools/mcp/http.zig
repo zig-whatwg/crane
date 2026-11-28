@@ -24,6 +24,48 @@
 //! - Per-connection and per-token rate limiting (`429 Too Many Requests`).
 //! - Wakeable poll loop; every worker thread finishes and joins cleanly on
 //!   `stop()` with zero leaks.
+//!
+//! Lifetimes and limits (lane mcp3; audit report C, H1, M3 and M4):
+//! - A legacy session is reference-counted: the session list holds one
+//!   reference while it is listed, and each request or GET stream using it
+//!   holds one more; its last release frees it. It is unlisted by DELETE, by
+//!   going unused for `session_idle_timeout_ms`, by eviction - the list holds
+//!   at most `max_sessions` (default twice `max_connections`), and an
+//!   `initialize` beyond that evicts the session that nothing holds and that
+//!   was used longest ago - and by `stop()`. A session the server ended
+//!   answers 404 ("The server MAY terminate the session at any time, after
+//!   which it MUST respond to requests containing that session ID with HTTP
+//!   404 Not Found", 2025-11-25 transports, Session Management 3). It holds no
+//!   descriptor unless its GET stream is waiting.
+//! - A connection is PENDING until its first request authenticates: its TLS
+//!   handshake and that request's head must come within `auth_timeout_ms`,
+//!   and it counts against `max_pending_connections` (when that is full, the
+//!   oldest pending connection is closed to make room), never against the
+//!   `max_connections` authenticated slots - so sockets that never
+//!   authenticate cannot lock the agent out. Lightpanda's `serve` keeps the
+//!   same split (`cdp_max_pending_connections` 128 beside
+//!   `cdp_max_connections` 16, src/Config.zig at 4a1a166cf; AGPL: behaviour
+//!   read, nothing copied). The token is checked from the head alone, before
+//!   any body is read.
+//! - Deadlines, as Node's http.Server keeps them (lib/_http_server.js:
+//!   keepAliveTimeout 5 s with its `Keep-Alive: timeout=` header,
+//!   headersTimeout and requestTimeout, checked every
+//!   connectionsCheckingInterval): a kept-alive connection waits
+//!   `keep_alive_timeout_ms` for its next request, a started request has
+//!   `request_timeout_ms` for its head and body, one write blocks at most
+//!   `write_timeout_ms`. A reaper thread looks every `reap_interval_ms`, shuts
+//!   a late connection's socket down - which ends the read or write its worker
+//!   is blocked in, TLS included - and unlists sessions gone idle.
+//! - A legacy session's first tools/call waits for the client's roots, as the
+//!   stdio transport does (chrome-devtools-mcp v1.13.0 src/index.ts
+//!   #getContext: `this.#initialRoots ??= this.#updateRoots(ROOTS_REQUEST_TIMEOUT)`
+//!   - 5 s, once, one wait shared by concurrent calls). The roots/list request
+//!   goes on the call's own SSE response when the client accepts
+//!   text/event-stream (2025-11-25 transports, POST: "The server MAY send
+//!   JSON-RPC requests and notifications before sending the JSON-RPC response.
+//!   These messages SHOULD relate to the originating client request"), else on
+//!   the session's GET stream; the tool's answer follows on the same channel.
+//!   With neither, nothing can reach the client and the call does not wait.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -40,6 +82,16 @@ const log = std.log.scoped(.mcp_http);
 
 fn futexIo() std.Io {
     return std.Io.Threaded.global_single_threaded.io();
+}
+
+fn nowNs() u64 {
+    return platform.monotonicNow().ns;
+}
+
+/// `ms` after `now_ns`, or 0 (no deadline) when `ms` is 0.
+fn deadlineFrom(now_ns: u64, ms: u64) u64 {
+    if (ms == 0) return 0;
+    return now_ns +| ms *| std.time.ns_per_ms;
 }
 
 pub const TlsMode = enum {
@@ -74,8 +126,28 @@ pub const Options = struct {
     max_requests_per_token: u32 = 600,
     /// Rate limit window length in milliseconds.
     rate_limit_window_ms: u64 = 10_000,
-    /// Max concurrent TCP connections accepted.
+    /// Connections whose first request authenticated, served at once; one
+    /// more is answered 503.
     max_connections: u32 = 32,
+    /// Connections that have not authenticated yet (at least 1). When full,
+    /// a new one closes the oldest.
+    max_pending_connections: u32 = 64,
+    /// How long a new connection has for its TLS handshake and its first
+    /// request's head (0: no limit).
+    auth_timeout_ms: u32 = 10_000,
+    /// How long a started request has for its head and body (0: no limit).
+    request_timeout_ms: u32 = 60_000,
+    /// How long a kept-alive connection may wait for its next request (0: no
+    /// limit). Node's http.Server default.
+    keep_alive_timeout_ms: u32 = 5_000,
+    /// How long one write may block (0: no limit).
+    write_timeout_ms: u32 = 30_000,
+    /// Legacy sessions listed at once (0: twice `max_connections`).
+    max_sessions: u32 = 0,
+    /// How long a legacy session may go unused before it ends (0: never).
+    session_idle_timeout_ms: u64 = 30 * std.time.ms_per_min,
+    /// How often the deadlines are checked.
+    reap_interval_ms: u32 = 1_000,
     /// Options passed through to `McpServer`.
     mcp: server_mod.Options = .{},
 };
@@ -158,6 +230,20 @@ fn queryHasToken(target: []const u8) bool {
     return false;
 }
 
+/// Whether the request's Accept lists `text/event-stream` (its parameters
+/// aside): the client takes an SSE response.
+fn acceptsEventStream(req: *const devtools_http.Request) bool {
+    for (req.headers) |h| {
+        if (!std.ascii.eqlIgnoreCase(h.name, "accept")) continue;
+        var it = std.mem.tokenizeScalar(u8, h.value, ',');
+        while (it.next()) |part| {
+            const media = std.mem.trim(u8, part[0 .. std.mem.indexOfScalar(u8, part, ';') orelse part.len], " \t");
+            if (std.ascii.eqlIgnoreCase(media, "text/event-stream")) return true;
+        }
+    }
+    return false;
+}
+
 /// Decode `=?base64?<data>?=` header values (MCP 2026-07-28 `Mcp-Name`), or
 /// return `value` unchanged when not encoded.
 fn decodeMcpHeaderValue(arena: Allocator, value: []const u8) Allocator.Error!?[]const u8 {
@@ -196,24 +282,43 @@ const RateWindow = struct {
     }
 };
 
-/// One legacy (2025-11-25) HTTP session. Reference-counted under
-/// `HttpServer.state_mutex` so a concurrent DELETE never frees a session while
-/// a GET SSE worker holds it.
+/// One legacy (2025-11-25) HTTP session. Everything but `roots_signal` is
+/// under `HttpServer.state_mutex`; its protocol state (`proto`) is under
+/// `HttpServer.mcp_mutex`.
 const HttpSession = struct {
     allocator: Allocator,
     id: [32]u8,
     proto: protocol.Protocol,
-    sse_wake: platform.DevtoolsWake,
-    sse_queue: std.ArrayList([]u8) = .empty,
-    next_event_id: u64 = 2,
-    deleted: bool = false,
+    /// The list's reference while listed, plus one per request or stream
+    /// using it; the last release frees it.
     refs: u32 = 1,
+    /// Unlisted (DELETE, idle, evicted, stopping): a request naming it gets
+    /// 404, its stream ends, a roots wait on it ends.
+    ended: bool = false,
+    /// When a request last used it (monotonic ms): the eviction order and
+    /// the idle timeout.
+    last_used_ms: i64,
+    /// Server messages for the GET stream, oldest first.
+    sse_queue: std.ArrayList([]u8) = .empty,
+    /// The next SSE event id ("globally unique across all streams within
+    /// that session"; 1 primes the GET stream).
+    next_event_id: u64 = 2,
+    /// The standalone GET stream is open (one at a time).
+    stream_open: bool = false,
+    /// What that stream waits on now. A platform wake stays woken once woken
+    /// (kit/posix devtoolsWake: "every wait on it ... returns at once"), so
+    /// the stream makes one for each wait and closes it once it fired.
+    stream_wake: ?platform.DevtoolsWake = null,
+    /// Bumped and futex-woken when a client response was handled, a roots
+    /// wait ended or the session ended: what a call waiting for the client's
+    /// roots waits on.
+    roots_signal: std.atomic.Value(u32) = .init(0),
 
-    fn create(allocator: Allocator, mcp_server: *McpServer) !*HttpSession {
+    /// Messages kept for a stream that is not there; beyond it the oldest go.
+    const max_queued = 64;
+
+    fn create(allocator: Allocator, mcp_server: *McpServer, now_ms: i64) !*HttpSession {
         const self = try allocator.create(HttpSession);
-        errdefer allocator.destroy(self);
-        const wake = try platform.devtoolsWakeNew();
-        errdefer platform.devtoolsWakeClose(wake);
         var rand_bytes: [16]u8 = undefined;
         platform.fillRandom(&rand_bytes);
         var id: [32]u8 = undefined;
@@ -226,7 +331,7 @@ const HttpSession = struct {
                 .info = mcp_server.protocol.info,
                 .roots = mcp_server.protocol.roots,
             },
-            .sse_wake = wake,
+            .last_used_ms = now_ms,
         };
         return self;
     }
@@ -234,13 +339,47 @@ const HttpSession = struct {
     fn destroy(self: *HttpSession) void {
         for (self.sse_queue.items) |msg| self.allocator.free(msg);
         self.sse_queue.deinit(self.allocator);
-        platform.devtoolsWakeClose(self.sse_wake);
+        if (self.stream_wake) |w| platform.devtoolsWakeClose(w);
         self.allocator.destroy(self);
+    }
+
+    /// Wake the stream's wait, if it waits (under the state lock).
+    fn wakeStream(self: *HttpSession) void {
+        if (self.stream_wake) |w| platform.devtoolsWake(w);
+    }
+
+    /// Queue a server message for the stream and wake it (under the state
+    /// lock). OWNS `msg`.
+    fn queue(self: *HttpSession, msg: []u8) void {
+        if (self.sse_queue.items.len >= max_queued) self.allocator.free(self.sse_queue.orderedRemove(0));
+        self.sse_queue.append(self.allocator, msg) catch {
+            self.allocator.free(msg);
+            return;
+        };
+        self.wakeStream();
+    }
+
+    fn signalRoots(self: *HttpSession) void {
+        _ = self.roots_signal.fetchAdd(1, .release);
+        futexIo().futexWake(u32, &self.roots_signal.raw, std.math.maxInt(u32));
     }
 };
 
-const ActiveConn = struct {
+/// One accepted connection. Listed in `HttpServer.conns` from its accept
+/// until its worker unlists it - and closed only after that, so the reaper
+/// and `stop()`, which shut sockets down under the state lock, never touch a
+/// descriptor number that was closed and reused meanwhile.
+const Conn = struct {
     raw: platform.DevtoolsStream,
+    accepted_ns: u64,
+    /// When the reaper shuts it down (monotonic ns; 0: no deadline now).
+    /// Its worker sets it before each wait.
+    deadline_ns: std.atomic.Value(u64),
+    /// Its first request authenticated: it holds an authenticated slot, not
+    /// a pending one. Under the state lock.
+    authenticated: bool = false,
+    /// Shut down (a deadline, an eviction, `stop()`). Under the state lock.
+    shut: bool = false,
 };
 
 pub const HttpServer = struct {
@@ -260,9 +399,17 @@ pub const HttpServer = struct {
     state_mutex: std.Io.Mutex = .init,
     token_rate: RateWindow = .{},
     sessions: std.ArrayList(*HttpSession) = .empty,
-    active_conns: std.ArrayList(ActiveConn) = .empty,
+    conns: std.ArrayList(*Conn) = .empty,
+    /// Listed connections that have not authenticated / have. Under the
+    /// state lock.
+    pending_count: u32 = 0,
+    authed_count: u32 = 0,
+    /// Bumped and futex-woken by every `retire`: what an acceptor at the
+    /// connection cap waits on.
+    retired: std.atomic.Value(u32) = .init(0),
 
     acceptor: ?platform.Thread = null,
+    reaper: ?platform.Thread = null,
     stopping: std.atomic.Value(bool) = .init(false),
     closed: std.atomic.Value(u32) = .init(0),
     live_workers: std.atomic.Value(u32) = .init(0),
@@ -321,6 +468,7 @@ pub const HttpServer = struct {
 
         var stored_options = options;
         stored_options.allowed_origins = origin_slices;
+        stored_options.max_pending_connections = @max(options.max_pending_connections, 1);
 
         self.* = .{
             .allocator = allocator,
@@ -336,6 +484,11 @@ pub const HttpServer = struct {
             .mcp_server = mcp_server,
         };
 
+        self.reaper = try platform.spawnThread(.{ .name = .from("mcp-http-reap") }, reaperMain, self);
+        errdefer {
+            self.requestStop();
+            platform.joinThread(self.reaper.?);
+        }
         self.acceptor = try platform.spawnThread(.{ .name = .from("mcp-http") }, acceptorMain, self);
         return self;
     }
@@ -359,6 +512,18 @@ pub const HttpServer = struct {
 
     pub fn wakeHandle(self: *const HttpServer) platform.DevtoolsWake {
         return self.wake;
+    }
+
+    /// Legacy sessions listed now (tests).
+    pub fn sessionCount(self: *HttpServer) usize {
+        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.state_mutex);
+        return self.sessions.items.len;
+    }
+
+    /// Connections whose workers have not finished (tests).
+    pub fn connectionCount(self: *const HttpServer) u32 {
+        return self.live_workers.load(.acquire);
     }
 
     /// Signal the server to stop (callable from any thread, including
@@ -385,23 +550,25 @@ pub const HttpServer = struct {
         }
     }
 
-    /// Stop accepting, wake and close all active connections & SSE streams,
-    /// join every worker thread, and release all resources.
+    /// Stop accepting, end every session and wake its waits, shut every
+    /// connection down, join every worker thread, and release everything.
     pub fn stop(self: *HttpServer) void {
         self.requestStop();
         if (self.acceptor) |t| {
             platform.joinThread(t);
             self.acceptor = null;
         }
-        // Wake every active session SSE stream and shut down every open socket.
+        if (self.reaper) |t| {
+            platform.joinThread(t);
+            self.reaper = null;
+        }
         std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
         for (self.sessions.items) |s| {
-            s.deleted = true;
-            platform.devtoolsWake(s.sse_wake);
+            s.ended = true;
+            s.wakeStream();
+            s.signalRoots();
         }
-        for (self.active_conns.items) |conn| {
-            platform.devtoolsShutdown(conn.raw);
-        }
+        for (self.conns.items) |conn| shutConn(conn);
         std.Io.Threaded.mutexUnlock(&self.state_mutex);
 
         while (true) {
@@ -410,9 +577,11 @@ pub const HttpServer = struct {
             futexIo().futexWaitTimeout(u32, &self.live_workers.raw, live, .{ .duration = .{ .raw = .fromMilliseconds(50), .clock = .awake } }) catch {};
         }
 
+        // Every holder has released: each listed session holds only the
+        // list's reference.
         for (self.sessions.items) |s| s.destroy();
         self.sessions.deinit(self.allocator);
-        self.active_conns.deinit(self.allocator);
+        self.conns.deinit(self.allocator);
         self.mcp_server.destroy();
         if (self.tls_server) |h| platform.devtoolsTlsServerClose(h);
         platform.devtoolsCloseListener(self.listener);
@@ -421,6 +590,105 @@ pub const HttpServer = struct {
         self.allocator.free(self.owned_origins);
         self.allocator.free(self.origin_slices);
         self.allocator.destroy(self);
+    }
+
+    // ------------------------------------------------------------------
+    // Connections: admission, slots, deadlines
+    // ------------------------------------------------------------------
+
+    /// The most connections listed at once: the authenticated slots, the
+    /// pending ones, and as many pending ones again on their way out after
+    /// an eviction.
+    fn connectionCap(self: *const HttpServer) usize {
+        return @as(usize, self.options.max_connections) + 2 * @as(usize, self.options.max_pending_connections);
+    }
+
+    fn sessionCap(self: *const HttpServer) usize {
+        if (self.options.max_sessions != 0) return self.options.max_sessions;
+        return 2 * @as(usize, @max(self.options.max_connections, 1));
+    }
+
+    fn shutConn(conn: *Conn) void {
+        if (conn.shut) return;
+        conn.shut = true;
+        platform.devtoolsShutdown(conn.raw);
+    }
+
+    /// List a just-accepted connection as pending, its deadline the auth
+    /// deadline; null when the server stops first or memory runs out (it is
+    /// closed). Pending connections full: the oldest one not shut yet is shut
+    /// down for it. At the connection cap it waits: the live connections are
+    /// at most the authenticated slots and the pending ones, so every listed
+    /// connection over them is one already shut and on its way out - the new
+    /// one is never refused for a flood's leavings (a refusal there let a
+    /// burst of idle sockets close the agent's own connection on a loaded
+    /// host: mcp_http_test "slots", alone 4/5 on chat.local).
+    fn admit(self: *HttpServer, stream: platform.DevtoolsStream) ?*Conn {
+        var evicted = false;
+        while (true) {
+            const seen = self.retired.load(.acquire);
+            {
+                std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+                defer std.Io.Threaded.mutexUnlock(&self.state_mutex);
+                if (!evicted and self.pending_count >= self.options.max_pending_connections) {
+                    evicted = true;
+                    var oldest: ?*Conn = null;
+                    for (self.conns.items) |c| {
+                        if (c.authenticated or c.shut) continue;
+                        if (oldest == null or c.accepted_ns < oldest.?.accepted_ns) oldest = c;
+                    }
+                    if (oldest) |c| shutConn(c);
+                }
+                if (self.conns.items.len < self.connectionCap()) {
+                    const now = nowNs();
+                    const conn = self.allocator.create(Conn) catch return null;
+                    conn.* = .{ .raw = stream, .accepted_ns = now, .deadline_ns = .init(deadlineFrom(now, self.options.auth_timeout_ms)) };
+                    self.conns.append(self.allocator, conn) catch {
+                        self.allocator.destroy(conn);
+                        return null;
+                    };
+                    self.pending_count += 1;
+                    return conn;
+                }
+            }
+            if (self.stopping.load(.acquire)) return null;
+            futexIo().futexWaitTimeout(u32, &self.retired.raw, seen, .{ .duration = .{ .raw = .fromMilliseconds(50), .clock = .awake } }) catch {};
+        }
+    }
+
+    /// The connection's first request authenticated: it takes an
+    /// authenticated slot. False when none is free (or it was shut).
+    fn promote(self: *HttpServer, conn: *Conn) bool {
+        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.state_mutex);
+        if (conn.shut or self.authed_count >= self.options.max_connections) return false;
+        self.pending_count -= 1;
+        self.authed_count += 1;
+        conn.authenticated = true;
+        return true;
+    }
+
+    /// Unlist, then close and free, a connection whose worker is done.
+    fn retire(self: *HttpServer, conn: *Conn) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+        for (self.conns.items, 0..) |c, i| {
+            if (c == conn) {
+                _ = self.conns.swapRemove(i);
+                break;
+            }
+        }
+        if (conn.authenticated) self.authed_count -= 1 else self.pending_count -= 1;
+        std.Io.Threaded.mutexUnlock(&self.state_mutex);
+        platform.devtoolsClose(conn.raw);
+        self.allocator.destroy(conn);
+        _ = self.retired.fetchAdd(1, .release);
+        futexIo().futexWake(u32, &self.retired.raw, std.math.maxInt(u32));
+    }
+
+    fn workerDone(self: *HttpServer) void {
+        if (self.live_workers.fetchSub(1, .acq_rel) == 1) {
+            futexIo().futexWake(u32, &self.live_workers.raw, std.math.maxInt(u32));
+        }
     }
 
     fn acceptorMain(ctx: ?*anyopaque) callconv(.c) void {
@@ -437,112 +705,208 @@ pub const HttpServer = struct {
                 platform.devtoolsClose(stream);
                 break;
             }
-            if (self.live_workers.load(.acquire) >= self.options.max_connections) {
-                platform.devtoolsClose(stream);
-                continue;
-            }
-
-            const worker = self.allocator.create(WorkerArg) catch {
+            const conn = self.admit(stream) orelse {
                 platform.devtoolsClose(stream);
                 continue;
             };
-            worker.* = .{ .server = self, .raw = stream };
+            const worker = self.allocator.create(WorkerArg) catch {
+                self.retire(conn);
+                continue;
+            };
+            worker.* = .{ .server = self, .conn = conn };
             _ = self.live_workers.fetchAdd(1, .acq_rel);
             const thread = platform.spawnThread(.{ .name = .from("mcp-http-conn") }, workerMain, worker) catch {
-                _ = self.live_workers.fetchSub(1, .acq_rel);
-                futexIo().futexWake(u32, &self.live_workers.raw, std.math.maxInt(u32));
                 self.allocator.destroy(worker);
-                platform.devtoolsClose(stream);
+                self.retire(conn);
+                self.workerDone();
                 continue;
             };
             platform.detachThread(thread);
         }
     }
 
+    /// Every `reap_interval_ms` until the server stops: shut down each
+    /// connection past its deadline, unlist each session unused past
+    /// `session_idle_timeout_ms` that nothing holds.
+    fn reaperMain(ctx: ?*anyopaque) callconv(.c) void {
+        const self: *HttpServer = @ptrCast(@alignCast(ctx.?));
+        const interval: i64 = @max(self.options.reap_interval_ms, 1);
+        while (!self.stopping.load(.acquire)) {
+            futexIo().futexWaitTimeout(u32, &self.closed.raw, 0, .{ .duration = .{ .raw = .fromMilliseconds(interval), .clock = .awake } }) catch {};
+            if (self.stopping.load(.acquire)) return;
+            self.reap();
+        }
+    }
+
+    fn reap(self: *HttpServer) void {
+        const now_ns = nowNs();
+        const now_ms = platform.monotonicMillis();
+        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.state_mutex);
+        for (self.conns.items) |conn| {
+            const deadline = conn.deadline_ns.load(.acquire);
+            if (deadline != 0 and now_ns >= deadline) shutConn(conn);
+        }
+        const idle_ms = self.options.session_idle_timeout_ms;
+        if (idle_ms == 0) return;
+        var i: usize = self.sessions.items.len;
+        while (i > 0) {
+            i -= 1;
+            const s = self.sessions.items[i];
+            if (s.refs == 1 and now_ms - s.last_used_ms >= @as(i64, @intCast(idle_ms))) self.unlistAt(i);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Sessions
+    // ------------------------------------------------------------------
+
+    /// Unlist session `i` (under the state lock): it ends, its stream and
+    /// roots waits wake, and the list's reference goes.
+    fn unlistAt(self: *HttpServer, i: usize) void {
+        const s = self.sessions.swapRemove(i);
+        s.ended = true;
+        s.wakeStream();
+        s.signalRoots();
+        s.refs -= 1;
+        if (s.refs == 0) s.destroy();
+    }
+
+    /// List a new session; when the list is full, the session nothing holds
+    /// that was used longest ago is evicted for it. False when every listed
+    /// session is held.
+    fn listSession(self: *HttpServer, session: *HttpSession) bool {
+        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.state_mutex);
+        if (self.sessions.items.len >= self.sessionCap()) {
+            var oldest: ?usize = null;
+            for (self.sessions.items, 0..) |s, i| {
+                if (s.refs != 1) continue;
+                if (oldest == null or s.last_used_ms < self.sessions.items[oldest.?].last_used_ms) oldest = i;
+            }
+            self.unlistAt(oldest orelse return false);
+        }
+        self.sessions.append(self.allocator, session) catch return false;
+        return true;
+    }
+
+    fn acquireSession(self: *HttpServer, sid: []const u8) ?*HttpSession {
+        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.state_mutex);
+        for (self.sessions.items) |s| {
+            if (!s.ended and std.mem.eql(u8, &s.id, sid)) {
+                s.refs += 1;
+                s.last_used_ms = platform.monotonicMillis();
+                return s;
+            }
+        }
+        return null;
+    }
+
+    fn releaseSession(self: *HttpServer, session: *HttpSession) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.state_mutex);
+        session.last_used_ms = platform.monotonicMillis();
+        session.refs -= 1;
+        if (session.refs == 0) session.destroy();
+    }
+
+    // ------------------------------------------------------------------
+    // One connection's requests
+    // ------------------------------------------------------------------
+
     const WorkerArg = struct {
         server: *HttpServer,
-        raw: platform.DevtoolsStream,
+        conn: *Conn,
     };
 
     fn workerMain(ctx: ?*anyopaque) callconv(.c) void {
         const arg: *WorkerArg = @ptrCast(@alignCast(ctx.?));
         const self = arg.server;
-        const raw = arg.raw;
+        const conn = arg.conn;
         self.allocator.destroy(arg);
-        defer {
-            if (self.live_workers.fetchSub(1, .acq_rel) == 1) {
-                futexIo().futexWake(u32, &self.live_workers.raw, std.math.maxInt(u32));
-            }
-        }
+        defer self.workerDone();
+        defer self.retire(conn);
 
-        // Register raw socket so stop() can shut it down cleanly.
-        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
-        self.active_conns.append(self.allocator, .{ .raw = raw }) catch {};
-        std.Io.Threaded.mutexUnlock(&self.state_mutex);
-        defer {
-            std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
-            for (self.active_conns.items, 0..) |c, i| {
-                if (c.raw.handle == raw.handle) {
-                    _ = self.active_conns.swapRemove(i);
-                    break;
-                }
-            }
-            std.Io.Threaded.mutexUnlock(&self.state_mutex);
-            platform.devtoolsClose(raw);
-        }
-
+        // The handshake runs under the auth deadline set at accept.
         var tls_stream: ?*platform.DevtoolsTlsStream = null;
         if (self.tls_server) |tls| {
-            tls_stream = (platform.devtoolsTlsAccept(self.allocator, tls, raw, self.wake) catch return) orelse return;
+            tls_stream = (platform.devtoolsTlsAccept(self.allocator, tls, conn.raw, self.wake) catch return) orelse return;
         }
         defer if (tls_stream) |ts| platform.devtoolsTlsClose(ts);
 
-        var conn: ConnIo = .{ .raw = raw, .tls = tls_stream, .wake = self.wake };
-        self.serveConnection(&conn);
+        var io: ConnIo = .{ .server = self, .conn = conn, .tls = tls_stream };
+        self.serveConnection(&io);
     }
 
     const ConnIo = struct {
-        raw: platform.DevtoolsStream,
+        server: *HttpServer,
+        conn: *Conn,
         tls: ?*platform.DevtoolsTlsStream,
-        wake: platform.DevtoolsWake,
 
         fn read(self: *ConnIo, buf: []u8, wake: platform.DevtoolsWake) !?usize {
             if (self.tls) |ts| return platform.devtoolsTlsRead(ts, buf, wake);
-            return platform.devtoolsReadOrWake(self.raw, buf, wake);
+            return platform.devtoolsReadOrWake(self.conn.raw, buf, wake);
         }
 
+        /// Write all of `data`; a write blocked past write_timeout_ms is
+        /// ended by the reaper. The deadline before it comes back after.
         fn writeAll(self: *ConnIo, data: []const u8) !void {
+            const before = self.conn.deadline_ns.load(.acquire);
+            self.conn.deadline_ns.store(deadlineFrom(nowNs(), self.server.options.write_timeout_ms), .release);
+            defer self.conn.deadline_ns.store(before, .release);
             if (self.tls) |ts| return platform.devtoolsTlsWrite(ts, platform.Bytes.from(data));
-            return platform.devtoolsWrite(self.raw, platform.Bytes.from(data));
+            return platform.devtoolsWrite(self.conn.raw, platform.Bytes.from(data));
+        }
+
+        /// The reaper ends the connection `ms` from now (0: never).
+        fn setDeadline(self: *ConnIo, ms: u64) void {
+            self.conn.deadline_ns.store(deadlineFrom(nowNs(), ms), .release);
         }
     };
 
-    fn serveConnection(self: *HttpServer, conn: *ConnIo) void {
+    fn serveConnection(self: *HttpServer, io: *ConnIo) void {
         var buffer: std.ArrayList(u8) = .empty;
         defer buffer.deinit(self.allocator);
         const chunk = self.allocator.alloc(u8, read_chunk_size) catch return;
         defer self.allocator.free(chunk);
         var conn_rate: RateWindow = .{};
+        // The first request authenticates the connection, under the auth
+        // deadline its accept set.
+        var first = true;
 
         while (!self.stopping.load(.acquire)) {
             var arena_state = std.heap.ArenaAllocator.init(self.allocator);
             defer arena_state.deinit();
             const arena = arena_state.allocator();
 
-            // 1. Read HTTP request head.
+            // 1. The request head. Between requests a kept-alive connection
+            //    has keep_alive_timeout_ms for the next one; once that one's
+            //    first byte came, request_timeout_ms for its head and body.
+            if (!first) io.setDeadline(if (buffer.items.len == 0) self.options.keep_alive_timeout_ms else self.options.request_timeout_ms);
             const req: devtools_http.Request = blk: {
                 while (true) {
                     const parsed = devtools_http.parseRequest(arena, buffer.items) catch return;
                     switch (parsed) {
-                        .request => |r| break :blk r,
+                        .request => |r| {
+                            // Parsed again from a copy: reading the body may
+                            // move `buffer`, which the first parse points into.
+                            const head = arena.dupe(u8, buffer.items[0..r.head_len]) catch return;
+                            switch (devtools_http.parseRequest(arena, head) catch return) {
+                                .request => |copy| break :blk copy,
+                                else => return,
+                            }
+                        },
                         .bad => {
-                            writeJsonResponse(conn, arena, 400, null, "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"Bad HTTP request\"}}", true) catch {};
+                            writeJsonResponse(io, arena, 400, null, "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"Bad HTTP request\"}}", true) catch {};
                             return;
                         },
                         .incomplete => {
-                            const n = (conn.read(chunk, self.wake) catch return) orelse return;
+                            const was_empty = buffer.items.len == 0;
+                            const n = (io.read(chunk, self.wake) catch return) orelse return;
                             if (n == 0) return;
                             buffer.appendSlice(self.allocator, chunk[0..n]) catch return;
+                            if (!first and was_empty) io.setDeadline(self.options.request_timeout_ms);
                         },
                     }
                 }
@@ -550,19 +914,33 @@ pub const HttpServer = struct {
 
             const close_after = req.headerHasToken("connection", "close");
 
-            // 2. Read request body (Content-Length or Transfer-Encoding: chunked).
-            const body_result = readBody(self.allocator, arena, conn, &buffer, chunk, &req) catch |err| {
+            // 2. Who asks, from the head alone: nothing more is read for a
+            //    request refused here, and a connection takes an
+            //    authenticated slot only once its first request passed.
+            if (self.refuse(io, arena, &req)) return;
+            if (first) {
+                if (!self.promote(io.conn)) {
+                    writeResponse(io, arena, 503, "Service Unavailable", "application/json", "Retry-After: 1\r\n", "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32000,\"message\":\"Too many connections\"}}", true) catch {};
+                    return;
+                }
+                first = false;
+                io.setDeadline(self.options.request_timeout_ms);
+            }
+
+            // 3. The body (Content-Length or Transfer-Encoding: chunked).
+            const body_result = readBody(self.allocator, arena, io, &buffer, chunk, &req) catch |err| {
                 const status: u16 = if (err == error.BodyTooLarge) 413 else 400;
-                writeJsonResponse(conn, arena, status, null, "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"Invalid or oversized request body\"}}", true) catch {};
+                writeJsonResponse(io, arena, status, null, "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"Invalid or oversized request body\"}}", true) catch {};
                 return;
             };
-            const body = body_result.body;
-            const consumed = body_result.consumed;
 
-            // 3. Handle request (may take over connection for GET SSE stream).
-            const outcome = self.handleHttpRequest(arena, conn, &req, body, &conn_rate, close_after);
+            // 4. Handling has no deadline - a tool runs as long as it runs;
+            //    each write keeps its own.
+            io.setDeadline(0);
+            const outcome = self.handleHttpRequest(arena, io, &req, body_result.body, &conn_rate, close_after);
 
             // Consume this request's bytes from the pipelined buffer.
+            const consumed = body_result.consumed;
             if (consumed < buffer.items.len) {
                 const rem = buffer.items.len - consumed;
                 std.mem.copyForwards(u8, buffer.items[0..rem], buffer.items[consumed..]);
@@ -583,17 +961,18 @@ pub const HttpServer = struct {
     fn readBody(
         allocator: Allocator,
         arena: Allocator,
-        conn: *ConnIo,
+        io: *ConnIo,
         buffer: *std.ArrayList(u8),
         chunk: []u8,
         req: *const devtools_http.Request,
     ) !BodyResult {
+        const wake = io.server.wake;
         if (req.headerHasToken("transfer-encoding", "chunked")) {
             var decoded: std.ArrayList(u8) = .empty;
             var pos = req.head_len;
             while (true) {
                 while (std.mem.indexOf(u8, buffer.items[pos..], "\r\n") == null) {
-                    const n = (try conn.read(chunk, conn.wake)) orelse return error.ConnectionClosed;
+                    const n = (try io.read(chunk, wake)) orelse return error.ConnectionClosed;
                     if (n == 0) return error.ConnectionClosed;
                     try buffer.appendSlice(allocator, chunk[0..n]);
                     if (buffer.items.len > max_body_bytes + devtools_http.max_head_bytes) return error.BodyTooLarge;
@@ -606,7 +985,7 @@ pub const HttpServer = struct {
                 if (chunk_len == 0) {
                     // Consume trailing CRLF after 0-length chunk.
                     while (buffer.items.len < pos + 2) {
-                        const n = (try conn.read(chunk, conn.wake)) orelse return error.ConnectionClosed;
+                        const n = (try io.read(chunk, wake)) orelse return error.ConnectionClosed;
                         if (n == 0) return error.ConnectionClosed;
                         try buffer.appendSlice(allocator, chunk[0..n]);
                     }
@@ -615,7 +994,7 @@ pub const HttpServer = struct {
                 }
                 if (decoded.items.len + chunk_len > max_body_bytes) return error.BodyTooLarge;
                 while (buffer.items.len < pos + chunk_len + 2) {
-                    const n = (try conn.read(chunk, conn.wake)) orelse return error.ConnectionClosed;
+                    const n = (try io.read(chunk, wake)) orelse return error.ConnectionClosed;
                     if (n == 0) return error.ConnectionClosed;
                     try buffer.appendSlice(allocator, chunk[0..n]);
                 }
@@ -630,7 +1009,7 @@ pub const HttpServer = struct {
         if (cl > max_body_bytes) return error.BodyTooLarge;
         const needed = req.head_len + cl;
         while (buffer.items.len < needed) {
-            const n = (try conn.read(chunk, conn.wake)) orelse return error.ConnectionClosed;
+            const n = (try io.read(chunk, wake)) orelse return error.ConnectionClosed;
             if (n == 0) return error.ConnectionClosed;
             try buffer.appendSlice(allocator, chunk[0..n]);
         }
@@ -641,89 +1020,95 @@ pub const HttpServer = struct {
 
     const ConnOutcome = enum { keep_alive, close };
 
+    /// The checks a request's head must pass before anything else of it is
+    /// read: Host, Origin, no token in the query, the bearer token. True:
+    /// refused (answered; the connection closes).
+    fn refuse(self: *HttpServer, io: *ConnIo, arena: Allocator, req: *const devtools_http.Request) bool {
+        // Security 1: Host validation (DNS rebinding defense, matching devtools/http.zig).
+        if (!devtools_http.hostIsSafe(req.header("host"))) {
+            writeJsonResponse(io, arena, 403, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"" ++ devtools_http.host_refused_message ++ "\"}}", true) catch {};
+            return true;
+        }
+
+        // Security 2: Origin validation (403 when present and not allowed).
+        if (!devtools_http.originAllowed(req.header("origin"), self.options.allowed_origins)) {
+            writeJsonResponse(io, arena, 403, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Origin not allowed\"}}", true) catch {};
+            return true;
+        }
+
+        // Security 3: Never accept bearer tokens in URI query string.
+        if (queryHasToken(req.target)) {
+            writeJsonResponse(io, arena, 400, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Access tokens must not be included in the URI query string\"}}", true) catch {};
+            return true;
+        }
+
+        // Security 4: Mandatory 256-bit pre-shared bearer token (loopback included).
+        if (!verifyBearerToken(&self.bearer_token, req.header("authorization"))) {
+            writeResponse(io, arena, 401, "Unauthorized", "application/json", "WWW-Authenticate: Bearer\r\n", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Unauthorized\"}}", true) catch {};
+            return true;
+        }
+        return false;
+    }
+
     fn handleHttpRequest(
         self: *HttpServer,
         arena: Allocator,
-        conn: *ConnIo,
+        io: *ConnIo,
         req: *const devtools_http.Request,
         body: []const u8,
         conn_rate: *RateWindow,
         close_after: bool,
     ) ConnOutcome {
-        // Security 1: Host validation (DNS rebinding defense, matching devtools/http.zig).
-        if (!devtools_http.hostIsSafe(req.header("host"))) {
-            writeJsonResponse(conn, arena, 403, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"" ++ devtools_http.host_refused_message ++ "\"}}", true) catch {};
-            return .close;
-        }
-
-        // Security 2: Origin validation (403 when present and not allowed).
-        if (!devtools_http.originAllowed(req.header("origin"), self.options.allowed_origins)) {
-            writeJsonResponse(conn, arena, 403, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Origin not allowed\"}}", true) catch {};
-            return .close;
-        }
-
-        // Security 3: Never accept bearer tokens in URI query string.
-        if (queryHasToken(req.target)) {
-            writeJsonResponse(conn, arena, 400, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Access tokens must not be included in the URI query string\"}}", true) catch {};
-            return .close;
-        }
-
-        // Security 4: Mandatory 256-bit pre-shared bearer token (loopback included).
-        if (!verifyBearerToken(&self.bearer_token, req.header("authorization"))) {
-            writeResponse(conn, arena, 401, "Unauthorized", "application/json", "WWW-Authenticate: Bearer\r\n", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Unauthorized\"}}", true) catch {};
-            return .close;
-        }
-
         // Endpoint check: single `/mcp` endpoint.
         if (!std.mem.eql(u8, req.path(), "/mcp")) {
-            writeJsonResponse(conn, arena, 404, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32601,\"message\":\"Not found\"}}", close_after) catch return .close;
+            writeJsonResponse(io, arena, 404, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32601,\"message\":\"Not found\"}}", close_after) catch return .close;
             return if (close_after) .close else .keep_alive;
         }
 
         // Security 5: Per-connection and per-token rate limiting (429).
         if (!conn_rate.allow(self.options.max_requests_per_connection, self.options.rate_limit_window_ms)) {
-            writeResponse(conn, arena, 429, "Too Many Requests", "application/json", "Retry-After: 1\r\n", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Rate limit exceeded\"}}", close_after) catch return .close;
+            writeResponse(io, arena, 429, "Too Many Requests", "application/json", "Retry-After: 1\r\n", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Rate limit exceeded\"}}", close_after) catch return .close;
             return if (close_after) .close else .keep_alive;
         }
         std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
         const token_ok = self.token_rate.allow(self.options.max_requests_per_token, self.options.rate_limit_window_ms);
         std.Io.Threaded.mutexUnlock(&self.state_mutex);
         if (!token_ok) {
-            writeResponse(conn, arena, 429, "Too Many Requests", "application/json", "Retry-After: 1\r\n", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Rate limit exceeded\"}}", close_after) catch return .close;
+            writeResponse(io, arena, 429, "Too Many Requests", "application/json", "Retry-After: 1\r\n", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Rate limit exceeded\"}}", close_after) catch return .close;
             return if (close_after) .close else .keep_alive;
         }
 
         // Dispatch by HTTP method.
         if (std.mem.eql(u8, req.method, "POST")) {
-            return self.handlePost(arena, conn, req, body, close_after);
+            return self.handlePost(arena, io, req, body, close_after);
         }
         if (std.mem.eql(u8, req.method, "GET")) {
-            return self.handleGet(arena, conn, req);
+            return self.handleGet(arena, io, req);
         }
         if (std.mem.eql(u8, req.method, "DELETE")) {
-            return self.handleDelete(arena, conn, req, close_after);
+            return self.handleDelete(arena, io, req, close_after);
         }
 
-        writeResponse(conn, arena, 405, "Method Not Allowed", "application/json", "Allow: POST, GET, DELETE\r\n", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Method Not Allowed\"}}", close_after) catch return .close;
+        writeResponse(io, arena, 405, "Method Not Allowed", "application/json", "Allow: POST, GET, DELETE\r\n", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Method Not Allowed\"}}", close_after) catch return .close;
         return if (close_after) .close else .keep_alive;
     }
 
     fn handlePost(
         self: *HttpServer,
         arena: Allocator,
-        conn: *ConnIo,
+        io: *ConnIo,
         req: *const devtools_http.Request,
         body: []const u8,
         close_after: bool,
     ) ConnOutcome {
         const parsed = json.parseFromSliceLeaky(json.Value, arena, body, .{}) catch {
             const err_body = protocol.errorMessage(arena, .null, .parse_error, "Parse error", null) catch return .close;
-            writeJsonResponse(conn, arena, 400, null, err_body, close_after) catch return .close;
+            writeJsonResponse(io, arena, 400, null, err_body, close_after) catch return .close;
             return if (close_after) .close else .keep_alive;
         };
         if (parsed != .object) {
             const err_body = protocol.errorMessage(arena, .null, .invalid_request, "Invalid Request", null) catch return .close;
-            writeJsonResponse(conn, arena, 400, null, err_body, close_after) catch return .close;
+            writeJsonResponse(io, arena, 400, null, err_body, close_after) catch return .close;
             return if (close_after) .close else .keep_alive;
         }
 
@@ -740,28 +1125,28 @@ pub const HttpServer = struct {
         if (meta_version) |mv| {
             const hv = header_version orelse {
                 const err_body = protocol.errorMessage(arena, id, .header_mismatch, "MCP-Protocol-Version header is required and must match _meta", null) catch return .close;
-                writeJsonResponse(conn, arena, 400, null, err_body, close_after) catch return .close;
+                writeJsonResponse(io, arena, 400, null, err_body, close_after) catch return .close;
                 return if (close_after) .close else .keep_alive;
             };
             if (!std.mem.eql(u8, hv, mv)) {
                 const err_body = protocol.errorMessage(arena, id, .header_mismatch, "MCP-Protocol-Version header does not match _meta", null) catch return .close;
-                writeJsonResponse(conn, arena, 400, null, err_body, close_after) catch return .close;
+                writeJsonResponse(io, arena, 400, null, err_body, close_after) catch return .close;
                 return if (close_after) .close else .keep_alive;
             }
             if (!protocol.isSupported(mv)) {
                 const err_body = protocol.unsupportedVersion(arena, id, mv) catch return .close;
-                writeJsonResponse(conn, arena, 400, null, err_body, close_after) catch return .close;
+                writeJsonResponse(io, arena, 400, null, err_body, close_after) catch return .close;
                 return if (close_after) .close else .keep_alive;
             }
         } else if (header_version) |hv| {
             if (!protocol.isSupported(hv)) {
                 const err_body = protocol.unsupportedVersion(arena, id, hv) catch return .close;
-                writeJsonResponse(conn, arena, 400, null, err_body, close_after) catch return .close;
+                writeJsonResponse(io, arena, 400, null, err_body, close_after) catch return .close;
                 return if (close_after) .close else .keep_alive;
             }
             if (std.mem.eql(u8, hv, protocol.modern_version) and has_id and !(method_str != null and std.mem.eql(u8, method_str.?, "initialize"))) {
                 const err_body = protocol.errorMessage(arena, id, .header_mismatch, "MCP-Protocol-Version 2026-07-28 requires matching _meta protocolVersion", null) catch return .close;
-                writeJsonResponse(conn, arena, 400, null, err_body, close_after) catch return .close;
+                writeJsonResponse(io, arena, 400, null, err_body, close_after) catch return .close;
                 return if (close_after) .close else .keep_alive;
             }
         }
@@ -771,7 +1156,7 @@ pub const HttpServer = struct {
             const bm = method_str orelse "";
             if (!std.mem.eql(u8, hm, bm)) {
                 const err_body = protocol.errorMessage(arena, id, .header_mismatch, "Mcp-Method header does not match request method", null) catch return .close;
-                writeJsonResponse(conn, arena, 400, null, err_body, close_after) catch return .close;
+                writeJsonResponse(io, arena, 400, null, err_body, close_after) catch return .close;
                 return if (close_after) .close else .keep_alive;
             }
         }
@@ -781,13 +1166,13 @@ pub const HttpServer = struct {
             const decoded_opt = decodeMcpHeaderValue(arena, hn) catch return .close;
             const decoded = decoded_opt orelse {
                 const err_body = protocol.errorMessage(arena, id, .header_mismatch, "Malformed Mcp-Name header", null) catch return .close;
-                writeJsonResponse(conn, arena, 400, null, err_body, close_after) catch return .close;
+                writeJsonResponse(io, arena, 400, null, err_body, close_after) catch return .close;
                 return if (close_after) .close else .keep_alive;
             };
             const body_name: []const u8 = if (params_obj) |p| (if (p.get("name")) |n| (if (n == .string) n.string else "") else "") else "";
             if (!std.mem.eql(u8, decoded, body_name)) {
                 const err_body = protocol.errorMessage(arena, id, .header_mismatch, "Mcp-Name header does not match params.name", null) catch return .close;
-                writeJsonResponse(conn, arena, 400, null, err_body, close_after) catch return .close;
+                writeJsonResponse(io, arena, 400, null, err_body, close_after) catch return .close;
                 return if (close_after) .close else .keep_alive;
             }
         }
@@ -807,11 +1192,11 @@ pub const HttpServer = struct {
             };
             std.Io.Threaded.mutexUnlock(&self.mcp_mutex);
             if (answer == null) {
-                writeEmptyResponse(conn, arena, 202, "Accepted", null, close_after) catch return .close;
+                writeEmptyResponse(io, arena, 202, "Accepted", null, close_after) catch return .close;
                 return if (close_after) .close else .keep_alive;
             }
             const status = modernHttpStatus(arena, answer.?);
-            writeJsonResponse(conn, arena, status, null, answer.?, close_after) catch return .close;
+            writeJsonResponse(io, arena, status, null, answer.?, close_after) catch return .close;
             return if (close_after) .close else .keep_alive;
         }
 
@@ -819,7 +1204,7 @@ pub const HttpServer = struct {
         // route by Mcp-Session-Id.
         const is_init = method_str != null and std.mem.eql(u8, method_str.?, "initialize") and has_id;
         if (is_init) {
-            const session = HttpSession.create(self.allocator, self.mcp_server) catch return .close;
+            const session = HttpSession.create(self.allocator, self.mcp_server, platform.monotonicMillis()) catch return .close;
             std.Io.Threaded.mutexLockUncancelable(&self.mcp_mutex);
             const answer = session.proto.handle(arena, body) catch {
                 std.Io.Threaded.mutexUnlock(&self.mcp_mutex);
@@ -828,25 +1213,32 @@ pub const HttpServer = struct {
             };
             std.Io.Threaded.mutexUnlock(&self.mcp_mutex);
 
-            std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
-            self.sessions.append(self.allocator, session) catch {
-                std.Io.Threaded.mutexUnlock(&self.state_mutex);
-                session.destroy();
-                return .close;
-            };
+            // The id is copied before listing: once listed, another
+            // connection may end and free the session.
             const sid_copy = session.id;
-            std.Io.Threaded.mutexUnlock(&self.state_mutex);
+            if (!self.listSession(session)) {
+                session.destroy();
+                writeResponse(io, arena, 503, "Service Unavailable", "application/json", "Retry-After: 1\r\n", "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32000,\"message\":\"Too many sessions\"}}", true) catch {};
+                return .close;
+            }
 
-            writeJsonResponse(conn, arena, 200, &sid_copy, answer orelse "{}", close_after) catch return .close;
+            writeJsonResponse(io, arena, 200, &sid_copy, answer orelse "{}", close_after) catch return .close;
             return if (close_after) .close else .keep_alive;
         }
 
         if (req.header("mcp-session-id")) |sid| {
             const session = self.acquireSession(sid) orelse {
-                writeJsonResponse(conn, arena, 404, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Session not found\"}}", close_after) catch return .close;
+                writeJsonResponse(io, arena, 404, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Session not found\"}}", close_after) catch return .close;
                 return if (close_after) .close else .keep_alive;
             };
             defer self.releaseSession(session);
+
+            // The first tools/call waits for the client's roots (#getContext);
+            // true: its answer goes on the SSE response that wait opened.
+            const on_stream = if (has_id and method_str != null and std.mem.eql(u8, method_str.?, "tools/call"))
+                (self.waitForRoots(arena, io, req, session, body) catch return .close)
+            else
+                false;
 
             std.Io.Threaded.mutexLockUncancelable(&self.mcp_mutex);
             const answer = session.proto.handle(arena, body) catch {
@@ -857,21 +1249,27 @@ pub const HttpServer = struct {
 
             // A notification or client JSON-RPC response returns 202 Accepted;
             // any server-initiated request (such as roots/list) goes onto the
-            // session's SSE queue if present.
+            // session's SSE queue.
             if (!has_id or method_str == null) {
+                // A response the client sent: a call waiting for its roots
+                // asks again.
+                if (method_str == null) session.signalRoots();
                 if (answer) |server_req| {
                     std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
-                    if (!session.deleted) {
-                        if (self.allocator.dupe(u8, server_req)) |dup| {
-                            session.sse_queue.append(self.allocator, dup) catch self.allocator.free(dup);
-                        } else |_| {}
+                    if (!session.ended) {
+                        if (self.allocator.dupe(u8, server_req)) |dup| session.queue(dup) else |_| {}
                     }
                     std.Io.Threaded.mutexUnlock(&self.state_mutex);
                 }
-                writeEmptyResponse(conn, arena, 202, "Accepted", &session.id, close_after) catch return .close;
+                writeEmptyResponse(io, arena, 202, "Accepted", &session.id, close_after) catch return .close;
                 return if (close_after) .close else .keep_alive;
             }
-            writeJsonResponse(conn, arena, 200, &session.id, answer orelse "{}", close_after) catch return .close;
+            if (on_stream) {
+                // "The final JSON-RPC response SHOULD terminate the stream."
+                self.writeSseEvent(io, arena, session, answer orelse "{}") catch {};
+                return .close;
+            }
+            writeJsonResponse(io, arena, 200, &session.id, answer orelse "{}", close_after) catch return .close;
             return if (close_after) .close else .keep_alive;
         }
 
@@ -888,27 +1286,126 @@ pub const HttpServer = struct {
         };
         std.Io.Threaded.mutexUnlock(&self.mcp_mutex);
         if (answer == null) {
-            writeEmptyResponse(conn, arena, 202, "Accepted", null, close_after) catch return .close;
+            writeEmptyResponse(io, arena, 202, "Accepted", null, close_after) catch return .close;
             return if (close_after) .close else .keep_alive;
         }
-        writeJsonResponse(conn, arena, 200, null, answer.?, close_after) catch return .close;
+        writeJsonResponse(io, arena, 200, null, answer.?, close_after) catch return .close;
         return if (close_after) .close else .keep_alive;
     }
 
-    fn handleGet(self: *HttpServer, arena: Allocator, conn: *ConnIo, req: *const devtools_http.Request) ConnOutcome {
+    /// McpServer #getContext over HTTP: before a session's tools/call runs,
+    /// when the client offers roots and none came yet, ask for them once and
+    /// wait - up to the roots timeout, the session's end or the server's stop
+    /// - for the answer; a call that comes while that wait is on joins it
+    /// (`this.#initialRoots ??= ...`). The request goes on this call's own
+    /// SSE response when the client takes one (true: the response is that
+    /// stream now, its head written), else on the session's GET stream. With
+    /// neither, nothing reaches the client and the call does not wait.
+    fn waitForRoots(self: *HttpServer, arena: Allocator, io: *ConnIo, req: *const devtools_http.Request, session: *HttpSession, body: []const u8) !bool {
+        const on_own_stream = acceptsEventStream(req);
+        if (!on_own_stream) {
+            std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+            const has_stream = session.stream_open;
+            std.Io.Threaded.mutexUnlock(&self.state_mutex);
+            if (!has_stream) return false;
+        }
+
+        std.Io.Threaded.mutexLockUncancelable(&self.mcp_mutex);
+        const joining = session.proto.waitingForRoots();
+        const request_text = if (joining) null else session.proto.rootsWaitRequest(arena, body) catch |err| {
+            std.Io.Threaded.mutexUnlock(&self.mcp_mutex);
+            return err;
+        };
+        std.Io.Threaded.mutexUnlock(&self.mcp_mutex);
+        if (!joining and request_text == null) return false;
+
+        var streaming = false;
+        if (request_text) |text| {
+            if (on_own_stream) {
+                const head = try std.fmt.allocPrint(arena, "HTTP/1.1 200 OK\r\n" ++
+                    "Content-Type: text/event-stream\r\n" ++
+                    "Cache-Control: no-cache\r\n" ++
+                    "X-Accel-Buffering: no\r\n" ++
+                    "Mcp-Session-Id: {s}\r\n" ++
+                    "Connection: close\r\n\r\n", .{session.id});
+                try io.writeAll(head);
+                streaming = true;
+                try self.writeSseEvent(io, arena, session, text);
+            } else {
+                const copy = try self.allocator.dupe(u8, text);
+                std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+                if (session.ended) self.allocator.free(copy) else session.queue(copy);
+                std.Io.Threaded.mutexUnlock(&self.state_mutex);
+            }
+        }
+
+        const deadline = platform.monotonicMillis() + self.mcp_server.roots_timeout_ms;
+        while (!self.stopping.load(.acquire)) {
+            const seen = session.roots_signal.load(.acquire);
+            std.Io.Threaded.mutexLockUncancelable(&self.mcp_mutex);
+            const waiting = session.proto.waitingForRoots();
+            std.Io.Threaded.mutexUnlock(&self.mcp_mutex);
+            if (!waiting) break;
+            std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+            const ended = session.ended;
+            std.Io.Threaded.mutexUnlock(&self.state_mutex);
+            if (ended) break;
+            const left = deadline - platform.monotonicMillis();
+            if (left <= 0) break;
+            futexIo().futexWaitTimeout(u32, &session.roots_signal.raw, seen, .{ .duration = .{ .raw = .fromMilliseconds(left), .clock = .awake } }) catch {};
+        }
+        // Answered or not, no call waits again; calls that joined go on.
+        std.Io.Threaded.mutexLockUncancelable(&self.mcp_mutex);
+        session.proto.endRootsWait();
+        std.Io.Threaded.mutexUnlock(&self.mcp_mutex);
+        session.signalRoots();
+        return streaming;
+    }
+
+    /// One SSE event carrying `message` (its id the session's next).
+    fn writeSseEvent(self: *HttpServer, io: *ConnIo, arena: Allocator, session: *HttpSession, message: []const u8) !void {
+        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+        const event_id = session.next_event_id;
+        session.next_event_id += 1;
+        std.Io.Threaded.mutexUnlock(&self.state_mutex);
+        const frame = try std.fmt.allocPrint(arena, "id: {d}\nevent: message\ndata: {s}\n\n", .{ event_id, message });
+        try io.writeAll(frame);
+    }
+
+    fn handleGet(self: *HttpServer, arena: Allocator, io: *ConnIo, req: *const devtools_http.Request) ConnOutcome {
         const hv = req.header("mcp-protocol-version");
         const sid_opt = req.header("mcp-session-id");
         // Modern 2026-07-28 (or no legacy session): GET is 405 Method Not Allowed.
         if (sid_opt == null or (hv != null and std.mem.eql(u8, hv.?, protocol.modern_version))) {
-            writeResponse(conn, arena, 405, "Method Not Allowed", "application/json", "Allow: POST\r\n", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Method Not Allowed\"}}", true) catch {};
+            writeResponse(io, arena, 405, "Method Not Allowed", "application/json", "Allow: POST\r\n", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Method Not Allowed\"}}", true) catch {};
             return .close;
         }
 
         const session = self.acquireSession(sid_opt.?) orelse {
-            writeJsonResponse(conn, arena, 404, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Session not found\"}}", true) catch {};
+            writeJsonResponse(io, arena, 404, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Session not found\"}}", true) catch {};
             return .close;
         };
         defer self.releaseSession(session);
+
+        // One standalone stream per session: the MCP TypeScript SDK's
+        // StreamableHTTPServerTransport answers a second GET 409 Conflict
+        // ("Conflict: Only one SSE stream is allowed per session"); the spec
+        // lets a server send each message on one stream only.
+        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+        const taken = session.stream_open;
+        session.stream_open = true;
+        std.Io.Threaded.mutexUnlock(&self.state_mutex);
+        if (taken) {
+            writeResponse(io, arena, 409, "Conflict", "application/json", "", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Conflict: Only one SSE stream is allowed per session\"},\"id\":null}", true) catch {};
+            return .close;
+        }
+        defer {
+            std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+            session.stream_open = false;
+            if (session.stream_wake) |w| platform.devtoolsWakeClose(w);
+            session.stream_wake = null;
+            std.Io.Threaded.mutexUnlock(&self.state_mutex);
+        }
 
         // 2025-11-25 SSE stream with immediate priming event.
         const head = std.fmt.allocPrint(arena, "HTTP/1.1 200 OK\r\n" ++
@@ -918,66 +1415,73 @@ pub const HttpServer = struct {
             "Mcp-Session-Id: {s}\r\n" ++
             "Connection: close\r\n\r\n" ++
             "id: 1\ndata:\n\n", .{session.id}) catch return .close;
-        conn.writeAll(head) catch return .close;
+        io.writeAll(head) catch return .close;
 
-        // Wait on peer disconnect or session SSE wake (DELETE, server stop, or queued event).
-        var scratch: [256]u8 = undefined;
-        while (!self.stopping.load(.acquire)) {
-            if (!self.flushSseQueue(arena, conn, session)) return .close;
-            std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
-            const is_deleted = session.deleted;
-            std.Io.Threaded.mutexUnlock(&self.state_mutex);
-            if (is_deleted) return .close;
-
-            const read_res = conn.read(&scratch, session.sse_wake) catch return .close;
-            if (read_res) |n| {
-                // 0: peer closed SSE connection cleanly.
-                if (n == 0) return .close;
-            } else {
-                // Woken by session SSE queue, DELETE, or server stop.
-                if (!self.flushSseQueue(arena, conn, session)) return .close;
-                std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
-                const gone = session.deleted;
-                std.Io.Threaded.mutexUnlock(&self.state_mutex);
-                if (gone or self.stopping.load(.acquire)) return .close;
-            }
+        // Send what is queued; then wait for the peer's end or the wake a
+        // queued message, DELETE, the session's end or the server's stop
+        // gives - a fresh wake each time, as a fired one stays fired.
+        var taken_msgs: std.ArrayList([]u8) = .empty;
+        defer {
+            for (taken_msgs.items) |m| self.allocator.free(m);
+            taken_msgs.deinit(self.allocator);
         }
-        return .close;
-    }
-
-    fn flushSseQueue(self: *HttpServer, arena: Allocator, conn: *ConnIo, session: *HttpSession) bool {
+        var scratch: [256]u8 = undefined;
         while (true) {
             std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
-            if (session.sse_queue.items.len == 0) {
+            if (session.ended or self.stopping.load(.acquire)) {
                 std.Io.Threaded.mutexUnlock(&self.state_mutex);
-                return true;
+                return .close;
             }
-            const msg = session.sse_queue.orderedRemove(0);
-            const event_id = session.next_event_id;
-            session.next_event_id += 1;
+            var first_id: u64 = 0;
+            var wake: ?platform.DevtoolsWake = null;
+            if (session.sse_queue.items.len > 0) {
+                std.mem.swap(std.ArrayList([]u8), &taken_msgs, &session.sse_queue);
+                first_id = session.next_event_id;
+                session.next_event_id += taken_msgs.items.len;
+            } else {
+                if (session.stream_wake == null) session.stream_wake = platform.devtoolsWakeNew() catch null;
+                wake = session.stream_wake;
+            }
             std.Io.Threaded.mutexUnlock(&self.state_mutex);
-            defer self.allocator.free(msg);
 
-            const frame = std.fmt.allocPrint(arena, "id: {d}\nevent: message\ndata: {s}\n\n", .{ event_id, msg }) catch return false;
-            conn.writeAll(frame) catch return false;
+            if (taken_msgs.items.len > 0) {
+                for (taken_msgs.items, 0..) |msg, i| {
+                    const frame = std.fmt.allocPrint(arena, "id: {d}\nevent: message\ndata: {s}\n\n", .{ first_id + i, msg }) catch return .close;
+                    io.writeAll(frame) catch return .close;
+                }
+                for (taken_msgs.items) |m| self.allocator.free(m);
+                taken_msgs.clearRetainingCapacity();
+                continue;
+            }
+            const w = wake orelse return .close;
+            const read_res = io.read(&scratch, w) catch return .close;
+            if (read_res) |n| {
+                // 0: the peer closed the stream; anything else it sends is
+                // not for this stream.
+                if (n == 0) return .close;
+            } else {
+                std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
+                if (session.stream_wake) |fired| platform.devtoolsWakeClose(fired);
+                session.stream_wake = null;
+                std.Io.Threaded.mutexUnlock(&self.state_mutex);
+            }
         }
     }
 
-    fn handleDelete(self: *HttpServer, arena: Allocator, conn: *ConnIo, req: *const devtools_http.Request, close_after: bool) ConnOutcome {
+    fn handleDelete(self: *HttpServer, arena: Allocator, io: *ConnIo, req: *const devtools_http.Request, close_after: bool) ConnOutcome {
         const hv = req.header("mcp-protocol-version");
         const sid_opt = req.header("mcp-session-id");
         // Modern 2026-07-28 (or no legacy session): DELETE is 405 Method Not Allowed.
         if (sid_opt == null or (hv != null and std.mem.eql(u8, hv.?, protocol.modern_version))) {
-            writeResponse(conn, arena, 405, "Method Not Allowed", "application/json", "Allow: POST\r\n", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Method Not Allowed\"}}", close_after) catch return .close;
+            writeResponse(io, arena, 405, "Method Not Allowed", "application/json", "Allow: POST\r\n", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Method Not Allowed\"}}", close_after) catch return .close;
             return if (close_after) .close else .keep_alive;
         }
 
         std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
         var found = false;
-        for (self.sessions.items) |s| {
-            if (!s.deleted and std.mem.eql(u8, &s.id, sid_opt.?)) {
-                s.deleted = true;
-                platform.devtoolsWake(s.sse_wake);
+        for (self.sessions.items, 0..) |s, i| {
+            if (!s.ended and std.mem.eql(u8, &s.id, sid_opt.?)) {
+                self.unlistAt(i);
                 found = true;
                 break;
             }
@@ -985,29 +1489,11 @@ pub const HttpServer = struct {
         std.Io.Threaded.mutexUnlock(&self.state_mutex);
 
         if (!found) {
-            writeJsonResponse(conn, arena, 404, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Session not found\"}}", close_after) catch return .close;
+            writeJsonResponse(io, arena, 404, null, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Session not found\"}}", close_after) catch return .close;
             return if (close_after) .close else .keep_alive;
         }
-        writeEmptyResponse(conn, arena, 200, "OK", null, close_after) catch return .close;
+        writeEmptyResponse(io, arena, 200, "OK", null, close_after) catch return .close;
         return if (close_after) .close else .keep_alive;
-    }
-
-    fn acquireSession(self: *HttpServer, sid: []const u8) ?*HttpSession {
-        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.state_mutex);
-        for (self.sessions.items) |s| {
-            if (!s.deleted and std.mem.eql(u8, &s.id, sid)) {
-                s.refs += 1;
-                return s;
-            }
-        }
-        return null;
-    }
-
-    fn releaseSession(self: *HttpServer, session: *HttpSession) void {
-        std.Io.Threaded.mutexLockUncancelable(&self.state_mutex);
-        session.refs -= 1;
-        std.Io.Threaded.mutexUnlock(&self.state_mutex);
     }
 
     fn modernHttpStatus(arena: Allocator, response_json: []const u8) u16 {
@@ -1030,24 +1516,24 @@ pub const HttpServer = struct {
         };
     }
 
-    fn writeJsonResponse(conn: *ConnIo, arena: Allocator, status: u16, session_id: ?[]const u8, body: []const u8, close_conn: bool) !void {
+    fn writeJsonResponse(io: *ConnIo, arena: Allocator, status: u16, session_id: ?[]const u8, body: []const u8, close_conn: bool) !void {
         const extra = if (session_id) |sid| try std.fmt.allocPrint(arena, "Mcp-Session-Id: {s}\r\n", .{sid}) else "";
-        try writeResponse(conn, arena, status, statusReason(status), "application/json", extra, body, close_conn);
+        try writeResponse(io, arena, status, statusReason(status), "application/json", extra, body, close_conn);
     }
 
-    fn writeEmptyResponse(conn: *ConnIo, arena: Allocator, status: u16, reason: []const u8, session_id: ?[]const u8, close_conn: bool) !void {
+    fn writeEmptyResponse(io: *ConnIo, arena: Allocator, status: u16, reason: []const u8, session_id: ?[]const u8, close_conn: bool) !void {
         const extra = if (session_id) |sid| try std.fmt.allocPrint(arena, "Mcp-Session-Id: {s}\r\n", .{sid}) else "";
-        const raw = try std.fmt.allocPrint(arena, "HTTP/1.1 {d} {s}\r\n{s}Content-Length: 0\r\nConnection: {s}\r\n\r\n", .{
+        const raw = try std.fmt.allocPrint(arena, "HTTP/1.1 {d} {s}\r\n{s}Content-Length: 0\r\n{s}\r\n", .{
             status,
             reason,
             extra,
-            if (close_conn) "close" else "keep-alive",
+            try connectionHeaders(io, arena, close_conn),
         });
-        try conn.writeAll(raw);
+        try io.writeAll(raw);
     }
 
     fn writeResponse(
-        conn: *ConnIo,
+        io: *ConnIo,
         arena: Allocator,
         status: u16,
         reason: []const u8,
@@ -1056,16 +1542,26 @@ pub const HttpServer = struct {
         body: []const u8,
         close_conn: bool,
     ) !void {
-        const raw = try std.fmt.allocPrint(arena, "HTTP/1.1 {d} {s}\r\nContent-Type: {s}\r\n{s}Content-Length: {d}\r\nConnection: {s}\r\n\r\n{s}", .{
+        const raw = try std.fmt.allocPrint(arena, "HTTP/1.1 {d} {s}\r\nContent-Type: {s}\r\n{s}Content-Length: {d}\r\n{s}\r\n{s}", .{
             status,
             reason,
             content_type,
             extra_headers,
             body.len,
-            if (close_conn) "close" else "keep-alive",
+            try connectionHeaders(io, arena, close_conn),
             body,
         });
-        try conn.writeAll(raw);
+        try io.writeAll(raw);
+    }
+
+    /// `Connection: close`, or `Connection: keep-alive` and - when kept-alive
+    /// connections time out - `Keep-Alive: timeout=<s>`, the seconds floored,
+    /// as Node's http.Server writes it.
+    fn connectionHeaders(io: *ConnIo, arena: Allocator, close_conn: bool) ![]const u8 {
+        if (close_conn) return "Connection: close\r\n";
+        const ms = io.server.options.keep_alive_timeout_ms;
+        if (ms == 0) return "Connection: keep-alive\r\n";
+        return std.fmt.allocPrint(arena, "Connection: keep-alive\r\nKeep-Alive: timeout={d}\r\n", .{ms / std.time.ms_per_s});
     }
 
     fn statusReason(status: u16) []const u8 {
@@ -1077,8 +1573,10 @@ pub const HttpServer = struct {
             403 => "Forbidden",
             404 => "Not Found",
             405 => "Method Not Allowed",
+            409 => "Conflict",
             413 => "Payload Too Large",
             429 => "Too Many Requests",
+            503 => "Service Unavailable",
             else => "Error",
         };
     }
