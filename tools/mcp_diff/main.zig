@@ -826,13 +826,14 @@ pub fn main(init: std.process.Init) !void {
             }
         }
         const chrome = runSide(gpa, arena, io, chrome_argv.items, try std.fmt.allocPrint(arena, "{s}/logs/{s}.chrome.log", .{ options.out, slug }), case, chrome_places, &chrome_page);
+        // Copied with the file's mode, as Chrome's side left it: the files
+        // listing compares modes too.
         for (case.copy_to_crane) |name| {
             const from = try std.fmt.allocPrint(arena, "{s}/{s}", .{ chrome_places.files orelse break, name });
-            const data = Io.Dir.cwd().readFileAlloc(io, from, arena, .limited(512 * 1024 * 1024)) catch |err| {
+            const to = try std.fmt.allocPrint(arena, "{s}/{s}", .{ crane_places.files.?, name });
+            Io.Dir.cwd().copyFile(from, Io.Dir.cwd(), to, io, .{}) catch |err| {
                 std.debug.print("mcp_diff: {s}: copying {s} to Crane's side: {t}\n", .{ case.name, name, err });
-                continue;
             };
-            try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ crane_places.files.?, name }), .data = data });
         }
         const crane = runSide(gpa, arena, io, crane_argv.items, try std.fmt.allocPrint(arena, "{s}/logs/{s}.crane.log", .{ options.out, slug }), case, crane_places, null);
         const equal = chrome.failure == null and crane.failure == null and sameAnswers(chrome.answers, crane.answers);
