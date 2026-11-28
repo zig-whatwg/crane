@@ -235,7 +235,10 @@ crane-pool.sh queue server1 <mirror> ab --est <min> \
 
 - **Sides:** two frozen dirs, `--base`/`--tip`. Each holds its runners and a SHA256SUMS over them,
   in `<dir>/zig-out/bin` or flat, plus `worklist.txt`, `wpt_build_differences.txt` and a
-  `BUILD_INFO` naming its commit. Alternatively the base is a frozen generation
+  `BUILD_INFO` naming its commit. The side the bug-finding runner runs (the tip) also holds its
+  tree's `wpt_handle_leaks_baseline.txt` (the runner's `--handle-baseline`) and
+  `wpt_handle_unsettled.txt` (wpt_build_compare's `--unsettled`): the runs' directory is the WPT
+  tree, which has no tools/ (lane gate2, 2026-11-27). Alternatively the base is a frozen generation
   (`--base-generation=~/crane-frozen/main-<sha>`): its full run is read for the listed files, only
   the tip runs, the tip retries failures as the generation did, and the tree defaults to the
   generation's.

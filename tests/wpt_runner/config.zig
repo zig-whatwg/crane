@@ -359,6 +359,15 @@ pub fn isNonTestFile(path: []const u8) bool {
     return false;
 }
 
+/// Worklist prefixes that hold crashtests only, outside every in-scope
+/// category (tools/wpt_subset.py CRASHTEST_INCLUDE_EXTRA): the worklist runs
+/// them by its `--from-file`, and a directory run never takes them -
+/// accessibility/'s testharness files are not in scope (the a11y suites are
+/// accname/, html-aam/ and the others above), only its crashtests/, the 59
+/// accessibility-tree crashtests the 0.1 worklist holds (lane gate2,
+/// 2026-11-27; the integrator: "OK if it is for crashtests only").
+pub const crashtest_only_prefixes = [_][]const u8{"accessibility/crashtests/"};
+
 /// Check if a path is in an in-scope category
 ///
 /// Accepts both "dom/nodes/foo.html" and "/dom/nodes/foo.html". The category
@@ -663,6 +672,9 @@ test "the directory allowlist matches every directory in the generated worklist"
         const slash = std.mem.indexOfScalar(u8, path, '/') orelse return error.InvalidWorklistPath;
         const directory = path[0..slash];
         var allowed = false;
+        for (crashtest_only_prefixes) |prefix| {
+            if (std.mem.startsWith(u8, path, prefix)) allowed = true;
+        }
         for (in_scope_categories, 0..) |category, i| {
             if (category.enabled and std.mem.eql(u8, directory, category.name)) {
                 seen[i] = true;

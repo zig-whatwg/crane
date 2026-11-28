@@ -83,6 +83,9 @@ pub const Counts = struct {
     /// True when the journal record came from a WPT crashtest (`crashtest: true`),
     /// which reports 0 subtests and passes when its top-level status is OK.
     crashtest: bool = false,
+    /// True when the worklist's crashtest index (tests/wpt_0_1_crashtests.txt)
+    /// lists the file: the gate judges it by the crashtest rule (`gateOf`).
+    crashtest_indexed: bool = false,
 
     pub fn reported(c: Counts) u64 {
         return c.passed + c.failed + c.timed_out + c.notrun;
@@ -100,9 +103,16 @@ pub const Counts = struct {
 pub fn gateOf(status: ?[]const u8, c: Counts) Gate {
     const st = status orelse return .unrun;
     if (std.mem.eql(u8, st, "OK")) {
-        // WPT crashtests report 0 subtests: completing with status OK is a
-        // clean pass, never `empty` or `none_passed`.
-        if (c.crashtest) return .clean;
+        // A WPT crashtest is judged by its own rule (tools/wpt_progress.py
+        // crashtest_status, lane gate2): OK as a crashtest is clean, never
+        // `empty` or `none_passed`; an OK that the index and the run disagree
+        // on (run as testharness, or not indexed), or that reports subtests
+        // (a crashtest has none), is an error - never clean for reporting
+        // nothing.
+        if (c.crashtest or c.crashtest_indexed) {
+            if (!(c.crashtest and c.crashtest_indexed) or c.reported() > 0) return .err;
+            return .clean;
+        }
         if (c.reported() == 0) return .empty;
         if (c.passed == 0) return .none_passed;
         if (c.passed == c.reported()) return .clean;
@@ -952,21 +962,31 @@ test "gate: an OK run with no subtests at all is empty, not NONE-PASSED" {
     try testing.expect(!g.blocking());
 }
 
-test "gate: an OK crashtest counts as clean, not empty or NONE-PASSED; non-OK still blocks" {
-    const g = gateOf("OK", .{ .crashtest = true });
+test "gate: a crashtest is judged by its type and its own rule - clean when it finished, never empty or NONE-PASSED, never clean for having no subtests" {
+    // tools/wpt_progress.py crashtest_status, the same rule (lane gate2; the
+    // integrator's conditions, 2026-11-27 5:18 PM ET): the file's type comes
+    // from the worklist's crashtest index (tests/wpt_0_1_crashtests.txt).
+    const run_as_one: Counts = .{ .crashtest = true, .crashtest_indexed = true };
+    const g = gateOf("OK", run_as_one);
     try testing.expectEqual(Gate.clean, g);
     try testing.expect(!g.blocking());
-    try testing.expectEqual(Gate.clean, gateOf("OK", .{ .failed = 1, .crashtest = true }));
-    try testing.expectEqual(Gate.clean, gateOfRecord("OK", .{}, true));
+    // A crashtest reports no subtests: one that does is not clean.
+    try testing.expectEqual(Gate.err, gateOf("OK", .{ .failed = 1, .crashtest = true, .crashtest_indexed = true }));
+    // The index says crashtest, the run did not run it as one: never clean
+    // because it reported nothing.
+    try testing.expectEqual(Gate.err, gateOf("OK", .{ .crashtest_indexed = true }));
+    // A record that says crashtest for a file the index does not list.
+    try testing.expectEqual(Gate.err, gateOf("OK", .{ .crashtest = true }));
+    try testing.expectEqual(Gate.clean, gateOfRecord("OK", .{ .crashtest_indexed = true }, true));
     try testing.expectEqual(Gate.empty, gateOfRecord("OK", .{}, false));
-    try testing.expectEqual(Gate.timeout, gateOf("TIMEOUT", .{ .crashtest = true }));
-    try testing.expect(gateOf("TIMEOUT", .{ .crashtest = true }).blocking());
-    try testing.expectEqual(Gate.crash, gateOf("CRASH", .{ .crashtest = true }));
-    try testing.expectEqual(Gate.err, gateOf("ERROR", .{ .crashtest = true }));
-    try testing.expectEqual(Gate.unrun, gateOf(null, .{ .crashtest = true }));
+    try testing.expectEqual(Gate.timeout, gateOf("TIMEOUT", run_as_one));
+    try testing.expect(gateOf("TIMEOUT", run_as_one).blocking());
+    try testing.expectEqual(Gate.crash, gateOf("CRASH", run_as_one));
+    try testing.expectEqual(Gate.err, gateOf("ERROR", run_as_one));
+    try testing.expectEqual(Gate.unrun, gateOf(null, run_as_one));
     var t: Totals = .{};
-    t.add(gateOfRecord("OK", .{}, true), .{ .crashtest = true });
-    t.add(gateOfRecord("TIMEOUT", .{}, true), .{ .crashtest = true });
+    t.add(gateOf("OK", run_as_one), run_as_one);
+    t.add(gateOf("TIMEOUT", run_as_one), run_as_one);
     try testing.expectEqual(@as(u64, 2), t.files);
     try testing.expectEqual(@as(u64, 1), t.clean);
     try testing.expectEqual(@as(u64, 0), t.empty);

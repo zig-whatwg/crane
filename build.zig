@@ -564,6 +564,7 @@ fn addSuiteRuntimeInputs(b: *std.Build, run: *std.Build.Step.Run, launch: *const
         run.addFileInput(b.path("tests/wpt_0_1_worklist.txt"));
         run.addFileInput(b.path("tools/wpt_build_differences.txt"));
         run.addFileInput(b.path("tools/wpt_handle_leaks_baseline.txt"));
+        run.addFileInput(b.path("tools/wpt_handle_unsettled.txt"));
         run.addFileInput(b.path("specs/w3c/webdriver2.md"));
     }
     // Recorded Chrome traces in tests/devtools/fixtures/ and heap snapshots in tools/mcp_diff/fixtures/.

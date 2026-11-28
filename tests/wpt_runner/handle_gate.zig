@@ -40,6 +40,9 @@ pub const Snapshot = struct {
     wrapper_cache_entries: u64 = 0,
     global_handle_bytes: u64 = 0,
     node_wrappers: u64 = 0,
+    /// Agents alive in the process (`live_agents`): the settle's target - a
+    /// closed page's workers have ended when it is back to the clean reading's.
+    live_agents: u64 = 0,
 
     pub fn diff(before: Snapshot, after: Snapshot) Delta {
         return .{
@@ -96,6 +99,8 @@ pub fn extractSnapshot(counters: anytype) Snapshot {
             snap.global_handle_bytes = counterToU64(c.value);
         } else if (std.mem.eql(u8, c.name, "node_wrappers")) {
             snap.node_wrappers = counterToU64(c.value);
+        } else if (std.mem.eql(u8, c.name, "live_agents")) {
+            snap.live_agents = counterToU64(c.value);
         }
     }
     return snap;
@@ -133,6 +138,9 @@ pub const ParseDiagnostic = struct {
 pub const Baseline = struct {
     allocator: Allocator,
     entries: []Entry,
+    /// Whether the caps came from a baseline (`parse`); false for `empty`,
+    /// which holds every file to 0 / 0.
+    found: bool = false,
 
     pub fn empty(allocator: Allocator) Baseline {
         return .{ .allocator = allocator, .entries = &.{} };
@@ -220,7 +228,16 @@ pub const Baseline = struct {
         return .{
             .allocator = allocator,
             .entries = try list.toOwnedSlice(allocator),
+            .found = true,
         };
+    }
+
+    /// Load a baseline file from disk relative to cwd; one that does not
+    /// exist is an error (a baseline named on the command line).
+    pub fn load(allocator: Allocator, path: []const u8, diag: *ParseDiagnostic) !Baseline {
+        const text = try host.cwd().readFileAlloc(host.io(), path, allocator, .limited(4 << 20));
+        defer allocator.free(text);
+        return parse(allocator, text, diag);
     }
 
     /// Load a baseline file from disk relative to cwd. Returns an empty
@@ -286,6 +303,176 @@ pub fn writeDiagnostic(w: *std.Io.Writer, path: []const u8, result: CheckResult)
 fn signPrefix(v: i64) []const u8 {
     return if (v > 0) "+" else "";
 }
+
+/// The most entries tools/wpt_handle_leaks_baseline.txt may hold: the 5
+/// cross-realm holders the gate was seeded with (522584dbe, lane rc10's), and
+/// the 77 settled holders lane gate2's two FULL bug-finding runs found
+/// (2026-11-27; the integrator's ruling 10:31 PM ET, each with its owner
+/// queue item). The baseline is a ratchet (tools/AGENTS.md "Known debt only
+/// goes down"): lower this as entries go, never raise it without the
+/// integrator.
+pub const max_baseline_entries = 82;
+
+/// What marks a leak line (`writeDiagnostic`) in the bug-finding log.
+pub const leak_line_marker = "handle leak: ";
+/// What starts the run's summary line (`Tally.writeSummary`).
+pub const summary_prefix = "handle gate: ";
+
+/// Whether `line` is one file's leak line (`writeDiagnostic`'s text, after
+/// whatever prefix the log puts before it).
+pub fn isLeakLine(line: []const u8) bool {
+    return leakPath(line) != null;
+}
+
+/// A leak line read back: its file and the deltas it printed.
+pub const LeakLine = struct {
+    path: []const u8,
+    delta: Delta,
+};
+
+/// `writeDiagnostic`'s line read back (after whatever prefix the log puts
+/// before it), or null when `line` is not one: wpt_build_compare re-applies
+/// the tree's baseline to these deltas, whatever caps the runner had.
+pub fn parseLeakLine(line: []const u8) ?LeakLine {
+    const path = leakPath(line) orelse return null;
+    return .{ .path = path, .delta = .{
+        .object_globals = deltaAfter(line, ": live_object_globals ") orelse return null,
+        .wrapper_cache_entries = deltaAfter(line, "wrapper_cache_entries ") orelse return null,
+    } };
+}
+
+fn deltaAfter(line: []const u8, label: []const u8) ?i64 {
+    const at = std.mem.indexOf(u8, line, label) orelse return null;
+    var rest = line[at + label.len ..];
+    if (rest.len > 0 and rest[0] == '+') rest = rest[1..];
+    var end: usize = 0;
+    if (end < rest.len and rest[end] == '-') end += 1;
+    while (end < rest.len and std.ascii.isDigit(rest[end])) end += 1;
+    return std.fmt.parseInt(i64, rest[0..end], 10) catch null;
+}
+
+/// The file a leak line names, or null when `line` is not one.
+pub fn leakPath(line: []const u8) ?[]const u8 {
+    const at = std.mem.indexOf(u8, line, leak_line_marker) orelse return null;
+    const rest = line[at + leak_line_marker.len ..];
+    const end = std.mem.indexOf(u8, rest, ": live_object_globals ") orelse return null;
+    return rest[0..end];
+}
+
+/// Each OK file's check is a line of its own, printed as the file ends: a
+/// leak line (`writeDiagnostic`), or one of these. wpt_build_compare holds
+/// the run's OK files to them, so a runner process that dies mid-run - a
+/// stall ends it, a crash kills it - loses no file it checked (its end
+/// summary, `Tally.writeSummary`, it does lose).
+pub const checked_line_marker = "handle checked: ";
+/// An OK file whose handles could not be read (the engine gave no counters).
+pub const unread_line_marker = "handle unread: ";
+/// A file whose settle hit its bound before the closed page was gone (its
+/// check line follows as usual): `handle unsettled: <path>: <why>`.
+pub const unsettled_line_marker = "handle unsettled: ";
+
+pub fn writeUnsettled(w: *std.Io.Writer, path: []const u8, pending_work: bool, extra_agents: u64, rounds: usize) std.Io.Writer.Error!void {
+    try w.print(unsettled_line_marker ++ "{s}: after {d} rounds the event loop {s} pending work and {d} agent(s) beyond the clean reading are alive", .{ path, rounds, if (pending_work) "has" else "has no", extra_agents });
+}
+
+/// The file an unsettled line names, or null.
+pub fn unsettledPath(line: []const u8) ?[]const u8 {
+    const at = std.mem.indexOf(u8, line, unsettled_line_marker) orelse return null;
+    const rest = line[at + unsettled_line_marker.len ..];
+    const end = std.mem.indexOf(u8, rest, ": after ") orelse return null;
+    return rest[0..end];
+}
+
+pub fn writeChecked(w: *std.Io.Writer, path: []const u8) std.Io.Writer.Error!void {
+    try w.print(checked_line_marker ++ "{s}", .{path});
+}
+
+pub fn writeUnread(w: *std.Io.Writer, path: []const u8) std.Io.Writer.Error!void {
+    try w.print(unread_line_marker ++ "{s}", .{path});
+}
+
+fn pathAfter(line: []const u8, marker: []const u8) ?[]const u8 {
+    const at = std.mem.indexOf(u8, line, marker) orelse return null;
+    const path = std.mem.trim(u8, line[at + marker.len ..], " \t\r");
+    return if (path.len == 0) null else path;
+}
+
+/// The file a clean check line names, or null.
+pub fn checkedPath(line: []const u8) ?[]const u8 {
+    return pathAfter(line, checked_line_marker);
+}
+
+/// The file an unread line names, or null.
+pub fn unreadPath(line: []const u8) ?[]const u8 {
+    return pathAfter(line, unread_line_marker);
+}
+
+/// One runner process's handle gate: what it checked, and the summary line it
+/// prints when its files are done, for the log's reader (a check says how much
+/// it compared: docs/lessons/testing-a-check-that-reads-a-list-filtered-for-
+/// another-reader-cannot-see-what-the-filter-dropped.md). wpt_build_compare
+/// reconciles the run's OK files with the per-file lines, which a process that
+/// dies keeps; the summary is evidence beside them.
+pub const Tally = struct {
+    /// OK files whose handles were compared with the baseline.
+    checked: usize = 0,
+    /// Of those, the files over their cap (each has its leak line).
+    leaks: usize = 0,
+    /// OK files the gate could not read (the engine gave no counters).
+    unread: usize = 0,
+    /// The baseline the caps came from; empty when none was found, and every
+    /// file is held to 0 / 0.
+    baseline: []const u8 = "",
+    baseline_entries: usize = 0,
+
+    pub fn record(self: *Tally, result: CheckResult) void {
+        self.checked += 1;
+        if (result.leaked) self.leaks += 1;
+    }
+
+    pub fn writeSummary(self: Tally, w: *std.Io.Writer) std.Io.Writer.Error!void {
+        try w.print(summary_prefix ++ "checked {d} file(s), {d} handle leak(s) over the baseline, {d} OK file(s) unread (no counters); ", .{ self.checked, self.leaks, self.unread });
+        if (self.baseline.len == 0) {
+            try w.writeAll("baseline none (every file held to 0 / 0)");
+        } else try w.print("baseline {s} ({d} entries)", .{ self.baseline, self.baseline_entries });
+    }
+
+    /// The summary in `line` (after whatever prefix the log puts before it),
+    /// or null when `line` is not one. Its `baseline` is `line`'s.
+    pub fn parseSummary(line: []const u8) ?Tally {
+        const at = std.mem.indexOf(u8, line, summary_prefix) orelse return null;
+        var rest = line[at + summary_prefix.len ..];
+        var t: Tally = .{};
+        if (!literal(&rest, "checked ")) return null;
+        t.checked = number(&rest) orelse return null;
+        if (!literal(&rest, " file(s), ")) return null;
+        t.leaks = number(&rest) orelse return null;
+        if (!literal(&rest, " handle leak(s) over the baseline, ")) return null;
+        t.unread = number(&rest) orelse return null;
+        if (!literal(&rest, " OK file(s) unread (no counters); baseline ")) return null;
+        if (std.mem.startsWith(u8, rest, "none")) return t;
+        const open = std.mem.lastIndexOf(u8, rest, " (") orelse return null;
+        t.baseline = rest[0..open];
+        var tail = rest[open + 2 ..];
+        t.baseline_entries = number(&tail) orelse return null;
+        if (!literal(&tail, " entries)")) return null;
+        return t;
+    }
+
+    fn literal(rest: *[]const u8, text: []const u8) bool {
+        if (!std.mem.startsWith(u8, rest.*, text)) return false;
+        rest.* = rest.*[text.len..];
+        return true;
+    }
+
+    fn number(rest: *[]const u8) ?usize {
+        const end = std.mem.indexOfNone(u8, rest.*, "0123456789") orelse rest.*.len;
+        if (end == 0) return null;
+        const n = std.fmt.parseInt(usize, rest.*[0..end], 10) catch return null;
+        rest.* = rest.*[end..];
+        return n;
+    }
+};
 
 // ============================================================================
 // Tests
@@ -392,4 +579,103 @@ test "checked-in tools/wpt_handle_leaks_baseline.txt exists and parses cleanly" 
     var diag: ParseDiagnostic = .{};
     var base = try Baseline.parse(testing.allocator, text, &diag);
     defer base.deinit();
+}
+
+test "a run's summary line round-trips: what it checked, its leaks, the files it could not read, and the baseline it used" {
+    var t: Tally = .{ .baseline = "tools/wpt_handle_leaks_baseline.txt", .baseline_entries = 5 };
+    var base = Baseline.empty(testing.allocator);
+    defer base.deinit();
+    const before: Snapshot = .{ .live_object_globals = 10, .wrapper_cache_entries = 4 };
+    t.record(base.check("dom/clean.html", before, before));
+    t.record(base.check("dom/leak.html", before, .{ .live_object_globals = 11, .wrapper_cache_entries = 4 }));
+    t.unread += 1;
+    try testing.expectEqual(@as(usize, 2), t.checked);
+    try testing.expectEqual(@as(usize, 1), t.leaks);
+
+    var buf: [512]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try t.writeSummary(&w);
+    try testing.expectEqualStrings(
+        "handle gate: checked 2 file(s), 1 handle leak(s) over the baseline, 1 OK file(s) unread (no counters); baseline tools/wpt_handle_leaks_baseline.txt (5 entries)",
+        w.buffered(),
+    );
+    const parsed = Tally.parseSummary("warning(handle): " ++ "handle gate: checked 2 file(s), 1 handle leak(s) over the baseline, 1 OK file(s) unread (no counters); baseline tools/wpt_handle_leaks_baseline.txt (5 entries)").?;
+    try testing.expectEqual(@as(usize, 2), parsed.checked);
+    try testing.expectEqual(@as(usize, 1), parsed.leaks);
+    try testing.expectEqual(@as(usize, 1), parsed.unread);
+    try testing.expectEqual(@as(usize, 5), parsed.baseline_entries);
+    try testing.expectEqualStrings("tools/wpt_handle_leaks_baseline.txt", parsed.baseline);
+
+    // A run that found no baseline says so: every file is held to 0 / 0.
+    const none: Tally = .{};
+    w = .fixed(&buf);
+    try none.writeSummary(&w);
+    try testing.expect(std.mem.endsWith(u8, w.buffered(), "; baseline none (every file held to 0 / 0)"));
+    try testing.expectEqual(@as(usize, 0), Tally.parseSummary(w.buffered()).?.checked);
+
+    // Lines that are not the summary are not read as one.
+    try testing.expect(Tally.parseSummary("handle leak: dom/a.html: live_object_globals +1 (max 0)") == null);
+    try testing.expect(Tally.parseSummary("handle gate: checked many file(s)") == null);
+}
+
+test "a leak line is one handle leak: the diagnostic's own text, never a heap leak or the summary" {
+    try testing.expect(isLeakLine("warning(handle): handle leak: dom/a.html: live_object_globals +1 (max 0), wrapper_cache_entries 0 (max 0), global_handle_bytes +8, node_wrappers 0"));
+    try testing.expect(!isLeakLine("warning(heap): heap leak: 3 State block(s) and 3 Instance slot(s) alive at the Browser's end"));
+    try testing.expect(!isLeakLine("handle gate: checked 2 file(s), 1 handle leak(s) over the baseline, 0 OK file(s) unread (no counters); baseline none (every file held to 0 / 0)"));
+}
+
+test "the checked-in handle baseline only goes down: at most its 82 entries (2026-11-27)" {
+    // tools/wpt_handle_leaks_baseline.txt is a ratchet (tools/AGENTS.md "Known
+    // debt only goes down"): lane rc10 removes the entries it fixes, and this
+    // cap follows them down. Raising it needs the integrator's OK.
+    const text = try host.cwd().readFileAlloc(host.io(), default_baseline_path, testing.allocator, .limited(4 << 20));
+    defer testing.allocator.free(text);
+    var diag: ParseDiagnostic = .{};
+    var base = try Baseline.parse(testing.allocator, text, &diag);
+    defer base.deinit();
+    try testing.expect(base.entries.len <= max_baseline_entries);
+}
+
+test "each OK file's check line round-trips its path: clean, unread, or a leak" {
+    var buf: [256]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try writeChecked(&w, "dom/nodes/a.html");
+    try testing.expectEqualStrings("dom/nodes/a.html", checkedPath(w.buffered()).?);
+    try testing.expect(unreadPath(w.buffered()) == null);
+    w = .fixed(&buf);
+    try writeUnread(&w, "dom/nodes/b.html");
+    try testing.expectEqualStrings("dom/nodes/b.html", unreadPath(w.buffered()).?);
+    try testing.expect(checkedPath(w.buffered()) == null);
+    var base = Baseline.empty(testing.allocator);
+    defer base.deinit();
+    w = .fixed(&buf);
+    try writeDiagnostic(&w, "dom/nodes/c.html", base.check("dom/nodes/c.html", .{}, .{ .live_object_globals = 1 }));
+    try testing.expectEqualStrings("dom/nodes/c.html", leakPath(w.buffered()).?);
+    w = .fixed(&buf);
+    try writeUnsettled(&w, "dom/nodes/d.any.worker.html", true, 1, 80);
+    try testing.expectEqualStrings("dom/nodes/d.any.worker.html", unsettledPath(w.buffered()).?);
+    try testing.expect(checkedPath(w.buffered()) == null);
+    // The run's summary is none of them.
+    try testing.expect(checkedPath("handle gate: checked 2 file(s), 0 handle leak(s) over the baseline, 0 OK file(s) unread (no counters); baseline none (every file held to 0 / 0)") == null);
+    // The settle's target: live agents, read with the handle counters.
+    const Counter = struct { name: []const u8, value: i64 };
+    try testing.expectEqual(@as(u64, 2), extractSnapshot(&[_]Counter{.{ .name = "live_agents", .value = 2 }}).live_agents);
+}
+
+test "a leak line's path and deltas parse back from writeDiagnostic's text" {
+    var base = Baseline.empty(testing.allocator);
+    defer base.deinit();
+    var buf: [512]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try writeDiagnostic(&w, "html/bfcache/a.html", base.check("html/bfcache/a.html", .{ .live_object_globals = 10, .wrapper_cache_entries = 100 }, .{ .live_object_globals = 12, .wrapper_cache_entries = 186 }));
+    const l = parseLeakLine(w.buffered()).?;
+    try testing.expectEqualStrings("html/bfcache/a.html", l.path);
+    try testing.expectEqual(@as(i64, 2), l.delta.object_globals);
+    try testing.expectEqual(@as(i64, 86), l.delta.wrapper_cache_entries);
+    w = .fixed(&buf);
+    try writeDiagnostic(&w, "dom/b.html", base.check("dom/b.html", .{ .wrapper_cache_entries = 5 }, .{ .live_object_globals = 1 }));
+    const m = parseLeakLine(w.buffered()).?;
+    try testing.expectEqual(@as(i64, 1), m.delta.object_globals);
+    try testing.expectEqual(@as(i64, -5), m.delta.wrapper_cache_entries);
+    try testing.expect(parseLeakLine("handle checked: dom/b.html") == null);
 }
