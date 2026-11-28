@@ -634,3 +634,21 @@ test "each OK file's check line round-trips its path: clean, unread, or a leak" 
     const Counter = struct { name: []const u8, value: i64 };
     try testing.expectEqual(@as(u64, 2), extractSnapshot(&[_]Counter{.{ .name = "live_agents", .value = 2 }}).live_agents);
 }
+
+test "a leak line's path and deltas parse back from writeDiagnostic's text" {
+    var base = Baseline.empty(testing.allocator);
+    defer base.deinit();
+    var buf: [512]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try writeDiagnostic(&w, "html/bfcache/a.html", base.check("html/bfcache/a.html", .{ .live_object_globals = 10, .wrapper_cache_entries = 100 }, .{ .live_object_globals = 12, .wrapper_cache_entries = 186 }));
+    const l = parseLeakLine(w.buffered()).?;
+    try testing.expectEqualStrings("html/bfcache/a.html", l.path);
+    try testing.expectEqual(@as(i64, 2), l.delta.object_globals);
+    try testing.expectEqual(@as(i64, 86), l.delta.wrapper_cache_entries);
+    w = .fixed(&buf);
+    try writeDiagnostic(&w, "dom/b.html", base.check("dom/b.html", .{ .wrapper_cache_entries = 5 }, .{ .live_object_globals = 1 }));
+    const m = parseLeakLine(w.buffered()).?;
+    try testing.expectEqual(@as(i64, 1), m.delta.object_globals);
+    try testing.expectEqual(@as(i64, -5), m.delta.wrapper_cache_entries);
+    try testing.expect(parseLeakLine("handle checked: dom/b.html") == null);
+}

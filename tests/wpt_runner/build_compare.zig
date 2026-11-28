@@ -1315,6 +1315,8 @@ test "option B: an unsettled reading is pending only for a listed file; a new un
     };
     const run = try fixtureRun(arena, &records, "");
     const allowed = try parseUnsettledList(arena, "# pending hsettle1\nfetch/sw.any.js\nfetch/sw-quiet.any.js\n");
+    var no_baseline = handle_gate.Baseline.empty(testing.allocator);
+    defer no_baseline.deinit();
     try testing.expectEqual(@as(usize, 2), allowed.count());
 
     // Both listed files read unsettled; one also leaks +1: pending, the gate passes.
@@ -1335,7 +1337,7 @@ test "option B: an unsettled reading is pending only for a listed file; a new un
         .crashes = &.{},
         .ownership_violations = 0,
         .log = f,
-        .handle = try handleCoverageListed(arena, &.{pending_log}, &run, &allowed),
+        .handle = try handleCoverageListed(arena, &.{pending_log}, &run, &allowed, &no_baseline),
         .wrong_build = 0,
     };
     const h = report.handle.?;
@@ -1358,13 +1360,24 @@ test "option B: an unsettled reading is pending only for a listed file; a new un
         \\handle unsettled: fetch/sw-quiet.any.js: after 80 rounds the event loop has no pending work and 1 agent(s) beyond the clean reading are alive
         \\handle checked: fetch/sw-quiet.any.js
     ;
+    // (The integrator's ruling 2026-11-28 3:10 AM ET, (a): with no leak it is
+    // reported, not failing - workers/ and xhr/ files read so in 1 run of 3.)
     report.log = .{};
-    report.handle = try handleCoverageListed(arena, &.{new_log}, &run, &allowed);
+    report.handle = try handleCoverageListed(arena, &.{new_log}, &run, &allowed, &no_baseline);
+    try testing.expectEqual(@as(usize, 0), report.handle.?.new_unsettled);
+    try testing.expectEqual(@as(usize, 1), report.handle.?.unsettled_quiet);
+    try testing.expect(report.gatePassed());
+    w = .fixed(&buf);
+    try report.write(&w);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "handle gate: 1 unlisted file(s) read unsettled with no handle leak - reported, not failing (first: dom/clean.html)") != null);
+    // With a leak, the unlisted unsettled file is NEW and fails the gate.
+    const new_leak_log = new_log ++ "\nwarning(handle): handle leak: dom/clean.html: live_object_globals +1 (max 0), wrapper_cache_entries 0 (max 0), global_handle_bytes 0, node_wrappers 0";
+    report.handle = try handleCoverageListed(arena, &.{new_leak_log}, &run, &allowed, &no_baseline);
     try testing.expectEqual(@as(usize, 1), report.handle.?.new_unsettled);
     try testing.expect(!report.gatePassed());
     w = .fixed(&buf);
     try report.write(&w);
-    try testing.expect(std.mem.indexOf(u8, w.buffered(), "handle gate: 1 NEW unsettled file(s), not in tools/wpt_handle_unsettled.txt (first: dom/clean.html)") != null);
+    try testing.expect(std.mem.indexOf(u8, w.buffered(), "handle gate: 1 NEW unsettled file(s) with a handle leak, not in tools/wpt_handle_unsettled.txt (first: dom/clean.html)") != null);
 
     // A listed file that settled: STALE, the list only goes down.
     const stale_log =
@@ -1373,7 +1386,7 @@ test "option B: an unsettled reading is pending only for a listed file; a new un
         \\handle checked: fetch/sw-quiet.any.js
         \\handle checked: dom/clean.html
     ;
-    report.handle = try handleCoverageListed(arena, &.{stale_log}, &run, &allowed);
+    report.handle = try handleCoverageListed(arena, &.{stale_log}, &run, &allowed, &no_baseline);
     try testing.expectEqual(@as(usize, 1), report.handle.?.stale_unsettled);
     try testing.expect(!report.gatePassed());
     w = .fixed(&buf);
@@ -1391,7 +1404,7 @@ test "option B: an unsettled reading is pending only for a listed file; a new un
     var lf: LogFindings = .{};
     lf.scan(leak_log);
     report.log = lf;
-    report.handle = try handleCoverageListed(arena, &.{leak_log}, &run, &allowed);
+    report.handle = try handleCoverageListed(arena, &.{leak_log}, &run, &allowed, &no_baseline);
     try testing.expectEqual(@as(usize, 1), report.handle.?.blocking_leaks);
     try testing.expect(!report.gatePassed());
 }
@@ -1415,10 +1428,42 @@ test "an intermittent unsettled entry is neither NEW when it reads unsettled nor
     const records = [_]journal.Record{.{ .index = 0, .path = "workers/w.html", .status = .ok }};
     const run = try fixtureRun(arena, &records, "");
     const allowed = try parseUnsettledList(arena, "workers/w.html\tintermittent\tunsettled in 1 of 2 FULL runs\n");
+    var no_baseline = handle_gate.Baseline.empty(testing.allocator);
+    defer no_baseline.deinit();
     try testing.expect(allowed.get("workers/w.html").?);
-    const settled = try handleCoverageListed(arena, &.{"handle checked: workers/w.html"}, &run, &allowed);
+    const settled = try handleCoverageListed(arena, &.{"handle checked: workers/w.html"}, &run, &allowed, &no_baseline);
     try testing.expectEqual(@as(usize, 0), settled.stale_unsettled);
-    const unsettled = try handleCoverageListed(arena, &.{"handle unsettled: workers/w.html: after 80 rounds the event loop has no pending work and 1 agent(s) beyond the clean reading are alive\nhandle checked: workers/w.html"}, &run, &allowed);
+    const unsettled = try handleCoverageListed(arena, &.{"handle unsettled: workers/w.html: after 80 rounds the event loop has no pending work and 1 agent(s) beyond the clean reading are alive\nhandle checked: workers/w.html"}, &run, &allowed, &no_baseline);
     try testing.expectEqual(@as(usize, 0), unsettled.new_unsettled);
     try testing.expectEqual(@as(usize, 1), unsettled.unsettled);
+}
+
+test "the compare re-applies the tree's baseline to each leak line's printed deltas: under the caps is no leak, over them is" {
+    // The integrator's ruling 2026-11-28 3:10 AM ET, (c): the baseline file is
+    // the single source of truth, whatever caps the runner applied.
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const records = [_]journal.Record{
+        .{ .index = 0, .path = "html/bfcache/held.html", .status = .ok },
+        .{ .index = 1, .path = "dom/new.html", .status = .ok },
+    };
+    const run = try fixtureRun(arena, &records, "");
+    var diag: handle_gate.ParseDiagnostic = .{};
+    var baseline = try handle_gate.Baseline.parse(testing.allocator, "html/bfcache/held.html\t2\t170\thleak-bfcache1\ta page the back/forward cache keeps\n", &diag);
+    defer baseline.deinit();
+    const none: std.StringHashMapUnmanaged(bool) = .empty;
+    // The runner (with an older baseline) printed the held page at 86 wrapper
+    // entries: within the tree's caps (2 / 170), so no leak; dom/new.html's +1 is.
+    const log =
+        \\warning(handle): handle leak: html/bfcache/held.html: live_object_globals +2 (max 2), wrapper_cache_entries +86 (max 81), global_handle_bytes +3552, node_wrappers +16
+        \\warning(handle): handle leak: dom/new.html: live_object_globals +1 (max 0), wrapper_cache_entries 0 (max 0), global_handle_bytes 0, node_wrappers 0
+    ;
+    const h = try handleCoverageListed(arena, &.{log}, &run, &none, &baseline);
+    try testing.expectEqual(@as(usize, 2), h.checked);
+    try testing.expectEqual(@as(usize, 1), h.blocking_leaks);
+    try testing.expectEqualStrings("dom/new.html", h.first_blocking_leak.?);
+    // A holder that grows past its object-global cap is a leak again.
+    const grown = try handleCoverageListed(arena, &.{"warning(handle): handle leak: html/bfcache/held.html: live_object_globals +3 (max 2), wrapper_cache_entries +86 (max 170), global_handle_bytes 0, node_wrappers 0"}, &run, &none, &baseline);
+    try testing.expectEqual(@as(usize, 1), grown.blocking_leaks);
 }
