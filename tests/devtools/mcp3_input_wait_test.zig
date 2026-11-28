@@ -65,7 +65,8 @@ test "click waits as Puppeteer's locator does: a disabled control is clicked onc
         \\document.addEventListener('click', e => clicks.push(e.target.id + ':' + e.isTrusted), true);
         \\</script>
     );
-    var r = try h.tool("take_snapshot", "{\"pageId\":1}");
+    // Verbose: a combobox's options are listed.
+    var r = try h.tool("take_snapshot", "{\"pageId\":1,\"verbose\":true}");
     try testing.expect(!r.is_error);
     const snap = try a.dupe(u8, r.text);
     const late = try a.dupe(u8, try uidOf(snap, "button \"Late\""));
