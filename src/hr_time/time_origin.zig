@@ -37,6 +37,12 @@ pub const TimeOrigin = struct {
     /// This is a coarsened moment (safe to expose).
     origin_moment: clock.Nanoseconds,
 
+    /// The same moment before coarsening - the unsafe moment the time
+    /// origin was made from. Never exposed: read only to tell a fetch
+    /// timestamp at or before the origin from one after it
+    /// (`relativeFetchTime`).
+    unsafe_origin_moment: clock.Nanoseconds,
+
     /// Estimated monotonic time of the Unix epoch.
     /// Shared across related contexts that can communicate.
     /// This is used to calculate Performance.timeOrigin.
@@ -70,13 +76,15 @@ pub const TimeOrigin = struct {
         const monotonic_time = source.monotonicTime();
         return Self{
             .origin_moment = coarsen.coarsenTime(monotonic_time, cross_origin_isolated),
+            .unsafe_origin_moment = monotonic_time,
             .estimated_epoch = estimatedMonotonicTimeOfUnixEpochOn(source),
             .cross_origin_isolated = cross_origin_isolated,
             .source = source,
         };
     }
 
-    /// Initialize with a specific origin moment (for testing or custom scenarios)
+    /// Initialize with a specific origin moment (for testing or custom
+    /// scenarios), already coarsened; it stands for its unsafe moment too.
     pub fn initWithOrigin(
         origin_moment: clock.Nanoseconds,
         estimated_epoch: clock.Nanoseconds,
@@ -84,9 +92,75 @@ pub const TimeOrigin = struct {
     ) Self {
         return Self{
             .origin_moment = origin_moment,
+            .unsafe_origin_moment = origin_moment,
             .estimated_epoch = estimated_epoch,
             .cross_origin_isolated = cross_origin_isolated,
         };
+    }
+
+    /// Initialize at `unsafe_moment`, a moment of the unsafe shared current
+    /// time recorded earlier (a Window's creation, a navigation's start):
+    /// the origin is that moment coarsened.
+    pub fn initAtUnsafe(
+        unsafe_moment: clock.Nanoseconds,
+        estimated_epoch: clock.Nanoseconds,
+        cross_origin_isolated: bool,
+    ) Self {
+        return Self{
+            .origin_moment = coarsen.coarsenTime(unsafe_moment, cross_origin_isolated),
+            .unsafe_origin_moment = unsafe_moment,
+            .estimated_epoch = estimated_epoch,
+            .cross_origin_isolated = cross_origin_isolated,
+        };
+    }
+
+    /// The time origin becomes `unsafe_moment`, coarsened: HTML gives a
+    /// document a navigation made the navigation's start time as its time
+    /// origin (its load timing info's navigation start time).
+    pub fn moveTo(self: *Self, unsafe_moment: clock.Nanoseconds) void {
+        self.origin_moment = coarsen.coarsenTime(unsafe_moment, self.cross_origin_isolated);
+        self.unsafe_origin_moment = unsafe_moment;
+    }
+
+    /// Resource Timing "convert fetch timestamp" step 2 for `unsafe_moment`,
+    /// a fetch timing info's moment of the unsafe shared current time (step
+    /// 1, a zero timestamp, is the caller's): its relative high resolution
+    /// coarse time - never 0 for a moment after the origin.
+    ///
+    /// Golden rule 2 (the integrator's ruling, 2026-11-27 8:05 PM ET, lane
+    /// tbfix1): WebKit's networkLoadTimeToDOMHighResTimeStamp
+    /// (Source/WebCore/page/PerformanceResourceTiming.cpp; 306074@main,
+    /// e97d460dbd39, bug 306010, in Safari 27.2's safari-7625.2.8.11-branch)
+    /// returns 0 for a time at or before the time origin, and raises a
+    /// reduced 0 to one tick - "A timestamp of 0.0 means that there is no
+    /// timestamp" - for every network timestamp; unload, DOM and load marks
+    /// keep the plain relative time (PerformanceNavigationTiming::
+    /// millisecondsSinceOrigin). The spec's relative coarse time reads 0 for
+    /// a moment in the origin's tick, the value of a mark never taken:
+    /// Crane's navigation starts its fetch 25-120 us after its time origin,
+    /// so on the 125 us grid a same-origin redirect's redirectStart, and a
+    /// reused connection's fetchStart and secureConnectionStart, read "no
+    /// redirect" and "no connection time" in about half of all navigations
+    /// (navigation-timing/nav2-test-redirect-server.html, secure-connection-
+    /// start-non-zero.https.html, nav2-test-timing-persistent.html,
+    /// test-timing-attributes-dependent-on-document-load.html: Chrome and
+    /// Safari pass all four, Firefox fails, wpt.fyi fb385fbf9c 2026-11-27).
+    /// Chrome reaches them through its process hop (navigation_start taken
+    /// in the renderer, fetch_start in the browser's
+    /// NavigationRequest::OnStartChecksComplete: milliseconds later) and
+    /// reports the clamped clock as it is (Blink's
+    /// Performance::MonotonicTimeToDOMHighResTimeStamp), as Gecko does
+    /// (PerformanceTimingData::TimeStampToReducedDOMHighResOrFetchStart);
+    /// Crane has no hop, and a delay would be an invented path. Coarsening
+    /// itself, performance.now() and timeOrigin are unchanged.
+    pub fn relativeFetchTime(self: *const Self, unsafe_moment: clock.Nanoseconds) clock.Nanoseconds {
+        // At or before the time origin: 0.
+        if (unsafe_moment <= self.unsafe_origin_moment) return 0;
+        // The relative high resolution coarse time.
+        const relative = coarsen.coarsenTime(unsafe_moment, self.cross_origin_isolated) - self.origin_moment;
+        if (relative > 0) return relative;
+        // After the origin, inside its tick: one tick.
+        return coarsen.getResolution(self.cross_origin_isolated);
     }
 
     /// Get the current relative timestamp
@@ -218,4 +292,73 @@ var process_estimated_epoch: Hook(?clock.Nanoseconds) = .init(null);
 /// This is NOT coarsened and should only be used internally.
 pub fn unsafeSharedCurrentTime() clock.Nanoseconds {
     return clock.MonotonicClock.unsafeCurrentTime();
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+const testing = std.testing;
+
+/// A time origin 10 us into the tick that starts at 1 s.
+fn originTenMicrosecondsIntoATick(cross_origin_isolated: bool) TimeOrigin {
+    return TimeOrigin.initAtUnsafe(std.time.ns_per_s + 10_000, 0, cross_origin_isolated);
+}
+
+test "initAtUnsafe coarsens the origin and keeps its unsafe moment" {
+    const origin = originTenMicrosecondsIntoATick(false);
+    try testing.expectEqual(@as(clock.Nanoseconds, std.time.ns_per_s), origin.origin_moment);
+    try testing.expectEqual(@as(clock.Nanoseconds, std.time.ns_per_s + 10_000), origin.unsafe_origin_moment);
+}
+
+test "moveTo makes a navigation's start the origin, coarsened" {
+    var origin = originTenMicrosecondsIntoATick(false);
+    origin.moveTo(2 * std.time.ns_per_s + 130_000);
+    try testing.expectEqual(@as(clock.Nanoseconds, 2 * std.time.ns_per_s + 125_000), origin.origin_moment);
+    try testing.expectEqual(@as(clock.Nanoseconds, 2 * std.time.ns_per_s + 130_000), origin.unsafe_origin_moment);
+}
+
+test "a fetch moment after the origin inside its tick is one tick, not 0" {
+    const origin = originTenMicrosecondsIntoATick(false);
+    // 49 us later (nav2-test-redirect-server's redirectStart), same tick.
+    try testing.expectEqual(@as(clock.Nanoseconds, 125_000), origin.relativeFetchTime(std.time.ns_per_s + 59_000));
+    // The last nanosecond of the tick.
+    try testing.expectEqual(@as(clock.Nanoseconds, 125_000), origin.relativeFetchTime(std.time.ns_per_s + 124_999));
+    // One nanosecond after the origin.
+    try testing.expectEqual(@as(clock.Nanoseconds, 125_000), origin.relativeFetchTime(std.time.ns_per_s + 10_001));
+}
+
+test "a fetch moment at or before the origin is 0" {
+    const origin = originTenMicrosecondsIntoATick(false);
+    try testing.expectEqual(@as(clock.Nanoseconds, 0), origin.relativeFetchTime(std.time.ns_per_s + 10_000));
+    // Before the origin, in its tick.
+    try testing.expectEqual(@as(clock.Nanoseconds, 0), origin.relativeFetchTime(std.time.ns_per_s + 5_000));
+    // Before the origin's tick.
+    try testing.expectEqual(@as(clock.Nanoseconds, 0), origin.relativeFetchTime(std.time.ns_per_s - 300_000));
+}
+
+test "a fetch moment past the origin's tick is its relative coarse time" {
+    const origin = originTenMicrosecondsIntoATick(false);
+    // The next tick: its start, then a moment inside it.
+    try testing.expectEqual(@as(clock.Nanoseconds, 125_000), origin.relativeFetchTime(std.time.ns_per_s + 125_000));
+    try testing.expectEqual(@as(clock.Nanoseconds, 125_000), origin.relativeFetchTime(std.time.ns_per_s + 249_999));
+    try testing.expectEqual(@as(clock.Nanoseconds, 250_000), origin.relativeFetchTime(std.time.ns_per_s + 250_000));
+    // 1.049 ms after the origin floors to the origin's tick + 1 ms.
+    try testing.expectEqual(@as(clock.Nanoseconds, std.time.ns_per_ms), origin.relativeFetchTime(std.time.ns_per_s + 1_059_000));
+}
+
+test "a cross-origin isolated fetch moment inside the origin's tick is one 15.625 us tick" {
+    const origin = originTenMicrosecondsIntoATick(true);
+    // 1 s + 10 us is 64000.64 ticks of 15.625 us: the origin floors to
+    // 1 s, and its tick ends at 1 s + 15.625 us.
+    try testing.expectEqual(@as(clock.Nanoseconds, std.time.ns_per_s), origin.origin_moment);
+    try testing.expectEqual(@as(clock.Nanoseconds, 15_625), origin.relativeFetchTime(std.time.ns_per_s + 12_000));
+    try testing.expectEqual(@as(clock.Nanoseconds, 15_625), origin.relativeFetchTime(std.time.ns_per_s + 20_000));
+    try testing.expectEqual(@as(clock.Nanoseconds, 31_250), origin.relativeFetchTime(std.time.ns_per_s + 40_000));
+}
+
+test "a time origin made from a coarse moment stands for its unsafe moment" {
+    const origin = TimeOrigin.initWithOrigin(std.time.ns_per_s, 0, false);
+    try testing.expectEqual(@as(clock.Nanoseconds, 0), origin.relativeFetchTime(std.time.ns_per_s));
+    try testing.expectEqual(@as(clock.Nanoseconds, 125_000), origin.relativeFetchTime(std.time.ns_per_s + 1));
 }
