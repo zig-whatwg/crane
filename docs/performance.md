@@ -480,6 +480,10 @@ chat.local; main built on chat2 was +0.6%
 
 ## A lane's cost pair
 
+**The 3% memory bar in full** (Moved here from AGENTS.md on 2026-11-27 so that file stays under the 24 KB cap some agent harnesses put on rules files; AGENTS.md keeps the one-line rule.)
+
+**The 3% memory bar reads what Crane holds** (the user, 2026-11-15): a cost pair's memory rows are judged on the steady figure and the peak - never the end mark, which can catch workers still tearing down - and on a second, memory-only pass with macOS malloc's deferred-reclamation ring off on BOTH sides (`MallocLargeCache=0`), because with the ring on the same bytes read in two levels ~20 MB apart by chance, and with ONE malloc magazine on both sides (`MallocMaxMagazines=1`, the user, 2026-11-23: "add it"), because per-CPU magazines leave freed small-zone pages in levels that differ by build layout, not by what Crane holds. Time and instructions stay on the default pass; published figures are unchanged. A memory row over 3% may be CLEARED (the user, 2026-11-17) when (a) both sides reached a common level and each level's tip/base ratio is within 3%, or (b) the collected figure (`perf_bench run --collected`: after a forced full collection and a second settle) is within 3% — or, when both sides' collected launches form two modes (the user, 2026-11-25), each shared mode's tip/base ratio is within 3% - in both cases with every launch's value printed; `perf_bench cost` applies the rule. The collected figure never replaces steady + peak.
+
 A lane that changes how an object is built, a hot path or what Crane holds measures its cost as a
 **pair**: its tip (`crane`) against the main it is based on (`crane_base`), both consoles built in
 the lane's own mirror on the timing host, alternating in one window. The bar is 3% (AGENTS.md,

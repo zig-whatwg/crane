@@ -2772,26 +2772,6 @@ safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
 matches         = chrome, safari
 revisit         = when Chrome or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
-[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-insert-source.html]
-kind            = follows-majority
-why             = Crane runs resource selection's stable section in a task (required by media-src-7_1_2.sub.html, 3/3 pass), so inserting source1 before a in the following script causes x1 to fire error (expected 0 got 1, identical to Firefox); Chrome and Safari also fail 0/1 (failing one line earlier on c)
-chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
-firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
-safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
-matches         = firefox
-ruling          = the integrator (2026-11-25 4:46 PM ET, lane media1): all three browsers fail 0/1 due to task-based resource selection required by media-src-7_1_2.sub.html; Crane matches Firefox's exact x1 failure
-revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
-
-[html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-pointer-remove-source.html]
-kind            = follows-majority
-why             = Crane runs resource selection's stable section in a task (required by media-src-7_1_2.sub.html, 3/3 pass), so removing x1 in the following script prevents x1 from being selected (expected 1 got 0, identical to Firefox); Chrome and Safari also fail 0/1 (failing one line earlier on c)
-chrome.result   = wpt.fyi run 4817838192459776: 0/1 (Chrome 158, 94e2796a2a)
-firefox.result  = wpt.fyi run 6526273757904896: 0/1 (Firefox 161, 94e2796a2a)
-safari.result   = wpt.fyi run 6489750496870400: 0/1 (Safari 27.2, 94e2796a2a)
-matches         = firefox
-ruling          = the integrator (2026-11-25 4:46 PM ET, lane media1): all three browsers fail 0/1 due to task-based resource selection required by media-src-7_1_2.sub.html; Crane matches Firefox's exact x1 failure
-revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
-
 [html/semantics/embedded-content/media-elements/loading-the-media-resource/resource-selection-source-media-env-change.html]
 kind      = needs-decoder
 why       = selects /media-source/mp4/test.mp4#a and waits 2 rAFs before resizing the iframe; without an MP4 decoder #a fails decoding immediately and falls through to #b
@@ -2833,33 +2813,73 @@ why       = waits for a video resource to load and seek via timeout_on_seek.py; 
 media     = /media/movie_5.mp4 (video/mp4)
 assertion = TIMEOUT: Test timed out
 
-[html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/blob-data.https.html]
+[dom/nodes/crashtests/multiple-append-mutated-in-unload.https.html]
 kind            = follows-majority
-why             = WPT PR #25748 (ce281cc3f3) changed data worker self.crossOriginIsolated to false (HTML run a worker step 9) without removing blobWorkerIncrementerTest("data worker"), whose blob sub-worker inherits false (step 8) and must throw DataCloneError on postMessage(SAB) (StructuredSerializeInternal step 14.1.1 -> ERROR), and data frame (opaque origin, no allow="cross-origin-isolated") also has crossOriginIsolated false; Crane gets ERROR 15/18 while every browser blocks differently (Chrome ERROR 14/18 ReferenceError + data frame COI/isSecureContext FAIL, Firefox TIMEOUT 17/18 violating step 9, Safari TIMEOUT 15/18 + data frame isSecureContext FAIL)
-chrome.result   = wpt.fyi run 4786307730243584: 14/18 (ERROR, Chrome 157, 2358bd4835)
-firefox.result  = wpt.fyi run 4877168468033536: 17/18 (TIMEOUT, Firefox 160, 2358bd4835)
-safari.result   = wpt.fyi run 6479119966273536: 15/18 (TIMEOUT, Safari 27.2, 2358bd4835)
-matches         = none
-ruling          = golden rule 2, the spec where all three differ (main, 2026-11-26 4:14 AM ET, lane sab1): each browser blocks differently and the test contradicts HTML run a worker steps 8-9 + StructuredSerializeInternal step 14.1.1; upstream test-bug draft is tmp/plans/sab1-upstream-drafts/blob-data.md (filing needs the user's OK)
-revisit         = when the test is fixed upstream, or Chrome, Firefox or Safari changes its result, or Crane's result moves
+why             = the iframe's load handler calls runTest, which re-appends the div holding the iframe; each re-insertion makes a new navigable and a new srcdoc load (HTML iframe insertion steps) that delays the parent's load again, so the page never reaches "complete" and the crashtest never reaches its wait (probe: runTest ran 3,548 times in 3 s, readyState stays "interactive"); Firefox and Safari time out the same way, Chrome passes
+chrome.result   = wpt.fyi run 4786307730243584: 0/0 (crashtest PASS, Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/0 (crashtest TIMEOUT, Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/0 (crashtest TIMEOUT, Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+ruling          = the integrator, 2026-11-27 6:11 PM ET, under the user's standing instruction of 2026-11-27 ("always go with all of your recommendations"), on lane gate2's evidence (wpt.fyi at Crane's WPT revision 2358bd4835 and a release-console probe)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
-[navigation-timing/nav2-test-redirect-server.html]
+[service-workers/cache-storage/crashtests/cache-response-clone.https.html]
 kind            = follows-majority
-why             = startTime is the time origin (navigation_start) and redirectStart is the first hop's fetch start, both coarsened to Crane's 125 us tick with nothing waiting between them (48-56 us gap, p50 49 us; 25/60 pass and 60/60 per-run tick crossing agreement, tools/wpt_loss_dispositions.txt generation 237 timing-bound), so the single subtest asserts redirectStart > startTime and fails whenever the sub-tick gap does not cross a 125 us boundary; Chrome and Safari pass through multi-millisecond process hops while Firefox fails on wpt.fyi
-chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
-firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
-safari.result   = wpt.fyi run 6479119966273536: 1/1 (Safari 27.2, 2358bd4835)
-matches         = none
-ruling          = golden rule 2, timing-bound (the user, 2026-11-26 4:50 PM ET: option 1): the sub-tick gap between navigation_start and the first hop's fetch start is shorter than the 125 us coarsening tick (tools/wpt_loss_dispositions.txt kind = timing-bound)
-revisit         = when the test compares coarsened marks with >= upstream, or Crane's navigation-to-fetch gap changes
+why             = Fetch "clone a body" tees the body's stream and gives the response the new branch, so the stream the page captured before clone() is locked by the tee and its getReader() throws (Streams AcquireReadableStreamDefaultReader: a locked stream throws TypeError; probe: new Response("x"), s = r.body, r.clone(), s.getReader() -> TypeError); the module script rejects and test-wait is never removed - the spec's result, Chrome's and Safari's; Firefox passes
+chrome.result   = wpt.fyi run 4786307730243584: 0/0 (crashtest TIMEOUT, Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/0 (crashtest PASS, Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/0 (crashtest TIMEOUT, Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+ruling          = the integrator, 2026-11-27 6:11 PM ET, under the user's standing instruction of 2026-11-27 ("always go with all of your recommendations"), on lane gate2's evidence (wpt.fyi at Crane's WPT revision 2358bd4835 and a release-console probe)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
-[navigation-timing/secure-connection-start-non-zero.https.html]
+[editing/crashtests/inserthorizontalrule-in-textarea-in-editor-and-undo-on-error-events.html]
 kind            = follows-majority
-why             = on a connection reused from an earlier https file in the runner process, every connection time is fetchStart (Fetch "clamp and coarsen connection timing info" step 1; Blink, Gecko and WebKit return fetchStart too), so secureConnectionStart > 0 holds only when the navigation's fetch starts in a later 125 us tick than navigation_start; Crane's sub-tick gap is 24-91 us (p50 33 us; 11/30 pass, 19/30 fail on reuse, tools/wpt_loss_dispositions.txt generation 237 timing-bound), while Chrome and Safari pass through multi-millisecond process hops and Firefox fails on wpt.fyi
-chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
-firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
-safari.result   = wpt.fyi run 6479119966273536: 1/1 (Safari 27.2, 2358bd4835)
-matches         = none
-ruling          = golden rule 2, timing-bound (the user, 2026-11-27 1:23 AM ET: option 1): on reused HTTPS connections, the sub-tick gap between navigation_start and fetchStart is shorter than the 125 us coarsening tick (tools/wpt_loss_dispositions.txt kind = timing-bound)
-revisit         = when the test compares coarsened marks with >= upstream, or Crane's navigation-to-fetch gap changes
+why             = the test finishes from the third error event of an <object> with no data attribute; HTML 4.8.7's object steps go to fallback with no error event (step 3 fetches, and can fire error, only when data is present and not empty), so no error fires (probe: 0 error events, test-wait stays) - the spec's result, Chrome's and Safari's; Firefox fires error and passes
+chrome.result   = wpt.fyi run 4786307730243584: 0/0 (crashtest TIMEOUT, Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/0 (crashtest PASS, Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/0 (crashtest TIMEOUT, Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+ruling          = the integrator, 2026-11-27 6:11 PM ET, under the user's standing instruction of 2026-11-27 ("always go with all of your recommendations"), on lane gate2's evidence (wpt.fyi at Crane's WPT revision 2358bd4835 and a release-console probe)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[dom/nodes/moveBefore/moveBefore-range-iframe-crash.html]
+kind            = needs-renderer
+why             = the test ends only in the slider's input event, which a test_driver pointer drag from 40% of the <input type=range>'s width (origin: slider, its in-view center point) fires only by changing the value; the value a drag sets comes from the pointer's position along the range's track box, which no renderer answers (getBoundingClientRect is 0x0), so no input event and the crashtest never finishes (Chrome PASS, Firefox PASS, Safari TIMEOUT at 2358bd4835)
+assertion       = TIMEOUT: Crashtest did not finish (load, then test-wait) within 10000ms
+
+[resize-observer/multiple-observers-with-mutation-crash.html]
+kind            = needs-renderer
+why             = Crane delivers each ResizeObserver's initial observation (0x0 without a layout box; probe: ["0x0"]); the test then waits for a second observation of the iframe's inner_element after its body's width changes to 200px - a change of the element's box size that only layout computes - so the crashtest never finishes (Chrome, Firefox and Safari PASS at 2358bd4835)
+assertion       = TIMEOUT: Crashtest did not finish (load, then test-wait) within 10000ms
+
+[html/semantics/embedded-content/the-audio-element/audio-with-replaced-after-pseudo-crash.html]
+kind            = needs-decoder
+why             = getAudioURI (/common/media.js) picks sound_5.mp3 because canPlayType('audio/ogg') answers "", and the test's `await audio.play()` never settles without an MP3 decoder (the default platform decodes WAV only), so the crashtest never finishes (Chrome, Firefox and Safari PASS at 2358bd4835)
+media           = /media/sound_5.mp3 (audio/mpeg)
+assertion       = TIMEOUT: Crashtest did not finish (load, then test-wait) within 10000ms
+
+[html/semantics/embedded-content/the-audio-element/audio-loading-lazy-in-viewport.html]
+kind            = needs-decoder
+why             = the subtest passes at loadeddata (after the window's load event); Crane loads the lazy audio at once and the window's load fires first, but loadeddata needs a decoded frame of /media/sine440.mp3 and the default platform decodes WAV only (Chrome, Firefox and Safari 1/1 at 2358bd4835)
+media           = /media/sine440.mp3?pipe=trickle(d2) (audio/mpeg)
+assertion       = TIMEOUT: In-viewport audio with loading='lazy' does not block window load - Test timed out
+
+[html/semantics/embedded-content/the-audio-element/audio-loading-lazy-in-scroller.html]
+kind            = needs-decoder
+why             = the subtest passes at loadeddata within 5 s; Crane loads the lazy audio at once, but loadeddata needs a decoded frame of /media/sine440.mp3 and the default platform decodes WAV only (Chrome, Firefox and Safari 1/1 at 2358bd4835). Re-check when lazy media loading lands (main's queue): the load then waits for the scroll container's scrollTop to bring the element into view, a geometry read, and the file needs a renderer as well
+media           = /media/sine440.mp3 (audio/mpeg)
+assertion       = assert_unreached: Timed out while waiting for audio to load. Reached unreachable code
+
+[html/semantics/embedded-content/the-video-element/video-loading-lazy-in-viewport.html]
+kind            = needs-decoder
+why             = the subtest passes at loadeddata (after the window's load event); Crane loads the lazy video at once and the window's load fires first, but loadeddata needs a decoded frame of /media/A4.webm and the default platform decodes WAV only (Chrome, Firefox and Safari 1/1 at 2358bd4835)
+media           = /media/A4.webm?pipe=trickle(d2) (video/webm)
+assertion       = TIMEOUT: In-viewport video with loading='lazy' does not block window load - Test timed out
+
+[html/semantics/embedded-content/the-video-element/video-loading-lazy-in-scroller.html]
+kind            = needs-decoder
+why             = the subtest passes at loadeddata within 5 s; Crane loads the lazy video at once, but loadeddata needs a decoded frame of /media/A4.webm and the default platform decodes WAV only (Chrome, Firefox and Safari 1/1 at 2358bd4835). Re-check when lazy media loading lands (main's queue): the load then waits for the scroll container's scrollTop to bring the element into view, a geometry read, and the file needs a renderer as well
+media           = /media/A4.webm (video/webm)
+assertion       = assert_unreached: Timed out while waiting for video to load. Reached unreachable code
 

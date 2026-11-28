@@ -34,6 +34,10 @@ Isolated or custom tests live in `tests/wpt/crane/`.
 
 ### Keep the progress report current
 
+The full gate text, with every exemption kind and its date (Moved here from AGENTS.md on 2026-11-27 so that file stays under the 24 KB cap some agent harnesses put on rules files; AGENTS.md keeps the one-line rule.)
+
+**The 0.1 gate: no file in the worklist blocks.** A file blocks when it times out, errors or crashes, or finishes OK with none of its subtests passing; a file only ALL THREE browsers intentionally deviate on is exempt, and so is a file that fails identically in all three because of a test bug filed upstream, until that bug is resolved (the user, 2026-11-08), a file whose every failure is geometry no renderer answers yet (`needs-renderer`, the user, 2026-11-09: it still runs and shows on the site, and stops being exempt when a renderer exists), a file that fails only because the platform has no decoder for its media (`needs-decoder`, the user, 2026-11-18: until a video-capable platform runs WPT), and a file that blocks although Crane's result is the one golden rule 2 says is correct - it equals, subtest by subtest, the browser majority's, or a recorded ruling decides it (`follows-majority`, the user, 2026-11-18: "Add the exemption kind"; it comes off when the browsers change), and a file that tests a feature only ONE browser ships, whose remaining failures hinge on a mechanism where Crane does what the other two browsers and the spec do (`single-shipper`, the user, 2026-11-21: e.g. render-blocking-status-link - only Chrome ships renderBlockingStatus, and its last key needs Chrome-only in-body parser-blocking stylesheets; it comes off when a second browser ships the feature); each is listed with its evidence in `tools/wpt_gate_exemptions.txt`.
+
 **The 0.1 gate: no file in the worklist blocks.** A file blocks when it times
 out, errors or crashes, or when its harness finishes (OK) but none of its
 subtests passes (`NONE-PASSED`, `gate_status` in `tools/wpt_progress.py`). "OK"
@@ -140,6 +144,8 @@ you touched current; only a sweep catches what moved elsewhere.
 
 ### The two runs: production and bug-finding
 
+**WPT runs Crane only in its production configuration** (the user, 2026-11-09: "I want our WPT to only ever run Crane with the exact same configuration and memory setup that Crane would have running in a production environment. We should never special case something" - "architect ours like the way browsers do it"): two builds of one tree. The PRODUCTION run, `wpt_runner` (`zig build wpt-runner`), is the release console's build and platform graph exactly, and it alone feeds generations, the site, A/B pass counts and every timing. The BUG-FINDING run, `wpt_runner_bug_finding`, adds detection only (debug allocator, poison-on-free, Debug checks, the full C sanitizer). It is never published or timed; its gate is no crash, poison read, leak or assertion, and any subtest that differs between the two runs is a bug, listed with an owner in `tools/wpt_build_differences.txt`, which only goes down (.claude/rules/wpt-workflow.md). (Moved here from AGENTS.md on 2026-11-27 so that file stays under the 24 KB cap some agent harnesses put on rules files; AGENTS.md keeps the one-line rule.)
+
 **WPT runs Crane only in its production configuration, the way browsers run
 it** (the user, 2026-11-09, 15:38 ET: "I want our WPT to only ever run Crane
 with the exact same configuration and memory setup that Crane would have
@@ -229,7 +235,10 @@ crane-pool.sh queue server1 <mirror> ab --est <min> \
 
 - **Sides:** two frozen dirs, `--base`/`--tip`. Each holds its runners and a SHA256SUMS over them,
   in `<dir>/zig-out/bin` or flat, plus `worklist.txt`, `wpt_build_differences.txt` and a
-  `BUILD_INFO` naming its commit. Alternatively the base is a frozen generation
+  `BUILD_INFO` naming its commit. The side the bug-finding runner runs (the tip) also holds its
+  tree's `wpt_handle_leaks_baseline.txt` (the runner's `--handle-baseline`) and
+  `wpt_handle_unsettled.txt` (wpt_build_compare's `--unsettled`): the runs' directory is the WPT
+  tree, which has no tools/ (lane gate2, 2026-11-27). Alternatively the base is a frozen generation
   (`--base-generation=~/crane-frozen/main-<sha>`): its full run is read for the listed files, only
   the tip runs, the tip retries failures as the generation did, and the tree defaults to the
   generation's.

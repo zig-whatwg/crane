@@ -27,6 +27,9 @@ import subprocess
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKLIST = os.path.join(REPO, 'tests', 'wpt_0_1_worklist.txt')
+# The worklist's crashtests (written with it by tools/wpt_subset.py from MANIFEST.json
+# items.crashtest): which of its files the gate judges by the crashtest rule.
+CRASHTEST_INDEX = os.path.join(REPO, 'tests', 'wpt_0_1_crashtests.txt')
 RESULTS = os.path.join(REPO, 'wpt-results')
 DEFAULT_OUT = os.path.join(RESULTS, 'progress.html')
 
@@ -63,7 +66,8 @@ GATE_RULE = 2
 
 def alt_rates(worklist, records):
     """Two readings the subtest headline hides: the pass rate outside encoding/ and
-    the mean per-file pass rate, both from the journal's own counts.
+    the mean per-file pass rate, both from the journal's own counts, over the
+    testharness files (a crashtest has no subtests).
 
     encoding/ held ~87% of all subtests when these were added (2026-09-30), so the
     headline percentage is mostly one directory; a per-file mean weights every file
@@ -73,7 +77,7 @@ def alt_rates(worklist, records):
     rates = []
     for p in worklist:
         rec = records.get(p)
-        if not rec:
+        if not rec or is_crashtest(rec, p):
             continue
         n = rec.get('passed', 0) + rec.get('failed', 0) + rec.get('timed_out', 0) + rec.get('notrun', 0)
         if n == 0:
@@ -86,18 +90,68 @@ def alt_rates(worklist, records):
             sum(rates) / len(rates) * 100 if rates else 0.0)
 
 
+# The worklist's crashtests, from CRASHTEST_INDEX (main() loads them).
+CRASHTESTS = set()
+
+
+def load_crashtests(worklist, path=CRASHTEST_INDEX):
+    """The worklist's crashtests: tests/wpt_0_1_crashtests.txt, which tools/wpt_subset.py
+    writes with the worklist. Every entry must be a worklist file: an index that is not the
+    worklist's would judge files by the wrong rule."""
+    if not os.path.exists(path):
+        sys.exit(f"crashtest index not found: {path}\nRun: python3 tools/wpt_subset.py")
+    paths = set()
+    for line in open(path):
+        line = line.strip()
+        if line and not line.startswith('#'):
+            paths.add(line)
+    outside = sorted(paths - set(worklist))
+    if outside:
+        sys.exit(f"wpt_progress: {len(outside)} crashtest(s) in {os.path.relpath(path, REPO)} are not in the "
+                 f"worklist (regenerate both with tools/wpt_subset.py): {', '.join(outside[:5])}")
+    return paths
+
+
+def is_crashtest(rec, path=None):
+    """Whether the gate judges this file as a crashtest: by its type in the worklist's
+    crashtest index when the path is known, else by what its record says."""
+    if path is not None:
+        return path in CRASHTESTS or bool(rec.get('crashtest'))
+    return bool(rec.get('crashtest'))
+
+
+def crashtest_status(rec, path=None):
+    """The crashtest rule (WPT: a crashtest passes when its page loads and settles, the
+    process alive; wptrunner reports it OK, or CRASH, TIMEOUT, ERROR). Judged by the
+    file's type in the crashtest index, never by having no subtests:
+    - a record of a file the index does not list, or a run that did not run an indexed
+      file as a crashtest (`crashtest` missing), is ERROR when it says OK: the index and
+      the run disagree on what the file is;
+    - an OK crashtest that reports subtests is ERROR: a crashtest has none;
+    - otherwise the runner's status."""
+    st = rec.get('status', 'ERROR')
+    if st != 'OK':
+        return st
+    indexed = path in CRASHTESTS if path is not None else True
+    if not indexed or not rec.get('crashtest'):
+        return 'ERROR'
+    if rec.get('passed', 0) + rec.get('failed', 0) + rec.get('timed_out', 0) + rec.get('notrun', 0) > 0:
+        return 'ERROR'
+    return 'OK'
+
+
 def gate_status(rec, path=None):
     """The status the gate judges `rec` by: the runner's, or NONE-PASSED - or
     EXEMPT, when `path` is listed in the gate's exemptions and would block.
 
-    A WPT crashtest (`crashtest: True`) reports 0 subtests: completing with
-    `status == 'OK'` is always a clean pass (never NONE-PASSED), while
-    TIMEOUT / CRASH / ERROR still block.
+    A WPT crashtest is judged by its own rule (`crashtest_status`), by its type in
+    the worklist's crashtest index: never NONE-PASSED, and never clean merely
+    because it has no subtests.
     """
     st = rec.get('status', 'ERROR')
-    if st == 'OK':
-        if rec.get('crashtest'):
-            return 'OK'
+    if is_crashtest(rec, path):
+        st = crashtest_status(rec, path)
+    elif st == 'OK':
         if rec.get('passed', 0) == 0 and (
                 rec.get('failed', 0) + rec.get('timed_out', 0) + rec.get('notrun', 0)) > 0:
             st = NONE_PASSED
@@ -109,10 +163,31 @@ def gate_status(rec, path=None):
 
 
 def is_clean_ok(rec):
-    """Whether an OK record counts as clean: every crashtest OK is clean;
-    otherwise no failed or timed_out subtests."""
-    return bool(rec.get('crashtest')) or (
-        rec.get('failed', 0) == 0 and rec.get('timed_out', 0) == 0)
+    """Whether an OK record counts as clean: no failed or timed_out subtests (a
+    crashtest the gate passes has none at all: `crashtest_status`)."""
+    return rec.get('failed', 0) == 0 and rec.get('timed_out', 0) == 0
+
+
+def crashtest_counts(worklist, records):
+    """The headline's two kinds of file (the integrator, 2026-11-27): testharness files and
+    crashtests, and the crashtests that block."""
+    crash = [p for p in worklist if p in CRASHTESTS]
+    blocking = sum(1 for p in crash if p in records and gate_status(records[p], p) in GATING)
+    return {'testharness': len(worklist) - len(crash), 'crashtests': len(crash), 'crashtests_blocking': blocking}
+
+
+CRASHTESTS_JOINED = 'worklist change: {n} crashtests joined the worklist (files {before:,} -> {after:,}; subtests unchanged)'
+
+
+def crashtests_joined(previous_generation, snap):
+    """The marker the first generation with crashtests carries (the site draws it on the
+    history, as it draws the production marker), so the file total's jump reads as what it is."""
+    if previous_generation is None or not snap.get('crashtests'):
+        return None
+    if previous_generation.get('crashtests'):
+        return None
+    return CRASHTESTS_JOINED.format(n=snap['crashtests'], before=previous_generation.get('total', 0),
+                                    after=snap['total'])
 
 
 # Reference runs (lane chromeref1; the user, 2026-11-03: "I want the chrome results on the
@@ -2210,6 +2285,8 @@ def record_generation(worklist, records, areas, previous_records=None, reference
         'exempt_follows_majority': tot['exempt_follows_majority'],
         'exempt_needs_decoder': tot['exempt_needs_decoder'],
         'exempt_single_shipper': tot['exempt_single_shipper'],
+        # The two kinds of file, apart (lane gate2): `total` is their sum.
+        **crashtest_counts(worklist, records),
         # Files the sweep re-ran because they did not fully pass, whose second run
         # disagreed with the first (the runner's --retry-failures: "flaky" in the
         # journal record). The first result is the one counted everywhere else.
@@ -2291,6 +2368,9 @@ def record_generation(worklist, records, areas, previous_records=None, reference
     snap['gate_rule'] = GATE_RULE
     if change:
         snap['configuration_change'] = change
+    joined = crashtests_joined(history['generations'][-1] if history['generations'] else None, snap)
+    if joined:
+        snap['configuration_change'] = f"{snap['configuration_change']}; {joined}" if snap.get('configuration_change') else joined
     if update:
         snap['wpt_update'] = update   # a WPT-UPDATE generation: losses need upstream-test-change evidence
     snap.update(generation_upstream_fields(worklist, records, reference))
@@ -3126,6 +3206,7 @@ def render_reference(worklist, records, ref):
 
 def render(areas, worklist, records, files, out_path, history=None, shape=None, roadmap=None,
            dispositions=None, reference=None):
+    kinds = crashtest_counts(worklist, records)
     tot = collections.Counter()
     for c in areas.values():
         tot.update(c)
@@ -3422,7 +3503,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
 {exempt_html}
 
 <div class="cards">
-  <div class="card"><div class="k">Run</div><div class="v">{run:,}<span class="dim" style="font-size:14px"> / {total:,}</span></div></div>
+  <div class="card"><div class="k">Run</div><div class="v">{run:,}<span class="dim" style="font-size:14px"> / {total:,}</span></div><div class="dim" style="font-size:12px">{kinds['testharness']:,} testharness + {kinds['crashtests']:,} crashtests ({kinds['crashtests_blocking']:,} blocking)</div></div>
   <div class="card"><div class="k">Timeouts</div><div class="v" style="color:var(--bad)">{tot['timeout']:,}</div></div>
   <div class="card"><div class="k">Crashes</div><div class="v" style="color:var(--bad)">{tot['crash']:,}</div></div>
   <div class="card"><div class="k">Flaky</div><div class="v" style="color:var(--bad)">{len(flaky_paths(worklist, records)):,}</div><div class="dim" style="font-size:12px">of {retry_counts(worklist, records)['retried']:,} retried, {retry_counts(worklist, records)['retry_skipped']:,} skipped as unchanged</div></div>
@@ -3493,10 +3574,11 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
 
 
 def main():
-    global EXEMPTIONS
+    global EXEMPTIONS, CRASHTESTS
     out = sys.argv[sys.argv.index('--out') + 1] if '--out' in sys.argv else DEFAULT_OUT
     worklist = load_worklist()
     EXEMPTIONS = load_exemptions(worklist)
+    CRASHTESTS = load_crashtests(worklist)
     dispositions = load_loss_dispositions(worklist)
     # A timing-bound entry whose code changed since its measurement still explains its
     # losses, but its gap may have moved: say so, never block.
@@ -3549,6 +3631,9 @@ def main():
         tot.update(c)
     targeted, passing = round(tot['sub_targeted']), round(tot['sub_passing'])
     unexplained = unexplained_losses(history, dispositions)
+    kinds = crashtest_counts(worklist, records)
+    print(f"files: {kinds['testharness']:,} testharness + {kinds['crashtests']:,} crashtests "
+          f"({kinds['crashtests_blocking']:,} crashtests blocking)")
     print(f"{run:,} of {total:,} sources run  |  {gating:,} blocking  |  "
           f"{retry_summary(retry_counts(worklist, records))}  |  {clean:,} clean  |  "
           f"{len(unexplained):,} unexplained subtest losses")
@@ -5173,6 +5258,7 @@ def _check_loss_exit_status():
         with patch.multiple(__name__, HISTORY=os.path.join(d, 'history.json'),
                             STATE=os.path.join(d, 'state.json'),
                             load_worklist=lambda: ['a.html'], load_exemptions=lambda *a: {},
+                            load_crashtests=lambda *a: set(),
                             load_loss_dispositions=lambda *a: {},
                             load_results=lambda: (records, []), load_shape=lambda wl: (shape, 0),
                             load_roadmap=lambda: None, git_head=lambda: 'test'):
@@ -5620,19 +5706,98 @@ def _check_crashtest_gate():
     to_crash = {'status': 'TIMEOUT', 'passed': 0, 'failed': 0, 'crashtest': True}
     cr_crash = {'status': 'CRASH', 'passed': 0, 'failed': 0, 'crashtest': True}
     assert gate_status(ok_crash) == 'OK'
-    assert gate_status(ok_crash_extra) == 'OK'
+    # A crashtest has no subtests: one that reports a failing one is not clean
+    # (audit report-F M3; _check_crashtest_rule_by_type).
+    assert gate_status(ok_crash_extra) == 'ERROR'
     assert gate_status(to_crash) == 'TIMEOUT'
     assert gate_status(cr_crash) == 'CRASH'
     assert is_clean_ok(ok_crash)
-    assert is_clean_ok(ok_crash_extra)
-    wl = ['dom/a-crash.html', 'dom/b-crash.html']
-    recs = {'dom/a-crash.html': ok_crash, 'dom/b-crash.html': to_crash}
-    areas, _, _ = build(wl, recs)
-    assert areas['dom']['clean'] == 1, areas['dom']
-    assert areas['dom']['gating'] == 1, areas['dom']
-    assert areas['dom']['none-passed'] == 0, areas['dom']
-    st = area_stats(['dom/'], wl, recs)
-    assert st['clean'] == 1 and st['blocking'] == 1, st
+    assert not is_clean_ok(ok_crash_extra)
+    global CRASHTESTS
+    saved = CRASHTESTS
+    try:
+        wl = ['dom/a-crash.html', 'dom/b-crash.html']
+        CRASHTESTS = set(wl)
+        recs = {'dom/a-crash.html': ok_crash, 'dom/b-crash.html': to_crash}
+        areas, _, _ = build(wl, recs)
+        assert areas['dom']['clean'] == 1, areas['dom']
+        assert areas['dom']['gating'] == 1, areas['dom']
+        assert areas['dom']['none-passed'] == 0, areas['dom']
+        st = area_stats(['dom/'], wl, recs)
+        assert st['clean'] == 1 and st['blocking'] == 1, st
+    finally:
+        CRASHTESTS = saved
+
+
+def _check_crashtest_rule_by_type():
+    """A crashtest is judged by its own rule, by its type in the worklist's crashtest
+    index (tests/wpt_0_1_crashtests.txt, from MANIFEST.json items.crashtest; lane gate2,
+    the integrator's conditions 2026-11-27 5:18 PM ET): it passes when it finished - OK,
+    no crash, timeout or error - and it never falls under NONE-PASSED, nor counts as clean
+    merely because it has no subtests."""
+    import tempfile
+    global CRASHTESTS
+    saved = CRASHTESTS
+    try:
+        CRASHTESTS = {'dom/a-crash.html', 'dom/b-crash.html', 'dom/c-crash.html', 'dom/e-crash.html'}
+        clean = {'status': 'OK', 'passed': 0, 'failed': 0, 'crashtest': True}
+        crashed = {'status': 'CRASH', 'passed': 0, 'failed': 0, 'crashtest': True}
+        with_subtests = {'status': 'OK', 'passed': 0, 'failed': 1, 'crashtest': True}
+        ran_as_testharness = {'status': 'OK', 'passed': 0, 'failed': 0}
+        timeout = {'status': 'TIMEOUT', 'passed': 0, 'failed': 0, 'crashtest': True}
+        # A clean crashtest does not block; a crashing one does.
+        assert gate_status(clean, 'dom/a-crash.html') == 'OK'
+        assert is_clean_ok(clean)
+        assert gate_status(crashed, 'dom/b-crash.html') == 'CRASH'
+        assert gate_status(timeout, 'dom/b-crash.html') == 'TIMEOUT'
+        # A crashtest has no subtests: one that reports a failing one is not clean.
+        assert gate_status(with_subtests, 'dom/c-crash.html') == 'ERROR'
+        assert not is_clean_ok(with_subtests)
+        # The index says crashtest but the run did not run it as one (a runner that
+        # does not know the type): never clean because it has no subtests.
+        assert gate_status(ran_as_testharness, 'dom/e-crash.html') == 'ERROR'
+        # A record that says crashtest for a file the index does not list: the index
+        # and the manifest disagree, so the file is not judged clean.
+        assert gate_status(clean, 'dom/d-not-indexed.html') == 'ERROR'
+        # A testharness file with no subtests keeps its own rule (nothing to fail).
+        assert gate_status({'status': 'OK', 'passed': 0, 'failed': 0}, 'dom/plain.html') == 'OK'
+        # Blocking counts: the CRASH, the TIMEOUT-free ERRORs and the ran-as-testharness one.
+        wl = ['dom/a-crash.html', 'dom/b-crash.html', 'dom/c-crash.html', 'dom/e-crash.html', 'dom/plain.html']
+        recs = {'dom/a-crash.html': clean, 'dom/b-crash.html': crashed, 'dom/c-crash.html': with_subtests,
+                'dom/e-crash.html': ran_as_testharness,
+                'dom/plain.html': {'status': 'OK', 'passed': 3, 'failed': 1}}
+        areas, _, _ = build(wl, recs)
+        assert areas['dom']['clean'] == 1, areas['dom']
+        assert areas['dom']['gating'] == 3, areas['dom']
+        assert areas['dom']['none-passed'] == 0, areas['dom']
+        # The headline's separate counts: testharness files and crashtests.
+        c = crashtest_counts(wl, recs)
+        assert c == {'testharness': 1, 'crashtests': 4, 'crashtests_blocking': 3}, c
+        # The mean per-file rate is over testharness files only.
+        _, mean = alt_rates(wl, recs)
+        assert abs(mean - 75.0) < 1e-9, mean
+        # The first generation with crashtests carries a marker, so the jump in the
+        # file total is never read as new files of the old kind.
+        assert crashtests_joined({'n': 241, 'total': 14346}, {'total': 14972, 'crashtests': 613}) == \
+            'worklist change: 613 crashtests joined the worklist (files 14,346 -> 14,972; subtests unchanged)'
+        assert crashtests_joined({'n': 242, 'total': 14972, 'crashtests': 613}, {'total': 14972, 'crashtests': 613}) is None
+        assert crashtests_joined(None, {'total': 613, 'crashtests': 613}) is None
+        # The index must be the worklist's: an entry outside it is refused.
+        with tempfile.TemporaryDirectory() as d:
+            index = os.path.join(d, 'crashtests.txt')
+            with open(index, 'w') as f:
+                f.write('# index\ndom/a-crash.html\ndom/gone-crash.html\n')
+            try:
+                load_crashtests(['dom/a-crash.html'], index)
+            except SystemExit as err:
+                assert 'dom/gone-crash.html' in str(err), err
+            else:
+                raise AssertionError('an index entry outside the worklist was accepted')
+            with open(index, 'w') as f:
+                f.write('# index\ndom/a-crash.html\n')
+            assert load_crashtests(['dom/a-crash.html', 'dom/plain.html'], index) == {'dom/a-crash.html'}
+    finally:
+        CRASHTESTS = saved
 
 
 if __name__ == '__main__':
@@ -5643,6 +5808,7 @@ if __name__ == '__main__':
         _check_history_chart()
         _check_gate_rule()
         _check_crashtest_gate()
+        _check_crashtest_rule_by_type()
         _check_fixed_crane_test_in_fork()
         _check_history_subs()
         _check_history_sources()

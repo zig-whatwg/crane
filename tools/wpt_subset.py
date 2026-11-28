@@ -1707,21 +1707,20 @@ EXCLUDE = [
      'white-space-trim: 0/11 in all three (run 2358bd4835)'),
     # Harness infrastructure, not tests.
     ('/support/',                      'support files'),
-    # Lane media1 (the integrator, 2026-11-25 4:46 PM ET): viewport/IntersectionObserver
-    # geometry-dependent media loading="lazy" tests in the-audio-element/ and
-    # the-video-element/ (also single-shipper Chrome-only and MP3/MP4 decoding).
+    # Lane media1 (2026-11-25): media loading="lazy" files whose EVERY subtest
+    # needs geometry - a box below the viewport (class below-viewport, a 1000vh
+    # spacer), scrollIntoView, offsetWidth - which no renderer answers; Crane's
+    # layout-less answer is that a rendered element intersects the viewport
+    # (src/dom/lazy_load_observer.zig). Lane gate2 (2026-11-27, audit report-D
+    # H6) restored the 8 media1 excluded whose subtests need none: disconnected
+    # (never intersects), not-rendered (no controls / hidden / display:none:
+    # the style engine's answer), in-viewport and in-scroller (they assert only
+    # that the load finishes, after the window's load event) - files fail there
+    # for other reasons (an engine queue item, or needs-decoder), never geometry.
     ('html/semantics/embedded-content/the-audio-element/audio-loading-autoplay-deferred.html',
      'viewport visibility geometry for loading=lazy autoplay deferral'),
     ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-autoplay-when-visible.html',
      'viewport visibility geometry for loading=lazy autoplay'),
-    ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-disconnected.html',
-     'IntersectionObserver/lazy media loading deferral (Chrome-only, geometry)'),
-    ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-in-scroller.html',
-     'scroll container viewport geometry for loading=lazy audio'),
-    ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-in-viewport.html',
-     'viewport visibility geometry for loading=lazy audio'),
-    ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-not-rendered.html',
-     'layout rendering / display:none visibility for loading=lazy audio'),
     ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-source-deferred.html',
      'offscreen viewport geometry for loading=lazy audio <source>'),
     ('html/semantics/embedded-content/the-audio-element/audio-loading-lazy-to-eager.html',
@@ -1730,16 +1729,8 @@ EXCLUDE = [
      'viewport visibility geometry for loading=lazy autoplay deferral'),
     ('html/semantics/embedded-content/the-video-element/video-loading-lazy-autoplay-when-visible.html',
      'viewport visibility geometry for loading=lazy autoplay'),
-    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-disconnected.html',
-     'IntersectionObserver/lazy media loading deferral (Chrome-only, geometry)'),
-    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-in-scroller.html',
-     'scroll container viewport geometry for loading=lazy video'),
-    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-in-viewport.html',
-     'viewport visibility geometry for loading=lazy video'),
     ('html/semantics/embedded-content/the-video-element/video-loading-lazy-load-when-visible.html',
      'viewport visibility geometry and video box width for loading=lazy video'),
-    ('html/semantics/embedded-content/the-video-element/video-loading-lazy-not-rendered.html',
-     'layout rendering / display:none visibility for loading=lazy video'),
     ('html/semantics/embedded-content/the-video-element/video-loading-lazy-poster-when-visible.html',
      'viewport visibility geometry for loading=lazy video poster'),
     ('html/semantics/embedded-content/the-video-element/video-loading-lazy-resume-on-loading-attribute-change.html',
@@ -1759,20 +1750,12 @@ EXCLUDE = [
      'WebCodecs VideoFrame transfer: 0.2 media/codecs'),
     ('html/infrastructure/safe-passing-of-structured-data/transfer-mediasourcehandle.html',
      'MediaSource Extensions ManagedMediaSource handle transfer: 0.2 media (matches fetch/api/basic/mediasource.window.js)'),
-    # - 5 query-encoding umbrella files whose ?include=loading/?include=svg/?include=css variants
-    #   assert layout box offsetWidth (<img>/<embed>/<object>/<input>), poll video.offsetWidth forever
-    #   for <video poster> (TIMEOUT without renderer), require WebM/MP4 video decoders, and wait on
-    #   painted SVG <feImage> and CSS border-image-source/list-style-image/cursor loads.
-    ('html/infrastructure/urls/resolving-urls/query-encoding/utf-8.html',
-     'query-encoding loading/svg/css variants assert elm.offsetWidth, poll video.offsetWidth, and require video decoders/painted CSS images'),
-    ('html/infrastructure/urls/resolving-urls/query-encoding/utf-16be.html',
-     'query-encoding loading/svg/css variants assert elm.offsetWidth, poll video.offsetWidth, and require video decoders/painted CSS images'),
-    ('html/infrastructure/urls/resolving-urls/query-encoding/utf-16le.html',
-     'query-encoding loading/svg/css variants assert elm.offsetWidth, poll video.offsetWidth, and require video decoders/painted CSS images'),
-    ('html/infrastructure/urls/resolving-urls/query-encoding/windows-1251.html',
-     'query-encoding loading/svg/css variants assert elm.offsetWidth, poll video.offsetWidth, and require video decoders/painted CSS images'),
-    ('html/infrastructure/urls/resolving-urls/query-encoding/windows-1252.html',
-     'query-encoding loading/svg/css variants assert elm.offsetWidth, poll video.offsetWidth, and require video decoders/painted CSS images'),
+    # - NOT excluded (lane gate2, 2026-11-27, audit report-D H6): the 5 query-encoding
+    #   files (utf-8, utf-16be, utf-16le, windows-1251, windows-1252). Lane sab1 excluded them
+    #   whole as geometry, but only 3 of each file's 16 variants (?include=loading, svg, css)
+    #   touch layout or painted images; nested-browsing, submit, base-href, workers,
+    #   eventsource, window-open, hyperlink-search, history, xhr, websocket, xml, url and
+    #   scheme need none. A file is excluded as geometry only when every subtest needs it.
 
     ('/resources/',                    'harness resources'),
     ('-manual.',                       'requires a human'),
@@ -1832,37 +1815,24 @@ CRASHTEST_INCLUDE_EXTRA = [
     ('accessibility/crashtests/', 'accessibility tree crashtests (outside testharness INCLUDE)'),
 ]
 
-# Crashtests excluded from tests/wpt_0_1_crashtests.txt, each with its evidence
-# from lanes crashtest1 (36c0adab7) and crashfix1 (163e2fb2b).
-# The 2 execcommand leaks and 3 real hangs from crashtest1 were fixed by crashfix1
-# and are INCLUDED. Only the 2 golden-rule-2 follows-majority timeouts and 8
-# layout/animation/window.find waits remain excluded.
-CRASHTEST_EXCLUDE = [
-    # Golden rule 2 follows-majority timeouts (verified 0 crashes, 0 leaks by crashfix1):
-    ('dom/nodes/crashtests/multiple-append-mutated-in-unload.https.html',
-     'follows-majority timeout (wpt.fyi Firefox T, Safari T; HTML spec iframe load re-parenting loop)'),
-    ('service-workers/cache-storage/crashtests/cache-response-clone.https.html',
-     'follows-majority timeout (wpt.fyi Chrome T, Safari T; Fetch clone locks pre-captured body reader)'),
-    # Geometry / rendering / unsupported feature waits (headless no-renderer scope line):
-    ('accessibility/crashtests/content-visibility-generated-content-removal.html',
-     'waits on content-visibility: auto scroll-out-of-view layout transition (needs-renderer)'),
-    ('css/selectors/crashtests/chrome-bug-565742178.html',
-     'waits on SVG <use> UA shadow-tree <image> error event (needs-renderer)'),
-    ('dom/nodes/moveBefore/moveBefore-range-iframe-crash.html',
-     'testdriver pointer drag on <input type=range> slider geometry (needs-renderer)'),
-    ('editing/crashtests/designMode-caret-change.html',
-     'waits on CSS @keyframes window.onanimationend (needs-renderer)'),
-    ('editing/crashtests/inserthorizontalrule-in-textarea-in-editor-and-undo-on-error-events.html',
-     'waits on <object onerror> embedded resource fallback'),
-    ('editing/crashtests/insertimage-with-replacing-selection-in-picture-element.html',
-     'waits on CSS animationend + window.find()'),
-    ('resize-observer/multiple-observers-with-mutation-crash.html',
-     'waits on borderBoxSize layout size change (needs-renderer)'),
-    ('selection/crashtests/selectall-and-find-svg-text-on-selectstart.html',
-     'calls non-standard window.find() in selectstart'),
-    ('html/semantics/embedded-content/the-audio-element/audio-with-replaced-after-pseudo-crash.html',
-     'waits on audio.play() of /media/sound_5 Ogg/MP3 (needs-decoder)'),
-]
+# Crashtests the worklist leaves out beyond the testharness exclusions: none (lane gate2,
+# 2026-11-27, audit reports I M1 and F M3). Lanes crashtest1 (36c0adab7) and crashfix1
+# (163e2fb2b) left out the 10 that timed out, and 53396ada9 an 11th, instead of letting the gate
+# judge them: a crashtest that does not finish blocks like any other file, and one that fails
+# only for a reason the gate exempts (needs-renderer, needs-decoder, follows-majority) is listed
+# in tools/wpt_gate_exemptions.txt with its evidence, like every other file - never dropped
+# from the list. Back in: dom/nodes/crashtests/multiple-append-mutated-in-unload.https.html,
+# service-workers/cache-storage/crashtests/cache-response-clone.https.html,
+# accessibility/crashtests/content-visibility-generated-content-removal.html,
+# css/selectors/crashtests/chrome-bug-565742178.html,
+# dom/nodes/moveBefore/moveBefore-range-iframe-crash.html,
+# editing/crashtests/designMode-caret-change.html,
+# editing/crashtests/inserthorizontalrule-in-textarea-in-editor-and-undo-on-error-events.html,
+# editing/crashtests/insertimage-with-replacing-selection-in-picture-element.html,
+# resize-observer/multiple-observers-with-mutation-crash.html,
+# selection/crashtests/selectall-and-find-svg-text-on-selectstart.html,
+# html/semantics/embedded-content/the-audio-element/audio-with-replaced-after-pseudo-crash.html.
+CRASHTEST_EXCLUDE = []
 
 
 def crashtest_excluded(path):
@@ -1874,31 +1844,12 @@ def crashtest_excluded(path):
     return False
 
 
-def main():
-    # Both default to this checkout. --manifest lets the worklist be generated
-    # against a WPT tree that is not tests/wpt yet (a rebuilt snapshot before
-    # its cut-over); --worklist writes somewhere other than the checked-in file.
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('--manifest', default=MANIFEST,
-                        help='MANIFEST.json to read (default: tests/wpt/MANIFEST.json)')
-    parser.add_argument('--worklist', default=None,
-                        help='worklist to write (default: tests/wpt_0_1_worklist.txt, or tests/wpt_0_1_crashtests.txt with --crashtests)')
-    parser.add_argument('--crashtests', action='store_true',
-                        help='generate the headless-in-scope WPT crashtests worklist from items.crashtest')
-    args = parser.parse_args()
-    manifest = args.manifest
-    worklist = args.worklist or (CRASHTEST_WORKLIST if args.crashtests else WORKLIST)
-
-    if not os.path.exists(manifest):
-        sys.exit(f"manifest not found: {manifest}\n"
-                 "The tests/wpt submodule may not be checked out.")
-
-    manifest_items = json.load(open(manifest))['items']
-    item_kind = 'crashtest' if args.crashtests else 'testharness'
-    items = list(walk(manifest_items[item_kind]))
-    include_table = (INCLUDE + CRASHTEST_INCLUDE_EXTRA) if args.crashtests else INCLUDE
-    is_excluded = crashtest_excluded if args.crashtests else excluded
-
+def choose(manifest_items, kind):
+    """The worklist's sources of one manifest item kind, each with the prefix
+    that took it in: (chosen, sources per prefix, urls per prefix, corpus size)."""
+    items = list(walk(manifest_items.get(kind, {})))
+    include_table = (INCLUDE + CRASHTEST_INCLUDE_EXTRA) if kind == 'crashtest' else INCLUDE
+    is_excluded = crashtest_excluded if kind == 'crashtest' else excluded
     chosen = {}
     sources = collections.Counter()
     urls = collections.Counter()
@@ -1907,32 +1858,83 @@ def main():
             continue
         for prefix, why in include_table:
             if path.startswith(prefix):
-                chosen[path] = prefix
+                chosen[path] = url_count
                 sources[prefix] += 1
                 urls[prefix] += url_count
                 break
+    return chosen, sources, urls, len(items)
 
-    with open(worklist, 'w') as f:
-        if args.crashtests:
-            f.write("# Crane 0.1 WPT crashtests worklist - GENERATED by tools/wpt_subset.py --crashtests\n")
-            f.write("# Do not hand-edit. Change the INCLUDE/CRASHTEST_INCLUDE_EXTRA/EXCLUDE/CRASHTEST_EXCLUDE\n")
-            f.write("# tables in that script, which carry the reason for every decision, and re-run it.\n")
-        else:
-            f.write("# Crane 0.1 WPT worklist - GENERATED by tools/wpt_subset.py\n")
-            f.write("# Do not hand-edit. Change the INCLUDE/EXCLUDE tables in that\n")
-            f.write("# script, which carry the reason for every decision, and re-run it.\n")
-        f.write(f"# {len(chosen)} sources, {sum(urls.values())} test URLs\n")
+
+def main():
+    # Both default to this checkout. --manifest lets the worklist be generated
+    # against a WPT tree that is not tests/wpt yet (a rebuilt snapshot before
+    # its cut-over); --worklist and --crashtest-index write somewhere other
+    # than the checked-in files.
+    #
+    # ONE worklist (lane gate2, the integrator's approval 2026-11-27 5:18 PM ET):
+    # the testharness files AND the crashtests (MANIFEST.json items.crashtest),
+    # so every reader of the worklist - the generation sweep, wpt_ab --full,
+    # the bug-finding run and wpt_build_compare, tools/wpt_progress.py and the
+    # site - runs and counts the crashtests too, with no second list to drift
+    # (generations 238 and 240 swept none). The runner runs each path by its
+    # manifest type (manifest.zig isCrashtest). tests/wpt_0_1_crashtests.txt
+    # is written beside it as the worklist's crashtest INDEX: which of its
+    # files the gate judges by the crashtest rule (tools/wpt_progress.py
+    # gate_status), never a list anything runs from.
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('--manifest', default=MANIFEST,
+                        help='MANIFEST.json to read (default: tests/wpt/MANIFEST.json)')
+    parser.add_argument('--worklist', default=WORKLIST,
+                        help='worklist to write (default: tests/wpt_0_1_worklist.txt)')
+    parser.add_argument('--crashtest-index', default=CRASHTEST_WORKLIST,
+                        help="the worklist's crashtests to write (default: tests/wpt_0_1_crashtests.txt)")
+    args = parser.parse_args()
+    manifest = args.manifest
+
+    if not os.path.exists(manifest):
+        sys.exit(f"manifest not found: {manifest}\n"
+                 "The tests/wpt submodule may not be checked out.")
+
+    manifest_items = json.load(open(manifest))['items']
+    harness, h_sources, h_urls, h_corpus = choose(manifest_items, 'testharness')
+    crash, c_sources, c_urls, c_corpus = choose(manifest_items, 'crashtest')
+    both = set(harness) & set(crash)
+    if both:
+        sys.exit(f"a path is both a testharness test and a crashtest in the manifest: {sorted(both)[:5]}")
+    chosen = dict(harness)
+    chosen.update(crash)
+    n_urls = sum(chosen.values())
+
+    with open(args.worklist, 'w') as f:
+        f.write("# Crane 0.1 WPT worklist - GENERATED by tools/wpt_subset.py\n")
+        f.write("# Do not hand-edit. Change the INCLUDE/EXCLUDE tables in that\n")
+        f.write("# script, which carry the reason for every decision, and re-run it.\n")
+        f.write(f"# {len(chosen)} sources ({len(harness)} testharness, {len(crash)} crashtests: "
+                f"tests/wpt_0_1_crashtests.txt), {n_urls} test URLs\n")
         for path in sorted(chosen):
             f.write(path + '\n')
 
-    print(f"{len(chosen)} sources, {sum(urls.values())} test URLs "
-          f"(corpus: {len(items)} {item_kind} sources)\n")
-    print(f"{'sources':>8} {'urls':>7}  area")
-    print('-' * 76)
-    for prefix, why in include_table:
-        if sources[prefix]:
-            print(f"{sources[prefix]:8d} {urls[prefix]:7d}  {prefix:<50} {why}")
-    print(f"\nwritten: {os.path.relpath(worklist, REPO)}")
+    with open(args.crashtest_index, 'w') as f:
+        f.write("# The crashtests of tests/wpt_0_1_worklist.txt - GENERATED by tools/wpt_subset.py\n")
+        f.write("# Do not hand-edit, and do not run from it: the worklist holds these files too.\n")
+        f.write("# It is the gate's index of which worklist files are crashtests (MANIFEST.json\n")
+        f.write("# items.crashtest), judged by the crashtest rule (tools/wpt_progress.py gate_status).\n")
+        f.write(f"# {len(crash)} sources, {sum(crash.values())} test URLs\n")
+        for path in sorted(crash):
+            f.write(path + '\n')
+
+    print(f"{len(chosen)} sources, {n_urls} test URLs: {len(harness)} testharness "
+          f"(corpus {h_corpus}), {len(crash)} crashtests (corpus {c_corpus})\n")
+    for title, sources, urls, table in (('testharness', h_sources, h_urls, INCLUDE),
+                                        ('crashtest', c_sources, c_urls, INCLUDE + CRASHTEST_INCLUDE_EXTRA)):
+        print(f"{title}:")
+        print(f"{'sources':>8} {'urls':>7}  area")
+        print('-' * 76)
+        for prefix, why in table:
+            if sources[prefix]:
+                print(f"{sources[prefix]:8d} {urls[prefix]:7d}  {prefix:<50} {why}")
+        print()
+    print(f"written: {os.path.relpath(args.worklist, REPO)}, {os.path.relpath(args.crashtest_index, REPO)}")
 
 
 if __name__ == '__main__':

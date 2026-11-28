@@ -292,6 +292,15 @@ pub const Browser = struct {
         };
     }
 
+    /// The level of the line a Browser logs when its heap got a rung below
+    /// the full one (`init`, after `reserveHeap`). The bug-finding gate reads
+    /// that line (tests/wpt_runner/build_compare.zig `unexpected_rungs`,
+    /// allocator-hardening design 10.2), and a line below its reader's log
+    /// level is never written (docs/lessons/debugging-a-diagnostic-below-the-
+    /// consumer-s-log-level-does.md): the WPT runner asserts at compile time
+    /// that it logs this level (tests/wpt_runner/main.zig).
+    pub const heap_rung_log_level: std.log.Level = .warn;
+
     /// Initialize a new Browser instance
     ///
     /// Creates a V8 isolate that will be reused across all navigations.
@@ -385,7 +394,9 @@ pub const Browser = struct {
         // A rung below the full one (RLIMIT_AS, a sanitizer's address map)
         // has no objects range: its objects partition shares the cage
         // (runtime.heap.Engine.init; the integrator's ruling, 2026-11-23).
-        if (scope.heap) |reserved| if (reserved.rung != .full) log.info("the Browser's heap got the {t} rung: its objects partition is in the cage's upper half", .{reserved.rung});
+        if (scope.heap) |reserved| if (reserved.rung != .full) {
+            if (comptime std.log.logEnabled(heap_rung_log_level, .browser)) std.options.logFn(heap_rung_log_level, .browser, "the Browser's heap got the {t} rung: its objects partition is in the cage's upper half", .{reserved.rung});
+        };
         // The Browser's general memory (allocator-hardening batch B): from
         // here on its agent, its realms, its tables and its states allocate
         // from its heap's objects and bytes partitions, when the platform

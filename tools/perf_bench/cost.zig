@@ -1554,3 +1554,66 @@ test "rule (b) mode against mode: tab1's ranges stay one mode, real +3% regressi
     try testing.expectEqual(@as(u32, 2), wide_hi_l.base_low);
     try testing.expectEqual(@as(u32, 5), wide_hi_l.base_high);
 }
+
+test "rule (b) mode against mode when the sides share ONE mode: that mode's ratio decides, never the plain medians" {
+    // Audit report-I L1: P1 (271105de6, the user's approval 2026-11-25 6:22 AM
+    // ET) judges "each mode they share"; these are the sides that reach only
+    // one of the two modes both together form.
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+
+    const makeCollectedRow = struct {
+        fn build(alloc: Allocator, tip_c: []const u64, base_c: []const u64) !Pass {
+            var recs: std.ArrayList(journal.Record) = .empty;
+            for (tip_c, 0..) |v, i| try recs.append(alloc, try testRecord(alloc, .crane, "tip1", "observers.resize-construct", @intCast(i), 10, 1, 105 * mib, 110 * mib, v));
+            for (base_c, 0..) |v, i| try recs.append(alloc, try testRecord(alloc, .crane_base, "base1", "observers.resize-construct", @intCast(i), 10, 1, 100 * mib, 105 * mib, v));
+            return passOf(alloc, recs.items);
+        }
+    }.build;
+    // A steady reading over the bar (1.05), for the verdict to be asked.
+    const over = (try reading(a, (try makeCollectedRow(a, &tenths(.{ 300, 300, 300 }), &tenths(.{ 300, 300, 300 }))).row("observers.resize-construct").?, .steady)).?;
+    try testing.expect(over.ratio > default_bar);
+
+    // The base on both modes (20.0-20.1 and 30.0-30.1 MB), the tip on the low
+    // one only. Together: two modes, gap 7.9 MB, the lower mode's span 1.4.
+    const base = tenths(.{ 200, 200, 201, 201, 300, 300, 301, 301 });
+
+    // 1. The tip's launches sit on the base's low level: the one mode they
+    //    share reads within, and the pair clears by (b).
+    const level_pass = try makeCollectedRow(a, &tenths(.{ 200, 201, 201, 202, 201, 200, 202, 201 }), &base);
+    const level = (try reading(a, level_pass.row("observers.resize-construct").?, .collected)).?;
+    const l1 = level.levels.?;
+    try testing.expect(l1.shared());
+    try testing.expectEqual(@as(u32, 8), l1.tip_low);
+    try testing.expectEqual(@as(u32, 0), l1.tip_high);
+    try testing.expectEqual(@as(u32, 4), l1.base_low);
+    try testing.expectEqual(@as(u32, 4), l1.base_high);
+    try testing.expect(l1.low_ratio.? <= default_bar);
+    try testing.expectEqual(@as(?f64, null), l1.high_ratio);
+    try testing.expectEqual(Verdict.cleared_by_collected, verdictOf(over, level, default_bar));
+
+    // 2. The tip 5.7% over the base on the one mode they share (21.0-21.4
+    //    against 20.0-20.1 MB). Its plain collected median (21.2) is far under
+    //    the base's (25.05: half its launches on the high mode), 0.846 - but
+    //    the shared mode is over, and the verdict is OVER.
+    const up_pass = try makeCollectedRow(a, &tenths(.{ 210, 211, 211, 212, 212, 213, 213, 214 }), &base);
+    const up = (try reading(a, up_pass.row("observers.resize-construct").?, .collected)).?;
+    try testing.expect(up.ratio < 1.0);
+    const l2 = up.levels.?;
+    try testing.expect(l2.shared());
+    try testing.expectEqual(@as(u32, 0), l2.tip_high);
+    try testing.expect(l2.low_ratio.? > default_bar);
+    try testing.expectEqual(@as(?f64, null), l2.high_ratio);
+    try testing.expectEqual(Verdict.over, verdictOf(over, up, default_bar));
+
+    // 3. The same on the HIGH mode alone: the tip on the base's high level,
+    //    5% over it, stays over; on it within, clears.
+    const high_up = (try reading(a, (try makeCollectedRow(a, &tenths(.{ 315, 316, 316, 317 }), &base)).row("observers.resize-construct").?, .collected)).?;
+    try testing.expectEqual(@as(?f64, null), high_up.levels.?.low_ratio);
+    try testing.expect(high_up.levels.?.high_ratio.? > default_bar);
+    try testing.expectEqual(Verdict.over, verdictOf(over, high_up, default_bar));
+    const high_level = (try reading(a, (try makeCollectedRow(a, &tenths(.{ 300, 301, 301, 300 }), &base)).row("observers.resize-construct").?, .collected)).?;
+    try testing.expect(high_level.levels.?.high_ratio.? <= default_bar);
+    try testing.expectEqual(Verdict.cleared_by_collected, verdictOf(over, high_level, default_bar));
+}
