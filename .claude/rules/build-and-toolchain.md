@@ -92,3 +92,9 @@ Switch to 0.17.1 when it ships.
   libc file (`useBuildableMacosSdk`, the `INFINITY` break) is gone. Do not put
   an `xcrun` shim on PATH: Zig asks `xcrun --sdk macosx --show-sdk-path`, and
   `/tmp/sdkshim` broke the build twice by answering it with the wrong SDK.
+
+### The release console runs before every merge
+
+(Moved here from AGENTS.md on 2026-11-27 so that file stays under the 24 KB cap some agent harnesses put on rules files; AGENTS.md keeps the one-line rule.)
+
+**The release console runs before every merge** (the user, 2026-11-24 7:01 AM ET: "do it"): the branch's own release console - built as the published consoles are, on macOS: `zig build repl-exe -j2 -Dwpt-runner-release -Dcpu=apple_m1` (a native-CPU build did NOT inline the 2026-11-23 break and passed) - loads `repl 'data:text/html,<script>console.log("ran", 6*7)</script>'` and prints `ran 42`, on the tree that merges, whatever cost exemption the lane claims; the merge report quotes the line. Debug tests and the WPT runner (its own entry point) cannot see a release-only console break: on 2026-11-23 a 1 MiB stack buffer inlined into the console's start made every script throw for ~11 hours (lesson in docs/lessons/).
