@@ -16,11 +16,16 @@
 # idle timeout (src/service_worker/manager.zig idle_timeout_ms = 30_000,
 # Chromium's) - so their +1 live_object_globals is that agent, not shown to be
 # a leak. A listed file's reading is counted and reported, never failing; a
-# file NOT listed that reads unsettled fails the gate (NEW); a listed file that
-# settles fails it too (STALE: remove the line - this list only goes down).
+# listed file that settles fails the gate (STALE: remove the line - this list
+# only goes down). A file NOT listed that reads unsettled fails the gate when
+# it also shows a handle leak (NEW), and is reported, not failing, when it
+# shows none (the integrator's ruling 2026-11-28 3:10 AM ET, (a): in 3 FULL
+# runs, 22 workers/ and xhr/ files read unsettled in some runs only, never
+# leaking). The 549 below read unsettled in all 3 runs (server1, 2026-11-27
+# 11:29 PM ET - 2026-11-28 12:33 AM ET), each with its +1 leak.
 #
-# Format: one worklist path a line; or path TAB intermittent TAB evidence for a
-# file unsettled in some runs only (never NEW, never STALE).
+# Format: one worklist path a line (path TAB intermittent TAB evidence is
+# accepted for a file unsettled in some runs only: never NEW, never STALE).
 FileAPI/blob/Blob-newobject.any.js
 FileAPI/blob/Blob-textStream.any.js
 IndexedDB/abort-in-initial-upgradeneeded.any.js
@@ -568,19 +573,5 @@ workers/importscripts_mime.any.js
 workers/interfaces/WorkerGlobalScope/location/returns-same-object.any.js
 workers/interfaces/WorkerGlobalScope/self.any.js
 workers/interfaces/WorkerUtils/importScripts/catch.sub.any.js
-workers/multi-globals/url-parsing.html	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
-workers/nested_worker_importScripts.worker.js	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
-workers/postMessage_target_source.htm	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
-workers/semantics/interface-objects/003.any.js	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
 workers/semantics/multiple-workers/exposure.any.js
-workers/shared-worker-from-blob-url.window.js	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
-xhr/abort-after-timeout.any.js	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
-xhr/abort-during-open.any.js	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
-xhr/abort-during-unsent.any.js	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
-xhr/getresponseheader-special-characters.htm	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
-xhr/open-after-setrequestheader.htm	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
-xhr/open-send-during-abort.htm	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
 xhr/progressevent-constructor.any.js
-xhr/responsexml-get-twice.htm	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
-xhr/send-data-string-invalid-unicode.any.js	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other
-xhr/send-entity-body-document.htm	intermittent	unsettled in 1 of lane gate2's 2 FULL bug-finding runs (server1, 2026-11-27): a worker agent alive at the bound in one run, ended in the other

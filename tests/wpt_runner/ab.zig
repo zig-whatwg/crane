@@ -770,7 +770,7 @@ pub fn run(arena: Allocator, io: Io, opts: Options) !Exit {
                 const records = try w.readRecords(r.dir);
                 const e = try w.endLine("bug-tip", r.rc, records, list);
                 if (!e.complete) return ended(&w, .incomplete);
-                const rc = try w.child(&.{ tip.build_compare, try std.fmt.allocPrint(arena, "--production={s}", .{tip_dir}), try std.fmt.allocPrint(arena, "--bug-finding={s}", .{r.dir}), try std.fmt.allocPrint(arena, "--log={s}.log", .{r.dir}), try std.fmt.allocPrint(arena, "--known={s}", .{tip.known}), try std.fmt.allocPrint(arena, "--unsettled={s}", .{tip.handle_unsettled}) }, try w.path("bug-compare.txt"));
+                const rc = try w.child(&.{ tip.build_compare, try std.fmt.allocPrint(arena, "--production={s}", .{tip_dir}), try std.fmt.allocPrint(arena, "--bug-finding={s}", .{r.dir}), try std.fmt.allocPrint(arena, "--log={s}.log", .{r.dir}), try std.fmt.allocPrint(arena, "--known={s}", .{tip.known}), try std.fmt.allocPrint(arena, "--unsettled={s}", .{tip.handle_unsettled}), try std.fmt.allocPrint(arena, "--handle-baseline={s}", .{tip.handle_baseline}) }, try w.path("bug-compare.txt"));
                 const text = Io.Dir.cwd().readFileAlloc(io, try w.path("bug-compare.txt"), arena, .limited(64 << 20)) catch "";
                 w.say("==== the bug-finding gate (wpt_build_compare) rc={d}:\n{s}", .{ rc, lastLines(text, 30) });
                 if (rc != 0) w.findings = true;

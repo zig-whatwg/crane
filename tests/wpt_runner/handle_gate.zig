@@ -324,6 +324,33 @@ pub fn isLeakLine(line: []const u8) bool {
     return leakPath(line) != null;
 }
 
+/// A leak line read back: its file and the deltas it printed.
+pub const LeakLine = struct {
+    path: []const u8,
+    delta: Delta,
+};
+
+/// `writeDiagnostic`'s line read back (after whatever prefix the log puts
+/// before it), or null when `line` is not one: wpt_build_compare re-applies
+/// the tree's baseline to these deltas, whatever caps the runner had.
+pub fn parseLeakLine(line: []const u8) ?LeakLine {
+    const path = leakPath(line) orelse return null;
+    return .{ .path = path, .delta = .{
+        .object_globals = deltaAfter(line, ": live_object_globals ") orelse return null,
+        .wrapper_cache_entries = deltaAfter(line, "wrapper_cache_entries ") orelse return null,
+    } };
+}
+
+fn deltaAfter(line: []const u8, label: []const u8) ?i64 {
+    const at = std.mem.indexOf(u8, line, label) orelse return null;
+    var rest = line[at + label.len ..];
+    if (rest.len > 0 and rest[0] == '+') rest = rest[1..];
+    var end: usize = 0;
+    if (end < rest.len and rest[end] == '-') end += 1;
+    while (end < rest.len and std.ascii.isDigit(rest[end])) end += 1;
+    return std.fmt.parseInt(i64, rest[0..end], 10) catch null;
+}
+
 /// The file a leak line names, or null when `line` is not one.
 pub fn leakPath(line: []const u8) ?[]const u8 {
     const at = std.mem.indexOf(u8, line, leak_line_marker) orelse return null;
