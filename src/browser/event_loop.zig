@@ -196,6 +196,12 @@ pub const EventLoop = struct {
     /// tasks so OS sleep granularity does not inflate bursts of tiny tasks.
     cpu_throttle_debt_ns: i64 = 0,
 
+    /// What the CPU throttle has paused this loop for, in total (ns of debt
+    /// paid): the throttle's own record, which a test reads where a
+    /// wall-clock bound would be one host load can exceed (lane mcp3,
+    /// 2026-11-27).
+    cpu_throttle_paused_ns: u64 = 0,
+
     /// The Browser's pause (its scope's runtime.BrowserPause), in which a
     /// CPU throttle's debt is paid: session messages run during it, and the
     /// host's stop ends it. Null for a loop with no Browser (a test's): the
@@ -461,6 +467,7 @@ pub const EventLoop = struct {
             platform.sleepThread(sleep_ns);
         }
         const actual_sleep = realMonotonicNs() - sleep_start;
+        self.cpu_throttle_paused_ns +|= @intCast(@max(actual_sleep, 0));
         self.cpu_throttle_debt_ns = @max(self.cpu_throttle_debt_ns - actual_sleep, -max_throttle_credit_ns);
     }
 

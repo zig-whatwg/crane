@@ -160,8 +160,10 @@ test "Browser JS setTimeout chain slows under EventLoop CPU throttling and resto
     const base_ms = try std.fmt.parseFloat(f64, base_str);
     try testing.expect(base_ms >= 30.0);
 
-    // 4x throttled: ~160 ms.
+    // 4x throttled: ~160 ms. Only lower bounds on wall time - host load can
+    // only lengthen a chain - and the throttle's own record for the rest.
     loop.setCpuThrottlingRate(4.0);
+    const paused_before = loop.cpu_throttle_paused_ns;
     const r1 = try ctx.evaluateScriptToString(run_chain, testing.allocator);
     testing.allocator.free(r1);
     _ = try browser.spinEventLoopUntil(.{ .context = &wait, .met = Wait.met }, 5_000);
@@ -169,18 +171,24 @@ test "Browser JS setTimeout chain slows under EventLoop CPU throttling and resto
     defer testing.allocator.free(thr_str);
     const thr_ms = try std.fmt.parseFloat(f64, thr_str);
     try testing.expect(thr_ms >= 130.0);
-    try testing.expect(thr_ms >= base_ms * 2.0);
+    // Five 8 ms steps at 4x owe 3 x 40 ms; the throttle paid at least most of it.
+    const paused_4x = loop.cpu_throttle_paused_ns - paused_before;
+    if (paused_4x < 100 * std.time.ns_per_ms) std.debug.print("the throttle paused {d} ms for the 4x chain, not ~120\n", .{paused_4x / std.time.ns_per_ms});
+    try testing.expect(paused_4x >= 100 * std.time.ns_per_ms);
 
-    // Restored to 1.0.
+    // Restored to 1.0: the throttle pauses no more. Asserted on its record,
+    // not on the chain's wall time - a TSan verify on server1 at load 29 read
+    // 41.9 ms unthrottled, 170.6 ms at 4x and 193.8 ms restored, with no
+    // throttle code on the rate-1.0 path (lane mcp3, 2026-11-27).
     loop.setCpuThrottlingRate(1.0);
+    const paused_restored = loop.cpu_throttle_paused_ns;
     const r2 = try ctx.evaluateScriptToString(run_chain, testing.allocator);
     testing.allocator.free(r2);
     _ = try browser.spinEventLoopUntil(.{ .context = &wait, .met = Wait.met }, 5_000);
-    const rst_str = try ctx.evaluateScriptToString("String(window.__elapsed)", testing.allocator);
+    const rst_str = try ctx.evaluateScriptToString("window.__done === true", testing.allocator);
     defer testing.allocator.free(rst_str);
-    const rst_ms = try std.fmt.parseFloat(f64, rst_str);
-    if (!(rst_ms < thr_ms * 0.75)) std.debug.print("chain: unthrottled {d:.1} ms, 4x {d:.1} ms, restored {d:.1} ms\n", .{ base_ms, thr_ms, rst_ms });
-    try testing.expect(rst_ms < thr_ms * 0.75);
+    try testing.expectEqualStrings("true", rst_str);
+    try testing.expectEqual(paused_restored, loop.cpu_throttle_paused_ns);
 }
 
 // Lane mcp3, batch B (audit report C, M5): the throttle's debt is no longer
