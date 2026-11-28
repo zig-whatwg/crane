@@ -55,6 +55,14 @@ pub const Call = struct {
     /// compared - how a case makes an input both sides then read (a heap
     /// snapshot Chrome takes, copied to Crane by `copy_to_crane`).
     side: []const u8 = "",
+    /// set_logpoints' "bound via source map at A, B" lists compared in any
+    /// order: Chrome lists the bundles one source maps into in the order their
+    /// source maps finished loading (devtools-frontend
+    /// CompilerScriptMapping.uiLocationToRawLocations walks the maps in
+    /// SourceMapAttached order), which varies from run to run - 16 of 20 runs
+    /// chunk2 first, 4 chunk1 first (chat.local, 2026-11-27,
+    /// tmp/mcp3/lp-order.sh; lane mcp3, main's 5:45 PM ET instruction).
+    bound_in_any_order: bool = false,
 
     /// Whether the call has an answer both sides compare (a tool call or a
     /// tools/list, on both sides).
@@ -458,6 +466,34 @@ pub fn normalize(arena: Allocator, text: []const u8, places: Places) ![]const u8
     return out;
 }
 
+/// Each "[bound via source map at A, B, ...]" list in `text` with its
+/// locations sorted (`Call.bound_in_any_order`).
+pub fn sortBoundLists(arena: Allocator, text: []const u8) ![]const u8 {
+    const opener = "[bound via source map at ";
+    var out: std.ArrayList(u8) = .empty;
+    var rest = text;
+    while (std.mem.indexOf(u8, rest, opener)) |at| {
+        const start = at + opener.len;
+        const close = std.mem.indexOfScalarPos(u8, rest, start, ']') orelse break;
+        try out.appendSlice(arena, rest[0..start]);
+        var items: std.ArrayList([]const u8) = .empty;
+        var parts = std.mem.splitSequence(u8, rest[start..close], ", ");
+        while (parts.next()) |part| try items.append(arena, part);
+        std.mem.sort([]const u8, items.items, {}, struct {
+            fn less(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.order(u8, a, b) == .lt;
+            }
+        }.less);
+        for (items.items, 0..) |item, i| {
+            if (i != 0) try out.appendSlice(arena, ", ");
+            try out.appendSlice(arena, item);
+        }
+        rest = rest[close..];
+    }
+    try out.appendSlice(arena, rest);
+    return out.items;
+}
+
 const Side = enum { chrome, crane };
 
 const Outcome = struct {
@@ -516,6 +552,7 @@ fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, l
         if (chrome_page) |c| if (user_agent.hasSnapshot(answer.text)) setApart(gpa, arena, io, c, call, &answer);
         answer.text = normalize(arena, answer.text, places) catch answer.text;
         if (answer.raw) |raw| answer.raw = normalize(arena, raw, places) catch raw;
+        if (call.bound_in_any_order) answer.text = sortBoundLists(arena, answer.text) catch answer.text;
         if (one_side) {
             if (answer.is_error) return .{ .answers = answers.items, .failure = std.fmt.allocPrint(arena, "{s} (Chrome's side only): {s}", .{ call.tool, answer.text }) catch "a one-side call failed" };
             continue;
@@ -957,6 +994,10 @@ test "cases: parsed, checked, their arguments made with the fixture origin and a
     );
     try std.testing.expectEqualStrings("", try checkCases(cases));
     try std.testing.expectEqualStrings("{\"pageId\":1,\"url\":\"http://127.0.0.1:9/x.html\"}", try argsJson(arena, cases.cases[0].calls[0].args, .{ .origin = "http://127.0.0.1:9" }));
+    try std.testing.expectEqualStrings(
+        "- a.ts:3:3 [bound via source map at c1.js:1:37, c2.js:2:37]\n- b.ts:1:1 [bound]\n- d.ts [bound via source map at x.js:1:1]",
+        try sortBoundLists(arena, "- a.ts:3:3 [bound via source map at c2.js:2:37, c1.js:1:37]\n- b.ts:1:1 [bound]\n- d.ts [bound via source map at x.js:1:1]"),
+    );
     try std.testing.expectEqualStrings("Successfully navigated to {fixture}/x.html.", try normalize(arena, "Successfully navigated to http://127.0.0.1:9/x.html.", .{ .origin = "http://127.0.0.1:9" }));
     // A side's files directory, inside the working directory, and the
     // working directory itself.

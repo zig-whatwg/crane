@@ -1667,7 +1667,7 @@
     },
     {
       "name": "logpoints: inline, same-url, indexed, and shared maps",
-      "about": "set_logpoints with inline data: source maps, a transpiled file served at its original source URL (source map preferred), an XSSI-prefixed index map with sections and sourceRoot, one original source mapped across two bundles, and a script whose source map returns 404.",
+      "about": "set_logpoints with inline data: source maps, a transpiled file served at its original source URL (source map preferred), an XSSI-prefixed index map with sections and sourceRoot, one original source mapped across two bundles, and a script whose source map returns 404. The shared source's bundles are compared in any order: Chrome lists them as their source maps finished loading, which varies from run to run (16 of 20 runs chunk2 first, 4 chunk1 first).",
       "calls": [
         {
           "tool": "navigate_page",
@@ -1688,7 +1688,8 @@
               "shared.ts:3 't', t",
               "broken-map.js:1:46 'z', z"
             ]
-          }
+          },
+          "bound_in_any_order": true
         },
         {
           "tool": "evaluate_script",
