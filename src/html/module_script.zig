@@ -531,124 +531,6 @@ fn createTextModuleScript(env: *const Environment, text: []const u8, url: []cons
     return script;
 }
 
-/// Create a WebAssembly module script (`application/wasm`).
-///
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-single-module-script
-///       (whatwg/html#10380, WebAssembly ESM Integration).
-/// Golden rule 2: newer spec + shipping browser (Firefox 153+ ships Wasm ESM
-/// module integration by default; V8 15.7 supports WebAssembly + ES2022
-/// arbitrary module namespace identifier names).
-///
-/// Compiles and validates the Wasm binary at fetch time in `env.realm()` (so
-/// invalid Wasm bytes or CSP `'wasm-unsafe-eval'` blocks record a
-/// `WebAssembly.CompileError` as `script.parse_error`), inspects its declared
-/// imports and exports, and builds an ES module record whose static imports
-/// link through the normal module graph (`HostLoadImportedModule`) and whose
-/// evaluation instantiates the module (running any `start` function) and
-/// exposes every Wasm export by its exact name.
-fn createWasmModuleScript(env: *const Environment, bytes: []const u8, url: []const u8) !*ModuleScript {
-    if (!supported) return error.NotSupported;
-    const allocator = env.allocator;
-    const realm = env.realm();
-    const script = try ModuleScript.create(allocator, realm, url, env.fetch_options);
-    errdefer script.destroy();
-
-    const encoder = std.base64.standard.Encoder;
-    const b64 = try allocator.alloc(u8, encoder.calcSize(bytes.len));
-    defer allocator.free(b64);
-    _ = encoder.encode(b64, bytes);
-
-    const inspect_src = try std.fmt.allocPrint(
-        allocator,
-        "(()=>{{const m=new WebAssembly.Module(Uint8Array.fromBase64(\"{s}\"));return JSON.stringify({{i:WebAssembly.Module.imports(m).map(x=>[x.module,x.name]),e:WebAssembly.Module.exports(m).map(x=>x.name)}});}})()",
-        .{b64},
-    );
-    defer allocator.free(inspect_src);
-
-    const Capture = struct {
-        realm: runtime.Context,
-        err: ?engine.Owned = null,
-
-        fn report(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
-            const self: *@This() = @ptrCast(@alignCast(host orelse return));
-            if (self.err != null) return;
-            self.err = engine.retainValue(self.realm, info.error_value) catch null;
-        }
-    };
-    var capture: Capture = .{ .realm = realm };
-    defer if (capture.err) |e| e.release();
-
-    const metadata_json = engine.evaluateClassicScriptToString(
-        realm,
-        .{ .utf8 = inspect_src },
-        url,
-        null,
-        allocator,
-        .{ .report = Capture.report, .host = &capture },
-    ) catch {
-        if (capture.err) |err_val| {
-            script.parse_error = err_val;
-            capture.err = null;
-            return script;
-        }
-        return error.WasmCompileFailed;
-    };
-    defer allocator.free(metadata_json);
-
-    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, metadata_json, .{});
-    defer parsed.deinit();
-    const obj = parsed.value.object;
-    const imports_arr = obj.get("i").?.array.items;
-    const exports_arr = obj.get("e").?.array.items;
-
-    var out: std.Io.Writer.Allocating = .init(allocator);
-    defer out.deinit();
-    const writer = &out.writer;
-
-    // Emit static ES module imports so Link validates every imported binding
-    // and LoadRequestedModules fetches all Wasm and JS dependencies.
-    for (imports_arr, 0..) |entry, idx| {
-        const pair = entry.array.items;
-        const mod_spec = pair[0].string;
-        const imp_name = pair[1].string;
-        try writer.print("import {{{f} as __w_i{d}}} from {f};\n", .{
-            std.json.fmt(imp_name, .{}),
-            idx,
-            std.json.fmt(mod_spec, .{}),
-        });
-    }
-
-    try writer.writeAll("const __w_imp = Object.create(null);\n");
-    for (imports_arr, 0..) |entry, idx| {
-        const pair = entry.array.items;
-        const mod_spec = pair[0].string;
-        const imp_name = pair[1].string;
-        try writer.print("(__w_imp[{f}] ??= Object.create(null))[{f}] = __w_i{d};\n", .{
-            std.json.fmt(mod_spec, .{}),
-            std.json.fmt(imp_name, .{}),
-            idx,
-        });
-    }
-
-    try writer.print("const __w_inst = new WebAssembly.Instance(new WebAssembly.Module(Uint8Array.fromBase64(\"{s}\")), __w_imp);\n", .{b64});
-
-    for (exports_arr, 0..) |entry, idx| {
-        const exp_name = entry.string;
-        try writer.print("const __w_e{d} = __w_inst.exports[{f}];\nexport {{__w_e{d} as {f}}};\n", .{
-            idx,
-            std.json.fmt(exp_name, .{}),
-            idx,
-            std.json.fmt(exp_name, .{}),
-        });
-    }
-
-    switch (try engine.parseModule(realm, out.written(), .{}, url, script)) {
-        .record => |record| script.record = record,
-        .parse_error => |parse_error| script.parse_error = parse_error,
-    }
-    return script;
-}
-
 /// A second hold (OWNED) on a value a script keeps, in its realm.
 fn copyOf(env: *const Environment, value: engine.Owned) ?engine.Owned {
     return engine.retainValue(env.realm(), value.value) catch null;
@@ -1781,10 +1663,48 @@ fn createFromResponse(env: *const Environment, url: []const u8, module_type: Mod
     const policy = fetch.internal.policy_container.parseReferrerPolicyHeader(response.header_list.getFirstValue("referrer-policy"));
     if (policy != .empty) response_env.fetch_options.referrer_policy = policy;
     return switch (module_type) {
+        // Step 6: "If mimeType's essence is "application/wasm" and
+        // moduleType is "javascript-or-wasm", then set moduleScript to the
+        // result of creating a WebAssembly module script" - NOT implemented,
+        // a stated deviation (the user's ruling, 2026-11-27 5:31 PM ET,
+        // option (b), lane wasm2): an application/wasm response is not a
+        // JavaScript MIME type, so moduleScript stays null - a fetch failure:
+        // the script element fires `error`, import() rejects with a
+        // TypeError - as in all three shipping browsers.
+        //
+        // Golden rule 2: the spec is newer (whatwg/html#10380, merged
+        // 2024-09-04; bugs crbug 40244733 and 42204365, Gecko 1899832,
+        // WebKit 274908, all open) and no browser ships it, stable or
+        // experimental. Read 2026-11-27 at each main:
+        // - Chromium 1b3e08dd62: module_script_fetcher.cc
+        //   WasModuleLoadSuccessful takes application/wasm only under
+        //   kJavaScriptSourcePhaseImports, off by default
+        //   (runtime_enabled_features.json5, no status), and even then
+        //   wasm_module_script.cc WasmModuleScript::Instantiate throws a
+        //   SyntaxError: source phase only. chromestatus 5987156463976448
+        //   "WebAssembly ECMAScript Module Integration": No active
+        //   development.
+        // - Gecko ac1fc47568: StaticPrefList.yaml
+        //   javascript.options.experimental.wasm_esm_integration is false,
+        //   and exists only under NIGHTLY_BUILD.
+        // - WebKit 0e47ccdf2c: UnifiedWebPreferences.yaml
+        //   WebAssemblyESMIntegrationEnabled is "testable", default false
+        //   (ScriptModuleLoader.cpp gates application/wasm on it).
+        // - wpt.fyi, aligned stable fb385fbf9c (Chrome 158, Firefox 161,
+        //   Safari 27.2) and experimental d7bec5f8cb: wasm/webapi/
+        //   esm-integration execute-start, wasm-import, worker and
+        //   exported-names fail in all three; the only passes are the files
+        //   that expect the module refused (script-src-blocks-wasm,
+        //   scripting-disabled).
+        // And the record cannot be made the spec's way here: a WebAssembly
+        // Module Record is a Cyclic Module Record, and V8 (15.7, and main
+        // 850a9ccf29) makes only Source Text and Synthetic module records
+        // (include/v8-script.h). Net-nav1's JS-source stand-in for it
+        // (3aa9141a9) ran script in the page's realm and could panic the
+        // engine; it is gone. Revisit with the roadmap item "Wasm ESM
+        // integration: waiting on engine support".
         .javascript => if (isJavaScriptMimeTypeEssence(essence))
             createJavaScriptModuleScript(&response_env, body, .{}, base_url) catch null
-        else if (std.mem.eql(u8, essence, "application/wasm"))
-            createWasmModuleScript(&response_env, body, base_url) catch null
         else
             null,
         .json => blk: {

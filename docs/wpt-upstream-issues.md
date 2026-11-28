@@ -66,7 +66,7 @@ of what was filed under the user's account, so each can be re-checked (`gh issue
 | wpt#65406 | issue | 2026-11-18 | not-restored-reasons/fetch.window.js: listener parameter shadows wavURL, long-wav.py never fetched | open |
 | wpt#65407 | issue | 2026-11-18 | reload-service-worker-fetch-event: no `.https`, worker calls `transitionWhile()` | open |
 | wpt#65463 | issue | 2026-11-19 | autoplay-disabled-by-csp: parent reads the document of a `CSP: sandbox` (opaque-origin) frame | open |
-| wpt#65464 | issue | 2026-11-19 | popup-inheritance-form-submission: asserts the test page's own `document.referrer`, not the popup's | open |
+| wpt#65464 | issue | 2026-11-19 | popup-inheritance-form-submission: asserts the test page's own `document.referrer`, not the popup's | PR wpt#65843 (2026-11-27, expected value corrected to "": the form navigation replaces the initial about:blank; Chrome 157 + Firefox 161 report "") |
 | wpt#65465 | issue | 2026-11-19 | unregister-immediately-during-extendable-events: top window's `TypeError` for a frame's `fetch()` | open |
 | wpt#65466 | issue | 2026-11-19 | css-forms input-file/input-text base appearance: expectations differ from the ED (radius 4px, `align-items: unsafe center`) | open |
 | wpt#65471 | issue | 2026-11-19 | client-url-creation-url: listens for the frame's first `'done'` only after its load; the frame posts it while parsing | open |

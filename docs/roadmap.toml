@@ -1276,3 +1276,21 @@ owner = "agent"
 status = "done"
 branch = "lane/worklets"
 paths = ["src/html/worklet_host.zig", "src/webidl/impls/{Worklet,WorkletGlobalScope,PaintWorkletGlobalScope,LayoutWorkletGlobalScope,AnimationWorkletGlobalScope,AudioWorklet,AudioWorkletGlobalScope,AudioWorkletProcessor}.zig", "CSS.zig: the worklet getters", "BaseAudioContext.get_audioWorklet", "src/runtime/engines/v8/worklet_realm.zig and the createWorkletRealm/destroyWorkletRealm protocol entries", "namespace attributes in generator.zig and namespace.zig", "module_script.zig: script_destination, credentials_mode, the reportScriptFetch realm", "tests/v8/worklet_realm_test.zig", "tests/html/worklet_test.zig", "tests/wpt/crane/wl-*"]
+
+[[infra]]
+id = "wasm-esm"
+title = "Wasm ESM integration: waiting on engine support (after 0.1)"
+why = """The user, 2026-11-27 5:31 PM ET, ruled "b" (lane wasm2, 45708ba46): application/wasm module \
+scripts are a fetch failure, as in Chrome, Firefox and Safari, which all keep WebAssembly ESM \
+integration behind an off-by-default flag (Chrome supports only the source phase). V8's public API has \
+no WebAssembly Module Record, so the spec (HTML "create a WebAssembly module script", whatwg/html#10380; \
+specs/w3c/wasm-esm-integration.md) cannot be built without patching V8 or an invented emulation. The \
+stated deviation is at HTML fetch-single step 6 in src/html/module_script.zig."""
+done_when = """Revisit when V8 gains a Wasm module record or a browser ships the feature by default \
+(Gecko bug 1899832 is active): then implement both phases through the engine protocol and add the \
+esm-integration WPT files to the worklist."""
+progress = []
+
+  [[infra.items]]
+  name = "Re-check V8 and the three browsers' defaults at each V8 update"
+  status = "todo"
