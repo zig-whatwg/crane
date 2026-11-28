@@ -171,22 +171,15 @@ test "Browser JS setTimeout chain slows under EventLoop CPU throttling and resto
     try testing.expect(thr_ms >= 130.0);
     try testing.expect(thr_ms >= base_ms * 2.0);
 
-    // Restored to 1.0. A loaded host can only lengthen a chain (a TSan verify
-    // on server1 at load 29 read 41.9 ms unthrottled, 170.6 ms at 4x and 193.8
-    // ms restored, lane mcp3 2026-11-27), so the restored chain gets up to
-    // three tries: a throttle left on would slow every one of them.
+    // Restored to 1.0.
     loop.setCpuThrottlingRate(1.0);
-    var rst_ms: f64 = std.math.inf(f64);
-    var tries: u32 = 0;
-    while (tries < 3 and !(rst_ms < thr_ms * 0.75)) : (tries += 1) {
-        const r2 = try ctx.evaluateScriptToString(run_chain, testing.allocator);
-        testing.allocator.free(r2);
-        _ = try browser.spinEventLoopUntil(.{ .context = &wait, .met = Wait.met }, 5_000);
-        const rst_str = try ctx.evaluateScriptToString("String(window.__elapsed)", testing.allocator);
-        defer testing.allocator.free(rst_str);
-        rst_ms = @min(rst_ms, try std.fmt.parseFloat(f64, rst_str));
-    }
-    if (!(rst_ms < thr_ms * 0.75)) std.debug.print("chain: unthrottled {d:.1} ms, 4x {d:.1} ms, restored (best of {d}) {d:.1} ms\n", .{ base_ms, thr_ms, tries, rst_ms });
+    const r2 = try ctx.evaluateScriptToString(run_chain, testing.allocator);
+    testing.allocator.free(r2);
+    _ = try browser.spinEventLoopUntil(.{ .context = &wait, .met = Wait.met }, 5_000);
+    const rst_str = try ctx.evaluateScriptToString("String(window.__elapsed)", testing.allocator);
+    defer testing.allocator.free(rst_str);
+    const rst_ms = try std.fmt.parseFloat(f64, rst_str);
+    if (!(rst_ms < thr_ms * 0.75)) std.debug.print("chain: unthrottled {d:.1} ms, 4x {d:.1} ms, restored {d:.1} ms\n", .{ base_ms, thr_ms, rst_ms });
     try testing.expect(rst_ms < thr_ms * 0.75);
 }
 
