@@ -67,8 +67,9 @@ pub const Handler = struct {
     /// Allocations in `arena` live until the answer is written.
     call: *const fn (context: *anyopaque, arena: Allocator, name: []const u8, arguments: json.Value) anyerror!?ToolResult,
     /// A tool the server has but does not offer (a category or a flag off):
-    /// a call to it is "Tool <name> disabled", not "not found".
-    disabled: ?*const fn (name: []const u8) bool = null,
+    /// a call to it is "Tool <name> disabled", not "not found". Given
+    /// `context`, which holds the server's flags.
+    disabled: ?*const fn (context: *anyopaque, name: []const u8) bool = null,
 };
 
 pub const ServerInfo = struct {
@@ -300,7 +301,7 @@ pub const Protocol = struct {
         } orelse {
             // chrome-devtools-mcp's tools/call handler and ToolHandler.handle
             // (viaMcp): InvalidParams, "not found" or "disabled".
-            const off = if (self.handler.disabled) |f| f(name_value.string) else false;
+            const off = if (self.handler.disabled) |f| f(self.handler.context, name_value.string) else false;
             const message = try std.fmt.allocPrint(arena, "Tool {s} {s}", .{ name_value.string, if (off) "disabled" else "not found" });
             return errorMessage(arena, id, .invalid_params, message, null);
         };

@@ -865,3 +865,31 @@ test "mcp http GET stream: a server message queued while the session's stream wa
     defer res.deinit(allocator);
     try testing.expectEqual(@as(u16, 409), res.status);
 }
+
+test "mcp http options: --categoryExperimentalThirdParty and --experimentalVision forward into McpServer's tool list and calls (audit M2)" {
+    var debug_alloc: LeakChecked = .init;
+    defer testing.expect(debug_alloc.deinit() == .ok) catch {};
+    const allocator = debug_alloc.allocator();
+
+    const list_body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}";
+    const call_body = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"list_3p_developer_tools\",\"arguments\":{\"pageId\":1},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}";
+    inline for (.{ false, true }) |on| {
+        var fx = try Fixture.start(allocator, .{ .mcp = .{ .category_experimental_third_party = on, .experimental_vision = on } });
+        defer fx.stop();
+        const port = fx.mcp_http.boundPort();
+        const list = try std.fmt.allocPrint(allocator, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nMCP-Protocol-Version: 2026-07-28\r\nMcp-Method: tools/list\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n{s}", .{ port, fx.mcp_http.bearerToken(), list_body.len, list_body });
+        defer allocator.free(list);
+        var res = try sendRequest(allocator, port, list);
+        defer res.deinit(allocator);
+        try testing.expectEqual(@as(u16, 200), res.status);
+        for ([_][]const u8{ "\"name\":\"list_3p_developer_tools\"", "\"name\":\"execute_3p_developer_tool\"", "\"name\":\"click_at\"" }) |name| {
+            try testing.expectEqual(on, std.mem.indexOf(u8, res.body, name) != null);
+        }
+        // Off, a call is "Tool <name> disabled"; on, the tool answers.
+        const call = try std.fmt.allocPrint(allocator, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nMCP-Protocol-Version: 2026-07-28\r\nMcp-Method: tools/call\r\nMcp-Name: list_3p_developer_tools\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n{s}", .{ port, fx.mcp_http.bearerToken(), call_body.len, call_body });
+        defer allocator.free(call);
+        var answered = try sendRequest(allocator, port, call);
+        defer answered.deinit(allocator);
+        try testing.expectEqual(!on, std.mem.indexOf(u8, answered.body, "Tool list_3p_developer_tools disabled") != null);
+    }
+}

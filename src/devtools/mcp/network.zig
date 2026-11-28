@@ -390,8 +390,56 @@ pub fn sizeLimited(arena: Allocator, text: []const u8) ![]const u8 {
 
 /// formatHeaders' lines.
 pub fn headerLines(arena: Allocator, headers: *const Headers, out: *std.ArrayList([]const u8)) !void {
-    for (headers.list.items) |h| try out.append(arena, try std.fmt.allocPrint(arena, "- {s}:{s}", .{ h.name, h.value }));
+    return headerLinesRedacted(arena, headers, out, false);
 }
+
+/// `headerLines`, with `--redactNetworkHeaders` applied when `redact`:
+/// NetworkFormatter#redactNetworkHeaders (chrome-devtools-mcp v1.13.0
+/// src/formatters/NetworkFormatter.ts), which is devtools-frontend's
+/// sanitizeHeaders - a header whose name is not on the allowlist keeps its
+/// name and reads `<redacted>`.
+pub fn headerLinesRedacted(arena: Allocator, headers: *const Headers, out: *std.ArrayList([]const u8), redact: bool) !void {
+    for (headers.list.items) |h| {
+        const value = if (redact and !allowHeader(h.name)) "<redacted>" else h.value;
+        try out.append(arena, try std.fmt.allocPrint(arena, "- {s}:{s}", .{ h.name, value }));
+    }
+}
+
+/// NetworkRequestFormatter.allowHeader: the lower-cased, trimmed name is on
+/// the allowlist.
+fn allowHeader(name: []const u8) bool {
+    var buffer: [64]u8 = undefined;
+    const trimmed = std.mem.trim(u8, name, " \t\r\n");
+    if (trimmed.len > buffer.len) return false;
+    const lower = std.ascii.lowerString(&buffer, trimmed);
+    for (allowed_headers) |allowed| if (std.mem.eql(u8, allowed, lower)) return true;
+    return false;
+}
+
+// Copied from devtools-frontend
+// (https://chromium.googlesource.com/devtools/devtools-frontend, the commit
+// chrome-devtools-mcp v1.13.0 pins as its third_party/devtools-frontend
+// submodule, 9ce9e7a16f1910fdf263b030fbc6521b833fb48d),
+// front_end/models/ai_assistance/data_formatters/NetworkRequestFormatter.ts,
+// `allowedHeaders` ("Header names that could be included in the prompt,
+// lowercase"). Copyright 2025 The Chromium Authors. Use of this source code
+// is governed by a BSD-style license that can be found in the LICENSE file
+// (devtools-frontend's LICENSE, BSD-3-Clause; THIRD_PARTY_NOTICES.md).
+const allowed_headers = [_][]const u8{
+    ":authority",                  ":method",                       ":path",                     ":scheme",                        "a-im",                          "accept-ch",                        "accept-charset",               "accept-datetime",
+    "accept-encoding",             "accept-language",               "accept-patch",              "accept-ranges",                  "accept",                        "access-control-allow-credentials", "access-control-allow-headers", "access-control-allow-methods",
+    "access-control-allow-origin", "access-control-expose-headers", "access-control-max-age",    "access-control-request-headers", "access-control-request-method", "age",                              "allow",                        "alt-svc",
+    "cache-control",               "connection",                    "content-disposition",       "content-encoding",               "content-language",              "content-location",                 "content-range",                "content-security-policy",
+    "content-type",                "correlation-id",                "date",                      "delta-base",                     "dnt",                           "expect-ct",                        "expect",                       "expires",
+    "forwarded",                   "front-end-https",               "host",                      "http2-settings",                 "if-modified-since",             "if-range",                         "if-unmodified-source",         "im",
+    "last-modified",               "link",                          "location",                  "max-forwards",                   "nel",                           "origin",                           "permissions-policy",           "pragma",
+    "preference-applied",          "proxy-connection",              "public-key-pins",           "range",                          "referer",                       "refresh",                          "report-to",                    "retry-after",
+    "save-data",                   "sec-gpc",                       "server",                    "status",                         "strict-transport-security",     "te",                               "timing-allow-origin",          "tk",
+    "trailer",                     "transfer-encoding",             "upgrade-insecure-requests", "upgrade",                        "user-agent",                    "vary",                             "via",                          "warning",
+    "www-authenticate",            "x-att-deviceid",                "x-content-duration",        "x-content-security-policy",      "x-content-type-options",        "x-correlation-id",                 "x-forwarded-for",              "x-forwarded-host",
+    "x-forwarded-proto",           "x-frame-options",               "x-http-method-override",    "x-powered-by",                   "x-redirected-by",               "x-request-id",                     "x-requested-with",             "x-ua-compatible",
+    "x-wap-profile",               "x-webkit-csp",                  "x-xss-protection",
+};
 
 test "headers: lower-cased names, merged in place, multi-line values joined" {
     const allocator = std.testing.allocator;
@@ -405,4 +453,28 @@ test "headers: lower-cased names, merged in place, multi-line values joined" {
     try std.testing.expectEqualStrings("text/html", headers.get("content-type").?);
     try std.testing.expectEqualStrings("a=1\n b=2", headers.get("set-cookie").?);
     try std.testing.expectEqualStrings("p, q", headers.get("x-two").?);
+}
+
+test "redacted header lines: names kept, values off devtools-frontend's allowlist redacted" {
+    const allocator = std.testing.allocator;
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var headers: Headers = .{};
+    defer headers.deinit(allocator);
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator,
+        \\{"Content-Type":"text/html","Cookie":"sid=1","Authorization":"Bearer x","Content-Length":"5"," Accept ":"*/*"}
+    , .{});
+    defer parsed.deinit();
+    try headers.update(allocator, parsed.value.object, true);
+    var lines: std.ArrayList([]const u8) = .empty;
+    try headerLinesRedacted(arena, &headers, &lines, true);
+    const joined = try std.mem.join(arena, "\n", lines.items);
+    try std.testing.expect(std.mem.indexOf(u8, joined, "- content-type:text/html") != null);
+    try std.testing.expect(std.mem.indexOf(u8, joined, "- cookie:<redacted>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, joined, "- authorization:<redacted>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, joined, "- content-length:<redacted>") != null);
+    lines.clearRetainingCapacity();
+    try headerLinesRedacted(arena, &headers, &lines, false);
+    try std.testing.expect(std.mem.indexOf(u8, try std.mem.join(arena, "\n", lines.items), "- cookie:sid=1") != null);
 }

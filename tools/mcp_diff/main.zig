@@ -47,6 +47,28 @@ pub const Call = struct {
     /// The arguments; "{fixture}" in a string is the fixture server's origin.
     args: std.json.Value = .null,
     sleep_ms: u32 = 0,
+    /// Instead of a tool call: tools/list, its answer the definitions of
+    /// these tools in this order (null for one not listed) - how a case's
+    /// flags shape the schemas both servers list (lane mcp3, audit M2).
+    list_tools: []const []const u8 = &.{},
+    /// "chrome": the call runs on Chrome's side only and its answer is not
+    /// compared - how a case makes an input both sides then read (a heap
+    /// snapshot Chrome takes, copied to Crane by `copy_to_crane`).
+    side: []const u8 = "",
+    /// set_logpoints' "bound via source map at A, B" lists compared in any
+    /// order: Chrome lists the bundles one source maps into in the order their
+    /// source maps finished loading (devtools-frontend
+    /// CompilerScriptMapping.uiLocationToRawLocations walks the maps in
+    /// SourceMapAttached order), which varies from run to run - 16 of 20 runs
+    /// chunk2 first, 4 chunk1 first (chat.local, 2026-11-27,
+    /// tmp/mcp3/lp-order.sh; lane mcp3, main's 5:45 PM ET instruction).
+    bound_in_any_order: bool = false,
+
+    /// Whether the call has an answer both sides compare (a tool call or a
+    /// tools/list, on both sides).
+    pub fn answered(self: Call) bool {
+        return (self.tool.len != 0 or self.list_tools.len != 0) and self.side.len == 0;
+    }
 };
 
 pub const Case = struct {
@@ -70,6 +92,13 @@ pub const Case = struct {
     slim: bool = false,
     /// Fixture files (under --fixtures) copied into each server's `{files}` dir.
     copy_fixtures: []const []const u8 = &.{},
+    /// More flags given to both servers, as chrome-devtools-mcp spells them
+    /// ("--no-page-id-routing", "--maxNavigationSaved=2").
+    flags: []const []const u8 = &.{},
+    /// Files (in `{files}`) Chrome's side made that are copied to Crane's
+    /// `{files}` after Chrome's side ran and before Crane's runs: both
+    /// analyse the same input (audit M6: a heap snapshot of a real page).
+    copy_to_crane: []const []const u8 = &.{},
 };
 
 pub const chrome_mcp_version = "1.13.0";
@@ -81,6 +110,9 @@ pub const ToolClass = enum {
     needs_renderer,
     chrome_only,
     not_tested,
+    /// The engine feature the tool reads is not in Crane yet; the reason
+    /// names the lane that builds it.
+    not_implemented,
 
     pub fn word(self: ToolClass) []const u8 {
         return switch (self) {
@@ -90,6 +122,7 @@ pub const ToolClass = enum {
             .needs_renderer => "needs_renderer",
             .chrome_only => "chrome_only",
             .not_tested => "not_tested",
+            .not_implemented => "not_implemented",
         };
     }
 };
@@ -167,10 +200,10 @@ pub const tool_catalog = [_]CatalogEntry{
     .{ .name = "list_3p_developer_tools", .category = "thirdParty" },
     .{ .name = "execute_3p_developer_tool", .category = "thirdParty" },
     // WebMCP (2)
-    .{ .name = "list_webmcp_tools", .category = "webmcp", .reason = "Chrome 150+ experimental feature behind --enable-features=WebMCP." },
-    .{ .name = "execute_webmcp_tool", .category = "webmcp", .reason = "Chrome 150+ experimental feature behind --enable-features=WebMCP." },
+    .{ .name = "list_webmcp_tools", .category = "webmcp", .fixed = .not_implemented, .reason = "Not implemented: reads what the page registers through document.modelContext (WebMCP; Chrome exposes it only behind --enable-features=WebMCP or its origin trial) over CDP WebMCP - both built by lane webmcp1 (main, 5:52 PM ET 2026-11-27)." },
+    .{ .name = "execute_webmcp_tool", .category = "webmcp", .fixed = .not_implemented, .reason = "Not implemented: runs a page's document.modelContext tool through CDP WebMCP.invokeTool - lane webmcp1 (main, 5:52 PM ET 2026-11-27)." },
     // WebAuthn (1)
-    .{ .name = "configure_webauthn", .category = "webauthn", .reason = "Requires WebAuthn behind navigator.credentials." },
+    .{ .name = "configure_webauthn", .category = "webauthn", .fixed = .not_implemented, .reason = "Not implemented: needs WebAuthn (navigator.credentials.create/get), a virtual authenticator and CDP WebAuthn - lane webauthn1 (main, 5:45 PM ET 2026-11-27)." },
     // Extensions (5) - Chrome product
     .{ .name = "install_extension", .category = "extensions", .fixed = .chrome_only, .reason = "Chrome's extension system has no web specification." },
     .{ .name = "list_extensions", .category = "extensions", .fixed = .chrome_only, .reason = "Chrome's extension system has no web specification." },
@@ -216,6 +249,7 @@ pub const SummaryCounts = struct {
     tools_needs_renderer: usize = 0,
     tools_chrome_only: usize = 0,
     tools_not_tested: usize = 0,
+    tools_not_implemented: usize = 0,
 };
 
 pub fn classifyTools(arena: Allocator, cases: Cases, records: []const CaseRecord) !struct { summary: SummaryCounts, tools: []ToolSummaryRow } {
@@ -240,7 +274,7 @@ pub fn classifyTools(arena: Allocator, cases: Cases, records: []const CaseRecord
             var call_idx: usize = 0;
             var case_used = false;
             for (rec.case.calls) |c| {
-                if (c.tool.len == 0) continue;
+                if (!c.answered()) continue;
                 defer call_idx += 1;
                 if (!std.mem.eql(u8, c.tool, entry.name)) continue;
                 seen_any = true;
@@ -290,6 +324,7 @@ pub fn classifyTools(arena: Allocator, cases: Cases, records: []const CaseRecord
             .needs_renderer => summary.tools_needs_renderer += 1,
             .chrome_only => summary.tools_chrome_only += 1,
             .not_tested => summary.tools_not_tested += 1,
+            .not_implemented => summary.tools_not_implemented += 1,
         }
         rows[ti] = .{
             .name = entry.name,
@@ -307,7 +342,7 @@ pub fn writeResultsJson(w: *Io.Writer, summary: SummaryCounts, tools: []const To
         "{{\"version\":1,\"chromeMcpVersion\":{f},\"summary\":{{" ++
             "\"casesTotal\":{d},\"casesEqual\":{d},\"casesExpectedDiff\":{d},\"casesDiffers\":{d}," ++
             "\"toolsTotal\":{d},\"toolsEqual\":{d},\"toolsExpectedDiff\":{d},\"toolsDiffers\":{d}," ++
-            "\"toolsNeedsRenderer\":{d},\"toolsChromeOnly\":{d},\"toolsNotTested\":{d}}},\"tools\":[",
+            "\"toolsNeedsRenderer\":{d},\"toolsChromeOnly\":{d},\"toolsNotTested\":{d},\"toolsNotImplemented\":{d}}},\"tools\":[",
         .{
             std.json.fmt(chrome_mcp_version, .{}),
             summary.cases_total,
@@ -321,6 +356,7 @@ pub fn writeResultsJson(w: *Io.Writer, summary: SummaryCounts, tools: []const To
             summary.tools_needs_renderer,
             summary.tools_chrome_only,
             summary.tools_not_tested,
+            summary.tools_not_implemented,
         },
     );
     for (tools, 0..) |t, i| {
@@ -386,7 +422,8 @@ pub fn checkCases(cases: Cases) ![]const u8 {
         for (cases.cases[0..i]) |other| if (std.mem.eql(u8, other.name, c.name)) return "two cases share a name";
         if (c.calls.len == 0) return "a case has no calls";
         for (c.calls) |call| {
-            if (call.tool.len == 0 and call.sleep_ms == 0) return "a call names no tool and no sleep";
+            if (call.tool.len == 0 and call.list_tools.len == 0 and call.sleep_ms == 0) return "a call names no tool, no tools/list and no sleep";
+            if (call.side.len != 0 and !std.mem.eql(u8, call.side, "chrome")) return "a call's side is not \"chrome\"";
             if (call.tool.len != 0 and call.args != .object and call.args != .null) return "a call's args are not an object";
         }
     }
@@ -396,7 +433,7 @@ pub fn checkCases(cases: Cases) ![]const u8 {
         } else return "an expected difference names no case";
         var tools: u32 = 0;
         for (case.calls) |call| {
-            if (call.tool.len != 0) tools += 1;
+            if (call.answered()) tools += 1;
         }
         if (e.call == 0 or e.call > tools) return "an expected difference names no call of its case";
         if (e.reason.len == 0) return "an expected difference gives no reason";
@@ -427,6 +464,34 @@ pub fn normalize(arena: Allocator, text: []const u8, places: Places) ![]const u8
     out = try std.mem.replaceOwned(u8, arena, out, places.origin, "{fixture}");
     if (places.cwd) |dir| out = try std.mem.replaceOwned(u8, arena, out, dir, "{cwd}");
     return out;
+}
+
+/// Each "[bound via source map at A, B, ...]" list in `text` with its
+/// locations sorted (`Call.bound_in_any_order`).
+pub fn sortBoundLists(arena: Allocator, text: []const u8) ![]const u8 {
+    const opener = "[bound via source map at ";
+    var out: std.ArrayList(u8) = .empty;
+    var rest = text;
+    while (std.mem.indexOf(u8, rest, opener)) |at| {
+        const start = at + opener.len;
+        const close = std.mem.indexOfScalarPos(u8, rest, start, ']') orelse break;
+        try out.appendSlice(arena, rest[0..start]);
+        var items: std.ArrayList([]const u8) = .empty;
+        var parts = std.mem.splitSequence(u8, rest[start..close], ", ");
+        while (parts.next()) |part| try items.append(arena, part);
+        std.mem.sort([]const u8, items.items, {}, struct {
+            fn less(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.order(u8, a, b) == .lt;
+            }
+        }.less);
+        for (items.items, 0..) |item, i| {
+            if (i != 0) try out.appendSlice(arena, ", ");
+            try out.appendSlice(arena, item);
+        }
+        rest = rest[close..];
+    }
+    try out.appendSlice(arena, rest);
+    return out.items;
 }
 
 const Side = enum { chrome, crane };
@@ -461,10 +526,21 @@ fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, l
     };
     server.notify(arena, "notifications/initialized", null) catch {};
     for (case.calls) |call| {
+        if (call.list_tools.len != 0) {
+            const message = server.request(arena, "tools/list", "{}", call_timeout_ms) catch |err| {
+                return .{ .answers = answers.items, .failure = std.fmt.allocPrint(arena, "tools/list: {t}", .{err}) catch "tools/list failed" };
+            };
+            const text = listedDefinitions(arena, message, call.list_tools) catch "unreadable tools/list";
+            answers.append(arena, .{ .text = normalize(arena, text, places) catch text, .is_error = false }) catch return .{ .answers = answers.items, .failure = "out of memory" };
+            continue;
+        }
         if (call.tool.len == 0) {
             Io.sleep(io, .fromMilliseconds(call.sleep_ms), .awake) catch {};
             continue;
         }
+        // A one-side call: Chrome's alone, its answer not kept.
+        const one_side = call.side.len != 0;
+        if (one_side and chrome_page == null) continue;
         // A uid a call names is Crane's numbering: Chrome's for Chrome.
         const call_args = if (chrome_page) |c| c.replay.argsForChrome(arena, call.args) catch call.args else call.args;
         const args = argsJson(arena, call_args, places) catch return .{ .answers = answers.items, .failure = "out of memory" };
@@ -476,6 +552,11 @@ fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, l
         if (chrome_page) |c| if (user_agent.hasSnapshot(answer.text)) setApart(gpa, arena, io, c, call, &answer);
         answer.text = normalize(arena, answer.text, places) catch answer.text;
         if (answer.raw) |raw| answer.raw = normalize(arena, raw, places) catch raw;
+        if (call.bound_in_any_order) answer.text = sortBoundLists(arena, answer.text) catch answer.text;
+        if (one_side) {
+            if (answer.is_error) return .{ .answers = answers.items, .failure = std.fmt.allocPrint(arena, "{s} (Chrome's side only): {s}", .{ call.tool, answer.text }) catch "a one-side call failed" };
+            continue;
+        }
         answers.append(arena, answer) catch return .{ .answers = answers.items, .failure = "out of memory" };
     }
     if (places.files) |dir| {
@@ -484,6 +565,24 @@ fn runSide(gpa: Allocator, arena: Allocator, io: Io, argv: []const []const u8, l
         answers.append(arena, .{ .text = normalize(arena, listing, places) catch listing, .is_error = false }) catch return .{ .answers = answers.items, .failure = "out of memory" };
     }
     return .{ .answers = answers.items };
+}
+
+/// A tools/list answer's definitions of `names`, in that order, as indented
+/// JSON (null for a tool not listed).
+fn listedDefinitions(arena: Allocator, message: std.json.Value, names: []const []const u8) ![]const u8 {
+    const result = message.object.get("result") orelse return error.NoResult;
+    const tools = result.object.get("tools") orelse return error.NoTools;
+    var out: Io.Writer.Allocating = .init(arena);
+    try out.writer.writeAll("[");
+    for (names, 0..) |name, i| {
+        if (i != 0) try out.writer.writeAll(",");
+        const definition: std.json.Value = for (tools.array.items) |d| {
+            if (d == .object) if (d.object.get("name")) |n| if (n == .string and std.mem.eql(u8, n.string, name)) break d;
+        } else .null;
+        try std.json.Stringify.value(definition, .{ .whitespace = .indent_1 }, &out.writer);
+    }
+    try out.writer.writeAll("]");
+    return out.written();
 }
 
 /// Every regular file under `dir`, by path: "<path> <mode>" then its bytes.
@@ -507,7 +606,7 @@ fn filesListing(arena: Allocator, io: Io, dir_path: []const u8) ![]const u8 {
         const st = try dir.statFile(io, name, .{});
         const mode = st.permissions.toMode() & 0o777;
         if (std.mem.endsWith(u8, name, ".heapsnapshot")) {
-            const bytes = try dir.readFileAlloc(io, name, arena, .limited(64 << 20));
+            const bytes = try dir.readFileAlloc(io, name, arena, .limited(512 << 20));
             const summary = summarizeHeapSnapshot(arena, bytes) catch "invalid heapsnapshot";
             try out.writer.print("{s} {o}\n{s}\n", .{ name, mode, summary });
             continue;
@@ -745,6 +844,10 @@ pub fn main(init: std.process.Init) !void {
             try chrome_argv.append(arena, "--slim");
             try crane_argv.append(arena, "--slim");
         }
+        for (case.flags) |flag| {
+            try chrome_argv.append(arena, flag);
+            try crane_argv.append(arena, flag);
+        }
         if (case.files or case.client_roots) {
             chrome_places.files = try filesDirectory(arena, io, options, slug, "chrome");
             crane_places.files = try filesDirectory(arena, io, options, slug, "crane");
@@ -760,6 +863,15 @@ pub fn main(init: std.process.Init) !void {
             }
         }
         const chrome = runSide(gpa, arena, io, chrome_argv.items, try std.fmt.allocPrint(arena, "{s}/logs/{s}.chrome.log", .{ options.out, slug }), case, chrome_places, &chrome_page);
+        // Copied with the file's mode, as Chrome's side left it: the files
+        // listing compares modes too.
+        for (case.copy_to_crane) |name| {
+            const from = try std.fmt.allocPrint(arena, "{s}/{s}", .{ chrome_places.files orelse break, name });
+            const to = try std.fmt.allocPrint(arena, "{s}/{s}", .{ crane_places.files.?, name });
+            Io.Dir.cwd().copyFile(from, Io.Dir.cwd(), to, io, .{}) catch |err| {
+                std.debug.print("mcp_diff: {s}: copying {s} to Crane's side: {t}\n", .{ case.name, name, err });
+            };
+        }
         const crane = runSide(gpa, arena, io, crane_argv.items, try std.fmt.allocPrint(arena, "{s}/logs/{s}.crane.log", .{ options.out, slug }), case, crane_places, null);
         const equal = chrome.failure == null and crane.failure == null and sameAnswers(chrome.answers, crane.answers);
         const only_expected = !equal and chrome.failure == null and crane.failure == null and differsOnlyWhereExpected(cases, case.name, chrome.answers, crane.answers);
@@ -836,7 +948,7 @@ fn caseSection(arena: Allocator, cases: Cases, case: Case, chrome: Outcome, cran
     if (equal) return out.written();
     var index: usize = 0;
     for (case.calls) |call| {
-        if (call.tool.len == 0) continue;
+        if (!call.answered()) continue;
         defer index += 1;
         const a: ?client.Answer = if (index < chrome.answers.len) chrome.answers[index] else null;
         const b: ?client.Answer = if (index < crane.answers.len) crane.answers[index] else null;
@@ -844,8 +956,8 @@ fn caseSection(arena: Allocator, cases: Cases, case: Case, chrome: Outcome, cran
         const why = if (expectedFor(cases, case.name, index + 1)) |e| try std.fmt.allocPrint(arena, " (expected: {s})", .{e.reason}) else "";
         try w.print("### call {d}: {s} {s}{s}\n\nChrome{s}{s}:\n\n```\n{s}\n```\n\nCrane{s}:\n\n```\n{s}\n```\n\n", .{
             index + 1,
-            call.tool,
-            try std.json.Stringify.valueAlloc(arena, call.args, .{}),
+            if (call.tool.len != 0) call.tool else "tools/list",
+            if (call.tool.len != 0) try std.json.Stringify.valueAlloc(arena, call.args, .{}) else try std.json.Stringify.valueAlloc(arena, call.list_tools, .{}),
             why,
             if (a != null and a.?.is_error) " (isError)" else "",
             if (a != null and a.?.note.len != 0) try std.fmt.allocPrint(arena, " ({s})", .{a.?.note}) else "",
@@ -882,6 +994,10 @@ test "cases: parsed, checked, their arguments made with the fixture origin and a
     );
     try std.testing.expectEqualStrings("", try checkCases(cases));
     try std.testing.expectEqualStrings("{\"pageId\":1,\"url\":\"http://127.0.0.1:9/x.html\"}", try argsJson(arena, cases.cases[0].calls[0].args, .{ .origin = "http://127.0.0.1:9" }));
+    try std.testing.expectEqualStrings(
+        "- a.ts:3:3 [bound via source map at c1.js:1:37, c2.js:2:37]\n- b.ts:1:1 [bound]\n- d.ts [bound via source map at x.js:1:1]",
+        try sortBoundLists(arena, "- a.ts:3:3 [bound via source map at c2.js:2:37, c1.js:1:37]\n- b.ts:1:1 [bound]\n- d.ts [bound via source map at x.js:1:1]"),
+    );
     try std.testing.expectEqualStrings("Successfully navigated to {fixture}/x.html.", try normalize(arena, "Successfully navigated to http://127.0.0.1:9/x.html.", .{ .origin = "http://127.0.0.1:9" }));
     // A side's files directory, inside the working directory, and the
     // working directory itself.
@@ -895,6 +1011,38 @@ test "cases: parsed, checked, their arguments made with the fixture origin and a
         \\{"cases":[{"name":"a","calls":[{"tool":"list_pages"}]},{"name":"a","calls":[{"tool":"list_pages"}]}]}
     );
     try std.testing.expectEqualStrings("two cases share a name", try checkCases(twice));
+}
+
+test "cases: a tools/list call and a case's flags; the list call has an answer an expected difference can name" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const cases = try parseCases(arena,
+        \\{"cases":[{"name":"l","flags":["--no-page-id-routing"],"calls":[{"list_tools":["click","nope"]},{"tool":"list_pages"}]}],
+        \\ "expected":[{"case":"l","call":2,"reason":"r"}]}
+    );
+    try std.testing.expectEqualStrings("", try checkCases(cases));
+    try std.testing.expectEqualStrings("--no-page-id-routing", cases.cases[0].flags[0]);
+    try std.testing.expect(cases.cases[0].calls[0].answered());
+    const message = try std.json.parseFromSliceLeaky(std.json.Value, arena,
+        \\{"jsonrpc":"2.0","id":3,"result":{"tools":[{"name":"list_pages"},{"name":"click","inputSchema":{"type":"object"}}]}}
+    , .{});
+    try std.testing.expectEqualStrings("[{\n \"name\": \"click\",\n \"inputSchema\": {\n  \"type\": \"object\"\n }\n},null]", try listedDefinitions(arena, message, &.{ "click", "nope" }));
+    const none = try parseCases(arena,
+        \\{"cases":[{"name":"n","calls":[{"args":{}}]}]}
+    );
+    try std.testing.expectEqualStrings("a call names no tool, no tools/list and no sleep", try checkCases(none));
+    // A Chrome-only call has no compared answer; another side is refused.
+    const one_side = try parseCases(arena,
+        \\{"cases":[{"name":"s","files":true,"copy_to_crane":["x.heapsnapshot"],"calls":[{"tool":"take_heapsnapshot","side":"chrome","args":{"pageId":1,"filePath":"{files}/x.heapsnapshot"}},{"tool":"get_heapsnapshot_summary","args":{"filePath":"{files}/x.heapsnapshot"}}]}],
+        \\ "expected":[{"case":"s","call":1,"reason":"r"}]}
+    );
+    try std.testing.expectEqualStrings("", try checkCases(one_side));
+    try std.testing.expect(!one_side.cases[0].calls[0].answered());
+    const bad_side = try parseCases(arena,
+        \\{"cases":[{"name":"b","calls":[{"tool":"list_pages","side":"crane"}]}]}
+    );
+    try std.testing.expectEqualStrings("a call's side is not \"chrome\"", try checkCases(bad_side));
 }
 
 test "the repository's cases file is well formed" {
@@ -928,6 +1076,9 @@ test "classifyTools and writeResultsJson produce valid structured summary JSON" 
     try std.testing.expectEqual(@as(usize, 0), res.summary.tools_differs);
     try std.testing.expectEqual(@as(usize, 8), res.summary.tools_needs_renderer);
     try std.testing.expectEqual(@as(usize, 10), res.summary.tools_chrome_only);
+    // configure_webauthn and the two WebMCP tools wait for lanes webauthn1
+    // and webmcp1.
+    try std.testing.expectEqual(@as(usize, 3), res.summary.tools_not_implemented);
 
     var out: Io.Writer.Allocating = .init(arena);
     try writeResultsJson(&out.writer, res.summary, res.tools, &recs);
@@ -935,6 +1086,7 @@ test "classifyTools and writeResultsJson produce valid structured summary JSON" 
     try std.testing.expectEqual(@as(i64, 1), parsed.object.get("version").?.integer);
     try std.testing.expectEqual(@as(usize, 66), parsed.object.get("tools").?.array.items.len);
     try std.testing.expectEqual(@as(usize, 1), parsed.object.get("cases").?.array.items.len);
+    try std.testing.expectEqual(@as(i64, 3), parsed.object.get("summary").?.object.get("toolsNotImplemented").?.integer);
 }
 
 test {

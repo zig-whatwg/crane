@@ -17,6 +17,8 @@ pub const Harness = struct {
     mcp_server: *mcp.server.McpServer = undefined,
     arena: std.heap.ArenaAllocator = undefined,
     next_id: u32 = 1,
+    /// The server's flags (chrome-devtools-mcp's command line).
+    options: mcp.server.Options = .{},
 
     pub fn start(self: *Harness) !void {
         const allocator = self.gpa.allocator();
@@ -24,7 +26,7 @@ pub const Harness = struct {
         // The host's first page is the one page there is.
         self.host = try browser_mod.BrowserHost.start(allocator, .{});
         self.server = try devtools.Server.start(allocator, .{ .default_host = self.host });
-        self.mcp_server = try mcp.server.McpServer.create(allocator, self.server);
+        self.mcp_server = try mcp.server.McpServer.createWith(allocator, self.server, self.options);
         _ = try self.send("initialize", "{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1\"}}");
     }
 
@@ -44,6 +46,26 @@ pub const Harness = struct {
         const message = try std.fmt.allocPrint(a, "{{\"jsonrpc\":\"2.0\",\"id\":{d},\"method\":\"{s}\",\"params\":{s}}}", .{ id, method, params });
         const answer = (try self.mcp_server.handle(a, message)) orelse return error.NoAnswer;
         return std.json.parseFromSliceLeaky(std.json.Value, a, answer, .{});
+    }
+
+    /// tools/list's `tools` array, parsed.
+    pub fn listed(self: *Harness) ![]const std.json.Value {
+        const answer = try self.send("tools/list", "{}");
+        return answer.object.get("result").?.object.get("tools").?.array.items;
+    }
+
+    /// The listed definition of tool `name`, if listed.
+    pub fn definition(self: *Harness, name: []const u8) !?std.json.Value {
+        for (try self.listed()) |d| if (std.mem.eql(u8, d.object.get("name").?.string, name)) return d;
+        return null;
+    }
+
+    /// A tools/call's JSON-RPC error message, if it was answered with one.
+    pub fn callError(self: *Harness, name: []const u8, arguments: []const u8) !?[]const u8 {
+        const a = self.arena.allocator();
+        const answer = try self.send("tools/call", try std.fmt.allocPrint(a, "{{\"name\":\"{s}\",\"arguments\":{s}}}", .{ name, arguments }));
+        const err = answer.object.get("error") orelse return null;
+        return err.object.get("message").?.string;
     }
 
     /// Let the browser's events reach the MCP server for `ms` (what comes

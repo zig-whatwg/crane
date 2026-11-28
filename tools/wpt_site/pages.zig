@@ -141,6 +141,7 @@ pub const McpSummary = struct {
     tools_needs_renderer: u64 = 0,
     tools_chrome_only: u64 = 0,
     tools_not_tested: u64 = 0,
+    tools_not_implemented: u64 = 0,
 };
 
 pub const McpTool = struct {
@@ -2549,6 +2550,7 @@ fn mcpStatusLabel(status: []const u8) []const u8 {
     if (std.mem.eql(u8, status, "differs")) return "Differs";
     if (std.mem.eql(u8, status, "needs_renderer")) return "Needs renderer";
     if (std.mem.eql(u8, status, "chrome_only")) return "Chrome-only";
+    if (std.mem.eql(u8, status, "not_implemented")) return "Not implemented";
     return "Not tested";
 }
 
@@ -2558,6 +2560,7 @@ fn mcpStatusClass(status: []const u8) []const u8 {
     if (std.mem.eql(u8, status, "differs")) return "gate gate-err g-block";
     if (std.mem.eql(u8, status, "needs_renderer")) return "gate gate-exempt";
     if (std.mem.eql(u8, status, "chrome_only")) return "gate gate-empty";
+    if (std.mem.eql(u8, status, "not_implemented")) return "gate gate-err g-block";
     return "gate gate-unrun";
 }
 
@@ -2597,6 +2600,12 @@ pub fn writeMcpPage(w: W, site: *const Site) Error!void {
     try w.writeAll("<div><dt>Chrome-only</dt><dd>");
     try html.num(w, s.tools_chrome_only);
     try w.writeAll("</dd></div>");
+    try w.print("<div{s}><dt>Not implemented</dt><dd>", .{if (s.tools_not_implemented > 0) " class=\"fail\"" else ""});
+    try html.num(w, s.tools_not_implemented);
+    try w.writeAll("</dd></div>");
+    try w.print("<div{s}><dt>Not tested</dt><dd>", .{if (s.tools_not_tested > 0) " class=\"fail\"" else ""});
+    try html.num(w, s.tools_not_tested);
+    try w.writeAll("</dd></div>");
     try w.writeAll("</dl>\n</div>\n");
     try w.writeAll("<p class=\"subtitle\">Same MCP tool calls sent over stdio to Google&rsquo;s <code>chrome-devtools-mcp</code> v");
     try html.text(w, m.chrome_mcp_version);
@@ -2617,7 +2626,9 @@ pub fn writeMcpPage(w: W, site: *const Site) Error!void {
     try html.num(w, s.tools_chrome_only);
     try w.writeAll(" chrome-only, ");
     try html.num(w, s.tools_not_tested);
-    try w.writeAll(" not tested in this run.</p>\n");
+    try w.writeAll(" not tested in this run, ");
+    try html.num(w, s.tools_not_implemented);
+    try w.writeAll(" not implemented.</p>\n");
     try w.writeAll("<table class=\"listing\">\n<thead><tr><th scope=\"col\">Tool</th><th scope=\"col\">Category</th><th scope=\"col\">Status</th><th scope=\"col\">Notes</th></tr></thead>\n<tbody>\n");
     for (m.tools) |t| {
         try w.writeAll("<tr><th scope=\"row\"><code>");

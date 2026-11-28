@@ -422,6 +422,10 @@ pub const State = struct {
     /// Wait budget for loading source maps (LogpointManager's 5 s default;
     /// overridable in tests so verify-mode timeout tests run fast).
     source_map_timeout_ms: u32 = default_source_map_timeout_ms,
+    /// `--sourceMaps` (McpPage.syncSourceMaps: devtools-frontend's
+    /// jsSourceMapsEnabled and cssSourceMapsEnabled settings): off, no
+    /// script's source map is loaded, so nothing resolves through one.
+    source_maps: bool = true,
 
     pub fn deinit(self: *State, allocator: Allocator) void {
         for (self.scripts.items) |*s| s.deinit(allocator);
@@ -509,6 +513,7 @@ pub const State = struct {
         paths: *paths_mod.Policy,
     ) void {
         if (script.map_state != .none) return;
+        if (!self.source_maps) return;
         if (script.source_map_url.len == 0 or script.has_syntax_error) return;
 
         var scratch = std.heap.ArenaAllocator.init(allocator);
@@ -911,6 +916,7 @@ pub fn formatList(arena: Allocator, records: []const *Logpoint) ![]const u8 {
 /// stacks 32 deep. A failure is logged, as Google's server logs it, and
 /// tried again at the next page tool.
 pub fn initUniverse(session: *Session, page: *Page) !void {
+    page.logpoints.source_maps = session.source_maps;
     if (page.debugger_session_id != null or page.closed) return;
     var params_buffer: [256]u8 = undefined;
     const params = std.fmt.bufPrint(&params_buffer, "{{\"targetId\":{f},\"flatten\":true}}", .{std.json.fmt(page.target_id, .{})}) catch return;

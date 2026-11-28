@@ -8,10 +8,22 @@
 //! real device pipeline (`user_input` / `drag_and_drop`, `isTrusted: true`,
 //! Chrome event order, focus, `:hover`/`:active`, activation) through local-only
 //! Browser-thread `Input` handlers, refusing elements that computed style or
-//! HTML state says cannot be hit (`display: none`, `visibility: hidden`,
-//! `pointer-events: none`, `inert`, and `disabled` controls where Puppeteer's
-//! locator requires enabled). `clientX`/`clientY` are 0, nothing scrolls first,
-//! and overlays never intercept.
+//! HTML state says cannot be hit (`visibility: hidden`, `pointer-events:
+//! none`, `inert`). `clientX`/`clientY` are 0, nothing scrolls first, and
+//! overlays never intercept.
+//!
+//! What Puppeteer's locator waits for, Crane waits for the same way (`Locator`
+//! below; main's rulings (a), 2026-11-27 7:59 PM ET, and 9:27 PM ET for
+//! display: none): an element with no box (`display: none`, itself or an
+//! ancestor) is acted on once it has one, a native form control with a
+//! `disabled` attribute once it loses it, and a failed fill (read-only, no such
+//! option, a value the input rejects, nothing to fill) is tried again - every
+//! 100 ms, until the locator's timeout ends it with chrome-devtools-mcp's "The
+//! element did not become interactive within the configured timeout." The
+//! geometry-bound differences - pointer-events: none refused rather than
+//! clicked through, overlays, coordinates, scrolling - are the differential's
+//! expected differences (rulings (b) and (c)); README.md's "Element input" says
+//! what an agent sees.
 
 const std = @import("std");
 const registry = @import("../tools.zig");
@@ -24,6 +36,7 @@ const wait = @import("../wait.zig");
 const keyboard = @import("../keyboard.zig");
 const elements = @import("../elements.zig");
 const snapshot_tools = @import("snapshot.zig");
+const platform = @import("platform");
 
 pub const list = [_]Tool{
     .{ .name = "click", .page_tool = true, .blocked_by_dialog = true, .run = click },
@@ -43,6 +56,121 @@ const typing_threshold: usize = 100;
 
 /// Puppeteer's waitForFileChooser timeout in chrome-devtools-mcp uploadFile.
 const file_chooser_timeout_ms: u32 = 3000;
+
+/// chrome-devtools-mcp's DEFAULT_TIMEOUT (src/McpPage.ts): the page's default
+/// timeout, which every locator takes, before CPU throttling.
+const default_timeout_ms: f64 = 5_000;
+
+/// fillFormElements' timeoutPerChar: a fill's locator gets 10 ms more a character.
+const fill_timeout_per_char_ms: u64 = 10;
+
+/// handleActionError's words for the locator's TimeoutError.
+const locator_timeout_reason = "The element did not become interactive within the configured timeout.";
+
+/// The locator's timeout (ms): the page's default timeout -
+/// McpPage.updateTimeouts' DEFAULT_TIMEOUT x the CPU throttling rate - plus
+/// `extra_ms`.
+pub fn locatorTimeoutMs(cpu_throttling_rate: f64, extra_ms: u64) u64 {
+    const rate = if (cpu_throttling_rate > 1) cpu_throttling_rate else 1;
+    return @as(u64, @intFromFloat(default_timeout_ms * rate)) + extra_ms;
+}
+
+/// Puppeteer's locator retry (puppeteer-core 25.17.0
+/// src/api/locators/locators.ts, Apache-2.0, THIRD_PARTY_NOTICES.md:
+/// `retryAndRaceWithSignalAndTimer` - `retry({delay: RETRY_DELAY})` raced with
+/// `timeout(this._timeout)`): an attempt whose conditions do not hold yet, or
+/// that failed, is made again RETRY_DELAY later, until the timeout. The page's
+/// events are served while it waits; a dialog ends the wait (handleActionError:
+/// the action opened it).
+const Locator = struct {
+    deadline_ms: i64,
+
+    /// RETRY_DELAY.
+    const retry_delay_ms: i64 = 100;
+
+    const Next = enum { again, timed_out, interrupted };
+
+    fn start(page: *const Page, extra_ms: u64) Locator {
+        const timeout: i64 = @intCast(locatorTimeoutMs(page.emulation.cpu_throttling_rate, extra_ms));
+        return .{ .deadline_ms = platform.monotonicMillis() + timeout };
+    }
+
+    /// After a failed attempt: wait RETRY_DELAY (or what is left), then
+    /// `.again`; `.timed_out` once the timeout has passed; `.interrupted` when a
+    /// dialog opened.
+    fn next(self: Locator, ctx: *Context, page: *Page) !Next {
+        if (interrupted(ctx, page)) return .interrupted;
+        const now = platform.monotonicMillis();
+        if (now >= self.deadline_ms) return .timed_out;
+        const until = @min(now + retry_delay_ms, self.deadline_ms);
+        while (platform.monotonicMillis() < until) {
+            _ = try ctx.session.client.pump(10 * std.time.ns_per_ms);
+            if (interrupted(ctx, page)) return .interrupted;
+        }
+        return .again;
+    }
+
+    fn interrupted(ctx: *Context, page: *Page) bool {
+        if (page.dialog != null) return true;
+        if (ctx.session.watch) |w| return w.dialog_detected or w.aborted;
+        return false;
+    }
+};
+
+// Page functions copied from Puppeteer (https://github.com/puppeteer/puppeteer,
+// tag puppeteer-core-v25.17.0 = f255d2374e24a24880d4c37582d53f422377c7d4;
+// "Copyright 2023 Google Inc.", SPDX-License-Identifier: Apache-2.0;
+// THIRD_PARTY_NOTICES.md): packages/puppeteer-core/src/api/locators/locators.ts -
+// #waitForEnabledIfNeeded's condition (enabled_js), #fill's classification,
+// typeable step and fillDirectly (classify_fill_js, prepare_typeable_js,
+// fill_directly_js) - and src/api/ElementHandle.ts - select and focus
+// (select_value_js, focus_js). What they throw is answered as a value, so the
+// attempt can be made again; Crane's own additions are marked.
+
+/// Puppeteer's `#waitForEnabledIfNeeded` condition: a native form control is
+/// enabled when it has no `disabled` attribute - its own, not a fieldset's -
+/// and anything else is.
+const enabled_js =
+    \\element => {
+    \\  if (!(element instanceof HTMLElement)) {
+    \\    return 'enabled';
+    \\  }
+    \\  const isNativeFormControl = [
+    \\    'BUTTON',
+    \\    'INPUT',
+    \\    'SELECT',
+    \\    'TEXTAREA',
+    \\    'OPTION',
+    \\    'OPTGROUP',
+    \\  ].includes(element.nodeName);
+    \\  return !isNativeFormControl || !element.hasAttribute('disabled') ? 'enabled' : 'disabled';
+    \\}
+    \\//# sourceURL=pptr:internal
+    \\
+;
+
+/// Whether `element` meets the locator's enabled condition; an evaluation that
+/// fails counts as not yet (the locator retries every failure).
+fn enabled(ctx: *Context, page: *Page, context_id: i64, element: elements.Element) !bool {
+    const answer = callOnString(ctx, page, context_id, enabled_js, element.argument, null) catch |err| switch (err) {
+        error.DialogAborted, error.OutOfMemory => return err,
+        else => return false,
+    };
+    return if (answer) |a| std.mem.eql(u8, a, "enabled") else false;
+}
+
+/// A JavaScript string's length (UTF-16 code units), as Puppeteer measures a value.
+fn jsLength(s: []const u8) usize {
+    return std.unicode.calcUtf16LeLen(s) catch s.len;
+}
+
+test "the locator's timeout: DEFAULT_TIMEOUT times the CPU throttling rate, plus a fill's 10 ms a character" {
+    try std.testing.expectEqual(@as(u64, 5_000), locatorTimeoutMs(1, 0));
+    try std.testing.expectEqual(@as(u64, 20_000), locatorTimeoutMs(4, 0));
+    try std.testing.expectEqual(@as(u64, 5_000), locatorTimeoutMs(0.5, 0));
+    try std.testing.expectEqual(@as(u64, 5_000 + 7 * fill_timeout_per_char_ms), locatorTimeoutMs(1, jsLength("changed") * fill_timeout_per_char_ms));
+    try std.testing.expectEqual(@as(usize, 2), jsLength("\u{1F600}"));
+}
 
 /// `click_at` (`--experimentalVision`): coordinate-based clicks require a
 /// renderer/layout engine to hit-test screen coordinates (design §4 & §6).
@@ -72,21 +200,47 @@ fn click(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Respo
         role: []const u8,
         dbl_click: bool,
 
+        /// Locator.click: the attempt again every RETRY_DELAY until it acts.
         pub fn run(self: @This(), c: *Context) !void {
+            const locator = Locator.start(self.page, 0);
+            while (!try self.attempt(c)) {
+                switch (try locator.next(c, self.page)) {
+                    .again => {},
+                    .interrupted => return,
+                    .timed_out => return failInteract(c, self.uid, locator_timeout_reason),
+                }
+            }
+        }
+
+        /// One attempt: true once it acted (or a dialog cut it short), false
+        /// while the element has no box or is not enabled yet.
+        fn attempt(self: @This(), c: *Context) !bool {
             if (!self.dbl_click and std.mem.eql(u8, self.role, "option")) {
-                const handled = try selectNativeOption(c, self.page, self.uid, self.element);
-                if (handled) return;
+                switch (try selectNativeOption(c, self.page, self.element)) {
+                    .selected => return true,
+                    .disabled => return false,
+                    .not_native => {},
+                }
             }
             const object_id = self.element.object_id orelse return failInteract(c, self.uid, "Node is not an Element.");
-            const params = try std.fmt.allocPrint(
-                c.arena,
-                "{{\"objectId\":{f},\"clickCount\":{d},\"checkEnabled\":true}}",
-                .{ std.json.fmt(object_id, .{}), if (self.dbl_click) @as(u32, 2) else @as(u32, 1) },
-            );
-            callElementAction(c, self.page, self.uid, "Input._craneClickElement", params) catch |err| switch (err) {
-                error.DialogAborted => return,
+            const context_id = try elements.mainWorld(c, self.page, self.element.frame_id);
+            const ready = enabled(c, self.page, context_id, self.element) catch |err| switch (err) {
+                error.DialogAborted => return true,
                 else => return err,
             };
+            if (!ready) return false;
+            // The locator has waited for enabled; the click itself is
+            // ElementHandle.click, which checks nothing more.
+            const params = try std.fmt.allocPrint(
+                c.arena,
+                "{{\"objectId\":{f},\"clickCount\":{d},\"checkEnabled\":false}}",
+                .{ std.json.fmt(object_id, .{}), if (self.dbl_click) @as(u32, 2) else @as(u32, 1) },
+            );
+            const acted = elementAction(c, self.page, self.uid, "Input._craneClickElement", params) catch |err| switch (err) {
+                error.DialogAborted => return true,
+                else => return err,
+            };
+            return acted == .acted;
         }
     };
 
@@ -112,27 +266,32 @@ fn click(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Respo
     if (include_snapshot and target.dialog == null) response.snapshot = try snapshot_tools.capture(ctx, target, false);
 }
 
+const NativeOption = enum { selected, disabled, not_native };
+
 /// chrome-devtools-mcp selectNativeSelectOption: for an AX `option` inside a
-/// native `<select>`, select it and dispatch `input` + `change` on the select.
-/// Returns false if the element has no ancestor `<select>` (fall back to click).
-fn selectNativeOption(ctx: *Context, page: *Page, uid: []const u8, element: elements.Element) !bool {
+/// native `<select>`, select it and dispatch `input` + `change` on the select;
+/// `.not_native` if the element has no ancestor `<select>` (fall back to
+/// click). A disabled option, optgroup or select is `.disabled`: Chrome's
+/// server falls back to the locator's click on the option then, which waits
+/// for it to be enabled - here the attempt is made again until it is.
+fn selectNativeOption(ctx: *Context, page: *Page, element: elements.Element) !NativeOption {
     const context_id = try elements.mainWorld(ctx, page, element.frame_id);
     const ans = callOnString(ctx, page, context_id, select_native_option_js, element.argument, null) catch |err| switch (err) {
-        error.DialogAborted => return true,
+        error.DialogAborted => return .selected,
         else => return err,
     };
-    const status = ans orelse return false;
-    if (std.mem.eql(u8, status, "ok")) return true;
-    if (std.mem.eql(u8, status, "no_select")) return false;
-    if (std.mem.eql(u8, status, "disabled")) return failInteract(ctx, uid, "Element is disabled and cannot be interacted with.");
-    return false;
+    const status = ans orelse return .not_native;
+    if (std.mem.eql(u8, status, "ok")) return .selected;
+    if (std.mem.eql(u8, status, "disabled")) return .disabled;
+    return .not_native;
 }
 
 const select_native_option_js =
     \\element => {
     \\  const select = element.closest('select');
     \\  if (!select) return 'no_select';
-    \\  if (element.disabled || select.disabled) return 'disabled';
+    \\  const group = element.parentElement;
+    \\  if (element.disabled || select.disabled || (group instanceof HTMLOptGroupElement && group.disabled)) return 'disabled';
     \\  if (select.multiple) {
     \\    element.selected = true;
     \\  } else {
@@ -163,13 +322,24 @@ fn hover(ctx: *Context, args: std.json.ObjectMap, page: ?*Page, response: *Respo
         uid: []const u8,
         element: elements.Element,
 
+        /// Locator.hover: no enabled wait, but an element with no box is
+        /// waited for.
         pub fn run(self: @This(), c: *Context) !void {
             const object_id = self.element.object_id orelse return failInteract(c, self.uid, "Node is not an Element.");
             const params = try std.fmt.allocPrint(c.arena, "{{\"objectId\":{f}}}", .{std.json.fmt(object_id, .{})});
-            callElementAction(c, self.page, self.uid, "Input._craneHoverElement", params) catch |err| switch (err) {
-                error.DialogAborted => return,
-                else => return err,
-            };
+            const locator = Locator.start(self.page, 0);
+            while (true) {
+                const acted = elementAction(c, self.page, self.uid, "Input._craneHoverElement", params) catch |err| switch (err) {
+                    error.DialogAborted => return,
+                    else => return err,
+                };
+                if (acted == .acted) return;
+                switch (try locator.next(c, self.page)) {
+                    .again => {},
+                    .interrupted => return,
+                    .timed_out => return failInteract(c, self.uid, locator_timeout_reason),
+                }
+            }
         }
     };
 
@@ -318,22 +488,15 @@ fn fillOne(ctx: *Context, page: *Page, uid: []const u8, raw_value: []const u8) !
     defer if (element.object_id) |id| elements.release(ctx, page, id);
 
     const object_id = element.object_id orelse return failInteract(ctx, uid, "Node is not an Element.");
-    // Option 2 preconditions: visible (not display:none / visibility:hidden), not inert, not disabled.
-    const check_params = try std.fmt.allocPrint(
-        ctx.arena,
-        "{{\"objectId\":{f},\"checkEnabled\":true,\"checkPointerEvents\":false}}",
-        .{std.json.fmt(object_id, .{})},
-    );
-    callElementAction(ctx, page, uid, "Input._craneCheckElement", check_params) catch |err| switch (err) {
-        error.DialogAborted => return true,
-        else => return err,
-    };
+    const context_id = try elements.mainWorld(ctx, page, element.frame_id);
 
-    // chrome-devtools-mcp selectOption: for AX combobox with option children,
-    // match an option by its accessible name, or fail with chrome-devtools-mcp's
-    // exact message ("Could not find option with text ...").
-    var effective_value = raw_value;
+    // What fillFormElements decides before it hands the element to a locator.
+    var value = raw_value;
+    var toggle: ?bool = null;
+    var extra_ms: u64 = 0;
     if (std.mem.eql(u8, target_info.role, "combobox") and target_info.options.len > 0) {
+        // selectOption: an AX combobox with option children takes an
+        // option's accessible name ("Could not find option with text ...").
         var matched_opt = false;
         for (target_info.options) |opt| {
             if (!std.mem.eql(u8, opt.name, raw_value)) continue;
@@ -342,97 +505,152 @@ fn fillOne(ctx: *Context, page: *Page, uid: []const u8, raw_value: []const u8) !
             defer if (opt_el.object_id) |oid| elements.release(ctx, page, oid);
             const opt_ctx = elements.mainWorld(ctx, page, opt.frame_id) catch break;
             if (callOnString(ctx, page, opt_ctx, read_option_value_js, opt_el.argument, null) catch null) |ov| {
-                effective_value = ov;
+                value = ov;
             }
             break;
         }
         if (!matched_opt) {
             return ctx.fail("Failed to interact with the element with uid {s}. Could not find option with text \"{s}\"", .{ uid, raw_value });
         }
-    }
-
-    const context_id = try elements.mainWorld(ctx, page, element.frame_id);
-    const info_json = (callOnString(ctx, page, context_id, classify_fill_js, element.argument, null) catch |err| switch (err) {
-        error.DialogAborted => return true,
-        else => return err,
-    }) orelse return failInteract(ctx, uid, "Element cannot be filled out.");
-
-    const parsed = std.json.parseFromSliceLeaky(std.json.Value, ctx.arena, info_json, .{}) catch
-        return failInteract(ctx, uid, "Element cannot be filled out.");
-    if (parsed != .object) return failInteract(ctx, uid, "Element cannot be filled out.");
-    const info = parsed.object;
-    const kind = session_mod.str(info.get("kind"));
-    const read_only = if (info.get("readOnly")) |v| v == .bool and v.bool else false;
-    const checked = if (info.get("checked")) |v| v == .bool and v.bool else false;
-
-    if (read_only) return failInteract(ctx, uid, "Element is read-only.");
-
-    if (std.mem.eql(u8, kind, "select")) {
-        const res = callOnString(ctx, page, context_id, select_value_js, element.argument, effective_value) catch |err| switch (err) {
+    } else {
+        const kind = (callOnString(ctx, page, context_id, is_toggle_js, element.argument, null) catch |err| switch (err) {
             error.DialogAborted => return true,
             else => return err,
-        };
-        if (res == null or !std.mem.eql(u8, res.?, "ok")) {
-            return ctx.fail("Failed to interact with the element with uid {s}. Element has no option with the value \"{s}\".", .{ uid, effective_value });
+        }) orelse "";
+        if (std.mem.eql(u8, kind, "toggle")) {
+            if (std.mem.eql(u8, raw_value, "true")) {
+                toggle = true;
+            } else if (std.mem.eql(u8, raw_value, "false")) {
+                toggle = false;
+            } else {
+                return ctx.fail("Failed to interact with the element with uid {s}. Checkboxes, radio boxes and toggles require \"true\" or \"false\" value, but {s} was used", .{ uid, raw_value });
+            }
+        } else {
+            // "Increase timeout for longer input values."
+            extra_ms = jsLength(raw_value) * fill_timeout_per_char_ms;
         }
-        return dialogOpened(ctx, page);
     }
 
-    if (std.mem.eql(u8, kind, "toggle")) {
-        const is_true = std.mem.eql(u8, raw_value, "true");
-        const is_false = std.mem.eql(u8, raw_value, "false");
-        if (!is_true and !is_false) {
-            return ctx.fail("Failed to interact with the element with uid {s}. Checkboxes, radio boxes and toggles require \"true\" or \"false\" value, but {s} was used", .{ uid, raw_value });
+    const locator = Locator.start(page, extra_ms);
+    while (true) {
+        switch (try fillAttempt(ctx, page, uid, element, object_id, context_id, value, toggle)) {
+            .done => return dialogOpened(ctx, page),
+            .dialog => return true,
+            .not_yet => {},
         }
-        if (is_true != checked) {
+        switch (try locator.next(ctx, page)) {
+            .again => {},
+            .interrupted => return true,
+            .timed_out => return failInteract(ctx, uid, locator_timeout_reason),
+        }
+    }
+}
+
+const FillAttempt = enum { done, dialog, not_yet };
+
+/// One attempt of Locator.#fill: the conditions (a box, enabled), the
+/// classification (whose errors - no such option, read-only, a value the input
+/// does not accept, nothing to fill - are retried as the locator retries
+/// them), then the fill. `.not_yet`: try again after RETRY_DELAY.
+fn fillAttempt(
+    ctx: *Context,
+    page: *Page,
+    uid: []const u8,
+    element: elements.Element,
+    object_id: []const u8,
+    context_id: i64,
+    value: []const u8,
+    toggle: ?bool,
+) !FillAttempt {
+    // Option 2's refusals (visibility:hidden, inert) answer at once; an
+    // element with no box is waited for. That it is enabled is the next wait.
+    const check_params = try std.fmt.allocPrint(
+        ctx.arena,
+        "{{\"objectId\":{f},\"checkEnabled\":false,\"checkPointerEvents\":false}}",
+        .{std.json.fmt(object_id, .{})},
+    );
+    const checked_box = elementAction(ctx, page, uid, "Input._craneCheckElement", check_params) catch |err| switch (err) {
+        error.DialogAborted => return .dialog,
+        else => return err,
+    };
+    if (checked_box == .not_rendered) return .not_yet;
+    const ready = enabled(ctx, page, context_id, element) catch |err| switch (err) {
+        error.DialogAborted => return .dialog,
+        else => return err,
+    };
+    if (!ready) return .not_yet;
+
+    const info_json = (callOnString(ctx, page, context_id, classify_fill_js, element.argument, value) catch |err| switch (err) {
+        error.DialogAborted => return .dialog,
+        error.OutOfMemory => return err,
+        else => return .not_yet,
+    }) orelse return .not_yet;
+    const parsed = std.json.parseFromSliceLeaky(std.json.Value, ctx.arena, info_json, .{}) catch return .not_yet;
+    if (parsed != .object) return .not_yet;
+    const kind = session_mod.str(parsed.object.get("kind"));
+
+    if (std.mem.eql(u8, kind, "toggle")) {
+        // toggleIfNeeded: click unless it is already in the asked state (a
+        // mixed one is always clicked); ElementHandle.click checks nothing more.
+        const want = toggle orelse (value.len != 0);
+        const state = parsed.object.get("state") orelse return .not_yet;
+        const mixed = state == .string;
+        const checked = state == .bool and state.bool;
+        if (mixed or checked != want) {
             const click_params = try std.fmt.allocPrint(
                 ctx.arena,
-                "{{\"objectId\":{f},\"clickCount\":1,\"checkEnabled\":true}}",
+                "{{\"objectId\":{f},\"clickCount\":1,\"checkEnabled\":false}}",
                 .{std.json.fmt(object_id, .{})},
             );
             callElementAction(ctx, page, uid, "Input._craneClickElement", click_params) catch |err| switch (err) {
-                error.DialogAborted => return true,
+                error.DialogAborted => return .dialog,
                 else => return err,
             };
         }
-        return dialogOpened(ctx, page);
+        return .done;
     }
 
-    if (std.mem.eql(u8, kind, "typeable")) {
-        if (effective_value.len < typing_threshold) {
-            const prep = callOnString(ctx, page, context_id, prepare_typeable_js, element.argument, effective_value) catch |err| switch (err) {
-                error.DialogAborted => return true,
-                else => return err,
-            };
-            const prep_str = prep orelse "0";
-            if (std.mem.eql(u8, prep_str, "done")) return dialogOpened(ctx, page);
-            const prefix_len = std.fmt.parseInt(usize, prep_str, 10) catch 0;
-            const suffix = if (prefix_len <= effective_value.len) effective_value[prefix_len..] else effective_value;
-            typeChars(ctx, page, suffix) catch |err| switch (err) {
-                error.DialogAborted => return true,
-                else => return err,
-            };
-            return dialogOpened(ctx, page);
-        }
-        return fillDirectly(ctx, page, uid, context_id, element.argument, effective_value);
+    if (std.mem.eql(u8, kind, "select")) {
+        const res = callOnString(ctx, page, context_id, select_value_js, element.argument, value) catch |err| switch (err) {
+            error.DialogAborted => return .dialog,
+            error.OutOfMemory => return err,
+            else => return .not_yet,
+        };
+        return if (res != null and std.mem.eql(u8, res.?, "ok")) .done else .not_yet;
     }
 
-    if (std.mem.eql(u8, kind, "direct")) {
-        return fillDirectly(ctx, page, uid, context_id, element.argument, effective_value);
+    if (std.mem.eql(u8, kind, "typeable") and jsLength(value) < typing_threshold) {
+        // Clear what does not lead to the value, then ElementHandle.type the rest.
+        const rest = (callOnString(ctx, page, context_id, prepare_typeable_js, element.argument, value) catch |err| switch (err) {
+            error.DialogAborted => return .dialog,
+            error.OutOfMemory => return err,
+            else => return .not_yet,
+        }) orelse return .not_yet;
+        if (rest.len == 0) return .done;
+        _ = callOnString(ctx, page, context_id, focus_js, element.argument, null) catch |err| switch (err) {
+            error.DialogAborted => return .dialog,
+            error.OutOfMemory => return err,
+            else => return .not_yet,
+        };
+        typeChars(ctx, page, rest) catch |err| switch (err) {
+            error.DialogAborted => return .dialog,
+            else => return err,
+        };
+        return .done;
     }
 
-    return failInteract(ctx, uid, "Element cannot be filled out.");
-}
-
-fn fillDirectly(ctx: *Context, page: *Page, uid: []const u8, context_id: i64, argument: []const u8, value: []const u8) !bool {
-    const res = callOnString(ctx, page, context_id, fill_directly_js, argument, value) catch |err| switch (err) {
-        error.DialogAborted => return true,
-        else => return err,
-    };
-    if (res != null and std.mem.eql(u8, res.?, "rejected")) {
-        return ctx.fail("Failed to interact with the element with uid {s}. Element did not accept the value \"{s}\".", .{ uid, value });
+    if (std.mem.eql(u8, kind, "typeable") or std.mem.eql(u8, kind, "direct")) {
+        // fillDirectly: focus, then set the value and fire input and change.
+        _ = callOnString(ctx, page, context_id, fill_directly_js, element.argument, value) catch |err| switch (err) {
+            error.DialogAborted => return .dialog,
+            error.OutOfMemory => return err,
+            else => return .not_yet,
+        };
+        return .done;
     }
-    return dialogOpened(ctx, page);
+
+    // 'unknown': "Element cannot be filled out." - retried like any failure.
+    return .not_yet;
 }
 
 fn dialogOpened(ctx: *Context, page: *Page) bool {
@@ -447,118 +665,196 @@ const read_option_value_js =
     \\
 ;
 
-const classify_fill_js =
-    \\element => {
-    \\  if (!element || element.nodeType !== 1) return JSON.stringify({ kind: 'unsupported' });
-    \\  const tag = element.tagName;
-    \\  if (tag === 'SELECT') return JSON.stringify({ kind: 'select', readOnly: false });
-    \\  const role = (element.getAttribute('role') || '').toLowerCase();
-    \\  if (tag === 'INPUT') {
-    \\    const t = (element.type || 'text').toLowerCase();
-    \\    if (t === 'checkbox' || t === 'radio') {
-    \\      return JSON.stringify({ kind: 'toggle', checked: !!element.checked, readOnly: false });
-    \\    }
-    \\    if (t === 'button' || t === 'submit' || t === 'reset' || t === 'image' || t === 'file' || t === 'hidden') {
-    \\      return JSON.stringify({ kind: 'unsupported' });
-    \\    }
-    \\    const typeable = (t === 'text' || t === 'search' || t === 'tel' || t === 'url' || t === 'email' || t === 'password' || t === 'number');
-    \\    return JSON.stringify({ kind: typeable ? 'typeable' : 'direct', readOnly: !!element.readOnly });
+/// fillFormElements' isToggle (chrome-devtools-mcp src/tools/input.ts).
+const is_toggle_js =
+    \\el => {
+    \\  if (el instanceof HTMLInputElement) {
+    \\    return el.type === 'checkbox' || el.type === 'radio' ? 'toggle' : 'other';
     \\  }
-    \\  if (tag === 'TEXTAREA') {
-    \\    return JSON.stringify({ kind: 'typeable', readOnly: !!element.readOnly });
-    \\  }
-    \\  if (role === 'checkbox' || role === 'radio' || role === 'switch') {
-    \\    return JSON.stringify({ kind: 'toggle', checked: element.getAttribute('aria-checked') === 'true', readOnly: false });
-    \\  }
-    \\  if (element.isContentEditable) {
-    \\    return JSON.stringify({ kind: 'typeable', readOnly: false });
-    \\  }
-    \\  return JSON.stringify({ kind: 'unsupported' });
+    \\  const role = el.getAttribute('role');
+    \\  return role === 'checkbox' || role === 'radio' || role === 'switch' ? 'toggle' : 'other';
     \\}
     \\//# sourceURL=pptr:internal
     \\
 ;
 
-const select_value_js =
-    \\(element, value) => {
-    \\  let matched = false;
-    \\  for (const opt of element.options) {
-    \\    if (opt.value === value) {
-    \\      matched = true;
-    \\      break;
+/// Locator.#fill's classification (copied; its throws answered as `{retry}`),
+/// with toggleIfNeeded's state read for a toggle (Crane's: `toggleState`, from
+/// toggleIfNeeded's evaluation).
+const classify_fill_js =
+    \\(el, newValue) => {
+    \\  const toggleState = el => (el.indeterminate || el.getAttribute('aria-checked') === 'mixed')
+    \\    ? 'mixed'
+    \\    : !!(el.checked || el.getAttribute('aria-checked') === 'true');
+    \\  if (el instanceof HTMLSelectElement) {
+    \\    if (!Array.from(el.options).some(option => option.value === newValue)) {
+    \\      return JSON.stringify({ retry: `Element has no option with the value "${newValue}".` });
+    \\    }
+    \\    return JSON.stringify({ kind: 'select' });
+    \\  }
+    \\  if (el instanceof HTMLTextAreaElement) {
+    \\    if (el.readOnly) {
+    \\      return JSON.stringify({ retry: 'Element is read-only.' });
+    \\    }
+    \\    return JSON.stringify({ kind: 'typeable' });
+    \\  }
+    \\  if (el instanceof HTMLInputElement) {
+    \\    if (el.type === 'checkbox' || el.type === 'radio') {
+    \\      return JSON.stringify({ kind: 'toggle', state: toggleState(el) });
+    \\    }
+    \\    if (
+    \\      el.readOnly &&
+    \\      [
+    \\        'text',
+    \\        'search',
+    \\        'url',
+    \\        'tel',
+    \\        'email',
+    \\        'password',
+    \\        'number',
+    \\        'date',
+    \\        'month',
+    \\        'week',
+    \\        'time',
+    \\        'datetime-local',
+    \\      ].includes(el.type)
+    \\    ) {
+    \\      return JSON.stringify({ retry: 'Element is read-only.' });
+    \\    }
+    \\    if (el.type !== 'file' && String(newValue) !== '') {
+    \\      // Validate without modifying the element before a possible retry.
+    \\      const probe = document.createElement('input');
+    \\      probe.type = el.type;
+    \\      probe.value = String(newValue);
+    \\      if (probe.value === '') {
+    \\        return JSON.stringify({ retry: `Element did not accept the value "${newValue}".` });
+    \\      }
+    \\    }
+    \\    switch (el.type) {
+    \\      case 'text':
+    \\      case 'url':
+    \\      case 'tel':
+    \\      case 'search':
+    \\      case 'password':
+    \\      case 'number':
+    \\      case 'email':
+    \\        return JSON.stringify({ kind: 'typeable' });
+    \\      default:
+    \\        return JSON.stringify({ kind: 'direct' });
     \\    }
     \\  }
-    \\  if (!matched) return 'missing';
-    \\  if (element.multiple) {
-    \\    for (const opt of element.options) opt.selected = (opt.value === value);
-    \\  } else {
-    \\    for (const opt of element.options) {
-    \\      if (opt.value === value) {
-    \\        opt.selected = true;
+    \\  switch (el.getAttribute('role')) {
+    \\    case 'checkbox':
+    \\    case 'radio':
+    \\    case 'switch':
+    \\      return JSON.stringify({ kind: 'toggle', state: toggleState(el) });
+    \\  }
+    \\  if (el.isContentEditable) {
+    \\    return JSON.stringify({ kind: 'typeable' });
+    \\  }
+    \\  return JSON.stringify({ retry: 'Element cannot be filled out.' });
+    \\}
+    \\//# sourceURL=pptr:internal
+    \\
+;
+
+/// ElementHandle.select (copied) for one value.
+const select_value_js =
+    \\(element, value) => {
+    \\  const values = new Set([value]);
+    \\  if (!(element instanceof HTMLSelectElement)) {
+    \\    return 'not_select';
+    \\  }
+    \\  if (!element.multiple) {
+    \\    for (const option of element.options) {
+    \\      option.selected = false;
+    \\    }
+    \\    for (const option of element.options) {
+    \\      if (values.has(option.value)) {
+    \\        option.selected = true;
     \\        break;
     \\      }
     \\    }
+    \\  } else {
+    \\    for (const option of element.options) {
+    \\      option.selected = values.has(option.value);
+    \\    }
     \\  }
-    \\  element.dispatchEvent(new Event('input', { bubbles: true }));
-    \\  element.dispatchEvent(new Event('change', { bubbles: true }));
+    \\  element.dispatchEvent(new Event('input', {bubbles: true}));
+    \\  element.dispatchEvent(new Event('change', {bubbles: true}));
     \\  return 'ok';
     \\}
     \\//# sourceURL=pptr:internal
     \\
 ;
 
+/// Locator.#fill's typeable step (copied): nothing when the value is there,
+/// else clear what does not lead to it and answer what is left to type ('' for
+/// nothing).
 const prepare_typeable_js =
-    \\(element, value) => {
-    \\  element.focus();
-    \\  if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
-    \\    const cur = element.value || '';
-    \\    if (cur.length > 0 && value.startsWith(cur)) {
-    \\      try { element.setSelectionRange(cur.length, cur.length); } catch {}
-    \\      return String(cur.length);
-    \\    }
-    \\    if (cur.length > 0) {
-    \\      element.value = '';
-    \\      if (value.length === 0) {
-    \\        element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-    \\        element.dispatchEvent(new Event('change', { bubbles: true }));
-    \\        return 'done';
-    \\      }
-    \\    }
-    \\    return '0';
+    \\(input, newValue) => {
+    \\  const element = input;
+    \\  const valString = String(newValue);
+    \\  const currentValue = element.isContentEditable
+    \\    ? element.innerText
+    \\    : input.value;
+    \\  if (currentValue === valString) {
+    \\    return '';
     \\  }
-    \\  // contenteditable
-    \\  const cur = element.textContent || '';
-    \\  if (cur.length > 0 && value.startsWith(cur)) {
-    \\    const sel = element.ownerDocument.getSelection();
-    \\    if (sel) { sel.selectAllChildren(element); sel.collapseToEnd(); }
-    \\    return String(cur.length);
-    \\  }
-    \\  if (cur.length > 0) {
-    \\    element.textContent = '';
-    \\    if (value.length === 0) {
-    \\      element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-    \\      return 'done';
+    \\  if (!valString.startsWith(currentValue) || !currentValue) {
+    \\    if (element.isContentEditable) {
+    \\      element.innerText = '';
+    \\    } else {
+    \\      input.value = '';
     \\    }
+    \\    return valString;
     \\  }
-    \\  const sel = element.ownerDocument.getSelection();
-    \\  if (sel) { sel.selectAllChildren(element); sel.collapseToEnd(); }
-    \\  return '0';
+    \\  if (element.isContentEditable) {
+    \\    element.innerText = '';
+    \\    element.innerText = currentValue;
+    \\  } else {
+    \\    input.value = '';
+    \\    input.value = currentValue;
+    \\  }
+    \\  return valString.substring(currentValue.length);
     \\}
     \\//# sourceURL=pptr:internal
     \\
 ;
 
-const fill_directly_js =
-    \\(element, value) => {
-    \\  element.focus();
-    \\  if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
-    \\    element.value = value;
-    \\    if (element.value !== value) return 'rejected';
-    \\  } else if (element.isContentEditable) {
-    \\    element.textContent = value;
+/// ElementHandle.focus (copied), before ElementHandle.type.
+const focus_js =
+    \\element => {
+    \\  if (!(element instanceof HTMLElement)) {
+    \\    throw new Error('Cannot focus non-HTMLElement');
     \\  }
-    \\  element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-    \\  element.dispatchEvent(new Event('change', { bubbles: true }));
+    \\  element.focus();
+    \\  return 'ok';
+    \\}
+    \\//# sourceURL=pptr:internal
+    \\
+;
+
+/// Locator.#fill's fillDirectly (copied; the focus is its handle.focus()):
+/// focus, then set the value unless it is there, firing input and change.
+const fill_directly_js =
+    \\(input, newValue) => {
+    \\  input.focus();
+    \\  const element = input;
+    \\  const valString = String(newValue);
+    \\  const currentValue = element.isContentEditable
+    \\    ? element.innerText
+    \\    : input.value;
+    \\  if (currentValue === valString) {
+    \\    return 'ok';
+    \\  }
+    \\  if (element.isContentEditable) {
+    \\    element.innerText = valString;
+    \\  } else {
+    \\    input.value = valString;
+    \\  }
+    \\  element.dispatchEvent(new Event('input', {bubbles: true}));
+    \\  element.dispatchEvent(new Event('change', {bubbles: true}));
     \\  return 'ok';
     \\}
     \\//# sourceURL=pptr:internal
@@ -837,6 +1133,34 @@ fn callElementAction(ctx: *Context, page: *Page, uid: ?[]const u8, method: []con
         try ctx.session.client.call(method, params, page.session_id, session_mod.command_timeout_ms);
     defer r.deinit();
     if (r.errorMessage()) |message| return failInteract(ctx, uid, message);
+}
+
+/// What `Input._crane*Element` answers for an element that is not being
+/// rendered (src/devtools/domains/input.zig validateElement). The locator waits
+/// for such an element to get a box - #ensureElementIsInTheViewportIfNeeded's
+/// isIntersectingViewport and scrollIntoView, retried (main's ruling, 9:27 PM
+/// ET 2026-11-27); every other refusal answers at once.
+const not_rendered_refusal = "Element is not visible (display: none).";
+
+const Acted = enum { acted, not_rendered };
+
+/// Invoke a local-only element action under the locator: `.not_rendered` for an
+/// element with no box yet (try again), a failure naming why for any other
+/// refusal.
+fn elementAction(ctx: *Context, page: *Page, uid: []const u8, method: []const u8, params: []const u8) !Acted {
+    var r = if (ctx.session.watch) |w|
+        ctx.session.client.callOrAbort(method, params, page.session_id, session_mod.command_timeout_ms, &w.aborted) catch |err| switch (err) {
+            error.Aborted => return error.DialogAborted,
+            else => return err,
+        }
+    else
+        try ctx.session.client.call(method, params, page.session_id, session_mod.command_timeout_ms);
+    defer r.deinit();
+    if (r.errorMessage()) |message| {
+        if (std.mem.eql(u8, message, not_rendered_refusal)) return .not_rendered;
+        return failInteract(ctx, uid, message);
+    }
+    return .acted;
 }
 
 /// ElementHandle.evaluate(fn) returning a string (copied into `ctx.arena`) or

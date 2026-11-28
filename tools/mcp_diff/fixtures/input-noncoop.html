@@ -1,0 +1,29 @@
+<!doctype html>
+<title>Uncooperative input</title>
+<style>
+  #covered-wrap { position: relative; width: 200px; height: 40px; }
+  #overlay { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.1); }
+  #far { position: absolute; top: 3000px; }
+  #nopointer { pointer-events: none; }
+</style>
+<div id="covered-wrap"><button id="covered">Covered</button><div id="overlay"></div></div>
+<button id="disabled" disabled>Disabled</button>
+<div inert><button id="inert">Inert</button></div>
+<button id="nopointer">No pointer events</button>
+<input id="readonly" readonly value="fixed">
+<button id="far">Far below</button>
+<!-- Calls 10-17: what the locator waits for (main's ruling (a), 2026-11-27): a control enabled late, an
+     input type=button (filled directly), a listbox with no such option, a button hidden after the snapshot. -->
+<button id="late" disabled>Late</button>
+<input id="btninput" type="button" value="Label">
+<select id="pick" multiple aria-label="Pick"><option value="a">Alpha</option></select>
+<button id="hideme">Hide me</button>
+<script>
+  // Every click says what it reached and where, and the scroll offset.
+  document.addEventListener('click', (e) => {
+    console.log('click', e.target.id || e.target.tagName, 'at', e.clientX, e.clientY, 'scrollY', Math.round(window.scrollY), 'trusted', e.isTrusted);
+  }, true);
+  document.addEventListener('pointerover', (e) => {
+    if (e.target.id) console.log('pointerover', e.target.id);
+  }, true);
+</script>

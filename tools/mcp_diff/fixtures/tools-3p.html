@@ -1,0 +1,34 @@
+<!doctype html>
+<title>Third-party tools</title>
+<button id="target">Inspect me</button>
+<script>
+  // A framework's developer tools, offered the way chrome-devtools-mcp's
+  // list_3p_developer_tools discovers them: a 'devtoolstooldiscovery' event
+  // answered with respondWith (src/tools/thirdPartyDeveloper.ts).
+  window.addEventListener('devtoolstooldiscovery', (e) => {
+    e.respondWith({
+      name: 'FixtureFramework',
+      description: 'Tools of the fixture framework',
+      tools: [
+        {
+          name: 'sum',
+          description: 'Adds two numbers',
+          inputSchema: {type: 'object', properties: {a: {type: 'number'}, b: {type: 'number'}}, required: ['a', 'b']},
+          execute: (args) => ({total: args.a + args.b}),
+        },
+        {
+          name: 'fails',
+          description: 'Always throws',
+          inputSchema: {type: 'object', properties: {}},
+          execute: () => { throw new Error('tool failed on purpose'); },
+        },
+        {
+          name: 'nothing',
+          description: 'Returns undefined',
+          inputSchema: {type: 'object', properties: {}},
+          execute: () => undefined,
+        },
+      ],
+    });
+  });
+</script>

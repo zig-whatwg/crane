@@ -43,7 +43,45 @@ pub const Options = struct {
     category_network_mocks: bool = false,
     /// Expose only the slim tool set (`--slim`: navigate, evaluate, screenshot).
     slim: bool = false,
+    // The rest of chrome-devtools-mcp v1.13.0's server flags Crane takes
+    // (src/config/mcp-options.ts, category-options.ts; the console parses
+    // them, camelCase and kebab-case, booleans also as --no-<name>).
+    /// `--categoryExperimentalThirdParty`: list_3p_developer_tools and
+    /// execute_3p_developer_tool ("third-party developer tools exposed by the
+    /// inspected page itself").
+    category_experimental_third_party: bool = false,
+    /// `--experimentalVision`: coordinate-based tools (click_at).
+    experimental_vision: bool = false,
+    /// `--categoryExperimentalWebmcp`: list_webmcp_tools and
+    /// execute_webmcp_tool. They read what the page registered through
+    /// document.modelContext, which a Browser exposes only when started with
+    /// WebMCP enabled (Chrome: `--enable-features=WebMCP`).
+    category_experimental_webmcp: bool = false,
+    /// `--sourceMaps` (`--no-source-maps`): "Whether to enable source maps
+    /// in DevTools".
+    source_maps: bool = true,
+    /// `--javascriptEvaluation` (`--no-javascript-evaluation`): false turns
+    /// off evaluate_script, set_logpoints and slim evaluate, navigate_page's
+    /// initScript, and navigations to javascript:, data: and vbscript: URLs.
+    javascript_evaluation: bool = true,
+    /// `--fileNavigations` (`--no-file-navigations`): false refuses file:
+    /// URLs (view-source: of one included) in new_page, navigate_page and
+    /// navigate.
+    file_navigations: bool = true,
+    /// `--maxNavigationSaved=<n>`: navigations whose requests and console
+    /// messages a page keeps (1..25; collectors/constants.ts
+    /// DEFAULT_MAX_NAVIGATION_SAVED 3).
+    max_navigation_saved: u32 = 3,
+    /// `--redactNetworkHeaders`: sensitive headers redacted in network
+    /// request details.
+    redact_network_headers: bool = false,
+    /// `--pageIdRouting` (`--no-page-id-routing`): page-scoped tools require
+    /// `pageId`; false: they take none and act on the selected page.
+    page_id_routing: bool = true,
 };
+
+/// MAX_NAVIGATION_SAVED_LIMIT (src/config/mcp-options.ts).
+pub const max_navigation_saved_limit = 25;
 
 pub const McpServer = struct {
     allocator: Allocator,
@@ -58,6 +96,10 @@ pub const McpServer = struct {
     }
 
     pub fn createWith(allocator: Allocator, devtools: *DevtoolsServer, options: Options) !*McpServer {
+        // The option's own check (src/config/mcp-options.ts coerce:
+        // "Invalid maxNavigationSaved <n>. Expected an integer between 1 and
+        // 25."); the console refuses the flag with that text first.
+        if (options.max_navigation_saved < 1 or options.max_navigation_saved > max_navigation_saved_limit) return error.InvalidMaxNavigationSaved;
         const self = try allocator.create(McpServer);
         errdefer allocator.destroy(self);
         const link = try devtools.openLocal();
@@ -67,7 +109,12 @@ pub const McpServer = struct {
         const tools_json = try tools.listJsonWithOptions(allocator, .{
             .memory_debugging = options.memory_debugging,
             .category_network_mocks = options.category_network_mocks,
+            .category_experimental_third_party = options.category_experimental_third_party,
+            .experimental_vision = options.experimental_vision,
             .slim = options.slim,
+            .javascript_evaluation = options.javascript_evaluation,
+            .page_id_routing = options.page_id_routing,
+            .max_navigation_saved = options.max_navigation_saved,
         });
         errdefer allocator.free(tools_json);
         // The input schemas each call is checked against.
@@ -76,7 +123,15 @@ pub const McpServer = struct {
         session.paths.allow_unrestricted = options.allow_unrestricted_paths;
         session.memory_debugging = options.memory_debugging;
         session.category_network_mocks = options.category_network_mocks;
+        session.category_experimental_third_party = options.category_experimental_third_party;
+        session.experimental_vision = options.experimental_vision;
         session.slim = options.slim;
+        session.javascript_evaluation = options.javascript_evaluation;
+        session.file_navigations = options.file_navigations;
+        session.page_id_routing = options.page_id_routing;
+        session.setMaxNavigationSaved(options.max_navigation_saved);
+        session.redact_network_headers = options.redact_network_headers;
+        session.source_maps = options.source_maps;
         self.* = .{
             .allocator = allocator,
             .link = link,

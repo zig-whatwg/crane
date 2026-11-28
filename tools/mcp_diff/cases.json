@@ -1667,7 +1667,7 @@
     },
     {
       "name": "logpoints: inline, same-url, indexed, and shared maps",
-      "about": "set_logpoints with inline data: source maps, a transpiled file served at its original source URL (source map preferred), an XSSI-prefixed index map with sections and sourceRoot, one original source mapped across two bundles, and a script whose source map returns 404.",
+      "about": "set_logpoints with inline data: source maps, a transpiled file served at its original source URL (source map preferred), an XSSI-prefixed index map with sections and sourceRoot, one original source mapped across two bundles, and a script whose source map returns 404. The shared source's bundles are compared in any order: Chrome lists them as their source maps finished loading, which varies from run to run (16 of 20 runs chunk2 first, 4 chunk1 first).",
       "calls": [
         {
           "tool": "navigate_page",
@@ -1688,7 +1688,8 @@
               "shared.ts:3 't', t",
               "broken-map.js:1:46 'z', z"
             ]
-          }
+          },
+          "bound_in_any_order": true
         },
         {
           "tool": "evaluate_script",
@@ -2561,6 +2562,640 @@
           }
         }
       ]
+    },
+    {
+      "name": "network mocks: a body file, an upstream, inspection and removal",
+      "about": "mock_network and remove_network_mock with --categoryNetworkMocks on both servers (audit M1: they were equal only on their 'disabled' refusals): one route answered from a local body file, one from an upstream URL, the inspection with hit counts, removing one route, then all.",
+      "category_network_mocks": true,
+      "files": true,
+      "copy_fixtures": [
+        "mock-body.json"
+      ],
+      "calls": [
+        {
+          "tool": "mock_network",
+          "args": {
+            "pageId": 1,
+            "route": "{fixture}/data.json",
+            "body": "{files}/mock-body.json"
+          }
+        },
+        {
+          "tool": "mock_network",
+          "args": {
+            "pageId": 1,
+            "route": "{fixture}/missing.json",
+            "upstream": "{fixture}/data.json"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/network.html"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "async () => [(await (await fetch('data.json')).json()).from, (await (await fetch('missing.json')).json()).from]"
+          }
+        },
+        {
+          "tool": "mock_network",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "remove_network_mock",
+          "args": {
+            "pageId": 1,
+            "route": "{fixture}/data.json"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "async () => (await (await fetch('data.json')).json()).from"
+          }
+        },
+        {
+          "tool": "remove_network_mock",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "mock_network",
+          "args": {
+            "pageId": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "third-party tools: discovery, list, execute",
+      "about": "list_3p_developer_tools and execute_3p_developer_tool with --categoryExperimentalThirdParty on both servers (audit M1 and the untested execute_3p_developer_tool): a page's devtoolstooldiscovery tools listed and run - a result, a throw, undefined, an unknown tool, unparsable params.",
+      "category_experimental_third_party": true,
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/tools-3p.html"
+          }
+        },
+        {
+          "tool": "list_3p_developer_tools",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "execute_3p_developer_tool",
+          "args": {
+            "pageId": 1,
+            "toolName": "sum",
+            "params": "{\"a\":1,\"b\":2}"
+          }
+        },
+        {
+          "tool": "execute_3p_developer_tool",
+          "args": {
+            "pageId": 1,
+            "toolName": "fails"
+          }
+        },
+        {
+          "tool": "execute_3p_developer_tool",
+          "args": {
+            "pageId": 1,
+            "toolName": "nothing"
+          }
+        },
+        {
+          "tool": "execute_3p_developer_tool",
+          "args": {
+            "pageId": 1,
+            "toolName": "nope"
+          }
+        },
+        {
+          "tool": "execute_3p_developer_tool",
+          "args": {
+            "pageId": 1,
+            "toolName": "sum",
+            "params": "{"
+          }
+        }
+      ]
+    },
+    {
+      "name": "slim: navigate and evaluate",
+      "about": "The slim tools with --slim on both servers (the untested navigate and evaluate): a navigation, a value, a throw, a refused URL.",
+      "slim": true,
+      "calls": [
+        {
+          "tool": "navigate",
+          "args": {
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "evaluate",
+          "args": {
+            "script": "document.title"
+          }
+        },
+        {
+          "tool": "evaluate",
+          "args": {
+            "script": "(() => { throw new Error('slim boom'); })()"
+          }
+        },
+        {
+          "tool": "navigate",
+          "args": {
+            "url": "devtools://devtools/bundled/inspector.html"
+          }
+        },
+        {
+          "tool": "evaluate",
+          "args": {
+            "script": "location.href"
+          }
+        }
+      ]
+    },
+    {
+      "name": "flags: --no-javascript-evaluation and --no-file-navigations",
+      "about": "Audit M2: the schemas and refusals of javascriptEvaluation=false and fileNavigations=false (src/config/mcp-options.ts, src/utils/url.ts validateUrl).",
+      "flags": [
+        "--no-javascript-evaluation",
+        "--no-file-navigations"
+      ],
+      "calls": [
+        {
+          "list_tools": [
+            "evaluate_script",
+            "set_logpoints",
+            "navigate_page",
+            "new_page"
+          ]
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => 1"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "javascript:1"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "data:text/html,hi"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "file:///tmp/"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "view-source:file:///tmp/"
+          }
+        },
+        {
+          "tool": "new_page",
+          "args": {
+            "url": "vbscript:x"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html",
+            "initScript": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "flags: --no-page-id-routing",
+      "about": "Audit M2: page tools without pageId, acting on the selected page (src/tools/ToolDefinition.ts definePageTool, src/ToolHandler.ts routedPageId).",
+      "flags": [
+        "--no-page-id-routing"
+      ],
+      "calls": [
+        {
+          "list_tools": [
+            "click",
+            "take_snapshot",
+            "close_page",
+            "select_page",
+            "evaluate_script",
+            "list_console_messages"
+          ]
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "url": "{fixture}/console.html"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {}
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "function": "() => document.title"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "flags: --maxNavigationSaved=2 and --redactNetworkHeaders",
+      "about": "Audit M2: the preserved-navigation count in the schemas and the collectors, and redacted header values (NetworkFormatter#redactNetworkHeaders, devtools-frontend sanitizeHeaders).",
+      "flags": [
+        "--maxNavigationSaved=2",
+        "--redactNetworkHeaders"
+      ],
+      "calls": [
+        {
+          "list_tools": [
+            "list_console_messages",
+            "list_network_requests"
+          ]
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/network.html"
+          }
+        },
+        {
+          "tool": "get_network_request",
+          "args": {
+            "pageId": 1,
+            "reqid": 1
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/console.html"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/title.html"
+          }
+        },
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/console.html"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1,
+            "includePreservedMessages": true
+          }
+        },
+        {
+          "tool": "list_network_requests",
+          "args": {
+            "pageId": 1,
+            "includePreservedRequests": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "flags: --no-source-maps",
+      "about": "Audit M2: with DevTools' source maps off, a console stack trace keeps the generated locations (McpPage.syncSourceMaps).",
+      "flags": [
+        "--no-source-maps"
+      ],
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/console-sourcemap.html"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "get_console_message",
+          "args": {
+            "pageId": 1,
+            "msgid": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "memory: analysis of a heap snapshot Chrome took of a page",
+      "about": "Audit M6: the --memoryDebugging analysis tools on a full-size heap (Chrome's own snapshot of a fixture page, before and after 2,000 more objects, copied to Crane's side), not only the hand-made fixtures.",
+      "memory_debugging": true,
+      "files": true,
+      "copy_to_crane": [
+        "real.heapsnapshot",
+        "real2.heapsnapshot"
+      ],
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/heap.html"
+          }
+        },
+        {
+          "tool": "take_heapsnapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "{files}/real.heapsnapshot"
+          },
+          "side": "chrome"
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { window.__more = Array.from({length: 2000}, (_, i) => new CraneHeapMarkerObject('m' + i)); return window.__more.length; }"
+          },
+          "side": "chrome"
+        },
+        {
+          "tool": "take_heapsnapshot",
+          "args": {
+            "pageId": 1,
+            "filePath": "{files}/real2.heapsnapshot"
+          },
+          "side": "chrome"
+        },
+        {
+          "tool": "get_heapsnapshot_summary",
+          "args": {
+            "filePath": "{files}/real.heapsnapshot"
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_details",
+          "args": {
+            "filePath": "{files}/real.heapsnapshot",
+            "pageSize": 20
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_class_nodes",
+          "args": {
+            "filePath": "{files}/real.heapsnapshot",
+            "id": 0,
+            "pageSize": 5
+          }
+        },
+        {
+          "tool": "query_heapsnapshot_objects",
+          "args": {
+            "filePath": "{files}/real2.heapsnapshot",
+            "className": "CraneHeapMarkerObject",
+            "pageSize": 5
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_duplicate_strings",
+          "args": {
+            "filePath": "{files}/real.heapsnapshot",
+            "pageSize": 10
+          }
+        },
+        {
+          "tool": "analyze_heapsnapshot_contexts",
+          "args": {
+            "filePath": "{files}/real.heapsnapshot",
+            "pageSize": 5
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_object_details",
+          "args": {
+            "filePath": "{files}/real.heapsnapshot",
+            "nodeId": 1
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_edges",
+          "args": {
+            "filePath": "{files}/real.heapsnapshot",
+            "nodeId": 1,
+            "pageSize": 20
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_retainers",
+          "args": {
+            "filePath": "{files}/real.heapsnapshot",
+            "nodeId": 3,
+            "pageSize": 10
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_dominators",
+          "args": {
+            "filePath": "{files}/real.heapsnapshot",
+            "nodeId": 3
+          }
+        },
+        {
+          "tool": "get_heapsnapshot_retaining_paths",
+          "args": {
+            "filePath": "{files}/real.heapsnapshot",
+            "nodeId": 3,
+            "maxDepth": 2
+          }
+        },
+        {
+          "tool": "compare_heapsnapshots",
+          "args": {
+            "baseFilePath": "{files}/real.heapsnapshot",
+            "currentFilePath": "{files}/real2.heapsnapshot",
+            "pageSize": 10
+          }
+        },
+        {
+          "tool": "close_heapsnapshot",
+          "args": {
+            "filePath": "{files}/real.heapsnapshot"
+          }
+        }
+      ]
+    },
+    {
+      "name": "input: covered, disabled, pointer-events none, read-only, far below",
+      "about": "Audit M7: element input where the page does not cooperate - an overlay over the target (inert content is left out of the snapshot, so it has no uid), a disabled button, pointer-events:none, a read-only field, a target 3,000px down - with each click's target, clientX/Y, scroll offset and isTrusted logged (the user's element-input ruling, tmp/plans/mcp1-design.md 11: the element is the target, clientX/Y 0, nothing scrolls). Then what Puppeteer's locator waits for (main's ruling (a), 2026-11-27): a button enabled and the read-only field made writable 300 ms later, an input type=button (filled directly), a listbox with no such option (tried until the timeout), and a button hidden after the snapshot.",
+      "calls": [
+        {
+          "tool": "navigate_page",
+          "args": {
+            "pageId": 1,
+            "url": "{fixture}/input-noncoop.html"
+          }
+        },
+        {
+          "tool": "take_snapshot",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "click",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1"
+          }
+        },
+        {
+          "tool": "click",
+          "args": {
+            "pageId": 1,
+            "uid": "1_2"
+          }
+        },
+        {
+          "tool": "click",
+          "args": {
+            "pageId": 1,
+            "uid": "1_3"
+          }
+        },
+        {
+          "tool": "fill",
+          "args": {
+            "pageId": 1,
+            "uid": "1_4",
+            "value": "changed"
+          }
+        },
+        {
+          "tool": "click",
+          "args": {
+            "pageId": 1,
+            "uid": "1_5"
+          }
+        },
+        {
+          "tool": "hover",
+          "args": {
+            "pageId": 1,
+            "uid": "1_1"
+          }
+        },
+        {
+          "tool": "list_console_messages",
+          "args": {
+            "pageId": 1
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { window.after = []; document.addEventListener('click', e => after.push(e.target.id || e.target.tagName), true); setTimeout(() => { document.getElementById('late').disabled = false; document.getElementById('readonly').readOnly = false; }, 300); return 'armed'; }"
+          }
+        },
+        {
+          "tool": "click",
+          "args": {
+            "pageId": 1,
+            "uid": "1_6"
+          }
+        },
+        {
+          "tool": "fill",
+          "args": {
+            "pageId": 1,
+            "uid": "1_4",
+            "value": "changed"
+          }
+        },
+        {
+          "tool": "fill",
+          "args": {
+            "pageId": 1,
+            "uid": "1_7",
+            "value": "Pressed"
+          }
+        },
+        {
+          "tool": "fill",
+          "args": {
+            "pageId": 1,
+            "uid": "1_8",
+            "value": "zzz"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { document.getElementById('hideme').style.display = 'none'; return 'hidden'; }"
+          }
+        },
+        {
+          "tool": "click",
+          "args": {
+            "pageId": 1,
+            "uid": "1_10"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [after.join(','), document.getElementById('readonly').value, document.getElementById('btninput').value, document.getElementById('pick').value]"
+          }
+        }
+      ]
     }
   ],
   "expected": [
@@ -2583,6 +3218,16 @@
       "case": "history: back right after the first navigation",
       "call": 2,
       "reason": "Chrome navigates its startup URL (Puppeteer starts it with about:blank: an auto_toplevel entry), so its first navigation pushes and back reaches about:blank; Firefox 159 and Safari 27.2 keep the first tab's initial about:blank, which the first navigation replaces (WebDriver probe, chat.local 2026-11-24, tmp/probes/mcp1-startup/run.sh: history.length stays 1, back() stays), as Crane and HTML do: the browser majority (main's ruling, 2026-11-24)."
+    },
+    {
+      "case": "input: covered, disabled, pointer-events none, read-only, far below",
+      "call": 5,
+      "reason": "pointer-events: none takes the element out of hit testing: Chrome clicks the centre of its box, the body there gets the click, and the tool reports success. Crane's element input targets the element (the user's ruling 2026-11-23, option 2) and has no point to hit-test, so it refuses, naming why - as WebDriver Element Click answers \"element click intercepted\" when the element is not what its in-view centre point hits. It never dispatches to an ancestor instead (main's ruling (b), 2026-11-27). A real or approximate renderer (roadmap approx-layout, 0.2) is what would make it Chrome's."
+    },
+    {
+      "case": "input: covered, disabled, pointer-events none, read-only, far below",
+      "call": 9,
+      "reason": "Where the clicks land and at what coordinates: Chrome clicks the centre of each element's box - the overlay covers the covered button's centre, so the overlay gets the pointer events and the click, and the far button is scrolled into view first (scrollY 992) - while Crane's element input targets the element itself, with clientX/Y 0 and nothing scrolled (the user's ruling 2026-11-23, option 2; main's ruling (c), 2026-11-27). Geometry is approx-layout's (0.2)."
     }
   ]
 }

@@ -18,6 +18,7 @@ const Page = session_mod.Page;
 const Response = @import("response.zig").Response;
 const url_check = @import("url_check.zig");
 const validate = @import("validate.zig");
+const collectors = @import("collectors.zig");
 
 /// A tool's run: `page` is the one `pageId` named (null for a browser-wide
 /// tool). It writes its answer into `response`, or fails with `ctx.fail`.
@@ -50,6 +51,10 @@ pub const Tool = struct {
     experimental_vision: bool = false,
     /// conditions: ['slim'] — offered ONLY in `--slim` mode.
     slim: bool = false,
+    /// conditions: ['javascriptEvaluation'] — offered only while
+    /// `--javascriptEvaluation` is on (its default): evaluate_script,
+    /// set_logpoints, slim evaluate.
+    javascript_evaluation: bool = false,
     run: Run,
 };
 
@@ -62,7 +67,71 @@ pub const ListOptions = struct {
     category_experimental_third_party: bool = false,
     experimental_vision: bool = false,
     slim: bool = false,
+    /// `--javascriptEvaluation` (default on).
+    javascript_evaluation: bool = true,
+    /// `--pageIdRouting` (default on): page tools take `pageId`.
+    page_id_routing: bool = true,
+    /// `--maxNavigationSaved` (default 3): named in the two
+    /// includePreserved* descriptions.
+    max_navigation_saved: u32 = 3,
 };
+
+/// Whether `tool` is offered under `flags`: ToolHandler's enabled check -
+/// the tool's category on and its conditions met (chrome-devtools-mcp
+/// v1.13.0 src/ToolHandler.ts #updateStatus). A tool not offered is
+/// absent from tools/list, and a call to it is "Tool <name> disabled".
+pub fn offered(tool: Tool, flags: ListOptions) bool {
+    if (tool.javascript_evaluation and !flags.javascript_evaluation) return false;
+    if (flags.slim) return tool.slim;
+    if (tool.slim) return false;
+    if (tool.memory_debugging and !flags.memory_debugging) return false;
+    if (tool.category_network_mocks and !flags.category_network_mocks) return false;
+    if (tool.category_experimental_third_party and !flags.category_experimental_third_party) return false;
+    if (tool.experimental_vision and !flags.experimental_vision) return false;
+    return true;
+}
+
+/// A copied definition as the flags make it (the reference builds its
+/// schemas from the flags): --no-javascript-evaluation drops navigate_page's
+/// initScript (src/tools/pages.ts); --no-page-id-routing drops a page tool's
+/// pageId (src/tools/ToolDefinition.ts definePageTool, script.ts); the
+/// includePreserved* descriptions name --maxNavigationSaved
+/// (src/tools/console.ts, network.ts). Mutates `definition` in place.
+fn adjustDefinition(arena: Allocator, definition: *std.json.Value, tool: Tool, flags: ListOptions) !void {
+    const schema = definition.object.getPtr("inputSchema") orelse return;
+    if (schema.* != .object) return;
+    const properties = schema.object.getPtr("properties") orelse return;
+    if (properties.* != .object) return;
+    if (!flags.javascript_evaluation and std.mem.eql(u8, tool.name, "navigate_page")) {
+        _ = properties.object.orderedRemove("initScript");
+    }
+    if (!flags.page_id_routing and tool.page_tool) {
+        _ = properties.object.orderedRemove("pageId");
+        if (schema.object.getPtr("required")) |required| if (required.* == .array) {
+            var i: usize = 0;
+            while (i < required.array.items.len) {
+                const item = required.array.items[i];
+                if (item == .string and std.mem.eql(u8, item.string, "pageId")) {
+                    _ = required.array.orderedRemove(i);
+                } else i += 1;
+            }
+            // zod's JSON Schema leaves `required` out when nothing is.
+            if (required.array.items.len == 0) _ = schema.object.orderedRemove("required");
+        };
+    }
+    if (flags.max_navigation_saved != collectors.default_max_navigations) {
+        for ([_][]const u8{ "includePreservedMessages", "includePreservedRequests" }) |param| {
+            const prop = properties.object.getPtr(param) orelse continue;
+            if (prop.* != .object) continue;
+            const description = prop.object.getPtr("description") orelse continue;
+            if (description.* != .string) continue;
+            const old = "over the last 3 navigations.";
+            if (std.mem.indexOf(u8, description.string, old)) |at| {
+                description.string = try std.fmt.allocPrint(arena, "{s}over the last {d} navigations.{s}", .{ description.string[0..at], flags.max_navigation_saved, description.string[at + old.len ..] });
+            }
+        }
+    }
+}
 
 /// One verifyFilesSchema entry. Crane's browser is always local (it is this
 /// process), so `{local: true}` and `true` alike are checked.
@@ -133,6 +202,10 @@ pub fn listJsonWith(allocator: Allocator, memory_debugging: bool) ![]u8 {
 /// The tools/list JSON array for `--slim` mode (`evaluate`, `navigate`,
 /// `screenshot` from `schemas/slim.json`).
 pub fn listJsonSlim(allocator: Allocator) ![]u8 {
+    return listSlimWith(allocator, .{ .slim = true });
+}
+
+fn listSlimWith(allocator: Allocator, flags: ListOptions) ![]u8 {
     const copied = @embedFile("schemas/slim.json");
     const parsed = try std.json.parseFromSlice(std.json.Value, allocator, copied, .{});
     defer parsed.deinit();
@@ -144,7 +217,7 @@ pub fn listJsonSlim(allocator: Allocator) ![]u8 {
     for (parsed.value.object.get("tools").?.array.items) |definition| {
         const name = definition.object.get("name").?.string;
         const tool = find(name) orelse continue;
-        if (!tool.slim) continue;
+        if (!tool.slim or !offered(tool, flags)) continue;
         if (!first) try w.writeAll(",");
         first = false;
         try std.json.Stringify.value(definition, .{}, w);
@@ -155,26 +228,25 @@ pub fn listJsonSlim(allocator: Allocator) ![]u8 {
 
 /// The tools/list JSON array for `all` under `options`.
 pub fn listJsonWithOptions(allocator: Allocator, options: ListOptions) ![]u8 {
-    if (options.slim) return listJsonSlim(allocator);
+    if (options.slim) return listSlimWith(allocator, options);
     const copied = @embedFile("schemas/tools.json");
     const parsed = try std.json.parseFromSlice(std.json.Value, allocator, copied, .{});
     defer parsed.deinit();
+    var adjust_arena = std.heap.ArenaAllocator.init(allocator);
+    defer adjust_arena.deinit();
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
     const w = &out.writer;
     try w.writeAll("[");
     var first = true;
-    for (parsed.value.object.get("tools").?.array.items) |definition| {
+    for (parsed.value.object.get("tools").?.array.items) |*definition| {
         const name = definition.object.get("name").?.string;
         const tool = find(name) orelse continue;
-        if (tool.slim) continue;
-        if (tool.memory_debugging and !options.memory_debugging) continue;
-        if (tool.category_network_mocks and !options.category_network_mocks) continue;
-        if (tool.category_experimental_third_party and !options.category_experimental_third_party) continue;
-        if (tool.experimental_vision and !options.experimental_vision) continue;
+        if (!offered(tool, options)) continue;
+        try adjustDefinition(adjust_arena.allocator(), definition, tool, options);
         if (!first) try w.writeAll(",");
         first = false;
-        try std.json.Stringify.value(definition, .{}, w);
+        try std.json.Stringify.value(definition.*, .{}, w);
     }
     try w.writeAll("]");
     return out.toOwnedSlice();
@@ -222,7 +294,16 @@ const default_tools = [_][]const u8{
 /// Handler.disabled: a tool Google's server has but Crane leaves off by
 /// default (mock_network's category, the heap tools' flag, slim tools,
 /// Chrome products including `lighthouse_audit`).
-pub fn disabled(name: []const u8) bool {
+pub fn disabled(context: *anyopaque, name: []const u8) bool {
+    const session: *Session = @ptrCast(@alignCast(context));
+    return disabledWith(session.listOptions(), name);
+}
+
+/// `disabled` under `flags`: a tool Crane implements but does not offer
+/// under them, or one Google's server has and Crane leaves off.
+pub fn disabledWith(flags: ListOptions, name: []const u8) bool {
+    // A tool Crane implements: disabled exactly when its flags leave it out.
+    if (find(name)) |tool| return !offered(tool, flags);
     for (default_tools) |d| if (std.mem.eql(u8, d, name)) return false;
     var buffer: [128]u8 = undefined;
     const needle = std.fmt.bufPrint(&buffer, "\"name\": \"{s}\"", .{name}) catch return false;
@@ -239,20 +320,24 @@ test {
     _ = renderer_tools;
     _ = third_party_tools;
     _ = slim_tools;
+    _ = input_tools;
     _ = @import("heap_snapshot.zig");
     _ = @import("heap_formatter.zig");
     _ = @import("heap_regex.zig");
 }
 
 test "disabled: a copied tool off by default, not one offered by default or unknown" {
-    try std.testing.expect(disabled("mock_network"));
-    try std.testing.expect(disabled("install_extension"));
-    try std.testing.expect(disabled("lighthouse_audit"));
-    try std.testing.expect(disabled("click_at"));
-    try std.testing.expect(disabled("navigate"));
-    try std.testing.expect(!disabled("take_snapshot"));
-    try std.testing.expect(!disabled("take_screenshot"));
-    try std.testing.expect(!disabled("nope"));
+    try std.testing.expect(disabledWith(.{}, "mock_network"));
+    try std.testing.expect(disabledWith(.{}, "install_extension"));
+    try std.testing.expect(disabledWith(.{}, "lighthouse_audit"));
+    try std.testing.expect(disabledWith(.{}, "click_at"));
+    try std.testing.expect(disabledWith(.{}, "navigate"));
+    try std.testing.expect(!disabledWith(.{}, "take_snapshot"));
+    try std.testing.expect(!disabledWith(.{}, "take_screenshot"));
+    try std.testing.expect(!disabledWith(.{}, "nope"));
+    // A default tool whose condition is off.
+    try std.testing.expect(disabledWith(.{ .javascript_evaluation = false }, "evaluate_script"));
+    try std.testing.expect(!disabledWith(.{ .category_network_mocks = true }, "mock_network"));
 }
 
 pub fn find(name: []const u8) ?Tool {
@@ -264,15 +349,7 @@ pub fn find(name: []const u8) ?Tool {
 pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: std.json.Value) anyerror!?protocol.ToolResult {
     const session: *Session = @ptrCast(@alignCast(context));
     const tool = find(name) orelse return null;
-    if (session.slim) {
-        if (!tool.slim) return null;
-    } else {
-        if (tool.slim) return null;
-        if (tool.memory_debugging and !session.memory_debugging) return null;
-        if (tool.category_network_mocks and !session.category_network_mocks) return null;
-        if (tool.category_experimental_third_party and !session.category_experimental_third_party) return null;
-        if (tool.experimental_vision and !session.experimental_vision) return null;
-    }
+    if (!offered(tool, session.listOptions())) return null;
     session.dropClosed();
     // Whatever came since the last call is recorded first.
     _ = try session.client.pump(0);
@@ -285,7 +362,10 @@ pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: 
         if (try validate.check(arena, name, schema.object, arguments)) |message| return errorResult(arena, message);
         break;
     };
-    var ctx: Context = .{ .session = session, .arena = arena };
+    var ctx: Context = .{ .session = session, .arena = arena, .url_options = .{
+        .javascript_evaluation = session.javascript_evaluation,
+        .file_navigations = session.file_navigations,
+    } };
     var response: Response = .init(arena);
     // validateToolFiles, inside ToolHandler's try and before the page is
     // resolved: a refusal is the response's "Error: ..." line.
@@ -297,8 +377,10 @@ pub fn call(context: *anyopaque, arena: Allocator, name: []const u8, arguments: 
     if (tool.page_tool) {
         // routedPageId: an integer pageId names the page; any other number
         // means the selected one.
-        const id_value = arguments.object.get("pageId") orelse return errorResult(arena, try std.fmt.allocPrint(arena, "Input validation error: Invalid arguments for tool {s}: pageId: Invalid input: expected number, received undefined", .{name}));
-        const id: ?i64 = switch (id_value) {
+        // routedPageId: with --no-page-id-routing every page tool targets
+        // the selected page (its schema has no pageId).
+        const id_value: std.json.Value = if (!session.page_id_routing) .null else arguments.object.get("pageId") orelse return errorResult(arena, try std.fmt.allocPrint(arena, "Input validation error: Invalid arguments for tool {s}: pageId: Invalid input: expected number, received undefined", .{name}));
+        const id: ?i64 = if (!session.page_id_routing) null else switch (id_value) {
             .integer => |i| i,
             .float => |f| if (f == @floor(f) and @abs(f) < 9.0e15) @as(i64, @intFromFloat(f)) else null,
             else => return errorResult(arena, try std.fmt.allocPrint(arena, "Input validation error: Invalid arguments for tool {s}: pageId: Invalid input: expected number, received {s}", .{ name, jsonTypeName(id_value) })),

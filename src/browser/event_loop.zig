@@ -196,6 +196,18 @@ pub const EventLoop = struct {
     /// tasks so OS sleep granularity does not inflate bursts of tiny tasks.
     cpu_throttle_debt_ns: i64 = 0,
 
+    /// What the CPU throttle has paused this loop, in total (ns of debt paid):
+    /// its own record. Read by tests/browser/mcp2_cpu_throttling_test.zig in
+    /// place of a wall-clock bound that host load can exceed; nothing in
+    /// devtools reports it yet (lane mcp3, 2026-11-27).
+    cpu_throttle_paused_ns: u64 = 0,
+
+    /// The Browser's pause (its scope's runtime.BrowserPause), in which a
+    /// CPU throttle's debt is paid: session messages run during it, and the
+    /// host's stop ends it. Null for a loop with no Browser (a test's): the
+    /// debt is then slept. BORROWED from the Browser's scope.
+    pause: ?*runtime.BrowserPause = null,
+
     const Self = @This();
 
     /// Default maximum wait time when no explicit timeout is provided.
@@ -442,8 +454,20 @@ pub const EventLoop = struct {
         if (self.cpu_throttle_debt_ns < min_throttle_sleep_ns) return;
         const sleep_ns: u64 = @intCast(self.cpu_throttle_debt_ns);
         const sleep_start = realMonotonicNs();
-        platform.sleepThread(sleep_ns);
+        // The debt is a pause, not one blocking sleep (audit report C, M5):
+        // DevTools session messages run during it and the host's stop ends
+        // it (BrowserPause.pauseUntilDeadline: Chrome's ThreadCPUThrottler
+        // suspends the main thread in slices while the inspector's tasks
+        // still run). Page tasks, timers and other posts wait for its end,
+        // as they wait for a throttled task in Chrome. What a stop or the
+        // deadline leaves unpaid carries to the next task.
+        if (self.pause) |pause| {
+            pause.pauseUntilDeadline(@as(u64, @intCast(sleep_start)) + sleep_ns);
+        } else {
+            platform.sleepThread(sleep_ns);
+        }
         const actual_sleep = realMonotonicNs() - sleep_start;
+        self.cpu_throttle_paused_ns +|= @intCast(@max(actual_sleep, 0));
         self.cpu_throttle_debt_ns = @max(self.cpu_throttle_debt_ns - actual_sleep, -max_throttle_credit_ns);
     }
 

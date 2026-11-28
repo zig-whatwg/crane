@@ -141,6 +141,12 @@ crane --mcp-host=0.0.0.0 --mcp-port=9223 --mcp-cert=cert.pem --mcp-key=key.pem
 
 Optional MCP flags: `--slim` (minimal tool surface), `--categoryNetworkMocks` (network interception/mocking tools), `--memoryDebugging` (V8 `.heapsnapshot` analysis tools), `--isolated`, `--viewport=<WxH>`, `--acceptInsecureCerts`.
 
+#### Element input
+
+`click`, `hover`, `drag`, `fill` and `fill_form` act on the element a snapshot uid names, through Crane's own trusted input pipeline (WebDriver's element origin): the same events, order, `isTrusted`, focus and `:hover`/`:active` as Chrome. What Puppeteer's locator waits for, Crane waits for the same way: an element with no box (`display: none`) is acted on once it has one, a form control with a `disabled` attribute once it loses it, and a fill that cannot be made yet (a read-only field, a value the field does not take, no such option) is tried again every 100 ms; after the locator's timeout (5 s, times the CPU throttling rate) the answer is Chrome's "The element did not become interactive within the configured timeout."
+
+Crane has no layout, so where Chrome works from geometry the results differ, as listed in the [MCP differential](https://zig-whatwg.github.io/crane/mcp/): `clientX`/`clientY` are 0, nothing is scrolled into view first, an overlay never takes the click (the element is the target), and an element that hit testing would pass over (`pointer-events: none`, `visibility: hidden`, `inert`) is refused with the reason, where Chrome clicks whatever lies under the element's centre. Geometry arrives with a renderer (roadmap `approx-layout`, 0.2).
+
 ### Playwright and Puppeteer
 
 Crane speaks Chrome DevTools Protocol (CDP) over both TCP (`--remote-debugging-port`) and inherited pipes (`--remote-debugging-pipe`), accepting standard Chrome launcher switches.

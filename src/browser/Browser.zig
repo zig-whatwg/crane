@@ -471,6 +471,8 @@ pub const Browser = struct {
         // task, and its empty spans go back when the loop is idle
         // (allocator-hardening batch A).
         event_loop.heap = scope.existingHeapEngine();
+        // The pause a CPU throttle's debt is paid in (EventLoop.throttleAfterWork).
+        event_loop.pause = scope.of(runtime.BrowserPause) catch null;
         // Platform events become this loop's tasks from now on
         // (platform_events.zig); a Browser that fails to start lets go.
         if (@import("platform_events.zig").of(scope)) |platform_events| {

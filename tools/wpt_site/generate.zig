@@ -722,6 +722,7 @@ fn parseMcpReport(arena: Allocator, raw: []const u8) !pages_mod.McpReport {
         toolsNeedsRenderer: u64 = 0,
         toolsChromeOnly: u64 = 0,
         toolsNotTested: u64 = 0,
+        toolsNotImplemented: u64 = 0,
     };
     const JsonTool = struct {
         name: []const u8,
@@ -783,6 +784,7 @@ fn parseMcpReport(arena: Allocator, raw: []const u8) !pages_mod.McpReport {
             .tools_needs_renderer = parsed.summary.toolsNeedsRenderer,
             .tools_chrome_only = parsed.summary.toolsChromeOnly,
             .tools_not_tested = parsed.summary.toolsNotTested,
+            .tools_not_implemented = parsed.summary.toolsNotImplemented,
         },
         .tools = tools,
         .cases = cases,

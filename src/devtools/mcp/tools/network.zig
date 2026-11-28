@@ -103,7 +103,7 @@ fn detailed(ctx: *Context, page: *Page, request: *network.Request, files: BodyFi
     try lines.append(arena, try std.fmt.allocPrint(arena, "## Request {s}", .{request.url}));
     try lines.append(arena, try std.fmt.allocPrint(arena, "Status: {s}", .{try request.statusText(arena)}));
     try lines.append(arena, "### Request Headers");
-    try network.headerLines(arena, &request.headers, &lines);
+    try network.headerLinesRedacted(arena, &request.headers, &lines, ctx.session.redact_network_headers);
     if (request.has_post_data) {
         const body = if (files.request) |path| try requestBodyToFile(ctx, page, request, path) else try postData(ctx, page, request);
         try lines.append(arena, "### Request Body");
@@ -111,7 +111,7 @@ fn detailed(ctx: *Context, page: *Page, request: *network.Request, files: BodyFi
     }
     if (request.hasResponse()) {
         try lines.append(arena, "### Response Headers");
-        try network.headerLines(arena, request.responseHeaders(), &lines);
+        try network.headerLinesRedacted(arena, request.responseHeaders(), &lines, ctx.session.redact_network_headers);
         const body = if (files.response) |path| try responseBodyToFile(ctx, page, request, path) else try responseBody(ctx, page, request);
         if (body.len != 0) {
             try lines.append(arena, "### Response Body");
