@@ -1,0 +1,15 @@
+# Architecture: A wait that any post cuts short must take the post - or name the posts that may cut it
+
+**Date**: 2026-11-27
+**Lesson**: When a delay on the loop's thread (a throttle's debt) is made interruptible, decide which posts may end it and who runs them. A wait that ends on "anything posted" but leaves the post in the sink makes every later wait of the same turn end at once, because the post is still there. A wait that runs the post itself jumps it ahead of same-source tasks already queued.
+
+**Why**: The event loop takes other threads' posts at fixed points of a turn: step 2 takes them into the task queues, and step 3b runs what came during the turn. `TaskSink.hasPosted()` stays true until one of those points runs. A wait that returns on `hasPosted()` returns in the middle of draining the queued tasks, and the post is still pending. The next task's wait sees the same post and returns at once, and so does every task after it, until step 3b. A wait that instead runs the post inside itself, between two queued tasks, breaks HTML's FIFO within a task source: a queued task of source S was queued before the post of source S and must run first.
+
+**What Happened**: Audit report C, M5. Lane mcp2's CPU throttle paid its debt with one `platform.sleepThread` of up to 10 s on the Browser's thread. DevTools session messages and the host's `stop()` waited out the whole debt. Lane mcp3's first redesign ended the debt on any sink post and carried the rest. Tracing `runOnceBlocking` turned up both failure modes above before any code ran. The design that landed pays the debt in `BrowserPause.pauseUntilDeadline`. Session messages, which already have their own ordered queue in the pause, run there in order, as the debugger's nested loop runs them. The host's stop sets an interrupt flag on the pause (`interruptThrottle`). Every other post waits for the debt's end, as it waits for a throttled task in Chrome. The test had a trap of its own. The loop decides whether a posted task is throttled before it runs that task (`runOnePosted`). So a task that turns the throttle on and spins in the same task is never throttled, and the first red run passed on the old loop. The fix was to set the rate in one task and do the work in the next.
+
+**Fix**:
+1. List which posts may end the delay and why (here: session messages, which are outside task ordering as inspector interrupts are in Chrome, and the host's stop), and give each its own signal. Do not end the delay on `hasPosted()`.
+2. Run what ends the delay from its own queue, not from the sink, so that the task queues' order is untouched.
+3. Red-test the delay with work the loop actually delays. Check which branch the loop takes for the task you post (`runOnePosted` reads the rate before the task runs).
+
+**Takeaway**: **"Wake on any post" is not a slice: a post the wait does not consume ends every later wait too, and a post the wait runs itself jumps the queue - name the few posts that may interrupt, and give them their own channel.**
