@@ -3072,7 +3072,7 @@
     },
     {
       "name": "input: covered, disabled, pointer-events none, read-only, far below",
-      "about": "Audit M7: element input where the page does not cooperate - an overlay over the target (inert content is left out of the snapshot, so it has no uid), a disabled button, pointer-events:none, a read-only field, a target 3,000px down - with each click's target, clientX/Y, scroll offset and isTrusted logged (the user's element-input ruling, tmp/plans/mcp1-design.md 11: the element is the target, clientX/Y 0, nothing scrolls).",
+      "about": "Audit M7: element input where the page does not cooperate - an overlay over the target (inert content is left out of the snapshot, so it has no uid), a disabled button, pointer-events:none, a read-only field, a target 3,000px down - with each click's target, clientX/Y, scroll offset and isTrusted logged (the user's element-input ruling, tmp/plans/mcp1-design.md 11: the element is the target, clientX/Y 0, nothing scrolls). Then what Puppeteer's locator waits for (main's ruling (a), 2026-11-27): a button enabled and the read-only field made writable 300 ms later, an input type=button (filled directly), a listbox with no such option (tried until the timeout), and a button hidden after the snapshot.",
       "calls": [
         {
           "tool": "navigate_page",
@@ -3135,6 +3135,65 @@
           "args": {
             "pageId": 1
           }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { window.after = []; document.addEventListener('click', e => after.push(e.target.id || e.target.tagName), true); setTimeout(() => { document.getElementById('late').disabled = false; document.getElementById('readonly').readOnly = false; }, 300); return 'armed'; }"
+          }
+        },
+        {
+          "tool": "click",
+          "args": {
+            "pageId": 1,
+            "uid": "1_6"
+          }
+        },
+        {
+          "tool": "fill",
+          "args": {
+            "pageId": 1,
+            "uid": "1_4",
+            "value": "changed"
+          }
+        },
+        {
+          "tool": "fill",
+          "args": {
+            "pageId": 1,
+            "uid": "1_7",
+            "value": "Pressed"
+          }
+        },
+        {
+          "tool": "fill",
+          "args": {
+            "pageId": 1,
+            "uid": "1_8",
+            "value": "zzz"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => { document.getElementById('hideme').style.display = 'none'; return 'hidden'; }"
+          }
+        },
+        {
+          "tool": "click",
+          "args": {
+            "pageId": 1,
+            "uid": "1_10"
+          }
+        },
+        {
+          "tool": "evaluate_script",
+          "args": {
+            "pageId": 1,
+            "function": "() => [after.join(','), document.getElementById('readonly').value, document.getElementById('btninput').value, document.getElementById('pick').value]"
+          }
         }
       ]
     }
@@ -3159,6 +3218,16 @@
       "case": "history: back right after the first navigation",
       "call": 2,
       "reason": "Chrome navigates its startup URL (Puppeteer starts it with about:blank: an auto_toplevel entry), so its first navigation pushes and back reaches about:blank; Firefox 159 and Safari 27.2 keep the first tab's initial about:blank, which the first navigation replaces (WebDriver probe, chat.local 2026-11-24, tmp/probes/mcp1-startup/run.sh: history.length stays 1, back() stays), as Crane and HTML do: the browser majority (main's ruling, 2026-11-24)."
+    },
+    {
+      "case": "input: covered, disabled, pointer-events none, read-only, far below",
+      "call": 5,
+      "reason": "pointer-events: none takes the element out of hit testing: Chrome clicks the centre of its box, the body there gets the click, and the tool reports success. Crane's element input targets the element (the user's ruling 2026-11-23, option 2) and has no point to hit-test, so it refuses, naming why - as WebDriver Element Click answers \"element click intercepted\" when the element is not what its in-view centre point hits. It never dispatches to an ancestor instead (main's ruling (b), 2026-11-27). A real or approximate renderer (roadmap approx-layout, 0.2) is what would make it Chrome's."
+    },
+    {
+      "case": "input: covered, disabled, pointer-events none, read-only, far below",
+      "call": 9,
+      "reason": "Where the clicks land and at what coordinates: Chrome clicks the centre of each element's box - the overlay covers the covered button's centre, so the overlay gets the pointer events and the click, and the far button is scrolled into view first (scrollY 992) - while Crane's element input targets the element itself, with clientX/Y 0 and nothing scrolled (the user's ruling 2026-11-23, option 2; main's ruling (c), 2026-11-27). Geometry is approx-layout's (0.2)."
     }
   ]
 }

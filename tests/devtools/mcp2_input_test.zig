@@ -89,7 +89,6 @@ test "click: single, double, trusted event order, option, dialog, includeSnapsho
     const b_uid = try a.dupe(u8, try uidOf(snap, "button \"Go\""));
     const dlg_uid = try a.dupe(u8, try uidOf(snap, "button \"Alert\""));
     const opt_b_uid = try a.dupe(u8, try uidOf(snap, "option \"Beta\""));
-    const dis_uid = try a.dupe(u8, try uidOf(snap, "button \"Disabled\""));
     const pe_uid = try a.dupe(u8, try uidOf(snap, "button \"NoPointer\""));
 
     // Single click with includeSnapshot.
@@ -116,11 +115,8 @@ test "click: single, double, trusted event order, option, dialog, includeSnapsho
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => [document.getElementById('sel').value, selEv.join(',')]\"}");
     try expectResult(r.text, "[\"b\",\"input:b,change:b\"]");
 
-    // Option 2 refusals: disabled, pointer-events:none, and dynamic display:none / visibility:hidden / inert.
-    r = try h.tool("click", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\"}}", .{dis_uid}));
-    try testing.expect(r.is_error);
-    try testing.expect(std.mem.indexOf(u8, r.text, "disabled") != null);
-
+    // Option 2 refusals: pointer-events:none, and dynamic visibility:hidden / inert.
+    // (A disabled control is waited for as Puppeteer's locator waits: mcp3_input_wait_test.zig.)
     r = try h.tool("click", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\"}}", .{pe_uid}));
     try testing.expect(r.is_error);
     try testing.expect(std.mem.indexOf(u8, r.text, "pointer-events: none") != null);
@@ -132,15 +128,10 @@ test "click: single, double, trusted event order, option, dialog, includeSnapsho
     try testing.expect(r.is_error);
     try testing.expect(std.mem.indexOf(u8, r.text, "visibility: hidden") != null);
 
-    // Hide b with display:none -> refused.
-    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => { const b = document.getElementById('b'); b.style.visibility = ''; b.style.display = 'none'; }\"}");
-    try testing.expect(!r.is_error);
-    r = try h.tool("click", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\"}}", .{b_uid}));
-    try testing.expect(r.is_error);
-    try testing.expect(std.mem.indexOf(u8, r.text, "display: none") != null);
+    // (display:none is waited for as the locator waits for a box: mcp3_input_wait_test.zig.)
 
     // Make b inert -> refused.
-    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => { const b = document.getElementById('b'); b.style.display = ''; b.inert = true; }\"}");
+    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => { const b = document.getElementById('b'); b.style.visibility = ''; b.inert = true; }\"}");
     try testing.expect(!r.is_error);
     r = try h.tool("click", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\"}}", .{b_uid}));
     try testing.expect(r.is_error);
@@ -277,9 +268,7 @@ test "fill and fill_form: text, textarea, select, checkbox, radio, contenteditab
     const cb_uid = try a.dupe(u8, try uidOf(snap, "checkbox \"Agree\""));
     const rad_uid = try a.dupe(u8, try uidOf(snap, "radio \"Choice\""));
     const ce_uid = try a.dupe(u8, try uidOf(snap, "textbox \"Editor\""));
-    const ro_uid = try a.dupe(u8, try uidOf(snap, "textbox \"Locked\""));
     const trig_uid = try a.dupe(u8, try uidOf(snap, "checkbox \"Trigger\""));
-    const btn_uid = try a.dupe(u8, try uidOf(snap, "button \"Plain\""));
 
     // fill text input (short typed path), then replace with new text.
     r = try h.tool("fill", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"value\":\"Ada\"}}", .{name_uid}));
@@ -314,15 +303,8 @@ test "fill and fill_form: text, textarea, select, checkbox, radio, contenteditab
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => [document.getElementById('name').value, document.getElementById('bio').value.length, document.getElementById('col').value, document.getElementById('cb').checked, document.getElementById('rad').checked, document.getElementById('ce').textContent]\"}");
     try expectResult(r.text, "[\"Grace\",120,\"g\",true,true,\"Hello CE\"]");
 
-    // Refusals: read-only, non-fillable button, unknown combobox option, invalid toggle value.
-    r = try h.tool("fill", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"value\":\"nope\"}}", .{ro_uid}));
-    try testing.expect(r.is_error);
-    try testing.expectEqualStrings(try std.fmt.allocPrint(a, "Error: Failed to interact with the element with uid {s}. Element is read-only.", .{ro_uid}), r.text);
-
-    r = try h.tool("fill", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"value\":\"nope\"}}", .{btn_uid}));
-    try testing.expect(r.is_error);
-    try testing.expectEqualStrings(try std.fmt.allocPrint(a, "Error: Failed to interact with the element with uid {s}. Element cannot be filled out.", .{btn_uid}), r.text);
-
+    // Refusals chrome-devtools-mcp makes before the locator: an unknown combobox option, an invalid toggle value.
+    // (A read-only field, or an element nothing fills, is retried until the locator's timeout: mcp3_input_wait_test.zig.)
     r = try h.tool("fill", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"value\":\"Purple\"}}", .{col_uid}));
     try testing.expect(r.is_error);
     try testing.expectEqualStrings(try std.fmt.allocPrint(a, "Error: Failed to interact with the element with uid {s}. Could not find option with text \"Purple\"", .{col_uid}), r.text);

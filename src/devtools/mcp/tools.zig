@@ -320,6 +320,7 @@ test {
     _ = renderer_tools;
     _ = third_party_tools;
     _ = slim_tools;
+    _ = input_tools;
     _ = @import("heap_snapshot.zig");
     _ = @import("heap_formatter.zig");
     _ = @import("heap_regex.zig");

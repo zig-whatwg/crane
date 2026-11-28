@@ -7,7 +7,8 @@
 //! (RETRY_DELAY) until the page's default timeout - DEFAULT_TIMEOUT, 5 s, times
 //! the CPU throttling rate (McpPage.updateTimeouts) - ends it with a
 //! TimeoutError, which handleActionError words as "The element did not become
-//! interactive within the configured timeout."
+//! interactive within the configured timeout." An element with no box
+//! (display: none) is waited for the same way (main's ruling, 9:27 PM ET).
 
 const std = @import("std");
 const testing = std.testing;
@@ -48,7 +49,7 @@ fn timed(h: *Harness, name: []const u8, arguments: []const u8) !struct { text: [
     return .{ .text = r.text, .is_error = r.is_error, .ms = platform.monotonicMillis() - start };
 }
 
-test "click waits as Puppeteer's locator does: a disabled control is clicked once enabled, the timeout text if it never is" {
+test "click waits as Puppeteer's locator does: a disabled or unrendered element is clicked once it can be, the timeout text if it never can" {
     var h: Harness = .{};
     try h.start();
     defer h.stop();
@@ -60,6 +61,8 @@ test "click waits as Puppeteer's locator does: a disabled control is clicked onc
         \\<button id=never disabled>Never</button>
         \\<fieldset disabled><button id=fs>Fieldset</button></fieldset>
         \\<select id=sel aria-label=Pick><option value=a>Alpha</option><option value=b disabled>Beta</option></select>
+        \\<button id=shown>Shown</button>
+        \\<button id=gone>Gone</button>
         \\<script>
         \\window.clicks = [];
         \\document.addEventListener('click', e => clicks.push(e.target.id + ':' + e.isTrusted), true);
@@ -73,14 +76,16 @@ test "click waits as Puppeteer's locator does: a disabled control is clicked onc
     const never = try a.dupe(u8, try uidOf(snap, "button \"Never\""));
     const fs = try a.dupe(u8, try uidOf(snap, "button \"Fieldset\""));
     const beta = try a.dupe(u8, try uidOf(snap, "option \"Beta\""));
+    const shown = try a.dupe(u8, try uidOf(snap, "button \"Shown\""));
+    const gone = try a.dupe(u8, try uidOf(snap, "button \"Gone\""));
 
-    // Enabled 300 ms from now: the click waits for it, then clicks.
-    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => { setTimeout(() => { document.getElementById('late').disabled = false; document.querySelector('option[value=b]').disabled = false; }, 300); }\"}");
+    // Enabled a second from now: the click waits for it, then clicks.
+    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => { setTimeout(() => { document.getElementById('late').disabled = false; document.querySelector('option[value=b]').disabled = false; }, 1000); }\"}");
     try testing.expect(!r.is_error);
     var t = try timed(&h, "click", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\"}}", .{late}));
     try testing.expectEqualStrings("Successfully clicked on the element", t.text);
-    if (t.ms < 200) std.debug.print("the click came {d} ms after the call, before the button was enabled\n", .{t.ms});
-    try testing.expect(t.ms >= 200);
+    if (t.ms < 300) std.debug.print("the click came {d} ms after the call, before the button was enabled\n", .{t.ms});
+    try testing.expect(t.ms >= 300);
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => clicks.join(',')\"}");
     try expectResult(r.text, "\"late:true\"");
 
@@ -89,6 +94,22 @@ test "click waits as Puppeteer's locator does: a disabled control is clicked onc
     try testing.expectEqualStrings("Successfully clicked on the element", t.text);
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => document.getElementById('sel').value\"}");
     try expectResult(r.text, "\"b\"");
+
+    // display: none after the snapshot, shown again a second later: clicked once it has a box.
+    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => { const s = document.getElementById('shown'); s.style.display = 'none'; document.getElementById('gone').style.display = 'none'; setTimeout(() => { s.style.display = ''; }, 1000); }\"}");
+    try testing.expect(!r.is_error);
+    t = try timed(&h, "click", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\"}}", .{shown}));
+    try testing.expectEqualStrings("Successfully clicked on the element", t.text);
+    if (t.ms < 300) std.debug.print("the click came {d} ms after the call, before the button had a box\n", .{t.ms});
+    try testing.expect(t.ms >= 300);
+    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => clicks.join(',')\"}");
+    try expectResult(r.text, "\"late:true,shown:true\"");
+
+    // Never shown: the timeout text, not a refusal.
+    t = try timed(&h, "click", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\"}}", .{gone}));
+    try testing.expect(t.is_error);
+    try testing.expectEqualStrings(try timeoutText(a, gone), t.text);
+    try testing.expect(t.ms >= 4900 and t.ms <= 9000);
 
     // Never enabled: Puppeteer's TimeoutError after DEFAULT_TIMEOUT (5 s at no throttling).
     t = try timed(&h, "click", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\"}}", .{never}));
@@ -104,7 +125,7 @@ test "click waits as Puppeteer's locator does: a disabled control is clicked onc
     try testing.expectEqualStrings("Successfully clicked on the element", t.text);
     try testing.expect(t.ms < 1500);
     r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => clicks.join(',')\"}");
-    try expectResult(r.text, "\"late:true\"");
+    try expectResult(r.text, "\"late:true,shown:true\"");
 }
 
 test "fill waits as Puppeteer's locator does: a read-only field is filled once writable; what cannot be filled ends in the timeout text" {
@@ -117,6 +138,7 @@ test "fill waits as Puppeteer's locator does: a read-only field is filled once w
         \\data:text/html,<!doctype html><title>Read-only</title>
         \\<input id=late readonly value=fixed aria-label=Late>
         \\<input id=never readonly value=fixed aria-label=Never>
+        \\<input id=hidden aria-label=Hidden>
         \\<input id=btn type=button value=Label>
         \\<button id=plain>Plain</button>
     );
@@ -125,16 +147,22 @@ test "fill waits as Puppeteer's locator does: a read-only field is filled once w
     const snap = try a.dupe(u8, r.text);
     const late = try a.dupe(u8, try uidOf(snap, "textbox \"Late\""));
     const never = try a.dupe(u8, try uidOf(snap, "textbox \"Never\""));
+    const hidden = try a.dupe(u8, try uidOf(snap, "textbox \"Hidden\""));
     const btn = try a.dupe(u8, try uidOf(snap, "button \"Label\""));
     const plain = try a.dupe(u8, try uidOf(snap, "button \"Plain\""));
 
-    // Writable 300 ms from now: the fill is tried again until it is.
-    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => { setTimeout(() => { document.getElementById('late').readOnly = false; }, 300); }\"}");
+    // The hidden field shown a second from now, the read-only one writable two
+    // seconds from now: each fill is tried again until it can be made.
+    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => { const h = document.getElementById('hidden'); h.style.display = 'none'; setTimeout(() => { h.style.display = ''; }, 1000); setTimeout(() => { document.getElementById('late').readOnly = false; }, 2000); }\"}");
     try testing.expect(!r.is_error);
-    var t = try timed(&h, "fill", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"value\":\"changed\"}}", .{late}));
+    var t = try timed(&h, "fill", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"value\":\"seen\"}}", .{hidden}));
     try testing.expectEqualStrings("Successfully filled out the element", t.text);
-    if (t.ms < 200) std.debug.print("the fill came {d} ms after the call, before the field was writable\n", .{t.ms});
-    try testing.expect(t.ms >= 200);
+    if (t.ms < 300) std.debug.print("the fill came {d} ms after the call, before the field had a box\n", .{t.ms});
+    try testing.expect(t.ms >= 300);
+    t = try timed(&h, "fill", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"value\":\"changed\"}}", .{late}));
+    try testing.expectEqualStrings("Successfully filled out the element", t.text);
+    if (t.ms < 300) std.debug.print("the fill came {d} ms after the call, before the field was writable\n", .{t.ms});
+    try testing.expect(t.ms >= 300);
 
     // Never writable: the timeout text after DEFAULT_TIMEOUT + 10 ms a character (fillFormElements).
     t = try timed(&h, "fill", try std.fmt.allocPrint(a, "{{\"pageId\":1,\"uid\":\"{s}\",\"value\":\"changed\"}}", .{never}));
@@ -153,6 +181,6 @@ test "fill waits as Puppeteer's locator does: a read-only field is filled once w
     try testing.expect(t.is_error);
     try testing.expectEqualStrings(try timeoutText(a, plain), t.text);
 
-    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => [document.getElementById('late').value, document.getElementById('never').value, document.getElementById('btn').value]\"}");
-    try expectResult(r.text, "[\"changed\",\"fixed\",\"Pressed\"]");
+    r = try h.tool("evaluate_script", "{\"pageId\":1,\"function\":\"() => [document.getElementById('late').value, document.getElementById('never').value, document.getElementById('btn').value, document.getElementById('hidden').value]\"}");
+    try expectResult(r.text, "[\"changed\",\"fixed\",\"Pressed\",\"seen\"]");
 }
