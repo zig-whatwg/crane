@@ -196,10 +196,10 @@ pub const EventLoop = struct {
     /// tasks so OS sleep granularity does not inflate bursts of tiny tasks.
     cpu_throttle_debt_ns: i64 = 0,
 
-    /// What the CPU throttle has paused this loop for, in total (ns of debt
-    /// paid): the throttle's own record, which a test reads where a
-    /// wall-clock bound would be one host load can exceed (lane mcp3,
-    /// 2026-11-27).
+    /// What the CPU throttle has paused this loop, in total (ns of debt paid):
+    /// its own record. Read by tests/browser/mcp2_cpu_throttling_test.zig in
+    /// place of a wall-clock bound that host load can exceed; nothing in
+    /// devtools reports it yet (lane mcp3, 2026-11-27).
     cpu_throttle_paused_ns: u64 = 0,
 
     /// The Browser's pause (its scope's runtime.BrowserPause), in which a
